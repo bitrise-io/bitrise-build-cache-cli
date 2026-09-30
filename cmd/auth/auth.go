@@ -697,7 +697,7 @@ func withholdTokenForEntitlement(cmd *cobra.Command, cred authpkg.Credential) bo
 	}, utils.DefaultOsProxy{}, logger)
 
 	return configcommon.SkipForEntitlementAtBuildTime(
-		cmd.Context(), consts.BitriseWebsiteBaseURL, cred, metadata, logger)
+		cmd.Context(), configcommon.BuildToolGradle, consts.BitriseWebsiteBaseURL, cred, metadata, logger)
 }
 
 //nolint:gochecknoglobals

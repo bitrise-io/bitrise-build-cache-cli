@@ -82,7 +82,7 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 
 	// Before anything is written: a workspace with no Build Cache cannot use it,
 	// and activating would spend an analytics invocation saying so.
-	if common.SkipForEntitlement(cmd.Context(), logger) {
+	if common.SkipForEntitlement(cmd.Context(), configcommon.BuildToolBazel, logger) {
 		return nil
 	}
 

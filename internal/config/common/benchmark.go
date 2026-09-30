@@ -27,6 +27,9 @@ const (
 	BuildToolGradle = "gradle"
 	BuildToolXcode  = "xcode"
 	BuildToolBazel  = "bazel"
+	// BuildToolCpp has no benchmark phase; it exists for the entitlement gate,
+	// which is asked per tool.
+	BuildToolCpp = "cpp"
 )
 
 type benchmarkResponse struct {

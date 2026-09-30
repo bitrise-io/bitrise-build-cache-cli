@@ -122,20 +122,21 @@ func Test_handleSetInvocationIDResult_logsOutgoingInvocation(t *testing.T) {
 }
 
 func Test_getCapabilities(t *testing.T) {
-	t.Run("retries after an auth rejection", func(t *testing.T) {
-		errs := []error{kv.ErrCacheUnauthenticated, nil}
+	// ccache opens a connection per compile. Re-asking after a rejection would
+	// spend a full retry cycle on each one, and the usual reason to be rejected
+	// is a workspace with no Build Cache, which will not start having one
+	// mid-build.
+	t.Run("latches an auth rejection instead of re-asking", func(t *testing.T) {
 		client := &ClientMock{GetCapabilitiesWithRetryFunc: func(context.Context) error {
-			err := errs[0]
-			errs = errs[1:]
-
-			return err
+			return kv.ErrCacheUnauthenticated
 		}}
 		s := &IpcServer{client: client}
 
 		require.ErrorIs(t, s.getCapabilities(t.Context()), kv.ErrCacheUnauthenticated)
-		require.NoError(t, s.getCapabilities(t.Context()))
-		require.NoError(t, s.getCapabilities(t.Context()))
-		assert.Len(t, client.GetCapabilitiesWithRetryCalls(), 2)
+		require.ErrorIs(t, s.getCapabilities(t.Context()), kv.ErrCacheUnauthenticated)
+		require.ErrorIs(t, s.getCapabilities(t.Context()), kv.ErrCacheUnauthenticated)
+		assert.Len(t, client.GetCapabilitiesWithRetryCalls(), 1,
+			"the breaker must trip on the first rejection")
 	})
 
 	t.Run("caches any other result", func(t *testing.T) {

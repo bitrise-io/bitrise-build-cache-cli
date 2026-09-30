@@ -22,6 +22,7 @@ func NewEntitlementSkipper(envs map[string]string, logger log.Logger) Entitlemen
 
 		return configcommon.SkipForEntitlementAtBuildTime(
 			ctx,
+			configcommon.BuildToolBazel,
 			consts.BitriseWebsiteBaseURL,
 			auth.Credential{Token: cred.Token, WorkspaceID: cred.WorkspaceID},
 			metadata,

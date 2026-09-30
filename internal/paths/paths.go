@@ -54,9 +54,10 @@ const (
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
 
-	// entitlementRecordFilename caches this build's entitlement answer so the
-	// many CLI invocations one build makes cost a single request.
-	entitlementRecordFilename = "entitlement.json"
+	// entitlementRecordPrefix caches this build's entitlement answer so the many
+	// CLI invocations one build makes cost a single request. Per build tool,
+	// because entitlement is granted per tool.
+	entitlementRecordPrefix = "entitlement-"
 
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
@@ -251,9 +252,9 @@ func (p Paths) XcelerateEnrichmentDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateEnrichmentSubdir)
 }
 
-// EntitlementRecordFile returns the build-scoped entitlement record.
-func (p Paths) EntitlementRecordFile() string {
-	return filepath.Join(p.StateDir(), entitlementRecordFilename)
+// EntitlementRecordFile returns the build-scoped entitlement record for a tool.
+func (p Paths) EntitlementRecordFile(buildTool string) string {
+	return filepath.Join(p.StateDir(), entitlementRecordPrefix+buildTool+".json")
 }
 
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to

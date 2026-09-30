@@ -45,6 +45,7 @@ type EntitlementRecord struct {
 // outage than the one it prevents.
 func ResolveEntitlement(
 	ctx context.Context,
+	buildTool string,
 	baseURL string,
 	cred auth.Credential,
 	metadata CacheConfigMetadata,
@@ -62,16 +63,16 @@ func ResolveEntitlement(
 
 	buildID := BenchmarkBuildID(metadata)
 
-	if record, found := readEntitlementRecord(logger); found &&
+	if record, found := readEntitlementRecord(buildTool, logger); found &&
 		buildID != "" && record.BuildID == buildID {
 		return record.State
 	}
 
-	state := CheckEntitlement(ctx, baseURL, cred, logger)
+	state := CheckEntitlement(ctx, buildTool, baseURL, cred, logger)
 
 	// Unknown is recorded too. A build makes many CLI calls, and an unreachable
 	// website would otherwise cost a retrying request on every one of them.
-	writeEntitlementRecord(EntitlementRecord{State: state, BuildID: buildID}, logger)
+	writeEntitlementRecord(buildTool, EntitlementRecord{State: state, BuildID: buildID}, logger)
 
 	return state
 }
@@ -80,12 +81,13 @@ func ResolveEntitlement(
 // down, and says so once. Only an explicit negative skips.
 func SkipForEntitlementAtBuildTime(
 	ctx context.Context,
+	buildTool string,
 	baseURL string,
 	cred auth.Credential,
 	metadata CacheConfigMetadata,
 	logger log.Logger,
 ) bool {
-	if ResolveEntitlement(ctx, baseURL, cred, metadata, logger) != EntitlementNone {
+	if ResolveEntitlement(ctx, buildTool, baseURL, cred, metadata, logger) != EntitlementNone {
 		return false
 	}
 
@@ -105,17 +107,17 @@ func entitlementOverride() (EntitlementState, bool) {
 	}
 }
 
-func entitlementRecordPath() (string, error) {
+func entitlementRecordPath(buildTool string) (string, error) {
 	p, err := paths.Default()
 	if err != nil {
 		return "", err //nolint:wrapcheck // paths.Default already names itself
 	}
 
-	return p.EntitlementRecordFile(), nil
+	return p.EntitlementRecordFile(buildTool), nil
 }
 
-func readEntitlementRecord(logger log.Logger) (EntitlementRecord, bool) {
-	path, err := entitlementRecordPath()
+func readEntitlementRecord(buildTool string, logger log.Logger) (EntitlementRecord, bool) {
+	path, err := entitlementRecordPath(buildTool)
 	if err != nil {
 		logger.Debugf("Failed to resolve the entitlement record path: %v", err)
 
@@ -143,8 +145,8 @@ func readEntitlementRecord(logger log.Logger) (EntitlementRecord, bool) {
 
 // writeEntitlementRecord renames a temp file over the target so a concurrent
 // reader never sees a half-written record.
-func writeEntitlementRecord(record EntitlementRecord, logger log.Logger) {
-	path, err := entitlementRecordPath()
+func writeEntitlementRecord(buildTool string, record EntitlementRecord, logger log.Logger) {
+	path, err := entitlementRecordPath(buildTool)
 	if err != nil {
 		logger.Debugf("Failed to resolve the entitlement record path: %v", err)
 

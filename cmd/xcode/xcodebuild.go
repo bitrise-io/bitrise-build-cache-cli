@@ -1382,5 +1382,5 @@ func skipForEntitlement(
 	defer cancel()
 
 	return configcommon.SkipForEntitlementAtBuildTime(
-		ctx, consts.BitriseWebsiteBaseURL, config.AuthConfig, metadata, logger)
+		ctx, configcommon.BuildToolXcode, consts.BitriseWebsiteBaseURL, config.AuthConfig, metadata, logger)
 }

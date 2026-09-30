@@ -39,7 +39,9 @@ const entitlementEndpointShipped = false
 // entitlementPath is provisional and will almost certainly change when the
 // endpoint is designed for real; it is written to match the shape of the
 // benchmark-phase call next to it.
-const entitlementPath = "%s/build-cache/%s/entitlement"
+// Provisional, like the endpoint itself: workspace, then build tool. Entitlement
+// is granted per tool, so an answer for one must never stand in for another.
+const entitlementPath = "%s/build-cache/%s/entitlement/%s"
 
 const entitlementTimeout = 5 * time.Second
 
@@ -70,7 +72,7 @@ const (
 // CheckEntitlement asks whether the workspace has Build Cache. Any failure is
 // Unknown, never None: this gate exists to stop pointless activations, not to
 // become a new way for the website being down to break everyone's builds.
-func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) EntitlementState {
+func CheckEntitlement(ctx context.Context, buildTool, baseURL string, cred auth.Credential, logger log.Logger) EntitlementState {
 	if !entitlementEndpointShipped {
 		return EntitlementUnknown
 	}
@@ -86,7 +88,7 @@ func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential,
 	ctx, cancel := context.WithTimeout(ctx, entitlementTimeout)
 	defer cancel()
 
-	url := fmt.Sprintf(entitlementPath, baseURL, cred.WorkspaceID)
+	url := fmt.Sprintf(entitlementPath, baseURL, cred.WorkspaceID, buildTool)
 	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		logger.Debugf("Could not build the entitlement request: %s", err)
@@ -133,7 +135,7 @@ func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential,
 // Lite mode never reaches here: its caller returns before resolving a
 // credential, because a VM activated ahead of any build has no workspace to ask
 // about.
-func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) bool {
+func SkipActivationForEntitlement(ctx context.Context, buildTool, baseURL string, cred auth.Credential, logger log.Logger) bool {
 	if os.Getenv(EnvSkipEntitlementCheck) != "" {
 		logger.Warnf("TEMPORARY: the Build Cache entitlement check is bypassed via %s (ACI-5515). "+
 			"Remove it once the entitlement endpoint ships.", EnvSkipEntitlementCheck)
@@ -141,7 +143,7 @@ func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth
 		return false
 	}
 
-	if CheckEntitlement(ctx, baseURL, cred, logger) != EntitlementNone {
+	if CheckEntitlement(ctx, buildTool, baseURL, cred, logger) != EntitlementNone {
 		return false
 	}
 

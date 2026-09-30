@@ -42,7 +42,7 @@ func TestSkipForEntitlementAtBuildTime_FailsOpen(t *testing.T) {
 	isolateHome(t)
 
 	skip := common.SkipForEntitlementAtBuildTime(
-		t.Context(), "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
+		t.Context(), common.BuildToolGradle, "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-1"}, entitlementLogger())
 
 	assert.False(t, skip, "an unreachable website must not stand the build down")
@@ -53,7 +53,7 @@ func TestSkipForEntitlementAtBuildTime_OverrideStandsTheBuildDown(t *testing.T) 
 	t.Setenv(common.EnvEntitlementOverride, "none")
 
 	skip := common.SkipForEntitlementAtBuildTime(
-		t.Context(), "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
+		t.Context(), common.BuildToolGradle, "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-1"}, entitlementLogger())
 
 	assert.True(t, skip)
@@ -64,7 +64,7 @@ func TestResolveEntitlement_OverrideActiveDoesNotSkip(t *testing.T) {
 	t.Setenv(common.EnvEntitlementOverride, "active")
 
 	state := common.ResolveEntitlement(
-		t.Context(), "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
+		t.Context(), common.BuildToolGradle, "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-1"}, entitlementLogger())
 
 	assert.Equal(t, common.EntitlementActive, state)
@@ -79,7 +79,7 @@ func TestResolveEntitlement_TmpBypassApplies(t *testing.T) {
 	t.Setenv(common.EnvEntitlementOverride, "none")
 
 	state := common.ResolveEntitlement(
-		t.Context(), "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
+		t.Context(), common.BuildToolGradle, "http://127.0.0.1:1", auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-1"}, entitlementLogger())
 
 	assert.Equal(t, common.EntitlementUnknown, state, "the bypass must win over every other source")
@@ -100,12 +100,12 @@ func TestResolveEntitlement_RecordIsReusedByTheSameBuildOnly(t *testing.T) {
 	// Unreachable, so anything other than the record answers Unknown.
 	const unreachable = "http://127.0.0.1:1"
 
-	same := common.ResolveEntitlement(t.Context(), unreachable,
+	same := common.ResolveEntitlement(t.Context(), common.BuildToolGradle, unreachable,
 		auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-1"}, logger)
 	assert.Equal(t, common.EntitlementNone, same, "the build's own record must be reused")
 
-	other := common.ResolveEntitlement(t.Context(), unreachable,
+	other := common.ResolveEntitlement(t.Context(), common.BuildToolGradle, unreachable,
 		auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-2"}, logger)
 	assert.Equal(t, common.EntitlementUnknown, other,
@@ -118,7 +118,7 @@ func TestResolveEntitlement_UnscopedRecordIsNotReused(t *testing.T) {
 	isolateHome(t)
 	seedEntitlementRecord(t, common.EntitlementRecord{State: common.EntitlementNone})
 
-	state := common.ResolveEntitlement(t.Context(), "http://127.0.0.1:1",
+	state := common.ResolveEntitlement(t.Context(), common.BuildToolGradle, "http://127.0.0.1:1",
 		auth.Credential{WorkspaceID: "ws"},
 		common.CacheConfigMetadata{BitriseBuildID: "build-1"}, entitlementLogger())
 
@@ -130,9 +130,9 @@ func seedEntitlementRecord(t *testing.T, record common.EntitlementRecord) {
 
 	p, err := paths.Default()
 	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Dir(p.EntitlementRecordFile()), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(p.EntitlementRecordFile(common.BuildToolGradle)), 0o755))
 
 	body, err := json.Marshal(record)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(p.EntitlementRecordFile(), body, 0o600))
+	require.NoError(t, os.WriteFile(p.EntitlementRecordFile(common.BuildToolGradle), body, 0o600))
 }

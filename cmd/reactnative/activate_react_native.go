@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
@@ -45,7 +46,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 
 		// Before anything is written: a workspace with no Build Cache cannot use it,
 		// and activating would spend an analytics invocation saying so.
-		if common.SkipForEntitlement(cmd.Context(), logger) {
+		if common.SkipForEntitlementOfAll(cmd.Context(), []string{configcommon.BuildToolGradle, configcommon.BuildToolXcode, configcommon.BuildToolCpp}, logger) {
 			return nil
 		}
 

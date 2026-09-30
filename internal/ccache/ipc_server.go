@@ -13,7 +13,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/gofrs/uuid/v5"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -118,8 +117,11 @@ func (s *IpcServer) getCapabilities(ctx context.Context) error {
 	}
 
 	s.capabilitiesErr = s.client.GetCapabilitiesWithRetry(ctx)
-	// A rejected credential can be replaced by a refresh, so it is re-checked next connection.
-	s.capabilitiesDone = !errors.Is(s.capabilitiesErr, kv.ErrCacheUnauthenticated)
+	// Latched, including on a rejected credential. ccache opens a connection per
+	// compile, so re-asking would spend a full retry cycle on every one of them —
+	// and the common reason to be rejected is a workspace that has no Build Cache
+	// and never will, not a credential about to be refreshed.
+	s.capabilitiesDone = true
 
 	return s.capabilitiesErr
 }

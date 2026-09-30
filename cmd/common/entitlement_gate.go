@@ -18,7 +18,15 @@ import (
 //
 // Lite never skips. Preboot has no workspace to ask about, so the question moves
 // to build time along with everything else lite defers.
-func SkipForEntitlement(ctx context.Context, logger log.Logger) bool {
+func SkipForEntitlement(ctx context.Context, buildTool string, logger log.Logger) bool {
+	return SkipForEntitlementOfAll(ctx, []string{buildTool}, logger)
+}
+
+// SkipForEntitlementOfAll is the React Native case: one activation covering
+// several tools. It stops only when every one of them is unentitled, because
+// entitlement is granted per tool and a workspace with Gradle but not Xcode
+// still has an activation worth doing.
+func SkipForEntitlementOfAll(ctx context.Context, buildTools []string, logger log.Logger) bool {
 	if Lite {
 		return false
 	}
@@ -30,5 +38,11 @@ func SkipForEntitlement(ctx context.Context, logger log.Logger) bool {
 		return false
 	}
 
-	return configcommon.SkipActivationForEntitlement(ctx, consts.BitriseWebsiteBaseURL, cred, logger)
+	for _, buildTool := range buildTools {
+		if !configcommon.SkipActivationForEntitlement(ctx, buildTool, consts.BitriseWebsiteBaseURL, cred, logger) {
+			return false
+		}
+	}
+
+	return true
 }

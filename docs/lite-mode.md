@@ -204,11 +204,26 @@ asked again at build time.
 
 ### The build-time gate
 
-`ResolveEntitlement` asks once per build and records the answer under
-`~/.local/state/bitrise-build-cache/entitlement.json`, scoped to the build id.
-Scoped, because a persistent runner reuses the machine and one build's "none"
-must not decide for every build after it; recorded, because a build makes many
-CLI calls and each would otherwise be a request.
+`ResolveEntitlement` asks once per build per tool and records the answer under
+`~/.local/state/bitrise-build-cache/entitlement-<tool>.json`:
+
+```json
+{"state": 2, "buildId": "<build id>"}
+```
+
+Two things in the key, for two different reasons.
+
+**Build id** — `BITRISE_BUILD_SLUG`, or `ExternalBuildID` off Bitrise — because a
+persistent runner reuses the machine, and one build's "none" must not decide for
+every build after it. A record is reused only when the id is non-empty *and*
+equal; an empty one (off CI, or written before scoping existed) is never reused.
+The benchmark phase record is keyed the same way, at
+`~/.local/state/xcelerate/benchmark/benchmark-phase-<tool>.json`.
+
+**Tool** — because entitlement is granted per tool, which is what makes rollout
+step 0 able to limit its own blast radius. A single machine-wide record would
+let a workspace enabled for Gradle through the Xcode gate on the same build.
+Neither record is keyed on workspace: a build belongs to exactly one.
 
 Every build-time entry point the CLI owns consults it, and each stands down in
 the way its own tool understands:
@@ -218,6 +233,12 @@ the way its own tool understands:
 | Gradle | `auth token --lite` exits non-zero | both plugins resolve their token here, so the cache stops connecting *and* analytics stops reporting |
 | Xcode | the wrapper takes its passthrough path | build runs, no proxy, no session, no invocation |
 | Bazel | the credential helper returns empty headers | same response as having no credential; Bazel runs uncached |
+
+ccache is the exception that needed a separate fix. It has no build-time gate,
+but it no longer re-asks either: an `UNAUTHENTICATED` capabilities result now
+latches for the life of the storage helper. It used to be re-checked on every
+connection so a refreshed credential could recover, which cost a full retry
+cycle per compile on a workspace that was never going to become entitled.
 
 Three properties it must keep:
 
@@ -255,13 +276,8 @@ out:
 |---|---|
 | Xcode | the first RPC fails the capabilities check, and compilation caching degrades to plain compilation |
 | Gradle | the plugin throws instead of burning its retries, and Gradle drops the remote cache for the rest of the build |
-| ccache | re-checks on **every** connection, so it never stops asking |
+| ccache | latches the rejection for the life of the storage helper and stops asking |
 | Bazel | no CLI-side handling; the helper returns empty headers with no credential, otherwise Bazel's own remote-cache error handling applies |
-
-ccache's retry is deliberate — a credential refreshed mid-build has to start
-working — but it cannot tell "this token just expired" from "this workspace has
-no Build Cache", and those want opposite answers. So on an unentitled workspace
-it re-asks and re-fails once per compile.
 
 So for the cache, standing down keeps the build green but does not make the
 attempt free — the gate is what makes it free. For analytics there is nothing to
@@ -388,8 +404,9 @@ is still being validated — but the PoC is not finished until it is gone.
   endpoint it calls does not exist yet, so every answer is Unknown and nothing
   is gated. Rollout steps 0 and 6.
 - **ccache has no build-time gate.** The storage helper is not one of the three
-  surfaces above. An unentitled C++ build still re-asks per compile, because
-  ccache deliberately re-checks capabilities on every connection.
+  surfaces above, so an unentitled C++ build still attempts the cache once. It
+  no longer re-attempts per compile — the rejection latches — but the first
+  attempt is not prevented.
 - **BES on an unentitled workspace.** Unverified: whether
   `--bes_upload_mode=wait_for_upload_complete` fails the build when the helper
   returns empty headers. If it does, lite must not emit `--bes_backend` without a
