@@ -3,6 +3,7 @@
 package clibin
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,7 @@ func TestEnsureInstalledInUserLocalBin_SkipsWhenOnPATH(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "bitrise-build-cache"), []byte("#!/bin/sh\n"), 0o755))
 	t.Setenv("PATH", fakeBin)
 
-	target, installed, err := EnsureInstalledInUserLocalBin(newTestLogger())
+	target, installed, err := EnsureInstalledInUserLocalBin(context.Background(), newTestLogger())
 	require.NoError(t, err)
 	assert.False(t, installed, "must skip when a bare name resolves on PATH")
 	assert.Equal(t, filepath.Join(home, ".local", "bin", "bitrise-build-cache"), target)
@@ -32,7 +33,7 @@ func TestEnsureInstalledInUserLocalBin_CopiesRunningBinary(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", t.TempDir())
 
-	target, installed, err := EnsureInstalledInUserLocalBin(newTestLogger())
+	target, installed, err := EnsureInstalledInUserLocalBin(context.Background(), newTestLogger())
 	require.NoError(t, err)
 	assert.True(t, installed)
 
@@ -55,7 +56,7 @@ func TestEnsureInstalledInUserLocalBin_SkipsWhenAlreadyAtTarget(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "bitrise-build-cache"), []byte("existing"), 0o755))
 	t.Setenv("PATH", bin)
 
-	target, installed, err := EnsureInstalledInUserLocalBin(newTestLogger())
+	target, installed, err := EnsureInstalledInUserLocalBin(context.Background(), newTestLogger())
 	require.NoError(t, err)
 	assert.False(t, installed)
 	assert.Equal(t, filepath.Join(bin, "bitrise-build-cache"), target)
@@ -63,4 +64,42 @@ func TestEnsureInstalledInUserLocalBin_SkipsWhenAlreadyAtTarget(t *testing.T) {
 	content, err := os.ReadFile(target)
 	require.NoError(t, err)
 	assert.Equal(t, "existing", string(content), "must not overwrite the existing binary")
+}
+
+func TestInstallCLIAt_CopiesRunningBinaryWithCustomBasename(t *testing.T) {
+	dir := t.TempDir()
+
+	target, installed, err := InstallCLIAt(context.Background(), dir, InstallOpts{Basename: "bitrise-build-cache-cli"}, newTestLogger())
+	require.NoError(t, err)
+	assert.True(t, installed)
+	assert.Equal(t, filepath.Join(dir, "bitrise-build-cache-cli"), target)
+
+	info, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.False(t, info.IsDir())
+	assert.NotZero(t, info.Size())
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+}
+
+func TestInstallCLIAt_SkipsWhenSrcEqualsTarget(t *testing.T) {
+	exe, err := os.Executable()
+	require.NoError(t, err)
+
+	target, installed, err := InstallCLIAt(context.Background(), filepath.Dir(exe), InstallOpts{Basename: filepath.Base(exe)}, newTestLogger())
+	require.NoError(t, err)
+	assert.False(t, installed)
+	assert.Equal(t, exe, target)
+}
+
+func TestInstallCLIAt_CreatesTargetDir(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "nested", "bin")
+
+	_, installed, err := InstallCLIAt(context.Background(), dir, InstallOpts{}, newTestLogger())
+	require.NoError(t, err)
+	assert.True(t, installed)
+
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
 }

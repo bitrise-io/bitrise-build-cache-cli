@@ -74,7 +74,7 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
 
-	if _, _, err := clibin.EnsureInstalledInUserLocalBin(logger); err != nil {
+	if _, _, err := clibin.EnsureInstalledInUserLocalBin(cmd.Context(), logger); err != nil {
 		logger.Debugf("self-install to ~/.local/bin skipped: %s", err)
 	}
 
