@@ -244,9 +244,18 @@ values themselves and fails if it ran no substantive check.
 
 ## Known limits
 
-- **Containerised builds.** Warmup cannot know the build will run in another
-  filesystem namespace. A Bazel build inside Docker needs the CLI mounted in, or
-  the credential helper cannot be spawned and the build aborts. Loud, not silent.
+- **Containerised builds need two things handed in.** Warmup cannot know the
+  build will run in another namespace.
+  1. *The binary.* A Bazel build inside Docker needs the CLI mounted in, or the
+     credential helper cannot be spawned and the build aborts. Loud, not silent.
+     Mount it from a path the host daemon shares — the step container's own
+     `/usr/local/bin` is not one.
+  2. *The build's identity.* Lite resolves the per-invocation metadata where the
+     helper runs, so the container needs the env that identifies the build —
+     `BITRISE_IO` (which gates CI detection) and `BITRISE_TRIGGERED_WORKFLOW_ID`
+     among them. A full activation baked these on the host, so a container that
+     never received them still reported correctly; under lite it reports
+     `ciProvider: unknown`. Quiet, and only visible in the invocation record.
 - **Non-wrapped ccache builds.** `CCACHE_*` and `CCACHE_BASEDIR` need a build to
   exist and shipped via `envman`. The React Native path is fine — its runner
   applies them at build time — but a bare `activate c++ --lite` followed by a
