@@ -9,7 +9,7 @@ works on Xcode 26 too, but the retest that confirmed end-to-end remote CAS
 was on Xcode 27 — see [`docs/xcode-app-ide-remote-cas-findings-2026-09-30.md`](xcode-app-ide-remote-cas-findings-2026-09-30.md)
 for the mechanism and the "why").
 
-## `enable` alone is NOT enough on Xcode 27+
+## `enable` alone is NOT enough on Xcode 27.0
 
 Verified on Xcode 27.0 / macOS 26.6.2: `launchctl setenv XCODE_XCCONFIG_FILE`
 sets the env var correctly, Xcode.app inherits it at launch, but SwiftBuild

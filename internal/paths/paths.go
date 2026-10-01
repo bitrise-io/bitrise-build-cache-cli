@@ -30,6 +30,10 @@ const (
 	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `xcode-app enable`.
 	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
 
+	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode-app link` writes next
+	// to a .xcodeproj when a build configuration has no baseConfigurationReference.
+	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
+
 	// XcodeAppSetenvAgentLabel is the launchd label for the LaunchAgent that
 	// reapplies XCODE_XCCONFIG_FILE on every login.
 	XcodeAppSetenvAgentLabel = "io.bitrise.build-cache.xcode-app-setenv"

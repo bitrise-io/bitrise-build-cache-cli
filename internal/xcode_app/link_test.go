@@ -229,3 +229,144 @@ func TestLink_workspaceWalksProjectRefs(t *testing.T) {
 	// Only the .xcodeproj gets touched; Package.swift is skipped by extension filter.
 	require.Len(t, result.ModifiedXCConfigs, 1)
 }
+
+// TestLink_acceptsLegacyAndLowercaseObjectIDs pins the widened pbxproj object-id
+// regex: Xcode has shipped both the modern 24-char and the legacy 12-char
+// shapes, and both lowercase and uppercase hex are valid.
+func TestLink_acceptsLegacyAndLowercaseObjectIDs(t *testing.T) {
+	tests := []struct {
+		name      string
+		fileRefID string
+		cfgID     string
+	}{
+		{name: "lowercase 24-char", fileRefID: "aaaaaaaaaaaaaaaaaaaaaaaa", cfgID: "bbbbbbbbbbbbbbbbbbbbbbbb"},
+		{name: "mixed-case 24-char", fileRefID: "AaAaAaAaAaAaAaAaAaAaAaAa", cfgID: "BbBbBbBbBbBbBbBbBbBbBbBb"},
+		{name: "legacy 12-char uppercase", fileRefID: "AAAAAAAAAAAA", cfgID: "BBBBBBBBBBBB"},
+		{name: "legacy 12-char lowercase", fileRefID: "aaaaaaaaaaaa", cfgID: "bbbbbbbbbbbb"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			pbx := `// !$*UTF8*$!
+{
+	objects = {
+/* Begin PBXFileReference section */
+		` + tc.fileRefID + ` /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Base.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+/* Begin XCBuildConfiguration section */
+		` + tc.cfgID + ` /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = ` + tc.fileRefID + ` /* Base.xcconfig */;
+			buildSettings = {};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+	};
+}
+`
+			projPath := writeProject(t, tmp, "Sample.xcodeproj", pbx, map[string]string{
+				"Base.xcconfig": "FOO = BAR\n",
+			})
+
+			override := filepath.Join(tmp, "override.xcconfig")
+			require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+			result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+				ProjectPath:          projPath,
+				OverrideXCConfigPath: override,
+			})
+			require.NoError(t, err)
+			require.Len(t, result.ModifiedXCConfigs, 1,
+				"widened regex must find the base xcconfig for %s", tc.name)
+			require.Empty(t, result.CreatedSiblings,
+				"must not fall back to sibling path when the base reference is parseable")
+
+			body, err := os.ReadFile(result.ModifiedXCConfigs[0])
+			require.NoError(t, err)
+			assert.Contains(t, string(body), `#include? "`+override+`"`)
+		})
+	}
+}
+
+// TestLink_missingBaseConfigRefSkipsSilently pins the behavior at
+// link.go resolveXCConfigForConfig: an XCBuildConfiguration pointing at a
+// baseConfigurationReference id that no PBXFileReference defines is skipped
+// without an error — the pbxproj is malformed in a way we won't repair.
+func TestLink_missingBaseConfigRefSkipsSilently(t *testing.T) {
+	tmp := t.TempDir()
+	// baseConfigurationReference points at an id the file-reference section
+	// does not define.
+	pbx := `// !$*UTF8*$!
+{
+	objects = {
+/* Begin PBXFileReference section */
+/* End PBXFileReference section */
+/* Begin XCBuildConfiguration section */
+		BBBBBBBBBBBBBBBBBBBBBBBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = DEADBEEFDEADBEEFDEADBEEF /* Missing.xcconfig */;
+			buildSettings = {};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+	};
+}
+`
+	projPath := writeProject(t, tmp, "Dangling.xcodeproj", pbx, nil)
+
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath:          projPath,
+		OverrideXCConfigPath: override,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, result.ModifiedXCConfigs, "missing-ref branch must not touch any xcconfig")
+	assert.Empty(t, result.CreatedSiblings, "missing-ref branch must not create a sibling either")
+
+	pbxAfter, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+	assert.Equal(t, pbx, string(pbxAfter), "pbxproj must be byte-identical when nothing resolved")
+}
+
+// TestLink_workspaceDedupesDuplicateProjectRefs pins the seen-map in
+// resolveWorkspace: when a workspace lists the same .xcodeproj twice we must
+// process it only once.
+func TestLink_workspaceDedupesDuplicateProjectRefs(t *testing.T) {
+	tmp := t.TempDir()
+
+	writeProject(t, tmp, "AppA.xcodeproj", minimalPbxWithBaseRef, map[string]string{
+		"Base.xcconfig": "A = 1\n",
+	})
+	// Second project with its own base xcconfig so we can distinguish the two.
+	appBPbx := strings.ReplaceAll(minimalPbxWithBaseRef, `path = "Base.xcconfig"`, `path = "BaseB.xcconfig"`)
+	appBPbx = strings.ReplaceAll(appBPbx, `/* Base.xcconfig */`, `/* BaseB.xcconfig */`)
+	writeProject(t, tmp, "AppB.xcodeproj", appBPbx, map[string]string{
+		"BaseB.xcconfig": "B = 1\n",
+	})
+
+	wsPath := filepath.Join(tmp, "App.xcworkspace")
+	require.NoError(t, os.MkdirAll(wsPath, 0o755))
+	contents := `<?xml version="1.0" encoding="UTF-8"?>
+<Workspace version = "1.0">
+  <FileRef location = "group:AppA.xcodeproj"/>
+  <FileRef location = "group:AppB.xcodeproj"/>
+  <FileRef location = "group:AppA.xcodeproj"/>
+</Workspace>
+`
+	require.NoError(t, os.WriteFile(filepath.Join(wsPath, "contents.xcworkspacedata"), []byte(contents), 0o644))
+
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath:          wsPath,
+		OverrideXCConfigPath: override,
+	})
+	require.NoError(t, err)
+	// Two distinct xcconfigs, not three: duplicate project ref must dedupe.
+	require.Len(t, result.ModifiedXCConfigs, 2)
+	assert.Equal(t, 1, strings.Count(strings.Join(result.ModifiedXCConfigs, "\n"), filepath.Join(tmp, "Base.xcconfig")))
+}

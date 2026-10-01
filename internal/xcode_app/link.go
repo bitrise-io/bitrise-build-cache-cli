@@ -1,6 +1,8 @@
 package xcode_app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -9,22 +11,19 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/stringmerge"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// LinkBlockStart / LinkBlockEnd fence the `#include?` directive we add to each
-// xcconfig under a project; stringmerge.ChangeContentInBlock lets re-runs be
-// idempotent and unlink revert cleanly.
 const (
 	LinkBlockStart = "// [start] bitrise-build-cache xcode-app link"
 	LinkBlockEnd   = "// [end] bitrise-build-cache xcode-app link"
 )
 
-// SiblingXCConfigName is the xcconfig written next to a .xcodeproj when a
-// build configuration has no baseConfigurationReference yet; the pbxproj is
-// patched to point at it.
-const SiblingXCConfigName = ".bitrise-build-cache.xcconfig"
+// SiblingXCConfigName re-exports the on-disk filename from internal/paths so
+// this package can keep using the short name without the import at every site.
+const SiblingXCConfigName = paths.XcodeAppSiblingXCConfigFileName
 
 // LinkParams targets a single .xcodeproj or .xcworkspace plus the override
 // xcconfig to include. OverrideXCConfigPath must be absolute — Xcode does not
@@ -144,7 +143,7 @@ func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, res
 		}
 	}
 
-	if ctx.siblingPending && ctx.updatedPbx != content {
+	if ctx.updatedPbx != content {
 		if err := osProxy.WriteFile(pbxPath, []byte(ctx.updatedPbx), 0o644); err != nil { //nolint:gosec // Xcode must read the pbxproj
 			return fmt.Errorf("write %s: %w", pbxPath, err)
 		}
@@ -159,7 +158,6 @@ type linkContext struct {
 	fileRefs        map[string]pbxFileRef
 	siblingPath     string
 	siblingFileRef  string
-	siblingPending  bool
 	touchedXCConfig map[string]struct{}
 	updatedPbx      string
 	projectPath     string
@@ -176,12 +174,17 @@ func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, erro
 	}
 
 	if c.siblingFileRef == "" {
-		c.siblingFileRef = stableFileRefID(c.projectPath)
+		id, err := c.mintSiblingFileRefID()
+		if err != nil {
+			return "", err
+		}
+		c.siblingFileRef = id
 		updated, err := insertSiblingFileReference(c.updatedPbx, c.siblingFileRef, SiblingXCConfigName)
 		if err != nil {
 			return "", err
 		}
 		c.updatedPbx = updated
+		c.fileRefs[id] = pbxFileRef{ID: id, Path: SiblingXCConfigName}
 	}
 
 	updated, err := attachBaseConfigReference(c.updatedPbx, cfg.ID, c.siblingFileRef, SiblingXCConfigName)
@@ -189,9 +192,28 @@ func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, erro
 		return "", err
 	}
 	c.updatedPbx = updated
-	c.siblingPending = true
 
 	return c.siblingPath, nil
+}
+
+// mintSiblingFileRefID derives a sha256-based 24-char hex id from the project
+// path and bumps a counter suffix on the rare chance it collides with an
+// existing PBXFileReference id.
+func (c *linkContext) mintSiblingFileRefID() (string, error) {
+	base := stableFileRefID(c.projectPath)
+	if _, clash := c.fileRefs[base]; !clash {
+		return base, nil
+	}
+
+	const maxAttempts = 16
+	for i := 1; i <= maxAttempts; i++ {
+		id := stableFileRefID(fmt.Sprintf("%s#%d", c.projectPath, i))
+		if _, clash := c.fileRefs[id]; !clash {
+			return id, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not mint a unique PBXFileReference id for %s after %d attempts", c.projectPath, maxAttempts)
 }
 
 func unlinkOneProject(osProxy utils.OsProxy, projectPath string, result *UnlinkResult) error {
@@ -319,19 +341,23 @@ type pbxFileRef struct {
 	Path string
 }
 
+// pbxObjectIDPattern matches both the legacy 12-char and modern 24-char
+// pbxproj object ids, upper- or lowercase hex — both shapes Xcode has shipped.
+const pbxObjectIDPattern = `(?:[0-9A-Fa-f]{24}|[0-9A-Fa-f]{12})`
+
 // buildConfigBlockRe matches an XCBuildConfiguration object entry.
 // The pbxproj text format is stable enough for a regex to be sound here: object
 // ids are hex, each entry starts with `<ID> /* ... */ = {` and ends with `};`.
-var buildConfigBlockRe = regexp.MustCompile(`(?m)^\s*([0-9A-F]{24})\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;([\s\S]*?)\n\s*\};`)
+var buildConfigBlockRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;([\s\S]*?)\n\s*\};`)
 
 // baseConfigRefRe pulls the baseConfigurationReference out of the body of an
 // XCBuildConfiguration block, if present.
-var baseConfigRefRe = regexp.MustCompile(`baseConfigurationReference\s*=\s*([0-9A-F]{24})\s*/\*`)
+var baseConfigRefRe = regexp.MustCompile(`baseConfigurationReference\s*=\s*(` + pbxObjectIDPattern + `)\s*/\*`)
 
 // fileRefRe matches a PBXFileReference entry and captures the id and path.
 // `lastKnownFileType = text.xcconfig` filters to xcconfigs only; we are not
 // interested in sources, assets, or storyboards.
-var fileRefRe = regexp.MustCompile(`(?m)^\s*([0-9A-F]{24})\s*/\*[^*]*\*/\s*=\s*\{isa\s*=\s*PBXFileReference;[^}]*lastKnownFileType\s*=\s*text\.xcconfig;[^}]*path\s*=\s*"?([^";]+)"?[^}]*\};`)
+var fileRefRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*/\*[^*]*\*/\s*=\s*\{isa\s*=\s*PBXFileReference;[^}]*lastKnownFileType\s*=\s*text\.xcconfig;[^}]*path\s*=\s*"?([^";]+)"?[^}]*\};`)
 
 func parseBuildConfigurations(content string) []pbxBuildConfig {
 	matches := buildConfigBlockRe.FindAllStringSubmatch(content, -1)
@@ -380,7 +406,7 @@ func insertSiblingFileReference(content, refID, siblingName string) (string, err
 // configuration already has a baseConfigurationReference pointing at refID the
 // content is returned unchanged.
 func attachBaseConfigReference(content, cfgID, refID, siblingName string) (string, error) {
-	blockRe := regexp.MustCompile(`(?m)^(\s*)` + cfgID + `(\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;\s*\n)`)
+	blockRe := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(cfgID) + `(\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;\s*\n)`)
 	loc := blockRe.FindStringSubmatchIndex(content)
 	if loc == nil {
 		return "", fmt.Errorf("could not locate XCBuildConfiguration %s", cfgID)
@@ -392,21 +418,15 @@ func attachBaseConfigReference(content, cfgID, refID, siblingName string) (strin
 	return content[:loc[1]] + injection + content[loc[1]:], nil
 }
 
-// stableFileRefID derives a deterministic 24-char hex id from the project path
-// so repeated Link runs reuse the same PBXFileReference entry rather than
-// stacking duplicates.
-func stableFileRefID(projectPath string) string {
-	const letters = "0123456789ABCDEF"
-	var sum uint64
-	for _, b := range []byte("bitrise-build-cache-link:" + projectPath) {
-		sum = sum*1099511628211 ^ uint64(b)
-	}
-	var buf [24]byte
-	for i := range buf {
-		buf[i] = letters[int(sum>>(uint(i)*2)&0xF)] //nolint:gosec // deterministic hex derivation
-	}
+// stableFileRefID derives a deterministic uppercase-hex 24-char id by taking
+// the first 24 chars of sha256(seed). Deterministic across runs so repeated
+// Link invocations reuse the same PBXFileReference rather than stacking
+// duplicates; `mintSiblingFileRefID` suffixes the seed on the rare chance of a
+// collision with an existing id.
+func stableFileRefID(seed string) string {
+	sum := sha256.Sum256([]byte("bitrise-build-cache-link:" + seed))
 
-	return string(buf[:])
+	return strings.ToUpper(hex.EncodeToString(sum[:]))[:24]
 }
 
 // validateOverridePath mirrors the removed implementation's checks: xcconfig

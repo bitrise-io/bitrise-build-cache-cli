@@ -55,18 +55,18 @@ type DisableResult struct {
 	RunningXcodePIDs   []int
 }
 
-// LinkResult / UnlinkResult are returned by Link / Unlink for CLI output.
+// LinkResult / UnlinkResult wrap the internal results with the set of
+// currently-running Xcode PIDs so the CLI layer can warn the user to relaunch.
 type LinkResult struct {
-	ModifiedXCConfigs []string
-	CreatedSiblings   []string
-	RunningXcodePIDs  []int
+	xa.LinkResult
+
+	RunningXcodePIDs []int
 }
 
 type UnlinkResult struct {
-	ModifiedXCConfigs []string
-	RemovedSiblings   []string
-	WarnBaseRefs      []string
-	RunningXcodePIDs  []int
+	xa.UnlinkResult
+
+	RunningXcodePIDs []int
 }
 
 // Enable writes the override xcconfig, installs the LaunchAgent, and points
@@ -216,17 +216,33 @@ func (a *Activator) Link(ctx context.Context, projectPath string) (LinkResult, e
 	osProxy := a.osProxy()
 	logger := a.logger()
 
+	logger.TInfof("Linking %s to the Xcode.app build-cache override", projectPath)
+
 	overridePath := xceleratconfig.ResolveXcodeAppOverrideXCConfigPath("", a.envs(), osProxy)
+	logger.Debugf("Override xcconfig: %s", overridePath)
 
 	result, err := xa.Link(osProxy, xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath})
 	if err != nil {
 		return LinkResult{}, fmt.Errorf("link %s: %w", projectPath, err)
 	}
 
+	for _, f := range result.ModifiedXCConfigs {
+		logger.Debugf("Appended include block: %s", f)
+	}
+	for _, f := range result.CreatedSiblings {
+		logger.Debugf("Created sibling xcconfig: %s", f)
+	}
+
+	if len(result.ModifiedXCConfigs)+len(result.CreatedSiblings) == 0 {
+		logger.Infof("Project already linked — no changes to %s", projectPath)
+	} else {
+		logger.Infof("Linked %s (%d xcconfig(s) modified, %d sibling(s) created)",
+			projectPath, len(result.ModifiedXCConfigs), len(result.CreatedSiblings))
+	}
+
 	return LinkResult{
-		ModifiedXCConfigs: result.ModifiedXCConfigs,
-		CreatedSiblings:   result.CreatedSiblings,
-		RunningXcodePIDs:  a.runningXcodePIDs(ctx, logger),
+		LinkResult:       result,
+		RunningXcodePIDs: a.runningXcodePIDs(ctx, logger),
 	}, nil
 }
 
@@ -243,16 +259,30 @@ func (a *Activator) Unlink(ctx context.Context, projectPath string) (UnlinkResul
 	osProxy := a.osProxy()
 	logger := a.logger()
 
+	logger.TInfof("Unlinking %s from the Xcode.app build-cache override", projectPath)
+
 	result, err := xa.Unlink(osProxy, xa.LinkParams{ProjectPath: projectPath})
 	if err != nil {
 		return UnlinkResult{}, fmt.Errorf("unlink %s: %w", projectPath, err)
 	}
 
+	for _, f := range result.ModifiedXCConfigs {
+		logger.Debugf("Stripped include block: %s", f)
+	}
+	for _, f := range result.RemovedSiblings {
+		logger.Debugf("Removed sibling xcconfig: %s", f)
+	}
+
+	if len(result.ModifiedXCConfigs)+len(result.RemovedSiblings) == 0 {
+		logger.Infof("Nothing to revert for %s", projectPath)
+	} else {
+		logger.Infof("Unlinked %s (%d xcconfig(s) stripped, %d sibling(s) removed)",
+			projectPath, len(result.ModifiedXCConfigs), len(result.RemovedSiblings))
+	}
+
 	return UnlinkResult{
-		ModifiedXCConfigs: result.ModifiedXCConfigs,
-		RemovedSiblings:   result.RemovedSiblings,
-		WarnBaseRefs:      result.WarnBaseRefs,
-		RunningXcodePIDs:  a.runningXcodePIDs(ctx, logger),
+		UnlinkResult:     result,
+		RunningXcodePIDs: a.runningXcodePIDs(ctx, logger),
 	}, nil
 }
 

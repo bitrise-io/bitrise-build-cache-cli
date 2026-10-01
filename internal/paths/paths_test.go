@@ -53,6 +53,7 @@ func TestPaths_xcodeApp(t *testing.T) {
 	assert.Equal(t,
 		"/h/Library/LaunchAgents/io.bitrise.build-cache.xcode-app-setenv.plist",
 		p.XcodeAppSetenvAgentPlistFile())
+	assert.Equal(t, ".bitrise-build-cache.xcconfig", XcodeAppSiblingXCConfigFileName)
 }
 
 func TestPaths_proxySocket(t *testing.T) {
