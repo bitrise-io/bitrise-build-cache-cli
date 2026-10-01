@@ -517,6 +517,20 @@ workflows:
     - bundle::rn-cli-install-from-release: {}
     - bundle::rn-seek-ios-e2e-body: {}
 
+  react-seek-ios-auto-activate-e2e:
+    title: Seek iOS - Build Cache activated by bitrise at build start, no install or activate step
+    meta:
+      bitrise.io:
+        machine_type_id: g2.mac.large
+        stack: osx-xcode-26.3.x
+    envs:
+    - BITRISE_BUILD_CACHE_ACTIVATE_ALL: "true"
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_GRADLE: established
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+    steps:
+    - activate-ssh-key@4: {}
+    - git-clone@8: {}
+    - bundle::rn-seek-ios-e2e-body-auto-activate: {}
 
   ccache-storage-helper-test:
     meta:
@@ -1010,6 +1024,40 @@ step_bundles:
             envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
             cd _seek
             ../bitrise-build-cache-cli react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
+    - script:
+        title: Assert a query action is told about the managed DerivedData
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_derived_data_query.sh
+    - script:
+        title: Assert CLI invocation analytics were sent
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_assert_analytics.sh
+
+  rn-seek-ios-e2e-body-auto-activate:
+    steps:
+    - script:
+        title: Check the CLI that bitrise installed at build start
+        inputs:
+        - content: |-
+            set -exo pipefail
+            command -v bitrise-build-cache
+            bitrise-build-cache version
+    - script:
+        title: Clone Seek app
+        inputs:
+        - content: git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
+    - script:
+        title: Configure and install dependencies
+        inputs:
+        - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
+    - script:
+        title: Build
+        inputs:
+        - content: |-
+            export RN_CLI_LOG="$BITRISE_DEPLOY_DIR/rn-cli.log"
+            envman add --key RN_CLI_LOG --value "$RN_CLI_LOG"
+            cd _seek
+            bitrise-build-cache react-native run npx react-native build-ios 2>&1 | tee -a "$RN_CLI_LOG"
     - script:
         title: Assert a query action is told about the managed DerivedData
         inputs:
