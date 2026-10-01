@@ -14,6 +14,7 @@ mv config.example.js config.js
 npm ci
 npm run add-example-model
 
+export RBENV_VERSION="$(cat .ruby-version)"
 cd ios
-pod install
+bundle exec --gemfile=../Gemfile pod install
 cd ..
