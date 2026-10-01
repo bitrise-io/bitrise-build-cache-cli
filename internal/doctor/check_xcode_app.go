@@ -36,8 +36,6 @@ func (d *Doctor) xcodeAppCheck() Check {
 	}
 }
 
-// diagnoseXcodeAppOverride reports whether the override xcconfig written by
-// `activate xcode` is in place and whether the proxy socket is live.
 func diagnoseXcodeAppOverride(overridePath, socketPath string, osProxy utils.OsProxy) Result {
 	overrideExists := xcodeAppFileExists(overridePath)
 	socketExists := xcodeAppSocketExists(osProxy, socketPath)
@@ -58,9 +56,8 @@ func xcodeAppFileExists(path string) bool {
 	return err == nil
 }
 
-// xcodeAppSocketExists returns true when the proxy socket exists on disk. Using
-// Stat (rather than a connect probe) matches `xcelerateProxyCheck` and avoids
-// coupling the doctor's xcode-ide leg to proxy liveness it already reports.
+// xcodeAppSocketExists uses Stat (not a connect probe) to match
+// `xcelerateProxyCheck`; proxy liveness is reported there, not here.
 func xcodeAppSocketExists(osProxy utils.OsProxy, socketPath string) bool {
 	_, err := osProxy.Stat(socketPath)
 

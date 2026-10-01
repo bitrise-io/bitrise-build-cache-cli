@@ -93,8 +93,7 @@ func Activate(
 	}
 
 	if runtime.GOOS == "darwin" {
-		// Side effect of activation so `xcode link` has something to point at;
-		// log and continue on failure — the file is only consumed by the IDE flow.
+		// Failure is non-fatal: the override is only consumed by the IDE flow.
 		if err := xcode_app.WriteOverrideXCConfig(osProxy, envs, config.ProxySocketPath); err != nil {
 			logger.Warnf("Could not write Xcode.app override xcconfig: %s", err)
 		} else {
