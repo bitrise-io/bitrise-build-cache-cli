@@ -53,7 +53,7 @@ func TestLink_happyPath(t *testing.T) {
 
 	projDir := filepath.Join(home, "Sample.xcodeproj")
 	require.NoError(t, os.MkdirAll(projDir, 0o755))
-	// Build config without a baseConfigurationReference → sibling path exercised.
+	// No baseConfigurationReference → exercises the sibling-xcconfig path.
 	pbx := `// !$*UTF8*$!
 {
 	objects = {
@@ -99,7 +99,7 @@ func TestUnlink_happyPath(t *testing.T) {
 	projDir := filepath.Join(home, "Sample.xcodeproj")
 	require.NoError(t, os.MkdirAll(projDir, 0o755))
 
-	// Simulate a prior Link run: existing base config with marker block.
+	// Fixture simulates a prior Link run (base config carries the marker block).
 	baseXCConfigAbs := filepath.Join(home, "Base.xcconfig")
 	pbx := `// !$*UTF8*$!
 {

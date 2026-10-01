@@ -1,5 +1,3 @@
-// Package xcode_app writes the Xcode.app IDE override xcconfig and wires it
-// into an .xcodeproj via baseConfigurationReference. macOS-only.
 package xcode_app
 
 import (
@@ -13,15 +11,11 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// AppleCASPluginPath is the stock LLVM CAS plugin dylib that ships with Xcode.
-// Apple's plugin speaks the same gRPC protocol as our proxy — see
-// docs/xcode-terminal-run.md.
+// AppleCASPluginPath is the stock LLVM CAS plugin dylib that ships with Xcode;
+// it speaks the same gRPC protocol as our proxy.
 const AppleCASPluginPath = "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"
 
-// Render returns the override xcconfig body that engages remote CAS through
-// Bitrise's xcelerate-proxy.
-//
-// The template deliberately omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES:
+// Render omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES on purpose:
 // SwiftBuild's CompilationCachingConfigFileTaskProducer bails (`return nil`)
 // when both REMOTE_SERVICE_PATH and SUPPORTED_LANGUAGES are set, so no
 // `.cas-config` is written and remote never engages.
@@ -59,15 +53,11 @@ func Render(proxySocketPath string) (string, error) {
 	return b.String(), nil
 }
 
-// EnvOverrideXCConfigPath overrides the on-disk location of the Xcode.app
-// override xcconfig. Callers rarely need it; kept so the writer (`activate
-// xcode`) and the readers (`xcode link`, doctor) resolve to one path.
 const EnvOverrideXCConfigPath = "BITRISE_XCODE_APP_OVERRIDE_XCCONFIG_PATH"
 
-// ResolveOverrideXCConfigPath returns the override xcconfig path in the same
-// order the writer and readers use: explicit override → env var → default
-// ~/.bitrise-xcelerate/xcode-app.xcconfig. Returns ("", err) only when the
-// default path is in play and the home dir cannot be resolved.
+// ResolveOverrideXCConfigPath resolves in order: explicit override, env var,
+// then default under ~/.bitrise-xcelerate. Fails only when the default is in
+// play and the home dir cannot be resolved.
 func ResolveOverrideXCConfigPath(override string, envs map[string]string, osProxy utils.OsProxy) (string, error) {
 	if override != "" {
 		return override, nil
@@ -84,10 +74,6 @@ func ResolveOverrideXCConfigPath(override string, envs map[string]string, osProx
 	return paths.FromHome(home).XcodeAppOverrideXCConfigFile(), nil
 }
 
-// WriteOverrideXCConfig renders the override xcconfig and writes it to the
-// path resolved via ResolveOverrideXCConfigPath, creating the dir if needed.
-// Called as a side effect of `activate xcode` so `xcode link` has something
-// to point at.
 func WriteOverrideXCConfig(osProxy utils.OsProxy, envs map[string]string, proxySocketPath string) error {
 	body, err := Render(proxySocketPath)
 	if err != nil {
