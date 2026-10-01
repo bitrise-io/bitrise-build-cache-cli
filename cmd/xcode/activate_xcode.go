@@ -47,6 +47,10 @@ This command will:
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof(activateXcode)
 
+		if common.SkipForEntitlement(cmd.Context(), configcommon.BuildToolXcode, logger) {
+			return nil
+		}
+
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 

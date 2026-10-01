@@ -8,6 +8,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
@@ -33,6 +34,10 @@ This command will:
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
+
+		if common.SkipForEntitlement(cmd.Context(), configcommon.BuildToolCpp, logger) {
+			return nil
+		}
 
 		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)

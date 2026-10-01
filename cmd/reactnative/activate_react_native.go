@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
@@ -39,6 +40,11 @@ Note: This is a convenience activation method, if your activation requires fine-
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
+
+		if common.SkipForEntitlementOfAll(cmd.Context(), enabledBuildTools(), logger) {
+			return nil
+		}
+
 		if err := common.PersistProjectMode(projectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
@@ -78,4 +84,20 @@ func init() {
 	activateReactNativeCmd.Flags().BoolVar(&noSwiftCache, "no-swift-cache", false, "Cache clang/Objective-C compilation only, leaving Swift uncached (see `activate xcode --no-swift-cache`).")
 	activateReactNativeCmd.Flags().BoolVar(&buildCacheSkipFlags, "cache-skip-flags", false, "Skip passing cache flags to xcodebuild except the socket path (see `activate xcode --cache-skip-flags`).")
 	activateReactNativeCmd.Flags().StringVar(&projectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
+}
+
+// enabledBuildTools is what this activation covers; none enabled asks nothing.
+func enabledBuildTools() []string {
+	var tools []string
+	if gradleEnabled {
+		tools = append(tools, configcommon.BuildToolGradle)
+	}
+	if xcodeEnabled {
+		tools = append(tools, configcommon.BuildToolXcode)
+	}
+	if cppEnabled {
+		tools = append(tools, configcommon.BuildToolCpp)
+	}
+
+	return tools
 }
