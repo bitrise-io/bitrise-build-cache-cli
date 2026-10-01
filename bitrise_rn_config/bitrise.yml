@@ -1047,6 +1047,13 @@ step_bundles:
         inputs:
         - content: git clone --depth 1 "$SEEK_URL" --branch "$SEEK_TAG" _seek
     - script:
+        title: Install the Ruby that Seek pins
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cd _seek
+            rbenv install -s "$(cat .ruby-version)"
+    - script:
         title: Configure and install dependencies
         inputs:
         - content: bash $BITRISE_SOURCE_DIR/scripts/react_e2e_setup_seek_ios.sh
