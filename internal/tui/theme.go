@@ -54,7 +54,7 @@ func BitriseTheme() huh.Theme {
 
 		s.Focused.SelectSelector = lipgloss.NewStyle().Foreground(accent).SetString("❯ ")
 		s.Focused.MultiSelectSelector = lipgloss.NewStyle().Foreground(accent).SetString("❯ ")
-		s.Focused.SelectedOption = highlight
+		s.Focused.SelectedOption = lipgloss.NewStyle().Foreground(accent).Bold(true)
 		s.Focused.SelectedPrefix = lipgloss.NewStyle().Foreground(checkFg).SetString("[x] ")
 		s.Focused.UnselectedPrefix = lipgloss.NewStyle().Foreground(muted).SetString("[ ] ")
 		s.Focused.FocusedButton = highlight.Bold(true).Padding(0, 2)

@@ -48,6 +48,7 @@ func Chrome(description string) int {
 func KeyMap() *huh.KeyMap {
 	km := huh.NewDefaultKeyMap()
 	km.Quit = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
+	km.MultiSelect.Toggle = key.NewBinding(key.WithKeys("space", "x"), key.WithHelp("space", "toggle"))
 
 	return km
 }
