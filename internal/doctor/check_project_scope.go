@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
@@ -41,28 +42,43 @@ func (d *Doctor) projectScopeCheck() Check {
 				}
 			}
 
-			var lines []string
-			lines = append(lines, fmt.Sprintf("mode=%s", string(mode)))
+			lines := []string{
+				fmt.Sprintf("Detected project: %s", cwd),
+			}
+
+			if marker == nil {
+				lines = append(lines, fmt.Sprintf("Opt-in marker: none (searched from %s)", cwd))
+			} else {
+				markerLine := fmt.Sprintf("Opt-in marker: %s", markerPath)
+				if filepath.Dir(markerPath) != cwd {
+					markerLine += " (inherited from ancestor)"
+				}
+				lines = append(lines, markerLine)
+			}
+
+			lines = append(lines, fmt.Sprintf("Mode: %s", string(mode)))
 
 			push := machineconfig.ResolvedCachePush(current)
 			pushSource := pushSourceDefault
 			if current.CachePush != nil {
 				pushSource = pushSourceStored
 			}
-			lines = append(lines, fmt.Sprintf("cache_push=%t (%s)", push, pushSource))
-
-			if marker == nil {
-				lines = append(lines, fmt.Sprintf("no %s found in %s or parents.", paths.ProjectMarkerFilename, cwd))
-			} else {
-				lines = append(lines, fmt.Sprintf("marker at %s", markerPath))
-			}
+			lines = append(lines, fmt.Sprintf("Cache push: %s (%s)", enabledDisabled(push), pushSource))
 
 			gates := mode == machineconfig.ModeOptIn && marker == nil
-			lines = append(lines, fmt.Sprintf("would gate this directory: %s", yesNo(gates)))
+			lines = append(lines, fmt.Sprintf("Would gate this directory: %s", yesNo(gates)))
 
-			return Result{State: StateOK, Detail: strings.Join(lines, "; ")}
+			return Result{State: StateOK, Detail: strings.Join(lines, "\n  ")}
 		},
 	}
+}
+
+func enabledDisabled(b bool) string {
+	if b {
+		return "enabled"
+	}
+
+	return "disabled"
 }
 
 // readMachineConfig returns the persisted config. An unresolvable home dir
