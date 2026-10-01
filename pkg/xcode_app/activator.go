@@ -1,7 +1,3 @@
-// Package xcode_app exposes the public API for `bitrise-build-cache xcode
-// link / unlink`, which wires a .xcodeproj to the override xcconfig written by
-// `activate xcode` so Xcode.app IDE builds route through Bitrise's
-// xcelerate-proxy for remote CAS.
 package xcode_app
 
 import (
@@ -18,7 +14,6 @@ import (
 
 const darwinGOOS = "darwin"
 
-// ErrUnsupportedPlatform is returned by Link/Unlink on non-macOS hosts.
 var ErrUnsupportedPlatform = errors.New("xcode link/unlink is only supported on macOS")
 
 // Activator drives Xcode.app link/unlink. Nil fields fall back to production
@@ -29,18 +24,16 @@ type Activator struct {
 	OsProxy utils.OsProxy
 }
 
-// LinkResult / UnlinkResult are the internal results re-exported for CLI
-// consumers so they don't need to import the internal package.
 type (
 	LinkResult   = xa.LinkResult
 	UnlinkResult = xa.UnlinkResult
 )
 
 // Link wires each XCBuildConfiguration in the referenced project(s) to the
-// override xcconfig written by `activate xcode`, via baseConfigurationReference
-// / `#include?`. Required on Xcode 27+ IDE builds — Xcode no longer propagates
-// the `XCODE_XCCONFIG_FILE` user-env override to SwiftBuild, so routing through
-// the project is the only way to reach the IDE's compilation tasks.
+// override xcconfig written by `activate xcode`. Required on Xcode 27+ IDE
+// builds — Xcode no longer propagates the `XCODE_XCCONFIG_FILE` user-env
+// override to SwiftBuild, so the project is the only route into the IDE's
+// compilation tasks.
 func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, error) {
 	if runtime.GOOS != darwinGOOS {
 		return LinkResult{}, ErrUnsupportedPlatform
@@ -79,11 +72,9 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 	return result, nil
 }
 
-// Unlink strips the marker-fenced `#include?` block Link added, and removes
-// any sibling xcconfig Link created when its only remaining content is the
-// marker block. `baseConfigurationReference` set by Link is NOT reverted:
-// pbxproj gives us no way to distinguish "user had this before" from "Link set
-// it".
+// Unlink strips Link's `#include?` block and removes any sibling xcconfig it
+// created. `baseConfigurationReference` set by Link is NOT reverted: pbxproj
+// offers no way to distinguish user-set from link-set.
 func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult, error) {
 	if runtime.GOOS != darwinGOOS {
 		return UnlinkResult{}, ErrUnsupportedPlatform
@@ -115,8 +106,6 @@ func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult,
 
 	return result, nil
 }
-
-// Private ---------------------------------------------------------------
 
 func (a *Activator) osProxy() utils.OsProxy {
 	if a.OsProxy != nil {

@@ -103,7 +103,6 @@ func TestLink_appendsMarkerBlockIdempotently(t *testing.T) {
 	assert.Contains(t, string(body), `#include? "`+override+`"`)
 	assert.Contains(t, string(body), "FOO = BAR", "existing content preserved")
 
-	// Second run must not duplicate the block, and must report no change.
 	result2, err := Link(utils.DefaultOsProxy{}, LinkParams{
 		ProjectPath:          projPath,
 		OverrideXCConfigPath: override,
@@ -226,13 +225,13 @@ func TestLink_workspaceWalksProjectRefs(t *testing.T) {
 		OverrideXCConfigPath: override,
 	})
 	require.NoError(t, err)
-	// Only the .xcodeproj gets touched; Package.swift is skipped by extension filter.
+	// Package.swift is skipped by the extension filter.
 	require.Len(t, result.ModifiedXCConfigs, 1)
 }
 
 // TestLink_acceptsLegacyAndLowercaseObjectIDs pins the widened pbxproj object-id
 // regex: Xcode has shipped both the modern 24-char and the legacy 12-char
-// shapes, and both lowercase and uppercase hex are valid.
+// shapes, in lowercase and uppercase hex.
 func TestLink_acceptsLegacyAndLowercaseObjectIDs(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -289,14 +288,11 @@ func TestLink_acceptsLegacyAndLowercaseObjectIDs(t *testing.T) {
 	}
 }
 
-// TestLink_missingBaseConfigRefSkipsSilently pins the behavior at
-// link.go resolveXCConfigForConfig: an XCBuildConfiguration pointing at a
-// baseConfigurationReference id that no PBXFileReference defines is skipped
-// without an error — the pbxproj is malformed in a way we won't repair.
+// TestLink_missingBaseConfigRefSkipsSilently pins the dangling-ref behavior:
+// an XCBuildConfiguration whose baseConfigurationReference id no PBXFileReference
+// defines is skipped silently — the pbxproj is malformed in a way we won't repair.
 func TestLink_missingBaseConfigRefSkipsSilently(t *testing.T) {
 	tmp := t.TempDir()
-	// baseConfigurationReference points at an id the file-reference section
-	// does not define.
 	pbx := `// !$*UTF8*$!
 {
 	objects = {
@@ -332,15 +328,13 @@ func TestLink_missingBaseConfigRefSkipsSilently(t *testing.T) {
 }
 
 // TestLink_workspaceDedupesDuplicateProjectRefs pins the seen-map in
-// resolveWorkspace: when a workspace lists the same .xcodeproj twice we must
-// process it only once.
+// resolveWorkspace: a workspace listing the same .xcodeproj twice is processed once.
 func TestLink_workspaceDedupesDuplicateProjectRefs(t *testing.T) {
 	tmp := t.TempDir()
 
 	writeProject(t, tmp, "AppA.xcodeproj", minimalPbxWithBaseRef, map[string]string{
 		"Base.xcconfig": "A = 1\n",
 	})
-	// Second project with its own base xcconfig so we can distinguish the two.
 	appBPbx := strings.ReplaceAll(minimalPbxWithBaseRef, `path = "Base.xcconfig"`, `path = "BaseB.xcconfig"`)
 	appBPbx = strings.ReplaceAll(appBPbx, `/* Base.xcconfig */`, `/* BaseB.xcconfig */`)
 	writeProject(t, tmp, "AppB.xcodeproj", appBPbx, map[string]string{
@@ -366,7 +360,6 @@ func TestLink_workspaceDedupesDuplicateProjectRefs(t *testing.T) {
 		OverrideXCConfigPath: override,
 	})
 	require.NoError(t, err)
-	// Two distinct xcconfigs, not three: duplicate project ref must dedupe.
 	require.Len(t, result.ModifiedXCConfigs, 2)
 	assert.Equal(t, 1, strings.Count(strings.Join(result.ModifiedXCConfigs, "\n"), filepath.Join(tmp, "Base.xcconfig")))
 }
