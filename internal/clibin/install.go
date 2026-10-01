@@ -144,7 +144,7 @@ func terminateProcessAtPath(ctx context.Context, target string, logger log.Logge
 			continue
 		}
 
-		if exe != target {
+		if realPath(exe) != realPath(target) {
 			continue
 		}
 
