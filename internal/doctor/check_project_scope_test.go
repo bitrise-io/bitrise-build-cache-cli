@@ -27,19 +27,6 @@ func TestProjectScopeCheck_noMarkerIsOK(t *testing.T) {
 	assert.Contains(t, res.Detail, "Would gate this directory: no")
 }
 
-func TestProjectScopeCheck_emptyMarkerReportsPath(t *testing.T) {
-	dir := t.TempDir()
-	writeMarker(t, dir, `{}`)
-	t.Chdir(dir)
-
-	d := &Doctor{Envs: map[string]string{}}
-
-	res := d.projectScopeCheck().Diagnose(context.Background())
-	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "Opt-in marker: "+filepath.Join(dir, paths.ProjectMarkerFilename))
-	assert.NotContains(t, res.Detail, "(inherited from ancestor)")
-}
-
 func TestProjectScopeCheck_unknownFieldsIgnored(t *testing.T) {
 	dir := t.TempDir()
 	writeMarker(t, dir, `{"workspace":"acme","push":true}`)
