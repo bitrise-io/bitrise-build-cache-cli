@@ -24,7 +24,7 @@ func TestProjectScopeCheck_noMarkerIsOK(t *testing.T) {
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "Opt-in marker: none")
 	assert.Contains(t, res.Detail, "Mode: always")
-	assert.Contains(t, res.Detail, "Would gate this directory: no")
+	assert.Contains(t, res.Detail, "Cache active here: yes")
 }
 
 func TestProjectScopeCheck_unknownFieldsIgnored(t *testing.T) {
@@ -109,7 +109,7 @@ func TestProjectScopeCheck_optInModeWithoutMarkerGates(t *testing.T) {
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "Mode: opt-in")
-	assert.Contains(t, res.Detail, "Would gate this directory: yes")
+	assert.Contains(t, res.Detail, "Cache active here: no")
 }
 
 func TestProjectScopeCheck_corruptMachineConfigSurfacesWarning(t *testing.T) {
@@ -146,7 +146,7 @@ func TestProjectScopeCheck_optInModeWithMarkerDoesNotGate(t *testing.T) {
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "Mode: opt-in")
-	assert.Contains(t, res.Detail, "Would gate this directory: no")
+	assert.Contains(t, res.Detail, "Cache active here: yes")
 }
 
 func TestProjectScopeCheck_cachePushDefaultReported(t *testing.T) {

@@ -65,8 +65,8 @@ func (d *Doctor) projectScopeCheck() Check {
 			}
 			lines = append(lines, fmt.Sprintf("Cache push: %s (%s)", enabledDisabled(push), pushSource))
 
-			gates := mode == machineconfig.ModeOptIn && marker == nil
-			lines = append(lines, fmt.Sprintf("Would gate this directory: %s", yesNo(gates)))
+			active := mode != machineconfig.ModeOptIn || marker != nil
+			lines = append(lines, fmt.Sprintf("Cache active here: %s", yesNo(active)))
 
 			return Result{State: StateOK, Detail: strings.Join(lines, "\n  ")}
 		},
