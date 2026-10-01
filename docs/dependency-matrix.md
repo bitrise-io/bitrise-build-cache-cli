@@ -93,6 +93,7 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | CLI version | Release date | Analytics plugin | Cache plugin | Test Distribution plugin | Common plugin |
 |----|----|----|----|----|----|
+| [v3.15.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.15.0) | 2026-10-01 | 3.4.1 | 2.2.0 | 3.0.0 | 1.2.0 |
 | [v3.14.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.14.1) | 2026-09-29 | 3.4.1 | 2.2.0 | 3.0.0 | 1.2.0 |
 | [v3.14.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.14.0) | 2026-09-28 | 3.4.0 | 2.2.0 | 3.0.0 | 1.2.0 |
 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 2026-09-25 | 3.4.0 | 2.2.0 | 2.2.12 | 1.2.0 |
@@ -354,6 +355,7 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | Step version | CLI version | Analytics plugin | Cache plugin | Test Distribution plugin |
 |----|----|----|----|----|
+| 3.13.0 | [v3.15.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.15.0) | 3.4.1 | 2.2.0 | 3.0.0 |
 | 3.12.1 | [v3.14.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.14.1) | 3.4.1 | 2.2.0 | 3.0.0 |
 | 3.12.0 | [v3.14.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.14.0) | 3.4.0 | 2.2.0 | 3.0.0 |
 | 3.11.1 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 3.4.0 | 2.2.0 | 2.2.12 |
@@ -539,6 +541,7 @@ mirror](https://docs.google.com/document/d/1mrquZ-n7dNNmQo0o4ddzY73JTsY5xkYRgRKA
 
 | Step version | CLI version | Analytics plugin | Cache plugin | Test Distribution plugin |
 |----|----|----|----|----|
+| 1.4.0 | [v3.15.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.15.0) | 3.4.1 | 2.2.0 | 3.0.0 |
 | 1.3.1 | [v3.14.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.14.1) | 3.4.1 | 2.2.0 | 3.0.0 |
 | 1.3.0 | [v3.14.0](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.14.0) | 3.4.0 | 2.2.0 | 3.0.0 |
 | 1.2.1 | [v3.13.1](https://github.com/bitrise-io/bitrise-build-cache-cli/releases/tag/v3.13.1) | 3.4.0 | 2.2.0 | 2.2.12 |
