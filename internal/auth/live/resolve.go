@@ -6,11 +6,13 @@ package live
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/buildhub"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/githuboidc"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/oauth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
 )
@@ -63,6 +65,9 @@ type Resolver struct {
 	// Broker exchanges a Build Hub VM token for a Build Cache token. Nil means the
 	// real client, built from the environment.
 	Broker func(ctx context.Context, envs map[string]string) (auth.Credential, error)
+	// OIDC exchanges a GitHub Actions OIDC token under a Bitrise trust policy. Nil
+	// means the real client, built from the environment.
+	OIDC func(ctx context.Context, envs map[string]string) (auth.Credential, error)
 }
 
 // Resolve returns the credential to use, refreshing it first when it lives in a
@@ -74,7 +79,7 @@ func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Cr
 }
 
 func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, error) {
-	cred, origin, backing, err := r.resolveWith(envs, usable, r.brokered(ctx))
+	cred, origin, backing, err := r.resolveWith(envs, usable, r.exchanged(ctx))
 	if err != nil || !origin.StoreManaged() {
 		return cred, origin, err
 	}
@@ -135,9 +140,9 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 	return cred
 }
 
-// resolve is the offline path: no network, no writes. It passes no broker, so a
-// Build Hub token is never exchanged here — `status` and the doctor must report
-// what is already on the machine.
+// resolve is the offline path: no network, no writes. It passes no exchange step,
+// so neither a GitHub Actions OIDC token nor a Build Hub token is exchanged here —
+// `status` and the doctor must report what is already on the machine.
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
 	return r.resolveWith(envs, auth.TokenSet.Populated, nil)
 }
@@ -148,7 +153,7 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 func (r *Resolver) resolveWith(
 	envs map[string]string,
 	usable func(auth.TokenSet) bool,
-	brokerToken func(map[string]string) (auth.Credential, auth.Origin, bool),
+	exchange func(map[string]string) (auth.Credential, auth.Origin, error),
 ) (auth.Credential, auth.Origin, store.Store, error) {
 	if r.Prefer == PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
@@ -162,17 +167,24 @@ func (r *Resolver) resolveWith(
 		return cred, origin, nil, err
 	}
 
-	// After the injected credentials and before the stores: a Build Hub runner can
-	// always broker one, so trying it earlier would shadow an explicit token, and
-	// later would shadow it behind a stale login on the machine.
-	if brokerToken != nil {
-		if cred, origin, ok := brokerToken(envs); ok {
+	// After the injected credentials and before the stores: the job can always
+	// mint one, so trying it earlier would shadow an explicit token, and later
+	// would shadow it behind a stale login on the machine.
+	// Kept for the end: if nothing else resolves, why the exchange the user asked
+	// for failed is the actionable error, not that no token is set.
+	var exchangeErr error
+	if exchange != nil {
+		cred, origin, err := exchange(envs)
+		if err == nil && cred.Token != "" {
 			return cred, origin, nil, nil
 		}
+		exchangeErr = err
 	}
 
 	if r.Prefer != PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
+			r.warnFellBack(exchangeErr)
+
 			return validateStored(cred, origin, backing)
 		}
 	}
@@ -181,6 +193,7 @@ func (r *Resolver) resolveWith(
 		if _, err := auth.SanitizeToken(cred.Token); err != nil {
 			return auth.Credential{}, auth.Origin{}, nil, err //nolint:wrapcheck // sentinel; callers errors.Is on it
 		}
+		r.warnFellBack(exchangeErr)
 
 		return cred, origin, nil, nil
 	}
@@ -189,6 +202,10 @@ func (r *Resolver) resolveWith(
 	// saying so would send the user off to create a token they already have.
 	if r.hasTokenWithoutWorkspace() {
 		return auth.Credential{}, auth.Origin{}, nil, auth.ErrWorkspaceNotSelected
+	}
+
+	if exchangeErr != nil {
+		return auth.Credential{}, auth.Origin{}, nil, exchangeErr
 	}
 
 	// Nothing stored: report the env vars as missing, which is the actionable error.
@@ -207,23 +224,63 @@ func validateStored(cred auth.Credential, origin auth.Origin, backing store.Stor
 	return cred, origin, backing, nil
 }
 
-// brokered returns the precedence step that exchanges a Build Hub VM token, or nil
-// when this environment offers none. A failed exchange is not fatal: resolution
-// falls through to the stores, and the build gets whatever credential it had before.
-func (r *Resolver) brokered(ctx context.Context) func(map[string]string) (auth.Credential, auth.Origin, bool) {
-	return func(envs map[string]string) (auth.Credential, auth.Origin, bool) {
+// exchanged returns the precedence step for a credential this CLI mints itself: the
+// GitHub Actions OIDC exchange first, because the user configured a policy, then the
+// Build Hub token the runner offers regardless. Its error is only ever the OIDC
+// failure; a Build Hub token nobody asked for is no reason to replace the usual one.
+func (r *Resolver) exchanged(ctx context.Context) func(map[string]string) (auth.Credential, auth.Origin, error) {
+	return func(envs map[string]string) (auth.Credential, auth.Origin, error) {
+		cred, oidcErr := r.oidcExchanged(ctx, envs)
+		if oidcErr == nil && cred.Token != "" {
+			return cred, auth.Origin{Backend: auth.BackendEnv, Provenance: auth.ProvenanceOIDC}, nil
+		}
+
 		cred, err := r.brokerCredential(ctx, envs)
 		if err != nil {
 			r.debugf("could not broker a Build Hub token: %s", err)
 
-			return auth.Credential{}, auth.Origin{}, false
+			return auth.Credential{}, auth.Origin{}, oidcErr
 		}
 		if cred.Token == "" {
-			return auth.Credential{}, auth.Origin{}, false
+			return auth.Credential{}, auth.Origin{}, oidcErr
 		}
+		r.warnFellBack(oidcErr)
 
-		return cred, auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}, true
+		return cred, auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}, nil
 	}
+}
+
+func (r *Resolver) oidcExchanged(ctx context.Context, envs map[string]string) (auth.Credential, error) {
+	if !auth.OIDCPolicyConfigured(envs) {
+		return auth.Credential{}, nil
+	}
+
+	return r.oidcCredential(ctx, envs)
+}
+
+func (r *Resolver) oidcCredential(ctx context.Context, envs map[string]string) (auth.Credential, error) {
+	workspaceID := strings.TrimSpace(envs[auth.EnvWorkspaceID])
+	// Checked before exchanging: every exchange mints a token server-side, and one
+	// without a workspace could not be used.
+	if workspaceID == "" {
+		return auth.Credential{}, auth.ErrOIDCWorkspaceIDMissing
+	}
+
+	if r.OIDC != nil {
+		return r.OIDC(ctx, envs)
+	}
+
+	client, ok := githuboidc.Shared(envs)
+	if !ok {
+		return auth.Credential{}, auth.ErrNoGitHubOIDCToken
+	}
+
+	token, expiresAt, err := client.Token(ctx)
+	if err != nil {
+		return auth.Credential{}, err //nolint:wrapcheck // githuboidc wraps its own failures
+	}
+
+	return auth.Credential{Token: token, WorkspaceID: workspaceID, Expiry: expiresAt}, nil
 }
 
 func (r *Resolver) brokerCredential(ctx context.Context, envs map[string]string) (auth.Credential, error) {
@@ -336,6 +393,21 @@ func (r *Resolver) refresh(ctx context.Context, backing store.Store) (auth.Token
 func (r *Resolver) debugf(format string, args ...any) {
 	if r.Logger != nil {
 		r.Logger.Debugf(format, args...)
+	}
+}
+
+// Per process and per message: per-RPC resolves would otherwise repeat the same
+// warning for every request.
+var warned sync.Map //nolint:gochecknoglobals
+
+// warnFellBack reports a failed OIDC exchange that another credential stood in for.
+// Unlike a failed Build Hub exchange it isn't debug-level: the user asked for OIDC.
+func (r *Resolver) warnFellBack(exchangeErr error) {
+	if exchangeErr == nil || r.Logger == nil {
+		return
+	}
+	if _, seen := warned.LoadOrStore(exchangeErr.Error(), struct{}{}); !seen {
+		r.Logger.Warnf("%s — using another credential instead", exchangeErr)
 	}
 }
 

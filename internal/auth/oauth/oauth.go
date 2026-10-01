@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 // Identity defaults (production), each overridable per environment via the env
@@ -17,7 +19,7 @@ import (
 const (
 	DefaultIssuer       = "https://oauth.bitrise.io"
 	DefaultClientID     = "https://app.bitrise.io/.well-known/oauth-client/cli"
-	DefaultOIDCEndpoint = "https://app.bitrise.io/oidc/token"
+	DefaultOIDCEndpoint = auth.DefaultOIDCTokenEndpoint
 	// Must be registered as a WorkOS Resource Indicator; within the monolith's
 	// *.bitrise.io audience allowlist.
 	DefaultResource = "https://app.bitrise.io"
@@ -74,7 +76,7 @@ func (c Config) warnf(format string, args ...any) {
 func NewConfigFromEnv(envs map[string]string) Config {
 	return Config{
 		Issuer:            firstNonEmpty(envs["BITRISE_OAUTH_ISSUER"], DefaultIssuer),
-		OIDCTokenEndpoint: firstNonEmpty(envs["BITRISE_OIDC_TOKEN_ENDPOINT"], DefaultOIDCEndpoint),
+		OIDCTokenEndpoint: firstNonEmpty(envs[auth.EnvOIDCTokenEndpoint], DefaultOIDCEndpoint),
 		ClientID:          firstNonEmpty(envs["BITRISE_OAUTH_CLIENT_ID"], DefaultClientID),
 		Resource:          DefaultResource,
 	}
