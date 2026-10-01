@@ -83,6 +83,31 @@ func TestDiagnoseXcodeAppOverride_envPointsElsewhereWarns(t *testing.T) {
 	assert.Contains(t, res.Detail, "does not point at our override")
 }
 
+func TestDiagnoseXcodeAppOverride_pointsAtUsButPlistMissingWarns(t *testing.T) {
+	tmp := t.TempDir()
+	override := filepath.Join(tmp, "xcode-app.xcconfig")
+	plist := filepath.Join(tmp, "agent.plist")
+	writeEmpty(t, override) // plist deliberately absent
+
+	res := diagnoseXcodeAppOverride(override, plist, override, nil)
+
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "LaunchAgent plist")
+	assert.Contains(t, res.Detail, "vanish at next logout")
+}
+
+func TestDiagnoseXcodeAppOverride_overrideOnDiskButEnvEmptyWarns(t *testing.T) {
+	tmp := t.TempDir()
+	override := filepath.Join(tmp, "xcode-app.xcconfig")
+	plist := filepath.Join(tmp, "agent.plist")
+	writeEmpty(t, override)
+
+	res := diagnoseXcodeAppOverride(override, plist, "", nil)
+
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "XCODE_XCCONFIG_FILE is unset")
+}
+
 func writeEmpty(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte{}, 0o600); err != nil {

@@ -16,12 +16,12 @@ import (
 var disableCmd = &cobra.Command{
 	Use:   "disable",
 	Short: "Disable the Bitrise Build Cache override for Xcode.app IDE builds",
-	Long: `disable reverses ` + "`xcode-app enable`" + `: boots out the LaunchAgent, removes its plist, ` +
-		`unsets ` + "`XCODE_XCCONFIG_FILE`" + ` via launchctl, and removes the override xcconfig under ` +
-		`~/.bitrise-xcelerate/. Idempotent — safe to run when not enabled.
+	Long: `disable reverses "xcode-app enable": boots out the LaunchAgent, removes its plist,
+unsets XCODE_XCCONFIG_FILE via launchctl, and removes the override xcconfig under
+~/.bitrise-xcelerate/. Idempotent — safe to run when not enabled.
 
-If Xcode.app is running, relaunch it to pick up the cleared env. Does NOT stop the ` +
-		`xcelerate-proxy — the ` + "`xcodebuild`" + ` wrapper flow depends on it.`,
+If Xcode.app is running, relaunch it to pick up the cleared env. Does NOT stop the
+xcelerate-proxy — the "xcodebuild" wrapper flow depends on it.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))

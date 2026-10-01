@@ -72,7 +72,11 @@ func (a *Activator) Enable(ctx context.Context) (EnableResult, error) {
 
 	cfg, err := xceleratconfig.ReadConfig(osProxy, a.decoderFactory(), a.envs())
 	if err != nil {
-		return EnableResult{}, fmt.Errorf("%w: %w", ErrXcelerateNotConfigured, err)
+		if errors.Is(err, fs.ErrNotExist) {
+			return EnableResult{}, fmt.Errorf("%w: %w", ErrXcelerateNotConfigured, err)
+		}
+
+		return EnableResult{}, fmt.Errorf("read xcelerate config: %w", err)
 	}
 
 	if cfg.ProxySocketPath == "" {
@@ -220,14 +224,6 @@ func (a *Activator) envs() map[string]string {
 	return utils.AllEnvs()
 }
 
-func (a *Activator) xcodeChecker() xa.XcodeProcessChecker {
-	if a.XcodeChecker != nil {
-		return a.XcodeChecker
-	}
-
-	return xa.DefaultXcodeChecker{}
-}
-
 // currentLaunchctlXCConfig returns the current launchctl-scoped
 // XCODE_XCCONFIG_FILE. If it already points at our override, treat that as
 // "no prior override" so a repeat Enable does not self-chain into an infinite
@@ -242,7 +238,12 @@ func (a *Activator) currentLaunchctlXCConfig(ctx context.Context, ownPath string
 }
 
 func (a *Activator) runningXcodePIDs(ctx context.Context, logger log.Logger) []int {
-	pids, err := a.xcodeChecker().RunningPIDs(ctx)
+	checker := a.XcodeChecker
+	if checker == nil {
+		checker = xa.DefaultXcodeChecker{}
+	}
+
+	pids, err := checker.RunningPIDs(ctx)
 	if err != nil {
 		logger.Debugf("Could not detect running Xcode: %s", err)
 

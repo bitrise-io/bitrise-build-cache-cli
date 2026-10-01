@@ -55,8 +55,8 @@ func (d *Doctor) launchctlGetter() XCodeAppLaunchctlGetter {
 }
 
 func diagnoseXcodeAppOverride(overridePath, plistPath, envValue string, envErr error) Result {
-	overrideExists := pathExists(overridePath)
-	plistExists := pathExists(plistPath)
+	overrideExists := xcodeAppFileExists(overridePath)
+	plistExists := xcodeAppFileExists(plistPath)
 
 	pointsAtUs := envValue == overridePath
 
@@ -80,7 +80,7 @@ func diagnoseXcodeAppOverride(overridePath, plistPath, envValue string, envErr e
 	return Result{State: StateOK, Detail: "not enabled"}
 }
 
-func pathExists(path string) bool {
+func xcodeAppFileExists(path string) bool {
 	_, err := os.Stat(path)
 
 	return err == nil

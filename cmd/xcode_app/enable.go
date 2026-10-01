@@ -16,19 +16,18 @@ import (
 var enableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Enable the Bitrise Build Cache override for Xcode.app IDE builds",
-	Long: `enable writes ~/.bitrise-xcelerate/xcode-app.xcconfig with the settings that ` +
-		`route Xcode's CAS plugin at Bitrise's xcelerate-proxy, runs ` +
-		"`launchctl setenv XCODE_XCCONFIG_FILE`" + ` so the next Xcode.app launch ` +
-		`picks it up, and registers a LaunchAgent that reapplies the env var on every login. ` +
-		`If a previous ` + "`XCODE_XCCONFIG_FILE`" + ` was already set, it is chained in via ` +
-		"`#include?`" + `.
+	Long: `enable writes ~/.bitrise-xcelerate/xcode-app.xcconfig with the settings that
+route Xcode's CAS plugin at Bitrise's xcelerate-proxy, runs
+"launchctl setenv XCODE_XCCONFIG_FILE" so the next Xcode.app launch
+picks it up, and registers a LaunchAgent that reapplies the env var on every login.
+If a previous XCODE_XCCONFIG_FILE was already set, it is chained in via "#include?".
 
-Run ` + "`bitrise-build-cache activate xcode`" + ` first so an xcelerate config with a proxy ` +
-		`socket path exists on disk. If Xcode.app is running, relaunch it to pick up the new env.
+Run "bitrise-build-cache activate xcode" first so an xcelerate config with a proxy
+socket path exists on disk. If Xcode.app is running, relaunch it to pick up the new env.
 
-The IDE remote-CAS coverage is partial: Xcode-native targets pick up the override, ` +
-		`but SPM package targets do not inherit ` + "`XCODE_XCCONFIG_FILE`" + ` — those stay on the ` +
-		`built-in local cache. See docs/xcode-app.md for details.`,
+The IDE remote-CAS coverage is partial: Xcode-native targets pick up the override,
+but SPM package targets do not inherit XCODE_XCCONFIG_FILE — those stay on the
+built-in local cache. See docs/xcode-app.md for details.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))

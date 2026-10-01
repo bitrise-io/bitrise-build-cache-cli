@@ -85,7 +85,7 @@ func RemoveSetenvAgent(osProxy utils.OsProxy, home string) (string, error) {
 func xmlEscape(s string) string {
 	var buf bytes.Buffer
 	if err := xml.EscapeText(&buf, []byte(s)); err != nil {
-		return s
+		panic(fmt.Sprintf("xml.EscapeText on in-process string must not fail: %v", err))
 	}
 
 	return strings.ReplaceAll(buf.String(), "\t", "&#9;")
