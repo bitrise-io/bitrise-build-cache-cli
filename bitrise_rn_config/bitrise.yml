@@ -1053,6 +1053,8 @@ step_bundles:
             set -exo pipefail
             cd _seek
             rbenv install -s "$(cat .ruby-version)"
+            if [ -f Gemfile ]; then gem install bundler --no-document; bundle install; else gem install cocoapods --no-document; fi
+            rbenv rehash
     - script:
         title: Configure and install dependencies
         inputs:
