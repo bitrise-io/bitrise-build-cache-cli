@@ -44,7 +44,7 @@ func TestEnsureInstalledInUserLocalBin_CopiesRunningBinary(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
 }
 
-func TestEnsureInstalledInUserLocalBin_SkipsWhenAlreadyAtTarget(t *testing.T) {
+func TestEnsureInstalledInUserLocalBin_SkipsWhenBinaryAlreadyOnPATH(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 

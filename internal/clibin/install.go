@@ -91,7 +91,11 @@ func InstallCLIAt(ctx context.Context, dir string, opts InstallOpts, logger log.
 		return target, false, nil
 	}
 
-	if err := mkdirAll(opts.OsProxy, dir, 0o755); err != nil {
+	mkdirAll := os.MkdirAll
+	if opts.OsProxy != nil {
+		mkdirAll = opts.OsProxy.MkdirAll
+	}
+	if err := mkdirAll(dir, 0o755); err != nil {
 		return "", false, fmt.Errorf("create %s: %w", dir, err)
 	}
 
@@ -120,14 +124,6 @@ func copyExecutable(src, dst string) error {
 	return WriteExecutableAtomically(dst, in)
 }
 
-func mkdirAll(osProxy utils.OsProxy, dir string, perm os.FileMode) error {
-	if osProxy != nil {
-		return osProxy.MkdirAll(dir, perm) //nolint:wrapcheck // caller wraps
-	}
-
-	return os.MkdirAll(dir, perm) //nolint:wrapcheck // caller wraps
-}
-
 // terminateProcessAtPath ends any process whose executable path resolves to
 // target, excluding the current process. Callers that write to a pinned dir
 // already on $PATH need this — otherwise a re-activation would try to rename
@@ -152,10 +148,10 @@ func terminateProcessAtPath(ctx context.Context, target string, logger log.Logge
 			continue
 		}
 
-		logger.TWarnf("Terminating already running CLI (pid: %d)", p.Pid)
+		logger.Warnf("Terminating already running CLI (pid: %d)", p.Pid)
 
 		if err := p.TerminateWithContext(ctx); err != nil {
-			logger.TWarnf("Failed to terminate already running CLI, attempting to kill it")
+			logger.Warnf("Failed to terminate already running CLI, attempting to kill it")
 
 			if err := p.KillWithContext(ctx); err != nil {
 				return fmt.Errorf("kill running CLI (pid: %d): %w", p.Pid, err)
@@ -181,7 +177,7 @@ func waitForProcessExit(ctx context.Context, p *process.Process, logger log.Logg
 		}
 	}
 
-	logger.TWarnf("Already running CLI (pid: %d) did not exit in time", p.Pid)
+	logger.Warnf("Already running CLI (pid: %d) did not exit in time", p.Pid)
 }
 
 // WriteExecutableAtomically renames a temp copy over target, so a failed write

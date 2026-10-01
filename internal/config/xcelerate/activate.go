@@ -29,17 +29,13 @@ const (
 		"see docs/xcode-scheme-self-check.md for a scheme pre-action that does it for you."
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
-	// XcelerateCLIBasename is what the xcodebuild / xcrun wrapper scripts hardcode;
-	// InstallCLIAt writes to this exact name (paths.CLIBinaryName is a different
-	// short name shipped by installer.sh).
-	XcelerateCLIBasename           = "bitrise-build-cache-cli"
 	xcodebuildWrapperScriptContent = `#!/bin/bash
 set -e
 
 if [ "${1-}" = "-version" ]; then
   %s "$@"
 else
-  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+  %s/` + paths.XcelerateCLIBinaryName + ` xcelerate xcodebuild "$@"
 fi
 `
 	xcrunWrapperScriptContent = `#!/bin/bash
@@ -49,7 +45,7 @@ if [ "${1-}" = "xcodebuild" ] && [ "${2-}" = "-version" ]; then
   %s "$@"
 elif [ "${1-}" = "xcodebuild" ]; then
   shift
-  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+  %s/` + paths.XcelerateCLIBinaryName + ` xcelerate xcodebuild "$@"
 else
   %s "$@"
 fi
@@ -120,7 +116,7 @@ func Activate(
 	if _, _, err := clibin.InstallCLIAt(ctx, PathFor(osProxy, BinDir), clibin.InstallOpts{
 		OsProxy:     osProxy,
 		KillRunning: true,
-		Basename:    XcelerateCLIBasename,
+		Basename:    paths.XcelerateCLIBinaryName,
 	}, logger); err != nil {
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
