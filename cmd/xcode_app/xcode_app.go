@@ -11,12 +11,11 @@ import (
 //nolint:gochecknoglobals
 var xcodeAppCmd = &cobra.Command{
 	Use:   "xcode-app",
-	Short: "Enable / disable the Bitrise Build Cache override for Xcode.app IDE builds",
-	Long: `xcode-app routes Xcode.app (the GUI application) through the Bitrise Build ` +
-		`Cache xcelerate-proxy for remote CAS. It writes an override xcconfig under ` +
-		`~/.bitrise-xcelerate/ and points XCODE_XCCONFIG_FILE at it via ` +
-		"`launchctl setenv`" + `. A LaunchAgent reapplies the env var on every login. ` +
-		`This complements ` + "`activate xcode`" + `, which only affects command-line ` +
+	Short: "Wire an Xcode project or workspace to the Bitrise Build Cache override xcconfig",
+	Long: `xcode-app wires an .xcodeproj (or every .xcodeproj in an .xcworkspace) to the ` +
+		`override xcconfig written by ` + "`activate xcode`" + `. With link in place, Xcode.app's ` +
+		`IDE builds (⌘B / ▶) route through the Bitrise Build Cache xcelerate-proxy for remote ` +
+		`CAS; it complements ` + "`activate xcode`" + `, which only affects command-line ` +
 		"`xcodebuild`" + ` invocations. macOS only.
 
 See docs/xcode-app.md for the end-to-end setup, the SPM caveat, and verification.`,

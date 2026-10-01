@@ -56,10 +56,6 @@ Idempotent — nothing to revert reports a no-op.`,
 			logger.Infof("Nothing to revert.")
 		}
 
-		if len(result.RunningXcodePIDs) > 0 {
-			logger.Warnf("Xcode is currently running (pid %v). Quit and relaunch Xcode to pick up the cleared config.", result.RunningXcodePIDs)
-		}
-
 		return nil
 	},
 }

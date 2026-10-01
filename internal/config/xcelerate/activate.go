@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
 const (
@@ -99,6 +101,8 @@ func Activate(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
+	writeXcodeAppOverrideXCConfig(logger, osProxy, config.ProxySocketPath)
+
 	ensureLogDir(logger, osProxy)
 
 	// Materialise an env- or JWT-sourced credential: the proxy and the analytics
@@ -133,6 +137,24 @@ func Activate(
 	logger.TInfof(ProxyRestartNotice)
 
 	return nil
+}
+
+// writeXcodeAppOverrideXCConfig writes ~/.bitrise-xcelerate/xcode-app.xcconfig
+// as a side effect of activation so `xcode-app link` has something to point at.
+// macOS-only; a write failure is logged but does not fail activation — the file
+// is only consumed by the IDE flow.
+func writeXcodeAppOverrideXCConfig(logger log.Logger, osProxy utils.OsProxy, proxySocketPath string) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+
+	if err := xcode_app.WriteOverrideXCConfig(osProxy, proxySocketPath); err != nil {
+		logger.Warnf("Could not write Xcode.app override xcconfig: %s", err)
+
+		return
+	}
+
+	logger.Debugf("Wrote Xcode.app override xcconfig")
 }
 
 // ensureLogDir creates the dir the proxy would otherwise create on its first run,

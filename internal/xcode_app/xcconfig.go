@@ -1,17 +1,17 @@
-// Package xcode_app drives Xcode.app (GUI) build-cache enable/disable via
-// launchctl + an override xcconfig. macOS-only.
+// Package xcode_app writes the Xcode.app IDE override xcconfig and wires it
+// into an .xcodeproj via baseConfigurationReference. macOS-only.
 package xcode_app
 
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
-)
 
-// XCConfigEnvVar is the well-known Xcode env var that names a workspace-scope
-// xcconfig to layer on top of every scheme's build settings.
-const XCConfigEnvVar = "XCODE_XCCONFIG_FILE"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+)
 
 // AppleCASPluginPath is the stock LLVM CAS plugin dylib that ships with Xcode.
 // Apple's plugin speaks the same gRPC protocol as our proxy — see
@@ -19,22 +19,15 @@ const XCConfigEnvVar = "XCODE_XCCONFIG_FILE"
 const AppleCASPluginPath = "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"
 
 // Render returns the override xcconfig body that engages remote CAS through
-// Bitrise's xcelerate-proxy. If previousIncludePath is non-empty, it is chained
-// in via `#include?` so we do not clobber the user's own override.
+// Bitrise's xcelerate-proxy.
 //
 // The template deliberately omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES:
 // SwiftBuild's CompilationCachingConfigFileTaskProducer bails (`return nil`)
 // when both REMOTE_SERVICE_PATH and SUPPORTED_LANGUAGES are set, so no
 // `.cas-config` is written and remote never engages.
-func Render(proxySocketPath, previousIncludePath string) (string, error) {
+func Render(proxySocketPath string) (string, error) {
 	if strings.TrimSpace(proxySocketPath) == "" {
 		return "", errors.New("proxy socket path is empty")
-	}
-
-	// xcconfig `#include?` has no documented quote-escape — reject rather than
-	// silently emit a malformed file.
-	if strings.ContainsRune(previousIncludePath, '"') {
-		return "", errors.New("previous XCODE_XCCONFIG_FILE path contains a quote character — cannot safely #include")
 	}
 
 	settings := map[string]string{
@@ -56,16 +49,40 @@ func Render(proxySocketPath, previousIncludePath string) (string, error) {
 
 	var b strings.Builder
 	b.WriteString("// Bitrise Build Cache — Xcode.app IDE override\n")
-	b.WriteString("// Written by `bitrise-build-cache xcode-app enable`. Removed by `xcode-app disable`.\n")
+	b.WriteString("// Written by `bitrise-build-cache activate xcode`. Removed by `deactivate xcode`.\n")
 	b.WriteString("// Do not edit by hand.\n\n")
-
-	if previousIncludePath != "" {
-		fmt.Fprintf(&b, "#include? \"%s\"\n\n", previousIncludePath)
-	}
 
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s = %s\n", k, settings[k])
 	}
 
 	return b.String(), nil
+}
+
+// WriteOverrideXCConfig renders the override xcconfig and writes it under
+// ~/.bitrise-xcelerate/xcode-app.xcconfig, creating the dir if needed. Called
+// as a side effect of `activate xcode` so `xcode-app link` has something to
+// point at.
+func WriteOverrideXCConfig(osProxy utils.OsProxy, proxySocketPath string) error {
+	body, err := Render(proxySocketPath)
+	if err != nil {
+		return fmt.Errorf("render override xcconfig: %w", err)
+	}
+
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home dir: %w", err)
+	}
+
+	path := paths.FromHome(home).XcodeAppOverrideXCConfigFile()
+
+	if err := osProxy.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+
+	if err := osProxy.WriteFile(path, []byte(body), 0o644); err != nil { //nolint:gosec // xcconfig must be readable by Xcode
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+
+	return nil
 }

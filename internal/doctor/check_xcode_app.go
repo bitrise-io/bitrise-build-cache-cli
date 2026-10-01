@@ -7,21 +7,14 @@ import (
 	"runtime"
 
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
-	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
-
-// XCodeAppLaunchctlGetter reads the launchctl-scoped value of a variable.
-// Injectable so tests do not shell out to /bin/launchctl.
-type XCodeAppLaunchctlGetter interface {
-	Getenv(ctx context.Context, key string) (string, error)
-}
 
 func (d *Doctor) xcodeAppCheck() Check {
 	return Check{
 		Name: "xcode-app-override",
-		Diagnose: func(ctx context.Context) Result {
+		Diagnose: func(_ context.Context) Result {
 			if !d.toolActivated(toolconfig.Xcelerate) {
 				return Result{State: StateOK, Detail: "skipped (xcode not activated)"}
 			}
@@ -30,58 +23,42 @@ func (d *Doctor) xcodeAppCheck() Check {
 				return Result{State: StateOK, Detail: "skipped (macOS only)"}
 			}
 
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return Result{State: StateError, Detail: "resolve home dir: " + err.Error()}
-			}
+			osProxy := d.osProxy()
+			overridePath := xceleratconfig.ResolveXcodeAppOverrideXCConfigPath("", d.Envs, osProxy)
+			socketPath := xceleratconfig.ResolveProxySocketPath("", d.Envs, osProxy)
 
-			p := paths.FromHome(home)
-			overridePath := xceleratconfig.ResolveXcodeAppOverrideXCConfigPath("", d.Envs, d.osProxy())
-			plistPath := p.XcodeAppSetenvAgentPlistFile()
-
-			envValue, envErr := d.launchctlGetter().Getenv(ctx, xa.XCConfigEnvVar)
-
-			return diagnoseXcodeAppOverride(overridePath, plistPath, envValue, envErr)
+			return diagnoseXcodeAppOverride(overridePath, socketPath, osProxy)
 		},
 	}
 }
 
-func (d *Doctor) launchctlGetter() XCodeAppLaunchctlGetter {
-	if d.LaunchctlGetter != nil {
-		return d.LaunchctlGetter
-	}
-
-	return xa.LaunchctlClient{}
-}
-
-func diagnoseXcodeAppOverride(overridePath, plistPath, envValue string, envErr error) Result {
+// diagnoseXcodeAppOverride reports whether the override xcconfig written by
+// `activate xcode` is in place and whether the proxy socket is live.
+func diagnoseXcodeAppOverride(overridePath, socketPath string, osProxy utils.OsProxy) Result {
 	overrideExists := xcodeAppFileExists(overridePath)
-	plistExists := xcodeAppFileExists(plistPath)
-
-	pointsAtUs := envValue == overridePath
+	socketExists := xcodeAppSocketExists(osProxy, socketPath)
 
 	switch {
-	case envErr != nil:
-		return Result{State: StateWarn, Detail: "launchctl getenv failed: " + envErr.Error()}
-	case envValue == "" && !overrideExists && !plistExists:
-		return Result{State: StateOK, Detail: "not enabled (no launchctl override, no plist, no xcconfig)"}
-	case pointsAtUs && overrideExists && plistExists:
-		return Result{State: StateOK, Detail: fmt.Sprintf("enabled (%s, LaunchAgent %s)", overridePath, plistPath)}
-	case pointsAtUs && !overrideExists:
-		return Result{State: StateWarn, Detail: fmt.Sprintf("XCODE_XCCONFIG_FILE points at %s but that file is missing — re-run `xcode-app enable`", overridePath)}
-	case pointsAtUs && !plistExists:
-		return Result{State: StateWarn, Detail: fmt.Sprintf("XCODE_XCCONFIG_FILE points at our override but the LaunchAgent plist (%s) is missing — override will vanish at next logout", plistPath)}
-	case envValue != "" && !pointsAtUs && overrideExists:
-		return Result{State: StateWarn, Detail: fmt.Sprintf("XCODE_XCCONFIG_FILE=%s does not point at our override %s — re-run `xcode-app enable` to chain it in", envValue, overridePath)}
-	case overrideExists && !pointsAtUs:
-		return Result{State: StateWarn, Detail: fmt.Sprintf("override xcconfig present at %s but XCODE_XCCONFIG_FILE is unset — re-run `xcode-app enable`", overridePath)}
+	case !overrideExists:
+		return Result{State: StateWarn, Detail: fmt.Sprintf("override xcconfig missing at %s — re-run `bitrise-build-cache activate xcode`", overridePath)}
+	case !socketExists:
+		return Result{State: StateWarn, Detail: fmt.Sprintf("override xcconfig present at %s but proxy socket %s is not live — start it with `bitrise-build-cache xcelerate start-proxy`", overridePath, socketPath)}
+	default:
+		return Result{State: StateOK, Detail: fmt.Sprintf("ok (%s, proxy socket %s)", overridePath, socketPath)}
 	}
-
-	return Result{State: StateOK, Detail: "not enabled"}
 }
 
 func xcodeAppFileExists(path string) bool {
 	_, err := os.Stat(path)
+
+	return err == nil
+}
+
+// xcodeAppSocketExists returns true when the proxy socket exists on disk. Using
+// Stat (rather than a connect probe) matches `xcelerateProxyCheck` and avoids
+// coupling the doctor's xcode-app leg to proxy liveness it already reports.
+func xcodeAppSocketExists(osProxy utils.OsProxy, socketPath string) bool {
+	_, err := osProxy.Stat(socketPath)
 
 	return err == nil
 }

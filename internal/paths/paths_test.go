@@ -50,9 +50,6 @@ func TestPaths_xcodeApp(t *testing.T) {
 	p := FromHome("/h")
 
 	assert.Equal(t, "/h/.bitrise-xcelerate/xcode-app.xcconfig", p.XcodeAppOverrideXCConfigFile())
-	assert.Equal(t,
-		"/h/Library/LaunchAgents/io.bitrise.build-cache.xcode-app-setenv.plist",
-		p.XcodeAppSetenvAgentPlistFile())
 	assert.Equal(t, ".bitrise-build-cache.xcconfig", XcodeAppSiblingXCConfigFileName)
 }
 

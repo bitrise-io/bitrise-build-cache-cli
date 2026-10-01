@@ -59,10 +59,6 @@ NOT reached by this command (architectural limitation).`,
 			logger.Infof("Nothing to change — project already linked.")
 		}
 
-		if len(result.RunningXcodePIDs) > 0 {
-			logger.Warnf("Xcode is currently running (pid %v). Quit and relaunch Xcode to pick up the include.", result.RunningXcodePIDs)
-		}
-
 		return nil
 	},
 }
