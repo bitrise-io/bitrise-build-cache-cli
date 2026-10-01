@@ -9,6 +9,7 @@ import (
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
 func (d *Doctor) xcodeAppCheck() Check {
@@ -24,7 +25,10 @@ func (d *Doctor) xcodeAppCheck() Check {
 			}
 
 			osProxy := d.osProxy()
-			overridePath := xceleratconfig.ResolveXcodeAppOverrideXCConfigPath("", d.Envs, osProxy)
+			overridePath, err := xa.ResolveOverrideXCConfigPath("", d.Envs, osProxy)
+			if err != nil {
+				return Result{State: StateWarn, Detail: fmt.Sprintf("resolve override xcconfig path: %s", err)}
+			}
 			socketPath := xceleratconfig.ResolveProxySocketPath("", d.Envs, osProxy)
 
 			return diagnoseXcodeAppOverride(overridePath, socketPath, osProxy)

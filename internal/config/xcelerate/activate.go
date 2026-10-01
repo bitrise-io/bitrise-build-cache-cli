@@ -101,7 +101,15 @@ func Activate(
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
 	}
 
-	writeXcodeAppOverrideXCConfig(logger, osProxy, config.ProxySocketPath)
+	if runtime.GOOS == "darwin" {
+		// Side effect of activation so `xcode-app link` has something to point at;
+		// log and continue on failure — the file is only consumed by the IDE flow.
+		if err := xcode_app.WriteOverrideXCConfig(osProxy, envs, config.ProxySocketPath); err != nil {
+			logger.Warnf("Could not write Xcode.app override xcconfig: %s", err)
+		} else {
+			logger.Debugf("Wrote Xcode.app override xcconfig")
+		}
+	}
 
 	ensureLogDir(logger, osProxy)
 
@@ -137,24 +145,6 @@ func Activate(
 	logger.TInfof(ProxyRestartNotice)
 
 	return nil
-}
-
-// writeXcodeAppOverrideXCConfig writes ~/.bitrise-xcelerate/xcode-app.xcconfig
-// as a side effect of activation so `xcode-app link` has something to point at.
-// macOS-only; a write failure is logged but does not fail activation — the file
-// is only consumed by the IDE flow.
-func writeXcodeAppOverrideXCConfig(logger log.Logger, osProxy utils.OsProxy, proxySocketPath string) {
-	if runtime.GOOS != "darwin" {
-		return
-	}
-
-	if err := xcode_app.WriteOverrideXCConfig(osProxy, proxySocketPath); err != nil {
-		logger.Warnf("Could not write Xcode.app override xcconfig: %s", err)
-
-		return
-	}
-
-	logger.Debugf("Wrote Xcode.app override xcconfig")
 }
 
 // ensureLogDir creates the dir the proxy would otherwise create on its first run,

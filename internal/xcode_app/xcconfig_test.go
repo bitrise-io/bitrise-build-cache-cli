@@ -50,12 +50,32 @@ func TestWriteOverrideXCConfig_happyPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, "/tmp/xcelerate-proxy.sock"))
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock"))
 
 	path := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
 	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock")
+}
+
+func TestWriteOverrideXCConfig_honorsEnvOverride(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	overrideDir := t.TempDir()
+	overridePath := filepath.Join(overrideDir, "custom", "xcode-app.xcconfig")
+	envs := map[string]string{EnvOverrideXCConfigPath: overridePath}
+
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, envs, "/tmp/xcelerate-proxy.sock"))
+
+	body, err := os.ReadFile(overridePath) //nolint:gosec // test-controlled path
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock")
+
+	// The default path must NOT have been written: writer and reader must agree.
+	defaultPath := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
+	_, err = os.Stat(defaultPath)
+	assert.True(t, os.IsNotExist(err), "default path should not be written when env override is set, got err=%v", err)
 }
 
 func TestWriteOverrideXCConfig_mkdirErrorPropagates(t *testing.T) {
@@ -66,7 +86,7 @@ func TestWriteOverrideXCConfig_mkdirErrorPropagates(t *testing.T) {
 		MkdirAllFunc:    func(string, os.FileMode) error { return &fs.PathError{Op: "mkdir", Path: home, Err: errors.New("boom")} },
 	}
 
-	err := WriteOverrideXCConfig(osProxy, "/tmp/x.sock")
+	err := WriteOverrideXCConfig(osProxy, nil, "/tmp/x.sock")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mkdir")
 }

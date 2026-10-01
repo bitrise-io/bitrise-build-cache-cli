@@ -12,7 +12,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
@@ -30,19 +29,18 @@ type Activator struct {
 	OsProxy utils.OsProxy
 }
 
-// LinkResult / UnlinkResult wrap the internal results for the CLI layer.
-type LinkResult struct {
-	xa.LinkResult
-}
-
-type UnlinkResult struct {
-	xa.UnlinkResult
-}
+// LinkResult / UnlinkResult are the internal results re-exported for CLI
+// consumers so they don't need to import the internal package.
+type (
+	LinkResult   = xa.LinkResult
+	UnlinkResult = xa.UnlinkResult
+)
 
 // Link wires each XCBuildConfiguration in the referenced project(s) to the
-// override xcconfig via baseConfigurationReference / `#include?`. Required on
-// Xcode 27+ IDE builds — `launchctl setenv XCODE_XCCONFIG_FILE` does not
-// propagate to SwiftBuild there.
+// override xcconfig written by `activate xcode`, via baseConfigurationReference
+// / `#include?`. Required on Xcode 27+ IDE builds — Xcode no longer propagates
+// the `XCODE_XCCONFIG_FILE` user-env override to SwiftBuild, so routing through
+// the project is the only way to reach the IDE's compilation tasks.
 func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, error) {
 	if runtime.GOOS != darwinGOOS {
 		return LinkResult{}, ErrUnsupportedPlatform
@@ -53,7 +51,10 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 
 	logger.TInfof("Linking %s to the Xcode.app build-cache override", projectPath)
 
-	overridePath := xceleratconfig.ResolveXcodeAppOverrideXCConfigPath("", a.envs(), osProxy)
+	overridePath, err := xa.ResolveOverrideXCConfigPath("", a.envs(), osProxy)
+	if err != nil {
+		return LinkResult{}, fmt.Errorf("resolve override xcconfig path: %w", err)
+	}
 	logger.Debugf("Override xcconfig: %s", overridePath)
 
 	result, err := xa.Link(osProxy, xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath})
@@ -75,7 +76,7 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 			projectPath, len(result.ModifiedXCConfigs), len(result.CreatedSiblings))
 	}
 
-	return LinkResult{LinkResult: result}, nil
+	return result, nil
 }
 
 // Unlink strips the marker-fenced `#include?` block Link added, and removes
@@ -112,7 +113,7 @@ func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult,
 			projectPath, len(result.ModifiedXCConfigs), len(result.RemovedSiblings))
 	}
 
-	return UnlinkResult{UnlinkResult: result}, nil
+	return result, nil
 }
 
 // Private ---------------------------------------------------------------

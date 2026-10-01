@@ -59,22 +59,45 @@ func Render(proxySocketPath string) (string, error) {
 	return b.String(), nil
 }
 
-// WriteOverrideXCConfig renders the override xcconfig and writes it under
-// ~/.bitrise-xcelerate/xcode-app.xcconfig, creating the dir if needed. Called
-// as a side effect of `activate xcode` so `xcode-app link` has something to
-// point at.
-func WriteOverrideXCConfig(osProxy utils.OsProxy, proxySocketPath string) error {
+// EnvOverrideXCConfigPath overrides the on-disk location of the Xcode.app
+// override xcconfig. Callers rarely need it; kept so the writer (`activate
+// xcode`) and the readers (`xcode-app link`, doctor) resolve to one path.
+const EnvOverrideXCConfigPath = "BITRISE_XCODE_APP_OVERRIDE_XCCONFIG_PATH"
+
+// ResolveOverrideXCConfigPath returns the override xcconfig path in the same
+// order the writer and readers use: explicit override → env var → default
+// ~/.bitrise-xcelerate/xcode-app.xcconfig. Returns ("", err) only when the
+// default path is in play and the home dir cannot be resolved.
+func ResolveOverrideXCConfigPath(override string, envs map[string]string, osProxy utils.OsProxy) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if env := envs[EnvOverrideXCConfigPath]; env != "" {
+		return env, nil
+	}
+
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+
+	return paths.FromHome(home).XcodeAppOverrideXCConfigFile(), nil
+}
+
+// WriteOverrideXCConfig renders the override xcconfig and writes it to the
+// path resolved via ResolveOverrideXCConfigPath, creating the dir if needed.
+// Called as a side effect of `activate xcode` so `xcode-app link` has something
+// to point at.
+func WriteOverrideXCConfig(osProxy utils.OsProxy, envs map[string]string, proxySocketPath string) error {
 	body, err := Render(proxySocketPath)
 	if err != nil {
 		return fmt.Errorf("render override xcconfig: %w", err)
 	}
 
-	home, err := osProxy.UserHomeDir()
+	path, err := ResolveOverrideXCConfigPath("", envs, osProxy)
 	if err != nil {
-		return fmt.Errorf("resolve home dir: %w", err)
+		return err
 	}
-
-	path := paths.FromHome(home).XcodeAppOverrideXCConfigFile()
 
 	if err := osProxy.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)

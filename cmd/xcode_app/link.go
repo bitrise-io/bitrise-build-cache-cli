@@ -17,10 +17,10 @@ var linkCmd = &cobra.Command{
 	Use:   "link <path>",
 	Short: "Wire an Xcode project or workspace to the Bitrise Build Cache override xcconfig",
 	Long: `link patches a .xcodeproj (or every .xcodeproj in a .xcworkspace) so Xcode.app's
-IDE builds pick up the override xcconfig written by "xcode-app enable". On Xcode 27+,
-"enable" alone is NOT enough — launchctl setenv XCODE_XCCONFIG_FILE does not propagate
-to SwiftBuild under Xcode.app, so the override needs to be reachable through the
-project's baseConfigurationReference chain.
+IDE builds pick up the override xcconfig written by "activate xcode". Required on
+Xcode 27+ — Xcode no longer propagates the XCODE_XCCONFIG_FILE user-env override to
+SwiftBuild, so the override needs to be reachable through the project's
+baseConfigurationReference chain.
 
 For each XCBuildConfiguration:
   - If it already has a baseConfigurationReference, append a marker-fenced

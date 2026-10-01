@@ -67,23 +67,3 @@ func ResolveProxySocketPath(override string, envs map[string]string, osProxy uti
 
 	return paths.FromHome("").ProxySocketPath(osProxy.TempDir())
 }
-
-// EnvXcodeAppOverrideXCConfigPath overrides the on-disk location of the
-// `xcode-app enable` override xcconfig. Callers rarely need it; kept so the
-// doctor and the enable/disable commands read exactly the same value.
-const EnvXcodeAppOverrideXCConfigPath = "BITRISE_XCODE_APP_OVERRIDE_XCCONFIG_PATH"
-
-// ResolveXcodeAppOverrideXCConfigPath returns the override xcconfig path in the
-// same order enable/disable and doctor use: explicit override → env var → the
-// default ~/.bitrise-xcelerate/xcode-app.xcconfig. Falls back to a working-dir
-// relative path when the home dir cannot be resolved, matching DirPath.
-func ResolveXcodeAppOverrideXCConfigPath(override string, envs map[string]string, osProxy utils.OsProxy) string {
-	if override != "" {
-		return override
-	}
-	if env := envs[EnvXcodeAppOverrideXCConfigPath]; env != "" {
-		return env
-	}
-
-	return filepath.Join(DirPath(osProxy), paths.XcodeAppOverrideXCConfigFileName)
-}
