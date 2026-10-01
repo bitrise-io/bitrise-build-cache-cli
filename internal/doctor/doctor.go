@@ -274,6 +274,7 @@ func (d *Doctor) checks(opts Options) []Check {
 	checks = append(checks,
 		d.xcelerateProxyCheck(),
 		d.xcelerateWrapperPathCheck(),
+		d.xcodeAppCheck(),
 		d.enrichmentCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
