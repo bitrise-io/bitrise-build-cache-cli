@@ -9,6 +9,24 @@ works on Xcode 26 too, but the retest that confirmed end-to-end remote CAS
 was on Xcode 27 — see [`docs/xcode-app-ide-remote-cas-findings-2026-09-30.md`](xcode-app-ide-remote-cas-findings-2026-09-30.md)
 for the mechanism and the "why").
 
+## `enable` alone is NOT enough on Xcode 27+
+
+Verified on Xcode 27.0 / macOS 26.6.2: `launchctl setenv XCODE_XCCONFIG_FILE`
+sets the env var correctly, Xcode.app inherits it at launch, but SwiftBuild
+does NOT read it. Builds run swiftc with no `-cas-*` flags, no `.cas-config`
+is written, zero proxy traffic. The fix is to make the override reachable
+through each build configuration's base xcconfig chain:
+
+```
+bitrise-build-cache xcode-app enable                    # once per machine
+bitrise-build-cache xcode-app link <path-to-project>    # once per project / workspace
+```
+
+`link` patches a `.xcodeproj` (or every `.xcodeproj` referenced by a
+`.xcworkspace`) so each `XCBuildConfiguration` chains in the override via
+`#include?`. See the "Linking a project" section below. Revert with
+`xcode-app unlink <path>`.
+
 ## The SPM caveat — read this first
 
 **IDE remote-CAS coverage is partial.** `XCODE_XCCONFIG_FILE` propagates into
@@ -65,17 +83,19 @@ SwiftBuild's `CompilationCachingConfigFileTaskProducer` has a FIXME that bails
 ## Usage
 
 ```
-bitrise-build-cache activate xcode              # if not already active
-bitrise-build-cache xcode-app enable
+bitrise-build-cache activate xcode                       # if not already active
+bitrise-build-cache xcode-app enable                     # once per machine
+bitrise-build-cache xcode-app link <path-to-project>     # once per project
 ```
 
-If Xcode.app is already running, quit and relaunch it — `launchctl setenv`
-only takes effect for processes launched after the call.
+If Xcode.app is already running, quit and relaunch it — the include does not
+take effect for an already-loaded project.
 
 To turn it off:
 
 ```
-bitrise-build-cache xcode-app disable
+bitrise-build-cache xcode-app unlink <path-to-project>   # per project
+bitrise-build-cache xcode-app disable                    # per machine
 ```
 
 `disable` is idempotent and safe to run when nothing was ever enabled. It
@@ -83,14 +103,34 @@ removes the override xcconfig, boots out the LaunchAgent, deletes the plist,
 and unsets `XCODE_XCCONFIG_FILE`. It does **not** stop the xcelerate-proxy —
 the `xcodebuild` wrapper flow depends on it.
 
+## Linking a project
+
+`xcode-app link <path>` accepts either a `.xcodeproj` or a `.xcworkspace`. For
+a workspace, every referenced `.xcodeproj` is processed; `Package.swift`
+references and nested project-of-project references are skipped (SPM package
+scope is out of scope, see the caveat above).
+
+For each `XCBuildConfiguration` in the project:
+
+- If `baseConfigurationReference` is already set, a marker-fenced
+  `#include? "<override>"` block is appended to that xcconfig. Idempotent —
+  re-running replaces the block cleanly, so a bumped override path is picked up
+  on the next run.
+- If `baseConfigurationReference` is NOT set, a sibling
+  `.bitrise-build-cache.xcconfig` is written next to the `.xcodeproj`, the
+  configuration's `baseConfigurationReference` is set to it, and the override
+  is `#include?`-ed from there.
+
+`xcode-app unlink` strips the marker block from every xcconfig `link` touched,
+and removes a sibling file whose only remaining content was the marker block.
+`baseConfigurationReference` set by `link` is left in place — the pbxproj
+offers no way to distinguish "the user already had this" from "we set it".
+
 ## Verify it worked
 
-After enabling and relaunching Xcode:
+After `enable` + `link` + relaunching Xcode:
 
 ```
-launchctl getenv XCODE_XCCONFIG_FILE
-# → /Users/<you>/.bitrise-xcelerate/xcode-app.xcconfig
-
 cat ~/.bitrise-xcelerate/xcode-app.xcconfig
 # → the settings block above
 
@@ -106,10 +146,11 @@ CompilationCacheMetrics
 note: 130 hits / 130 cacheable tasks (100%)
 ```
 
-You can also tail the proxy log to see remote loads happen live:
+You can also tail the proxy log to see remote loads happen live — look for the
+`Load with key xcelerate-cas-*` pattern:
 
 ```
-tail -f ~/.local/state/xcelerate/logs/proxy-*.log
+tail -f ~/.local/state/xcelerate/logs/proxy-*.log | grep xcelerate-cas
 ```
 
 ## Troubleshooting

@@ -55,6 +55,20 @@ type DisableResult struct {
 	RunningXcodePIDs   []int
 }
 
+// LinkResult / UnlinkResult are returned by Link / Unlink for CLI output.
+type LinkResult struct {
+	ModifiedXCConfigs []string
+	CreatedSiblings   []string
+	RunningXcodePIDs  []int
+}
+
+type UnlinkResult struct {
+	ModifiedXCConfigs []string
+	RemovedSiblings   []string
+	WarnBaseRefs      []string
+	RunningXcodePIDs  []int
+}
+
 // Enable writes the override xcconfig, installs the LaunchAgent, and points
 // XCODE_XCCONFIG_FILE at the override via launchctl setenv.
 //
@@ -188,6 +202,58 @@ func (a *Activator) Disable(ctx context.Context) (DisableResult, error) {
 	result.RunningXcodePIDs = a.runningXcodePIDs(ctx, logger)
 
 	return result, nil
+}
+
+// Link wires each XCBuildConfiguration in the referenced project(s) to the
+// override xcconfig via baseConfigurationReference / `#include?`. Required on
+// Xcode 27+ IDE builds — `launchctl setenv XCODE_XCCONFIG_FILE` does not
+// propagate to SwiftBuild there.
+func (a *Activator) Link(ctx context.Context, projectPath string) (LinkResult, error) {
+	if runtime.GOOS != darwinGOOS {
+		return LinkResult{}, ErrUnsupportedPlatform
+	}
+
+	osProxy := a.osProxy()
+	logger := a.logger()
+
+	overridePath := xceleratconfig.ResolveXcodeAppOverrideXCConfigPath("", a.envs(), osProxy)
+
+	result, err := xa.Link(osProxy, xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath})
+	if err != nil {
+		return LinkResult{}, fmt.Errorf("link %s: %w", projectPath, err)
+	}
+
+	return LinkResult{
+		ModifiedXCConfigs: result.ModifiedXCConfigs,
+		CreatedSiblings:   result.CreatedSiblings,
+		RunningXcodePIDs:  a.runningXcodePIDs(ctx, logger),
+	}, nil
+}
+
+// Unlink strips the marker-fenced `#include?` block Link added, and removes
+// any sibling xcconfig Link created when its only remaining content is the
+// marker block. `baseConfigurationReference` set by Link is NOT reverted:
+// pbxproj gives us no way to distinguish "user had this before" from "Link set
+// it".
+func (a *Activator) Unlink(ctx context.Context, projectPath string) (UnlinkResult, error) {
+	if runtime.GOOS != darwinGOOS {
+		return UnlinkResult{}, ErrUnsupportedPlatform
+	}
+
+	osProxy := a.osProxy()
+	logger := a.logger()
+
+	result, err := xa.Unlink(osProxy, xa.LinkParams{ProjectPath: projectPath})
+	if err != nil {
+		return UnlinkResult{}, fmt.Errorf("unlink %s: %w", projectPath, err)
+	}
+
+	return UnlinkResult{
+		ModifiedXCConfigs: result.ModifiedXCConfigs,
+		RemovedSiblings:   result.RemovedSiblings,
+		WarnBaseRefs:      result.WarnBaseRefs,
+		RunningXcodePIDs:  a.runningXcodePIDs(ctx, logger),
+	}, nil
 }
 
 // Private ---------------------------------------------------------------

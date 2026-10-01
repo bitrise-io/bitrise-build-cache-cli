@@ -360,3 +360,13 @@ grep -c "Upload\|xcelerate-cas" /tmp/proxy.log
 ```
 
 Swap `COMPILATION_CACHE_PLUGIN_PATH` for a plugin that DOES speak our proxy's protocol → uploads would start. Which is exactly what Tuist did.
+
+## Follow-up: `enable` is not enough (2026-10-01)
+
+The initial plan assumed `launchctl setenv XCODE_XCCONFIG_FILE` would propagate into Xcode.app IDE builds on Xcode 27+. Manual verification showed it does not.
+
+Setup: `xcode-app enable` on Xcode 27.0 / macOS 26.6.2. `launchctl getenv XCODE_XCCONFIG_FILE` reports the override path correctly. Xcode.app launched two ways — `open -a Xcode <project>` and `env XCODE_XCCONFIG_FILE=... /Applications/Xcode.app/Contents/MacOS/Xcode <project>` — behaved identically: swiftc argv had no `-cas-*` flags, no `.cas-config` was written, zero proxy traffic. `lsof` on `SWBBuildService` confirmed the xcconfig file was never opened.
+
+Fix that works: set the xcconfig as each `XCBuildConfiguration`'s `baseConfigurationReference` in `project.pbxproj`. Result on `/tmp/cas-probe`: 65/65 cacheable tasks cached (100%), 71 proxy loads delta from baseline.
+
+Shipped as `xcode-app link <path>` (and `unlink`). Appends a marker-fenced `#include?` to each configuration's existing base xcconfig, or creates a sibling `.bitrise-build-cache.xcconfig` when there is none.
