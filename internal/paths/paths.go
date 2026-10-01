@@ -27,6 +27,14 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
+	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `activate
+	// xcode`; `xcode link` wires it into a project's baseConfigurationReference.
+	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
+
+	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next
+	// to a .xcodeproj when a build configuration has no baseConfigurationReference.
+	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
+
 	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
 	// tree, holding files such as the persisted xcode-{build,test}.json invocation specs.
 	BitriseBuildCacheDirRelative = ".bitrise-build-cache"
@@ -225,6 +233,11 @@ func (p Paths) XcelerateBinDir() string {
 // XcelerateBinFile returns a file path under XcelerateBinDir.
 func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
+func (p Paths) XcodeAppOverrideXCConfigFile() string {
+	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
 }
 
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
