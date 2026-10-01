@@ -21,20 +21,15 @@ const (
 	LinkBlockEnd   = "// [end] bitrise-build-cache xcode link"
 )
 
-// SiblingXCConfigName re-exports the on-disk filename from internal/paths so
-// this package can keep using the short name without the import at every site.
 const SiblingXCConfigName = paths.XcodeAppSiblingXCConfigFileName
 
-// LinkParams targets a single .xcodeproj or .xcworkspace plus the override
-// xcconfig to include. OverrideXCConfigPath must be absolute — Xcode does not
-// expand `~` in xcconfig include paths.
+// LinkParams targets a single .xcodeproj or .xcworkspace. OverrideXCConfigPath
+// must be absolute — Xcode does not expand `~` in xcconfig include paths.
 type LinkParams struct {
 	ProjectPath          string
 	OverrideXCConfigPath string
 }
 
-// LinkResult / UnlinkResult are reported upwards for CLI output. Paths are
-// absolute.
 type LinkResult struct {
 	ModifiedXCConfigs []string
 	CreatedSiblings   []string
@@ -47,9 +42,6 @@ type UnlinkResult struct {
 	WarnBaseRefs      []string
 }
 
-// Link wires each XCBuildConfiguration in the referenced project(s) to the
-// override xcconfig: appends a `#include?` block to the existing base config,
-// or creates a sibling .xcconfig and points baseConfigurationReference at it.
 func Link(osProxy utils.OsProxy, p LinkParams) (LinkResult, error) {
 	if err := validateOverridePath(p.OverrideXCConfigPath); err != nil {
 		return LinkResult{}, err
@@ -70,9 +62,6 @@ func Link(osProxy utils.OsProxy, p LinkParams) (LinkResult, error) {
 	return result, nil
 }
 
-// Unlink reverts Link's edits: strips the marker block from each xcconfig
-// referenced by a build configuration, and removes a sibling file if it has
-// no non-marker content.
 func Unlink(osProxy utils.OsProxy, p LinkParams) (UnlinkResult, error) {
 	projects, err := resolveProjectPaths(osProxy, p.ProjectPath)
 	if err != nil {
@@ -88,8 +77,6 @@ func Unlink(osProxy utils.OsProxy, p LinkParams) (UnlinkResult, error) {
 
 	return result, nil
 }
-
-// Private ---------------------------------------------------------------
 
 func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, result *LinkResult) error {
 	pbxPath := filepath.Join(projectPath, "project.pbxproj")
@@ -152,7 +139,6 @@ func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, res
 	return nil
 }
 
-// linkContext carries per-project state so resolveXCConfigForConfig stays flat.
 type linkContext struct {
 	projDir         string
 	fileRefs        map[string]pbxFileRef
@@ -196,9 +182,6 @@ func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, erro
 	return c.siblingPath, nil
 }
 
-// mintSiblingFileRefID derives a sha256-based 24-char hex id from the project
-// path and bumps a counter suffix on the rare chance it collides with an
-// existing PBXFileReference id.
 func (c *linkContext) mintSiblingFileRefID() (string, error) {
 	base := stableFileRefID(c.projectPath)
 	if _, clash := c.fileRefs[base]; !clash {
@@ -274,9 +257,6 @@ func unlinkOneProject(osProxy utils.OsProxy, projectPath string, result *UnlinkR
 	return nil
 }
 
-// appendIncludeMarker reads the xcconfig at path (treats missing as empty),
-// drops the marker block carrying the single `#include?` directive, and writes
-// it back. Returns whether the on-disk content changed.
 func appendIncludeMarker(osProxy utils.OsProxy, path, overridePath string) (bool, error) {
 	existing, _, err := osProxy.ReadFileIfExists(path)
 	if err != nil {
@@ -296,8 +276,6 @@ func appendIncludeMarker(osProxy utils.OsProxy, path, overridePath string) (bool
 	return true, nil
 }
 
-// stripIncludeMarker reads the xcconfig and removes the marker block. Returns
-// the resulting content and whether it changed.
 func stripIncludeMarker(osProxy utils.OsProxy, path string) (string, bool, error) {
 	existing, found, err := osProxy.ReadFileIfExists(path)
 	if err != nil {
@@ -319,44 +297,28 @@ func stripIncludeMarker(osProxy utils.OsProxy, path string) (string, bool, error
 	return updated, true, nil
 }
 
-// hasNonMarkerContent returns true when stripped xcconfig content contains
-// anything other than whitespace. Used to decide if we can delete a sibling we
-// created.
 func hasNonMarkerContent(content string) bool {
 	return strings.TrimSpace(content) != ""
 }
 
-// pbxBuildConfig captures the fields parseBuildConfigurations needs: the
-// XCBuildConfiguration object id, and the baseConfigurationReference it points
-// at (empty when absent).
 type pbxBuildConfig struct {
 	ID              string
 	BaseConfigRefID string
 }
 
-// pbxFileRef captures the resolved on-disk path for a PBXFileReference that
-// Xcode treats as an xcconfig.
 type pbxFileRef struct {
 	ID   string
 	Path string
 }
 
 // pbxObjectIDPattern matches both the legacy 12-char and modern 24-char
-// pbxproj object ids, upper- or lowercase hex — both shapes Xcode has shipped.
+// pbxproj object ids, in upper- or lowercase hex — both shapes Xcode has shipped.
 const pbxObjectIDPattern = `(?:[0-9A-Fa-f]{24}|[0-9A-Fa-f]{12})`
 
-// buildConfigBlockRe matches an XCBuildConfiguration object entry.
-// The pbxproj text format is stable enough for a regex to be sound here: object
-// ids are hex, each entry starts with `<ID> /* ... */ = {` and ends with `};`.
 var buildConfigBlockRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;([\s\S]*?)\n\s*\};`)
 
-// baseConfigRefRe pulls the baseConfigurationReference out of the body of an
-// XCBuildConfiguration block, if present.
 var baseConfigRefRe = regexp.MustCompile(`baseConfigurationReference\s*=\s*(` + pbxObjectIDPattern + `)\s*/\*`)
 
-// fileRefRe matches a PBXFileReference entry and captures the id and path.
-// `lastKnownFileType = text.xcconfig` filters to xcconfigs only; we are not
-// interested in sources, assets, or storyboards.
 var fileRefRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*/\*[^*]*\*/\s*=\s*\{isa\s*=\s*PBXFileReference;[^}]*lastKnownFileType\s*=\s*text\.xcconfig;[^}]*path\s*=\s*"?([^";]+)"?[^}]*\};`)
 
 func parseBuildConfigurations(content string) []pbxBuildConfig {
@@ -383,9 +345,6 @@ func parseFileReferences(content string) map[string]pbxFileRef {
 	return out
 }
 
-// insertSiblingFileReference adds a PBXFileReference entry for the sibling
-// xcconfig and places it in the PBXFileReference section. If the section is
-// missing (should not happen for well-formed pbxproj) returns an error.
 func insertSiblingFileReference(content, refID, siblingName string) (string, error) {
 	entry := fmt.Sprintf("\t\t%s /* %s */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = \"%s\"; sourceTree = \"<group>\"; };\n",
 		refID, siblingName, siblingName)
@@ -401,10 +360,6 @@ func insertSiblingFileReference(content, refID, siblingName string) (string, err
 	return content[:insertAt] + entry + content[insertAt:], nil
 }
 
-// attachBaseConfigReference inserts baseConfigurationReference = <refID> into
-// the XCBuildConfiguration body identified by cfgID. Idempotent — if the
-// configuration already has a baseConfigurationReference pointing at refID the
-// content is returned unchanged.
 func attachBaseConfigReference(content, cfgID, refID, siblingName string) (string, error) {
 	blockRe := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(cfgID) + `(\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;\s*\n)`)
 	loc := blockRe.FindStringSubmatchIndex(content)
@@ -418,20 +373,16 @@ func attachBaseConfigReference(content, cfgID, refID, siblingName string) (strin
 	return content[:loc[1]] + injection + content[loc[1]:], nil
 }
 
-// stableFileRefID derives a deterministic uppercase-hex 24-char id by taking
-// the first 24 chars of sha256(seed). Deterministic across runs so repeated
-// Link invocations reuse the same PBXFileReference rather than stacking
-// duplicates; `mintSiblingFileRefID` suffixes the seed on the rare chance of a
-// collision with an existing id.
+// stableFileRefID keeps the generated PBXFileReference id deterministic across
+// runs so repeated Link invocations reuse it rather than stacking duplicates.
 func stableFileRefID(seed string) string {
 	sum := sha256.Sum256([]byte("bitrise-build-cache-link:" + seed))
 
 	return strings.ToUpper(hex.EncodeToString(sum[:]))[:24]
 }
 
-// validateOverridePath mirrors the removed implementation's checks: xcconfig
-// `#include?` requires an absolute path (Xcode does not expand `~`) and has
-// no quote-escape, so reject either.
+// validateOverridePath rejects values the xcconfig `#include?` directive cannot
+// handle: `~` is not expanded, and there is no quote-escape.
 func validateOverridePath(p string) error {
 	if strings.TrimSpace(p) == "" {
 		return errors.New("override xcconfig path is empty")
@@ -456,12 +407,9 @@ func appendUnique(slice []string, s string) []string {
 	return append(slice, s)
 }
 
-// Workspace resolution --------------------------------------------------
-
-// resolveProjectPaths returns the absolute .xcodeproj paths from the input.
-// For a .xcworkspace, walks contents.xcworkspacedata and returns each
-// referenced .xcodeproj; FileRefs pointing at Package.swift are skipped (SPM
-// packages are out of scope). Nested project-of-project refs are not followed.
+// resolveProjectPaths returns absolute .xcodeproj paths. For a .xcworkspace,
+// walks contents.xcworkspacedata; Package.swift refs are out of scope and
+// nested project-of-project refs are not followed.
 func resolveProjectPaths(osProxy utils.OsProxy, projectPath string) ([]string, error) {
 	if projectPath == "" {
 		return nil, errors.New("project path is empty")
