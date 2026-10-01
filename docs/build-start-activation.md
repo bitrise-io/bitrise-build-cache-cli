@@ -122,31 +122,56 @@ on macOS VMs, with a build of the `bitrise` CLI swapped in through the agent's
 release file and the pin handed over by the preboot script. Test workflows are
 copies of existing ones with the activate Step removed.
 
-These runs used the previous shape of the hook, where the `bitrise` CLI looped
-over the tools itself and used the released build cache CLI. The thin wrapper
-calling `activate all --auto` is the same flow with the loop and the gate moved
-into the CLI, and is being re-run on the same setup.
+### Final stack (thin wrapper, `activate all --auto`, prerelease with the gates)
+
+Bitrise CLI `3.1.0-aci5515` and build cache CLI `3.99.0-aci5515.2`, org allowlist
+set in the preboot script. Activation took about 1 s in every build.
+
+| Tool | Result |
+|---|---|
+| Xcode, WordPress-iOS `trunk` | success, 4280 of 4280 task hits (100%), invocation saved |
+| Bazel, e2e suite's pinned commit | success, 4449 of 5161 processes from the remote cache, `bazel build` 30.6 s |
+| Gradle on macOS, e2e workflow | success in 2m 9s, 40 tasks from cache against 17 executed, 4036 tasks uploaded to analytics |
+| Negative control (Xcode, allowlist overridden to a different org) | `auto-activation skipped: workspace "<id>" is not enabled for it`, no invocation, build unaffected |
+| React Native iOS, Seek | activated, pods installed, wrapper saved the RN and Xcode invocations; the app's own Xcode build then failed (pods target iOS 9.0, Xcode 27 supports 15.0 and up). Not a cache failure |
+
+### Earlier runs (previous hook shape)
+
+The `bitrise` CLI looped over the tools itself and used the released build cache
+CLI. Same flow, with the loop and the gate since moved into the CLI.
 
 | Tool | Build | Result |
 |---|---|---|
 | Xcode, WordPress-iOS `trunk` on Xcode 27 | IAD, cache working, first run | 65% blob hits, 10.8 min `build-for-testing` |
 | | IAD, after four runs | 99.9 to 100% blob and task hits, 4.0 min, 0 to 132 blobs uploaded |
 | | ORD, third visit | 83.7% blob hits, 30.9% task hits, 8.1 min, still warming |
-| Bazel, bazel at the e2e suite's pinned commit | AMS | success, 5.0 min, 179 of 5,161 actions from the remote cache, BES stream recorded; the datacenter's prior cache state is unknown |
-| React Native iOS, Seek | IAD | the hook activated all tools; the build then failed at `pod install` because the staging Xcode 27 image lacks the Ruby the app pins. Not a cache failure, to be re-run |
+| Bazel | AMS | success, 5.0 min, 179 of 5,161 actions from the remote cache (cold datacenter) |
 | Gradle, DuckDuckGo | Linux | **not testable**, see below |
 
-What the runs established:
+### What the runs established
 
-- The hook installs from the host VM cache, activates every tool in about 6 s,
+- The hook installs from the host VM cache, activates every tool in about 1 to 6 s,
   and the first step already sees the exported `PATH` (the Xcode wrapper first).
+- The allowlist gate holds: an excluded organization writes nothing, prints one
+  line and sends no analytics (staging negative control).
 - With the cache reachable, warm builds are fast and stable, but warming is not
   instant and not monotonic: IAD went 65%, 36%, 77%, 99.9% over about 90 minutes
   of runs, and ORD was still at 31% task hits after three visits. The cause of the
   slow warm-up is not established.
-- A build the allowlist excludes writes nothing and prints one line. This is
-  covered by unit tests and a local smoke test, and not yet by a staging build
-  from an excluded organization.
+
+### Test setup gotchas
+
+- Staging VMs pool and keep the startup script they booted with, so a script change
+  only reaches VMs booted after the deploy.
+- Staging's `/etc/hosts` cache IPs went stale and caused TLS handshake EOFs and
+  Maven mirror failures until they were synced from production.
+- The edge Mac image only has Xcode 27, which breaks older apps (private headers,
+  `-Wl,-print_statistics`, Swift 6 data-race errors, pods below iOS 15).
+- The build log service answers 429 on log floods: redirect `xcodebuild` output to a
+  file and upload it as an artifact.
+- A build's own `BITRISE_BUILD_CACHE_*` envs override the preboot allowlist, so the
+  negative control is just an env override on the trigger.
+- Prereleases for the preboot script must not use a tag the release automation matches.
 
 Not validated:
 
@@ -161,6 +186,7 @@ Not validated:
 - An explicit activate Step in a workflow on an auto-activated VM.
 - Builds that use none of the activated tools, and Tuist or other callers of
   `xcodebuild` by absolute path.
+- React Native iOS cache hits (the Seek build needs a deployment-target patch on Xcode 27).
 - Production DEN and non-macOS-arm64 VMs.
 
 ## Rollout plan
