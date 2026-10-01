@@ -27,12 +27,12 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
-	// XcodeAppOverrideXCConfigFileName is the override xcconfig written by `activate
-	// xcode`; `xcode link` wires it into a project's baseConfigurationReference.
+	// XcodeAppOverrideXCConfigFileName is the override xcconfig under XcelerateRoot
+	// written by `activate xcode` and consumed by `xcode link`.
 	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
 
-	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next
-	// to a .xcodeproj when a build configuration has no baseConfigurationReference.
+	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next to a
+	// .xcodeproj when a build configuration has no baseConfigurationReference.
 	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
 
 	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
