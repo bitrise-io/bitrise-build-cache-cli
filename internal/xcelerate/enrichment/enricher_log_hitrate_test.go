@@ -67,14 +67,10 @@ func newEnrichSetup(t *testing.T) *enrichSetup {
 	}
 
 	buf := &bytes.Buffer{}
-	// Real clock: pollLogFile uses e.now() to compare against a wall-time
-	// deadline, so Now stays nil here. LogPollMaxWait is deliberately short
-	// so the log-missing path finishes in a few ms, not 2 s.
 	e := &enrichment.Enricher{
-		Store:          store,
-		Client:         mock,
-		Logger:         log.NewLogger(log.WithOutput(buf)),
-		LogPollMaxWait: 10 * time.Millisecond,
+		Store:  store,
+		Client: mock,
+		Logger: log.NewLogger(log.WithOutput(buf)),
 	}
 
 	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
@@ -153,31 +149,10 @@ func TestEnricher_LogHitRate_EmptyManifestPath_FastReturn(t *testing.T) {
 	assert.NotEmpty(t, s.captured.InvocationID, "PUT still fires even when the log path can't be resolved")
 }
 
-func TestEnricher_LogHitRate_WaitThenSucceed(t *testing.T) {
-	// Covers the backoff loop: the log materialises after a short delay, well
-	// before LogPollMaxWait. Without this, deleting the Sleep(backoff) would
-	// still pass every other test.
-	s := newEnrichSetup(t)
-	s.enricher.LogPollMaxWait = 500 * time.Millisecond
-
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		writeLog(t, s.manifestDir, s.logName, []byte("note: 3 hits / 4 cacheable tasks (75%)\n"))
-	}()
-
-	s.enricher.Enrich(s.manifestPath, s.group)
-
-	assert.InDelta(t, float32(0.75), s.captured.HitRate, 0.001)
-}
-
-func TestEnricher_LogHitRate_StatFails_WarnsAndSkips(t *testing.T) {
+func TestEnricher_LogHitRate_ReadFails_WarnsAndSkips(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses directory-mode permission checks")
 	}
-	// Mode 0 on the manifest dir → stat on the sibling log returns EACCES, not
-	// ENOENT. The enricher still PUTs (zero hit rate) and surfaces a stat-failure
-	// Warn so operators can tell "we couldn't look" from "we looked and found
-	// nothing".
 	s := newEnrichSetup(t)
 	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 1 cacheable tasks (100%)\n"))
 	require.NoError(t, os.Chmod(s.manifestDir, 0o000))
@@ -186,7 +161,7 @@ func TestEnricher_LogHitRate_StatFails_WarnsAndSkips(t *testing.T) {
 	s.enricher.Enrich(s.manifestPath, s.group)
 
 	assert.Zero(t, s.captured.HitRate)
-	assert.Contains(t, s.logBuf.String(), "xcactivitylog stat failed")
+	assert.Contains(t, s.logBuf.String(), "xcactivitylog read failed")
 }
 
 func TestEnricher_LogHitRate_MissingFileName_FastReturn(t *testing.T) {
