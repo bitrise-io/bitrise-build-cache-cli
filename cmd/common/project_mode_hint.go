@@ -12,14 +12,14 @@ import (
 // would be gated by project-mode=opt-in but no marker is found. Scripted
 // activate calls would otherwise skip cache silently; the hint tells the user
 // how to opt in. All lookup failures are swallowed — this is a nudge, never a
-// gate.
-func PrintOptInGateHintIfGated(logger log.Logger, osProxy utils.OsProxy, projectModeFlag string) {
+// gate. Call after PersistProjectMode so the machine config already reflects
+// any --project-mode flag.
+func PrintOptInGateHintIfGated(logger log.Logger, osProxy utils.OsProxy) {
 	if logger == nil || osProxy == nil {
 		return
 	}
 
-	mode := resolvedProjectMode(osProxy, projectModeFlag)
-	if mode != machineconfig.ModeOptIn {
+	if resolvedProjectMode(osProxy) != machineconfig.ModeOptIn {
 		return
 	}
 
@@ -39,15 +39,9 @@ func PrintOptInGateHintIfGated(logger log.Logger, osProxy utils.OsProxy, project
 	logger.Printf("    (run from the project root; creates %s)", paths.ProjectMarkerFilename)
 }
 
-// resolvedProjectMode prefers the explicit flag when valid, falling back to the
-// stored machine config and finally to the default.
-func resolvedProjectMode(osProxy utils.OsProxy, flag string) machineconfig.Mode {
-	if flag != "" {
-		if err := machineconfig.ValidateProjectMode(flag); err == nil {
-			return machineconfig.Mode(flag)
-		}
-	}
-
+// resolvedProjectMode reads the stored machine config and falls back to the
+// default on any failure.
+func resolvedProjectMode(osProxy utils.OsProxy) machineconfig.Mode {
 	p, err := paths.Default()
 	if err != nil {
 		return machineconfig.ModeAlways

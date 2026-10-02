@@ -130,13 +130,18 @@ func TestWriteMarkerIfMissing_ExistingMarkerAtDirIsNoop(t *testing.T) {
 
 	dir := t.TempDir()
 	target := filepath.Join(dir, paths.ProjectMarkerFilename)
-	require.NoError(t, os.WriteFile(target, []byte(`{"workspace":"keep"}`), 0o644))
+	original := []byte(`{"workspace":"keep"}`)
+	require.NoError(t, os.WriteFile(target, original, 0o644))
 
 	wrote, ancestor, err := WriteMarkerIfMissing(dir, utils.DefaultOsProxy{})
 
 	require.NoError(t, err)
 	assert.Empty(t, ancestor)
 	assert.Equal(t, target, wrote, "cwd-level marker is treated as a fresh-write result")
+
+	body, err := os.ReadFile(target) //nolint:gosec // test tempdir
+	require.NoError(t, err)
+	assert.Equal(t, string(original), string(body), "existing user-authored body must be preserved")
 }
 
 func TestWriteMarkerIfMissing_AncestorMarkerReportsCoverage(t *testing.T) {
