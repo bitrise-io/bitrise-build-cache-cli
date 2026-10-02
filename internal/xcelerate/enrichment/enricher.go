@@ -2,6 +2,8 @@ package enrichment
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 )
 
@@ -38,7 +41,11 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-func (e *Enricher) Enrich(group ManifestEntryGroup) {
+// Enrich is the Watcher.Handle callback. manifestPath is the LogStoreManifest.plist
+// path the group was parsed from; it anchors the sibling xcactivitylog resolve
+// (manifestDir/Primary().FileName) used to read compile-cache metrics into the
+// orphan PUT.
+func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
 
 	if len(group.Entries) == 0 {
@@ -78,6 +85,8 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
+	hitRate := e.readLogHitRate(manifestPath, group)
+
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
@@ -87,6 +96,7 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 		Success:          group.Success(),
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
+		HitRate:          hitRate,
 	}, e.Auth, e.Metadata)
 
 	TickAttempt(e.Health, e.Logger, e.now())
@@ -143,4 +153,47 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	if err := e.Store.Append(rec); err != nil {
 		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
 	}
+}
+
+// readLogHitRate resolves the sibling xcactivitylog and parses its compile-cache
+// hit rate. Returns 0 on any non-OK outcome; measured on 20 CasProbe builds the
+// log is on disk ~0.3ms before the manifest (manifest-write is Xcode's last
+// close-step), so no bounded wait is needed — reader's ENOENT path handles the
+// vanishing race.
+func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) float32 {
+	logger := logOr(e.Logger)
+
+	if manifestPath == "" {
+		return 0
+	}
+
+	primary := group.Primary()
+	if primary.FileName == "" {
+		return 0
+	}
+
+	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
+
+	metrics, err := xcactivitylog.ReadCompilationCacheMetricsWithLogger(logPath, logger)
+	if err != nil {
+		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
+	}
+
+	switch metrics.Outcome {
+	case xcactivitylog.OutcomeOK:
+		return metrics.HitRate
+	case xcactivitylog.OutcomeFileMissing:
+		logger.Debugf("xcactivitylog missing at %s", logPath)
+	case xcactivitylog.OutcomeEmpty:
+		logger.Debugf("xcactivitylog empty at %s", logPath)
+	case xcactivitylog.OutcomeUnparsed:
+		size := int64(-1)
+		if st, statErr := os.Stat(logPath); statErr == nil {
+			size = st.Size()
+		}
+		logger.Warnf("xcactivitylog unparsed at %s (xcode=%s size=%d): no CompilationCacheMetrics match", logPath, e.XcodeVersion, size)
+	case xcactivitylog.OutcomeReadError:
+	}
+
+	return 0
 }
