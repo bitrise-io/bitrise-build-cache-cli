@@ -60,7 +60,21 @@ func (d *Doctor) projectScopeCheck() Check {
 			gates := mode == machineconfig.ModeOptIn && marker == nil
 			lines = append(lines, fmt.Sprintf("would gate this directory: %s", yesNo(gates)))
 
-			return Result{State: StateOK, Detail: strings.Join(lines, "; ")}
+			detail := strings.Join(lines, "; ")
+			if gates {
+				return Result{
+					State:   StateWarn,
+					Detail:  detail,
+					Fixable: true,
+					Fixer: ProjectScopeFixer{
+						Dir:     cwd,
+						OsProxy: d.osProxy(),
+						Prompt:  d.ProjectScopePrompt,
+					},
+				}
+			}
+
+			return Result{State: StateOK, Detail: detail}
 		},
 	}
 }

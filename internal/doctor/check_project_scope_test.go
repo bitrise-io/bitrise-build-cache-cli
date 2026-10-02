@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func TestProjectScopeCheck_noMarkerIsOK(t *testing.T) {
@@ -106,9 +107,12 @@ func TestProjectScopeCheck_optInModeWithoutMarkerGates(t *testing.T) {
 	d := &Doctor{Envs: map[string]string{}}
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
-	assert.Equal(t, StateOK, res.State)
+	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "mode=opt-in")
 	assert.Contains(t, res.Detail, "would gate this directory: yes")
+	require.NotNil(t, res.Fixer, "a gated directory must come with a fixer")
+	_, ok := res.Fixer.(ProjectScopeFixer)
+	assert.True(t, ok, "fixer should be ProjectScopeFixer")
 }
 
 func TestProjectScopeCheck_corruptMachineConfigSurfacesWarning(t *testing.T) {
@@ -180,6 +184,55 @@ func TestProjectScopeCheck_cachePushFromMachineConfig(t *testing.T) {
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "cache_push=false (machine config)")
+}
+
+func TestProjectScopeFixer_NeedsTerminal(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ProjectScopeFixer{}.NeedsTerminal(), "the fixer prompts, so it must be gated on --interactive")
+}
+
+func TestProjectScopeFixer_DeclineReportsSkip(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fx := ProjectScopeFixer{
+		Dir:     dir,
+		OsProxy: nil,
+		Prompt:  func(string) (bool, error) { return false, nil },
+	}
+
+	detail, err := fx.Fix()
+	require.NoError(t, err)
+	assert.Equal(t, "skipped (user declined)", detail)
+	_, statErr := os.Stat(filepath.Join(dir, paths.ProjectMarkerFilename))
+	assert.True(t, os.IsNotExist(statErr), "declining must not write a marker")
+}
+
+func TestProjectScopeFixer_ConfirmWritesMarker(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	fx := ProjectScopeFixer{
+		Dir:     dir,
+		OsProxy: utils.DefaultOsProxy{},
+		Prompt:  func(string) (bool, error) { return true, nil },
+	}
+
+	detail, err := fx.Fix()
+	require.NoError(t, err)
+	assert.Contains(t, detail, "wrote .bitrise-build-cache.json")
+	body, readErr := os.ReadFile(filepath.Join(dir, paths.ProjectMarkerFilename)) //nolint:gosec // tempdir
+	require.NoError(t, readErr)
+	assert.Equal(t, "{}\n", string(body))
+}
+
+func TestProjectScopeFixer_NilPromptPointsAtManualCommand(t *testing.T) {
+	t.Parallel()
+
+	_, err := ProjectScopeFixer{Dir: t.TempDir()}.Fix()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project enable")
 }
 
 func writeMarker(t *testing.T, dir, body string) {
