@@ -9,6 +9,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
 
@@ -37,6 +38,7 @@ This command will:
 		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{})
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
 		if err != nil {

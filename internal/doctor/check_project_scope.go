@@ -68,7 +68,21 @@ func (d *Doctor) projectScopeCheck() Check {
 			active := mode != machineconfig.ModeOptIn || marker != nil
 			lines = append(lines, fmt.Sprintf("Cache active here: %s", yesNo(active)))
 
-			return Result{State: StateOK, Detail: strings.Join(lines, "\n  ")}
+			detail := strings.Join(lines, "\n  ")
+			if !active {
+				return Result{
+					State:   StateWarn,
+					Detail:  detail,
+					Fixable: true,
+					Fixer: ProjectScopeFixer{
+						Dir:     cwd,
+						OsProxy: d.osProxy(),
+						Prompt:  d.ProjectScopePrompt,
+					},
+				}
+			}
+
+			return Result{State: StateOK, Detail: detail}
 		},
 	}
 }

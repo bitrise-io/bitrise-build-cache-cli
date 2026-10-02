@@ -72,6 +72,7 @@ with --no-update-check / --no-backend-probe.`,
 		doctorLogger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		d.AuthFixPrompt = interactive.FixAuthPrompt(cmd.Context(), doctorLogger)
 		d.WorkspacePickPrompt = interactive.PickWorkspacePrompt(cmd.Context(), doctorLogger)
+		d.ProjectScopePrompt = interactive.FixProjectScopePrompt(cmd.Context(), doctorLogger)
 
 		opts := doctorpkg.Options{
 			SkipUpdateCheck:  skipUpdateCheckFlag,

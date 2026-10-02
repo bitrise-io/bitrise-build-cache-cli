@@ -100,8 +100,11 @@ type Doctor struct {
 	// WorkspacePickPrompt selects a workspace for a login that has none. Nil
 	// leaves the fixer to point at the `auth workspace` commands instead.
 	WorkspacePickPrompt func() (workspaceID string, err error)
-	Now                 func() time.Time
-	Debug               bool
+	// ProjectScopePrompt confirms the one-off marker-write for the opt-in
+	// gate. Nil leaves the fixer to point at `project enable` instead.
+	ProjectScopePrompt func(dir string) (confirmed bool, err error)
+	Now                func() time.Time
+	Debug              bool
 
 	// checksOverride replaces the real check set in tests.
 	checksOverride []Check

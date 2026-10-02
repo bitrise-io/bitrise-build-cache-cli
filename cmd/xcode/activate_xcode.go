@@ -53,6 +53,7 @@ This command will:
 		if err := common.PersistProjectMode(activateXcodeProjectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{})
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateXcodeParams.PushEnabled, logger)
 		if err != nil {
