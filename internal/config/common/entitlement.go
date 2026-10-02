@@ -16,8 +16,8 @@ import (
 )
 
 // A workspace with no Build Cache trial or subscription should never be
-// activated: the build cannot use the cache, and activating anyway spends an
-// analytics invocation saying so. Telling the user where to start a trial is
+// activated: the build cannot use the cache, and the wrapped tools would then
+// report an analytics invocation for it. Telling the user where to start a trial is
 // more useful than a build's worth of rejected RPCs.
 
 // EnvSkipEntitlementCheck disables the gate entirely.
@@ -34,6 +34,9 @@ const EnvSkipEntitlementCheck = "BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK"
 // calls actually exists yet. Flip it when it does — a test then fails until the
 // temporary bypass above is removed, so the two cannot drift apart.
 const entitlementEndpointShipped = false
+
+// endpointLive is the test seam over entitlementEndpointShipped.
+var endpointLive = entitlementEndpointShipped //nolint:gochecknoglobals
 
 // entitlementPath is provisional and will almost certainly change when the
 // endpoint is designed for real; it is written to match the shape of the
@@ -65,7 +68,7 @@ const (
 // Unknown, never None: this gate exists to stop pointless activations, not to
 // become a new way for the website being down to break everyone's builds.
 func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) EntitlementState {
-	if !entitlementEndpointShipped {
+	if !endpointLive {
 		return EntitlementUnknown
 	}
 
@@ -121,6 +124,9 @@ func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential,
 	return EntitlementNone
 }
 
+// EntitlementChecker is the seam that lets command tests force an answer.
+var EntitlementChecker = CheckEntitlement //nolint:gochecknoglobals
+
 // SkipActivationForEntitlement reports whether activation should stop before
 // doing anything, and prints the reason when it should.
 func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) bool {
@@ -131,7 +137,7 @@ func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth
 		return false
 	}
 
-	if CheckEntitlement(ctx, baseURL, cred, logger) != EntitlementNone {
+	if EntitlementChecker(ctx, baseURL, cred, logger) != EntitlementNone {
 		return false
 	}
 

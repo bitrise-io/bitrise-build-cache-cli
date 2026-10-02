@@ -27,7 +27,8 @@ var ActivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
 	Long: `Activate Bitrise Build Cache for Gradle, Bazel, Xcode (macOS only) and C++ via ccache.
 
 With --auto the activation was not asked for by the user, as when a platform starts it for every build.
-It then runs only for workspaces listed in ` + configcommon.EnvAutoActivateOrgs + ` and does nothing for the rest.`,
+It then runs only for workspaces listed in ` + configcommon.EnvAutoActivateOrgs + ` (or when that is "all" or "*", for every
+workspace that has a credential) and does nothing for the rest.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -37,11 +38,12 @@ It then runs only for workspaces listed in ` + configcommon.EnvAutoActivateOrgs 
 			envs:    utils.AllEnvs(),
 			goos:    runtime.GOOS,
 			resolve: resolveCredential(logger),
-			entitled: func(ctx context.Context) bool {
-				return !common.SkipForEntitlement(ctx, logger)
+			entitled: func(ctx context.Context, cred auth.Credential) bool {
+				return !common.SkipForEntitlementWith(ctx, logger, cred)
 			},
 			runStep:   runSelf,
 			autoGated: autoMode,
+			debug:     common.IsDebugLogMode,
 		}
 
 		return a.activate(cmd.Context())
@@ -58,21 +60,25 @@ type activator struct {
 	envs      map[string]string
 	goos      string
 	autoGated bool
+	debug     bool
 	resolve   func(ctx context.Context) (cred auth.Credential, found bool, err error)
-	entitled  func(ctx context.Context) bool
+	entitled  func(ctx context.Context, cred auth.Credential) bool
 	runStep   func(ctx context.Context, args []string) error
 }
 
 func (a activator) activate(ctx context.Context) error {
+	cred, found, err := a.resolve(ctx)
+
 	if a.autoGated {
-		if reason := a.autoSkipReason(ctx); reason != "" {
+		if reason := a.autoSkipReason(cred, found, err); reason != "" {
 			a.logger.Infof("Bitrise Build Cache auto-activation skipped: %s", reason)
 
 			return nil
 		}
 	}
 
-	if !a.entitled(ctx) {
+	// Absence is not a "no": the activations report a missing credential better than this gate.
+	if err == nil && found && !a.entitled(ctx, cred) {
 		return nil
 	}
 
@@ -89,8 +95,7 @@ func (a activator) activate(ctx context.Context) error {
 }
 
 // autoSkipReason fails closed: only a resolved credential on the list passes.
-func (a activator) autoSkipReason(ctx context.Context) string {
-	cred, found, err := a.resolve(ctx)
+func (a activator) autoSkipReason(cred auth.Credential, found bool, err error) string {
 	if err != nil {
 		return fmt.Sprintf("could not resolve the build's credential (%s)", err)
 	}
@@ -117,6 +122,12 @@ func (a activator) plan() []step {
 	}
 
 	steps = append(steps, step{"react-native", []string{"activate", "react-native", "--gradle=false", "--xcode=false"}})
+
+	if a.debug {
+		for i := range steps {
+			steps[i].args = append(steps[i].args, "-d")
+		}
+	}
 
 	return steps
 }

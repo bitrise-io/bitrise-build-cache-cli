@@ -3,6 +3,8 @@
 package common
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -35,30 +37,105 @@ func TestEntitlementBypass_MustBeRemovedOnceTheEndpointShips(t *testing.T) {
 // Until the endpoint exists the gate must be inert: a check that cannot be made
 // is not a "no", or every activation everywhere would refuse to run.
 func TestCheckEntitlement_IsUnknownWhileTheEndpointDoesNotExist(t *testing.T) {
-	require.False(t, entitlementEndpointShipped, "this test describes the pre-ship state")
+	require.False(t, endpointLive, "this test describes the pre-ship state")
 
-	got := CheckEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger())
+	srv := serve(t, http.StatusPaymentRequired, "")
 
-	assert.Equal(t, EntitlementUnknown, got)
+	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 }
 
-// Three-valued on purpose: an unreachable website must not read as "no Build
-// Cache" and disable caching for a workspace that has it.
-func TestSkipActivationForEntitlement_DoesNotSkipOnAnUnknownAnswer(t *testing.T) {
+func serve(t *testing.T, status int, body string) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/build-cache/ws-1/entitlement", r.URL.Path)
+		assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+func shipped(t *testing.T) {
+	t.Helper()
+
+	endpointLive = true
+	t.Cleanup(func() { endpointLive = entitlementEndpointShipped })
+}
+
+func TestCheckEntitlement_Answers(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   EntitlementState
+	}{
+		{"402 is a no", http.StatusPaymentRequired, "", EntitlementNone},
+		{"403 is a no", http.StatusForbidden, "", EntitlementNone},
+		{"inactive is a no", http.StatusOK, `{"active":false}`, EntitlementNone},
+		{"active", http.StatusOK, `{"active":true}`, EntitlementActive},
+		{"a server error is not a no", http.StatusInternalServerError, "", EntitlementUnknown},
+		{"a not found is not a no", http.StatusNotFound, "", EntitlementUnknown},
+		{"an undecodable answer is not a no", http.StatusOK, "<html>", EntitlementUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shipped(t)
+			srv := serve(t, tt.status, tt.body)
+
+			assert.Equal(t, tt.want, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
+		})
+	}
+}
+
+func TestCheckEntitlement_UnreachableIsNotANo(t *testing.T) {
+	shipped(t)
+	srv := serve(t, http.StatusOK, "")
+	srv.Close()
+
+	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
+}
+
+func TestCheckEntitlement_NoWorkspaceIsUnknown(t *testing.T) {
+	shipped(t)
+	srv := serve(t, http.StatusPaymentRequired, "")
+
+	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor(""), testLogger()))
+}
+
+func TestSkipActivationForEntitlement_SkipsOnlyOnANo(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		skip   bool
+	}{
+		{"no", http.StatusPaymentRequired, "", true},
+		{"active", http.StatusOK, `{"active":true}`, false},
+		{"unknown", http.StatusInternalServerError, "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shipped(t)
+			t.Setenv(EnvSkipEntitlementCheck, "")
+			srv := serve(t, tt.status, tt.body)
+
+			assert.Equal(t, tt.skip, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
+		})
+	}
+}
+
+func TestSkipActivationForEntitlement_TheBypassSuppressesAGenuineNo(t *testing.T) {
+	shipped(t)
+	srv := serve(t, http.StatusPaymentRequired, "")
+
 	t.Setenv(EnvSkipEntitlementCheck, "")
+	require.True(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()), "precondition: no bypass means skip")
 
-	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
-}
-
-// No workspace means nothing to ask about, which is not a "no".
-func TestSkipActivationForEntitlement_DoesNotSkipWithoutAWorkspace(t *testing.T) {
-	t.Setenv(EnvSkipEntitlementCheck, "")
-
-	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor(""), testLogger()))
-}
-
-func TestSkipActivationForEntitlement_TheBypassSuppressesTheGate(t *testing.T) {
 	t.Setenv(EnvSkipEntitlementCheck, "true")
-
-	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
+	assert.False(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 }

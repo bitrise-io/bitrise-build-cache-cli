@@ -22,7 +22,9 @@ const monitoringOrg = "dbd227a0aeb70859"
 type harness struct {
 	ran      [][]string
 	entitled bool
-	asked    bool
+	asked    int
+	resolved int
+	debug    bool
 	failing  map[string]error
 }
 
@@ -32,11 +34,14 @@ func (h *harness) activator(goos string, auto bool, envs map[string]string, cred
 		envs:      envs,
 		goos:      goos,
 		autoGated: auto,
+		debug:     h.debug,
 		resolve: func(context.Context) (auth.Credential, bool, error) {
+			h.resolved++
+
 			return cred, found, resolveErr
 		},
-		entitled: func(context.Context) bool {
-			h.asked = true
+		entitled: func(context.Context, auth.Credential) bool {
+			h.asked++
 
 			return h.entitled
 		},
@@ -111,7 +116,7 @@ func TestActivate_AutoSkipsEverythingItShould(t *testing.T) {
 			require.NoError(t, a.activate(context.Background()))
 
 			assert.Empty(t, h.ran)
-			assert.False(t, h.asked, "the entitlement check must not run for a skipped workspace")
+			assert.Zero(t, h.asked, "the entitlement check must not run for a skipped workspace")
 		})
 	}
 }
@@ -132,7 +137,39 @@ func TestActivate_StopsWhenNotEntitled(t *testing.T) {
 	require.NoError(t, a.activate(context.Background()))
 
 	assert.Empty(t, h.ran)
-	assert.True(t, h.asked)
+	assert.Equal(t, 1, h.asked)
+}
+
+func TestActivate_ResolvesTheCredentialOnceAndSharesIt(t *testing.T) {
+	h := &harness{entitled: true}
+	a := h.activator("darwin", true, listed(monitoringOrg), auth.Credential{WorkspaceID: monitoringOrg}, true, nil)
+
+	require.NoError(t, a.activate(context.Background()))
+
+	assert.Equal(t, 1, h.resolved)
+	assert.Equal(t, 1, h.asked)
+}
+
+func TestActivate_NoCredentialSkipsTheEntitlementGateButStillActivates(t *testing.T) {
+	h := &harness{entitled: false}
+	a := h.activator("darwin", false, map[string]string{}, auth.Credential{}, false, nil)
+
+	require.NoError(t, a.activate(context.Background()))
+
+	assert.Zero(t, h.asked)
+	assert.Len(t, h.ran, 4)
+}
+
+func TestActivate_DebugIsPassedToEveryChild(t *testing.T) {
+	h := &harness{entitled: true, debug: true}
+	a := h.activator("darwin", false, map[string]string{}, auth.Credential{}, false, nil)
+
+	require.NoError(t, a.activate(context.Background()))
+
+	require.Len(t, h.ran, 4)
+	for _, args := range h.ran {
+		assert.Equal(t, "-d", args[len(args)-1], args)
+	}
 }
 
 func TestActivate_OneFailingToolDoesNotStopTheOthers(t *testing.T) {

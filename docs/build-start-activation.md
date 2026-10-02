@@ -73,7 +73,7 @@ need.
 
 ## The gates
 
-The reason for gating is an *analytics flood*. Activating spends nothing by
+The reason for gating is an *analytics flood*. Activating reports nothing by
 itself, but every build that then runs a wrapped tool reports an invocation. The
 analytics endpoint accepts an invocation from any workspace and does not reject
 unentitled ones, so a workspace that never asked for Build Cache would fill the
@@ -83,14 +83,18 @@ made before activation.
 The gates live in the build cache CLI, not the `bitrise` CLI, so every consumer
 gets the same behavior and the `bitrise` CLI stays a thin wrapper.
 
-Two checks, in this order, both before anything is written:
+Two checks, in this order, both before anything is written. `activate all` itself
+skips the version check and the stats sweep that other `activate` commands run, so a
+skipped workspace is left untouched; the tools it starts each do their own once the
+gates have passed.
 
 1. **Org allowlist, `--auto` only, fails closed.**
    `BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS` holds workspace slugs separated by
    commas or whitespace, or `all` (`*` also works) to bypass the gate for every
    workspace. The workspace comes from the build's own
-   credential (`BITRISE_BUILD_CACHE_WORKSPACE_ID`, else the `org_id` claim of the
-   services token). No credential, no workspace, no list, or a workspace not on
+   credential, resolved like any other command does: the `BITRISE_BUILD_CACHE_*`
+   envs, else a GitHub Actions OIDC exchange, a Build Hub broker exchange or a
+   stored login (the services token's `org_id` claim names the workspace). No credential, no workspace, no list, or a workspace not on
    the list all mean: log one line, write nothing, exit 0. `all` skips the list but
    not the credential: with no workspace resolved, nothing is activated.
 2. **Entitlement, fails open.** Entitlement is per workspace, not per build tool.
@@ -137,7 +141,7 @@ The Gradle mirrors are a separate opt-in and are not part of `activate all`: the
 write their own Gradle init script and are enabled for every build on the VM, not
 per organization.
 
-Measured cost on a macOS VM: about 6 seconds for all four.
+Measured cost on a macOS VM: about 6 seconds for all four in the first measurement, about 1 s in the final-stack runs below. The two were not reconciled, so budget for the larger.
 
 ## Validation so far
 
@@ -149,7 +153,8 @@ copies of existing ones with the activate Step removed.
 ### Final stack (thin wrapper, `activate all --auto`, prerelease with the gates)
 
 Bitrise CLI `3.1.0-aci5515` and build cache CLI `3.99.0-aci5515.2`, org allowlist
-set in the preboot script. Activation took about 1 s in every build.
+set in the preboot script. Activation took about 1 s in every build; see the
+cost note above for why this differs from the 6 seconds.
 
 | Tool | Result |
 |---|---|
@@ -339,10 +344,13 @@ Roughly in order of how likely they are to matter.
     cluster and broke both the cache and the Maven mirror for IAD and ORD until its
     IPs were synced. Validate on staging only after checking it still matches
     production.
-15. **Entitlement is asked once per command.** It is per workspace, but `activate all`
-    asks and each tool it then runs asks again, so once the endpoint ships a build
-    makes up to five requests at five seconds each in the worst case. The answer
-    should be cached for the build before that.
+15. **Entitlement and the credential are resolved once per process.** `activate all`
+    resolves the credential once and reuses it for the allowlist and the entitlement
+    check, but each tool it starts is a separate process and resolves again. With a
+    credential that has to be minted (Build Hub broker, GitHub OIDC) that is up to
+    five exchanges per build, and once the endpoint ships up to five entitlement
+    requests at five seconds each in the worst case. The answer should be cached for
+    the build before that.
 16. **The mirrors move from boot to build start.** They are configured per build,
     for every build, and the failure signal moves from the VM log to the build log.
     A slow or failing install now adds to every build's start instead of the VM's
