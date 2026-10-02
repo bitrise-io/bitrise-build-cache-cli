@@ -34,6 +34,10 @@ This command will:
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		logger.EnableDebugLog(common.IsDebugLogMode)
 
+		if common.SkipForEntitlement(cmd.Context(), logger) {
+			return nil
+		}
+
 		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}

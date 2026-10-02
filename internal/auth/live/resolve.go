@@ -455,6 +455,26 @@ func fromEnv(envs map[string]string) (auth.Credential, auth.Origin, error) {
 	return auth.Credential{}, auth.Origin{}, auth.ErrWorkspaceIDNotProvided
 }
 
+// ResolveAllowingNone is Resolve where, when allowNone is set, "nothing is
+// configured" is an answer rather than a failure: ok is false and err is nil.
+// Everything else stays an error: a credential that is present but malformed,
+// and, when allowNone is false, a missing one.
+func (r *Resolver) ResolveAllowingNone(
+	ctx context.Context,
+	envs map[string]string,
+	allowNone bool,
+) (auth.Credential, auth.Origin, bool, error) {
+	cred, origin, err := r.Resolve(ctx, envs)
+	switch {
+	case err == nil:
+		return cred, origin, true, nil
+	case allowNone && auth.IsNotConfigured(err):
+		return auth.Credential{}, auth.Origin{}, false, nil
+	default:
+		return auth.Credential{}, auth.Origin{}, false, err
+	}
+}
+
 // A nil logger is silent.
 func Default(logger log.Logger) *Resolver {
 	return &Resolver{Logger: logger}
