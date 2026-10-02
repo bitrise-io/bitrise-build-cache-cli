@@ -10,17 +10,18 @@
 // again without the prefix as a section payload). Both occurrences carry the
 // same numbers, so the first match wins.
 //
-// The reader streams the decompressed body with bufio.Scanner — the body is
-// line-oriented SLF text and the metrics line sits near the tail, so a full
-// ReadAll would waste memory on large projects. Scanner buffer is bumped past
-// its 64KB default because individual SLF rows can exceed that.
+// The reader decompresses the body in full and regex-matches the whole buffer.
+// SLF payloads can hold multi-MB rows (file lists, signatures) that trip
+// bufio.Scanner even with a bumped buffer; peak memory == decompressed size,
+// bounded in practice by Xcode log sizes (MB range) and recorded via Debug
+// when the body crosses largeLogThresholdBytes.
 package xcactivitylog
 
 import (
-	"bufio"
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"regexp"
@@ -113,51 +114,31 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 	}
 	defer gz.Close()
 
-	scanner := bufio.NewScanner(gz)
-	// SLF rows can exceed the 64KB default when a single payload (file list,
-	// signature) is long; bump the max token size.
-	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-
-	var (
-		bytesRead int64
-		sawBytes  bool
-	)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) > 0 {
-			sawBytes = true
-		}
-
-		bytesRead += int64(len(line)) + 1 // approximate; +1 for the stripped delimiter
-
-		if m := hitRateRegexp.FindSubmatch(line); m != nil {
-			h, _ := strconv.Atoi(string(m[1]))
-			tot, _ := strconv.Atoi(string(m[2]))
-
-			var rate float32
-			if tot > 0 {
-				rate = float32(h) / float32(tot)
-			}
-
-			if logger != nil && bytesRead > largeLogThresholdBytes {
-				logger.Debugf("xcactivitylog: large body (%d bytes decompressed) at %s — revisit bounded reads if common", bytesRead, path)
-			}
-
-			return Metrics{HitRate: rate, Hits: h, Total: tot, Outcome: OutcomeOK}, nil
-		}
+	body, err := io.ReadAll(gz)
+	if err != nil {
+		return Metrics{Outcome: OutcomeReadError}, fmt.Errorf("read xcactivitylog: %w", err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return Metrics{Outcome: OutcomeReadError}, fmt.Errorf("scan xcactivitylog: %w", err)
-	}
+	bytesRead := int64(len(body))
 
 	if logger != nil && bytesRead > largeLogThresholdBytes {
-		logger.Debugf("xcactivitylog: large body (%d bytes decompressed) at %s with no CompilationCacheMetrics match", bytesRead, path)
+		logger.Debugf("xcactivitylog: large body (%d bytes decompressed) at %s — revisit bounded reads if common", bytesRead, path)
 	}
 
-	if !sawBytes {
+	if bytesRead == 0 {
 		return Metrics{Outcome: OutcomeEmpty}, nil
+	}
+
+	if m := hitRateRegexp.FindSubmatch(body); m != nil {
+		h, _ := strconv.Atoi(string(m[1]))
+		tot, _ := strconv.Atoi(string(m[2]))
+
+		var rate float32
+		if tot > 0 {
+			rate = float32(h) / float32(tot)
+		}
+
+		return Metrics{HitRate: rate, Hits: h, Total: tot, Outcome: OutcomeOK}, nil
 	}
 
 	return Metrics{Outcome: OutcomeUnparsed}, nil
