@@ -2013,9 +2013,9 @@ workflows:
               #!/usr/bin/env bash
               set -exo pipefail
 
-              # --skip-update-check / --skip-backend-probe avoid unrelated network calls;
+              # --no-update-check / --no-backend-probe avoid unrelated network calls;
               # --json makes the detail line grep-stable across future wording tweaks.
-              report=$(../bitrise-build-cache-cli doctor --json --skip-update-check --skip-backend-probe)
+              report=$(../bitrise-build-cache-cli doctor --json --no-update-check --no-backend-probe)
               echo "$report" > "$BITRISE_DEPLOY_DIR/doctor-report.json"
 
               detail=$(jq -r '.items[] | select(.name=="xcode-recent-build") | .result.detail' <<<"$report")
