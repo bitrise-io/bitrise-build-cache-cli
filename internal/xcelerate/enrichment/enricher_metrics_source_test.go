@@ -145,6 +145,25 @@ func TestEnricher_MetricsSource_EmptyManifestPath_LogMissing(t *testing.T) {
 	assert.Zero(t, s.captured.HitRate)
 }
 
+func TestEnricher_MetricsSource_StatFails_ReadError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory-mode permission checks")
+	}
+	// Mode 0 on the manifest dir → stat on the sibling log returns EACCES, not
+	// ENOENT. The enricher must tag ReadError (not LogMissing / LogUnparsed) so
+	// operators can distinguish "we couldn't look" from "we looked and found
+	// nothing".
+	s := newEnrichSetup(t)
+	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 1 cacheable tasks (100%)\n"))
+	require.NoError(t, os.Chmod(s.manifestDir, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(s.manifestDir, 0o755) })
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Equal(t, analytics.MetricsSourceLogReadError, s.captured.MetricsSource)
+	assert.Zero(t, s.captured.HitRate)
+}
+
 func TestEnricher_MetricsSource_MissingFileName_LogMissing(t *testing.T) {
 	s := newEnrichSetup(t)
 	// Primary entry with no FileName — happens on malformed manifests. The
