@@ -5,7 +5,6 @@ package project
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -111,26 +110,18 @@ var enableCmd = &cobra.Command{
 			return cobraExit(ExitError)
 		}
 
-		osProxy := utils.DefaultOsProxy{}
-		found, ancestor, err := machineconfig.FindMarker(dir, osProxy)
+		wrote, ancestor, err := machineconfig.WriteMarkerIfMissing(dir, utils.DefaultOsProxy{})
 		if err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "walk up for marker: %s\n", err)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s\n", err)
 
 			return cobraExit(ExitError)
 		}
-		if found {
+		if ancestor != "" {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "[bitrise-build-cache] marker already covers %s (found at %s)\n", dir, ancestor)
 
 			return nil
 		}
-
-		target := filepath.Join(dir, paths.ProjectMarkerFilename)
-		if err := osProxy.WriteFile(target, []byte("{}\n"), 0o644); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "write marker: %s\n", err)
-
-			return cobraExit(ExitError)
-		}
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "[bitrise-build-cache] wrote marker at %s\n", target)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "[bitrise-build-cache] wrote marker at %s\n", wrote)
 
 		return nil
 	},
