@@ -358,5 +358,3 @@ Roughly in order of how likely they are to matter.
   becoming a second source of truth?
 - Who owns asking DEN for the per-organization `bitrise` version, and in what order
   relative to the preboot change?
-- Should the mirrors stay a separate, always-on opt-in, or follow the org allowlist
-  once it is `all`?
