@@ -47,7 +47,7 @@ This command will:
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof(activateXcode)
 
-		if common.SkipForEntitlement(cmd.Context(), configcommon.BuildToolXcode, logger) {
+		if common.SkipForEntitlement(cmd.Context(), logger) {
 			return nil
 		}
 

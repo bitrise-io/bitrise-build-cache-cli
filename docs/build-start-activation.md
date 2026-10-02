@@ -283,10 +283,10 @@ Roughly in order of how likely they are to matter.
     cluster and broke both the cache and the Maven mirror for IAD and ORD until its
     IPs were synced. Validate on staging only after checking it still matches
     production.
-15. **Entitlement is asked per tool.** Once the endpoint ships, `activate all` asks
-    once for the set and each tool it then runs asks again, so a build makes up to
-    five requests at five seconds each in the worst case. The answer should be
-    cached for the build before that.
+15. **Entitlement is asked once per command.** It is per workspace, but `activate all`
+    asks and each tool it then runs asks again, so once the endpoint ships a build
+    makes up to five requests at five seconds each in the worst case. The answer
+    should be cached for the build before that.
 
 ## Open questions
 

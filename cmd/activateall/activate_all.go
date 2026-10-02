@@ -37,8 +37,8 @@ It then runs only for workspaces listed in ` + configcommon.EnvAutoActivateOrgs 
 			envs:    utils.AllEnvs(),
 			goos:    runtime.GOOS,
 			resolve: resolveCredential(logger),
-			entitled: func(ctx context.Context, tools []string) bool {
-				return !common.SkipForEntitlementOfAll(ctx, tools, logger)
+			entitled: func(ctx context.Context) bool {
+				return !common.SkipForEntitlement(ctx, logger)
 			},
 			runStep:   runSelf,
 			autoGated: autoMode,
@@ -59,7 +59,7 @@ type activator struct {
 	goos      string
 	autoGated bool
 	resolve   func(ctx context.Context) (cred auth.Credential, found bool, err error)
-	entitled  func(ctx context.Context, tools []string) bool
+	entitled  func(ctx context.Context) bool
 	runStep   func(ctx context.Context, args []string) error
 }
 
@@ -72,13 +72,12 @@ func (a activator) activate(ctx context.Context) error {
 		}
 	}
 
-	steps, tools := a.plan()
-	if !a.entitled(ctx, tools) {
+	if !a.entitled(ctx) {
 		return nil
 	}
 
 	var errs []error
-	for _, s := range steps {
+	for _, s := range a.plan() {
 		a.logger.TInfof("Activating Bitrise Build Cache for %s", s.name)
 
 		if err := a.runStep(ctx, s.args); err != nil {
@@ -106,23 +105,20 @@ func (a activator) autoSkipReason(ctx context.Context) string {
 	return ""
 }
 
-// plan returns the steps and their build tools; react-native runs cpp-only, the rest is covered above.
-func (a activator) plan() ([]step, []string) {
+// plan returns the steps; react-native runs cpp-only, the rest is covered above.
+func (a activator) plan() []step {
 	steps := []step{
 		{"gradle", []string{"activate", "gradle"}},
 		{"bazel", []string{"activate", "bazel"}},
 	}
-	tools := []string{configcommon.BuildToolGradle, configcommon.BuildToolBazel}
 
 	if a.goos == "darwin" {
 		steps = append(steps, step{"xcode", []string{"activate", "xcode"}})
-		tools = append(tools, configcommon.BuildToolXcode)
 	}
 
 	steps = append(steps, step{"react-native", []string{"activate", "react-native", "--gradle=false", "--xcode=false"}})
-	tools = append(tools, configcommon.BuildToolCpp)
 
-	return steps, tools
+	return steps
 }
 
 func resolveCredential(logger log.Logger) func(context.Context) (auth.Credential, bool, error) {

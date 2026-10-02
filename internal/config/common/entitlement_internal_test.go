@@ -37,7 +37,7 @@ func TestEntitlementBypass_MustBeRemovedOnceTheEndpointShips(t *testing.T) {
 func TestCheckEntitlement_IsUnknownWhileTheEndpointDoesNotExist(t *testing.T) {
 	require.False(t, entitlementEndpointShipped, "this test describes the pre-ship state")
 
-	got := CheckEntitlement(t.Context(), BuildToolGradle, "https://example.invalid", credFor("ws-1"), testLogger())
+	got := CheckEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger())
 
 	assert.Equal(t, EntitlementUnknown, got)
 }
@@ -47,18 +47,18 @@ func TestCheckEntitlement_IsUnknownWhileTheEndpointDoesNotExist(t *testing.T) {
 func TestSkipActivationForEntitlement_DoesNotSkipOnAnUnknownAnswer(t *testing.T) {
 	t.Setenv(EnvSkipEntitlementCheck, "")
 
-	assert.False(t, SkipActivationForEntitlement(t.Context(), BuildToolGradle, "https://example.invalid", credFor("ws-1"), testLogger()))
+	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
 }
 
 // No workspace means nothing to ask about, which is not a "no".
 func TestSkipActivationForEntitlement_DoesNotSkipWithoutAWorkspace(t *testing.T) {
 	t.Setenv(EnvSkipEntitlementCheck, "")
 
-	assert.False(t, SkipActivationForEntitlement(t.Context(), BuildToolGradle, "https://example.invalid", credFor(""), testLogger()))
+	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor(""), testLogger()))
 }
 
 func TestSkipActivationForEntitlement_TheBypassSuppressesTheGate(t *testing.T) {
 	t.Setenv(EnvSkipEntitlementCheck, "true")
 
-	assert.False(t, SkipActivationForEntitlement(t.Context(), BuildToolGradle, "https://example.invalid", credFor("ws-1"), testLogger()))
+	assert.False(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
 }

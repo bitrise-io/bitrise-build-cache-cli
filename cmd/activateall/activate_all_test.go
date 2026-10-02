@@ -20,10 +20,10 @@ import (
 const monitoringOrg = "dbd227a0aeb70859"
 
 type harness struct {
-	ran       [][]string
-	entitled  bool
-	entitledQ []string
-	failing   map[string]error
+	ran      [][]string
+	entitled bool
+	asked    bool
+	failing  map[string]error
 }
 
 func (h *harness) activator(goos string, auto bool, envs map[string]string, cred auth.Credential, found bool, resolveErr error) activator {
@@ -35,8 +35,8 @@ func (h *harness) activator(goos string, auto bool, envs map[string]string, cred
 		resolve: func(context.Context) (auth.Credential, bool, error) {
 			return cred, found, resolveErr
 		},
-		entitled: func(_ context.Context, tools []string) bool {
-			h.entitledQ = tools
+		entitled: func(context.Context) bool {
+			h.asked = true
 
 			return h.entitled
 		},
@@ -86,7 +86,6 @@ func TestActivate_XcodeIsMacOnly(t *testing.T) {
 		"activate bazel",
 		"activate react-native --gradle=false --xcode=false",
 	}, names(h.ran))
-	assert.NotContains(t, h.entitledQ, configcommon.BuildToolXcode)
 }
 
 func TestActivate_AutoSkipsEverythingItShould(t *testing.T) {
@@ -112,7 +111,7 @@ func TestActivate_AutoSkipsEverythingItShould(t *testing.T) {
 			require.NoError(t, a.activate(context.Background()))
 
 			assert.Empty(t, h.ran)
-			assert.Nil(t, h.entitledQ, "the entitlement check must not run for a skipped workspace")
+			assert.False(t, h.asked, "the entitlement check must not run for a skipped workspace")
 		})
 	}
 }
@@ -133,9 +132,7 @@ func TestActivate_StopsWhenNotEntitled(t *testing.T) {
 	require.NoError(t, a.activate(context.Background()))
 
 	assert.Empty(t, h.ran)
-	assert.Equal(t, []string{
-		configcommon.BuildToolGradle, configcommon.BuildToolBazel, configcommon.BuildToolXcode, configcommon.BuildToolCpp,
-	}, h.entitledQ)
+	assert.True(t, h.asked)
 }
 
 func TestActivate_OneFailingToolDoesNotStopTheOthers(t *testing.T) {

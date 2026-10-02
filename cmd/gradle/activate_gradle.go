@@ -39,7 +39,7 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		logger.EnableDebugLog(common.IsDebugLogMode)
 		logger.TInfof("Activate Bitrise plugins for Gradle")
 
-		if common.SkipForEntitlement(cmd.Context(), configcommon.BuildToolGradle, logger) {
+		if common.SkipForEntitlement(cmd.Context(), logger) {
 			return nil
 		}
 

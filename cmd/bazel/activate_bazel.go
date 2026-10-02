@@ -66,7 +66,7 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	logger.EnableDebugLog(common.IsDebugLogMode)
 	logger.TInfof("Activate Bitrise Build Cache for Bazel")
 
-	if common.SkipForEntitlement(cmd.Context(), configcommon.BuildToolBazel, logger) {
+	if common.SkipForEntitlement(cmd.Context(), logger) {
 		return nil
 	}
 
