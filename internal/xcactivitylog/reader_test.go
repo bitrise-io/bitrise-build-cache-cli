@@ -161,15 +161,3 @@ func TestReadCompilationCacheMetrics_RealSample(t *testing.T) {
 	assert.InDelta(t, float32(1.0), m.HitRate, 0.001)
 }
 
-func TestOutcomeString(t *testing.T) {
-	cases := map[xcactivitylog.Outcome]string{
-		xcactivitylog.OutcomeOK:          "ok",
-		xcactivitylog.OutcomeFileMissing: "file_missing",
-		xcactivitylog.OutcomeEmpty:       "empty",
-		xcactivitylog.OutcomeUnparsed:    "unparsed",
-		xcactivitylog.OutcomeReadError:   "read_error",
-	}
-	for o, want := range cases {
-		assert.Equal(t, want, o.String(), o)
-	}
-}

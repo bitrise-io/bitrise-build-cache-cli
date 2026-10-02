@@ -30,7 +30,8 @@ import (
 )
 
 // Outcome describes how ReadCompilationCacheMetrics terminated. Callers map
-// the outcome into their own telemetry — the reader itself never logs.
+// the outcome into their own telemetry (see analytics.MetricsSource* for the
+// enricher mapping) — the reader itself never logs.
 type Outcome int
 
 const (
@@ -47,25 +48,6 @@ const (
 	// never seen, so "no match" cannot be concluded.
 	OutcomeReadError
 )
-
-// String renders Outcome for diagnostics; keep in sync with MetricsSource
-// consts in internal/xcelerate/analytics so they can be grepped together.
-func (o Outcome) String() string {
-	switch o {
-	case OutcomeOK:
-		return "ok"
-	case OutcomeFileMissing:
-		return "file_missing"
-	case OutcomeEmpty:
-		return "empty"
-	case OutcomeUnparsed:
-		return "unparsed"
-	case OutcomeReadError:
-		return "read_error"
-	default:
-		return "unknown"
-	}
-}
 
 // Pattern committed from a live sample (CasProbe build, Xcode 26.x, Apple's
 // stock libToolchainCASPlugin, logFormatVersion 11). The surrounding "note:"
