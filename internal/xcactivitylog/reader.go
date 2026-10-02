@@ -30,8 +30,7 @@ import (
 )
 
 // Outcome describes how ReadCompilationCacheMetrics terminated. Callers map
-// the outcome into their own telemetry (see analytics.MetricsSource* for the
-// enricher mapping) — the reader itself never logs.
+// the outcome into their own telemetry — the reader itself never logs.
 type Outcome int
 
 const (
@@ -102,8 +101,7 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 	defer f.Close()
 
 	// A zero-length file reads EOF from the gzip header; anything else that
-	// fails is a truncated / non-gzip body we tag as unparsed. Both cases are
-	// outcome-only — the enricher still PUTs with MetricsSource set.
+	// fails is a truncated / non-gzip body we tag as unparsed.
 	stat, statErr := f.Stat()
 	if statErr == nil && stat.Size() == 0 {
 		return Metrics{Outcome: OutcomeEmpty}, nil
