@@ -145,6 +145,24 @@ func TestEnricher_MetricsSource_EmptyManifestPath_LogMissing(t *testing.T) {
 	assert.Zero(t, s.captured.HitRate)
 }
 
+func TestEnricher_MetricsSource_WaitThenSucceed_ActivityLog(t *testing.T) {
+	// Covers the backoff loop: the log materialises after a short delay, well
+	// before LogPollMaxWait. Without this, deleting the Sleep(backoff) would
+	// still pass every other test.
+	s := newEnrichSetup(t)
+	s.enricher.LogPollMaxWait = 500 * time.Millisecond
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		writeLog(t, s.manifestDir, s.logName, []byte("note: 3 hits / 4 cacheable tasks (75%)\n"))
+	}()
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Equal(t, analytics.MetricsSourceActivityLog, s.captured.MetricsSource)
+	assert.InDelta(t, float32(0.75), s.captured.HitRate, 0.001)
+}
+
 func TestEnricher_MetricsSource_StatFails_ReadError(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses directory-mode permission checks")
