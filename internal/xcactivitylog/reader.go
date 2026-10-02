@@ -42,6 +42,10 @@ const (
 	OutcomeEmpty
 	// OutcomeUnparsed — file has content but no CompilationCacheMetrics match.
 	OutcomeUnparsed
+	// OutcomeReadError — file is present but open/read failed (EACCES, EIO,
+	// EMFILE, EISDIR, scanner failure). Distinct from Unparsed: content was
+	// never seen, so "no match" cannot be concluded.
+	OutcomeReadError
 )
 
 // String renders Outcome for diagnostics; keep in sync with MetricsSource
@@ -56,6 +60,8 @@ func (o Outcome) String() string {
 		return "empty"
 	case OutcomeUnparsed:
 		return "unparsed"
+	case OutcomeReadError:
+		return "read_error"
 	default:
 		return "unknown"
 	}
@@ -89,9 +95,9 @@ type Metrics struct {
 // hit count, cacheable-task total, and outcome tag.
 //
 // On OutcomeFileMissing / OutcomeEmpty / OutcomeUnparsed the returned numbers
-// are zero and err is nil — these are expected states the caller tags, not
-// failures. A non-nil err indicates a filesystem / gzip read failure the
-// caller should surface.
+// are zero and err is nil — expected states the caller tags, not failures.
+// OutcomeReadError pairs with a non-nil err (open/scan failure); the caller
+// should log the err and tag the row accordingly.
 func ReadCompilationCacheMetrics(path string) (Metrics, error) {
 	return readMetrics(path, nil)
 }
@@ -109,7 +115,7 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 			return Metrics{Outcome: OutcomeFileMissing}, nil
 		}
 
-		return Metrics{Outcome: OutcomeUnparsed}, fmt.Errorf("open xcactivitylog: %w", err)
+		return Metrics{Outcome: OutcomeReadError}, fmt.Errorf("open xcactivitylog: %w", err)
 	}
 	defer f.Close()
 
@@ -163,7 +169,7 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return Metrics{Outcome: OutcomeUnparsed}, fmt.Errorf("scan xcactivitylog: %w", err)
+		return Metrics{Outcome: OutcomeReadError}, fmt.Errorf("scan xcactivitylog: %w", err)
 	}
 
 	if logger != nil && bytesRead > largeLogThresholdBytes {
