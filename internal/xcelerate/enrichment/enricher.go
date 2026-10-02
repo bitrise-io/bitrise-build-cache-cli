@@ -197,15 +197,17 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 	}
 	deadline := e.now().Add(maxWait)
 
-	if waitOutcome := e.pollLogFile(logPath, deadline); waitOutcome == xcactivitylog.OutcomeFileMissing {
+	//exhaustive:ignore // pollLogFile only ever returns OK / FileMissing / ReadError.
+	switch e.pollLogFile(logPath, deadline) {
+	case xcactivitylog.OutcomeFileMissing:
 		return 0, analytics.MetricsSourceLogMissing
+	case xcactivitylog.OutcomeReadError:
+		return 0, analytics.MetricsSourceLogReadError
 	}
 
 	metrics, err := xcactivitylog.ReadCompilationCacheMetricsWithLogger(logPath, logger)
 	if err != nil {
 		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
-
-		return 0, analytics.MetricsSourceLogUnparsed
 	}
 
 	switch metrics.Outcome {
@@ -217,6 +219,8 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 		logger.Debugf("xcactivitylog empty at %s", logPath)
 
 		return 0, analytics.MetricsSourceLogEmpty
+	case xcactivitylog.OutcomeReadError:
+		return 0, analytics.MetricsSourceLogReadError
 	case xcactivitylog.OutcomeUnparsed:
 		size := int64(-1)
 		if st, statErr := os.Stat(logPath); statErr == nil {
@@ -231,23 +235,24 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 }
 
 // pollLogFile is a bounded wait distinct from the correlator's retry bucket.
-// Exponential backoff from 100ms until the log appears or deadline passes.
-// Returns OutcomeFileMissing when the file never materialises, OutcomeOK as
-// soon as os.Stat succeeds.
-//
-// Scope: this helper only answers "does the file exist yet"; parse-time
-// classification (empty / unparsed / ok) is done by the reader itself.
+// Exponential backoff from 100ms until the log appears, stat surfaces a
+// non-ENOENT error (ReadError), or the deadline passes (FileMissing).
 //
 // TODO: measure manifest -> log gap on real builds; collapse to one
 // Sleep(100ms)+stat if gap is reliably <100ms.
 func (e *Enricher) pollLogFile(path string, deadline time.Time) xcactivitylog.Outcome {
+	logger := logOr(e.Logger)
 	backoff := 100 * time.Millisecond
 
 	for {
-		if _, err := os.Stat(path); err == nil {
+		_, err := os.Stat(path)
+		switch {
+		case err == nil:
 			return xcactivitylog.OutcomeOK
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return xcactivitylog.OutcomeOK // non-ENOENT => let reader surface the error
+		case !errors.Is(err, fs.ErrNotExist):
+			logger.Warnf("xcactivitylog stat failed for %s: %s", path, err)
+
+			return xcactivitylog.OutcomeReadError
 		}
 
 		if !e.now().Before(deadline) {

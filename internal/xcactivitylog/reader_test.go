@@ -115,6 +115,24 @@ func TestReadCompilationCacheMetrics_NoMatch(t *testing.T) {
 	assert.Zero(t, m.Total)
 }
 
+func TestReadCompilationCacheMetrics_Unreadable_ReadError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses file-mode permission checks")
+	}
+	// Mode 0 → os.Open returns EACCES; the reader must tag ReadError (not
+	// FileMissing, not Unparsed) so callers can distinguish "couldn't look"
+	// from "looked and found no match".
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noperm.xcactivitylog")
+	require.NoError(t, os.WriteFile(path, []byte("payload"), 0o000))
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+
+	m, err := xcactivitylog.ReadCompilationCacheMetrics(path)
+	require.Error(t, err)
+	assert.Equal(t, xcactivitylog.OutcomeReadError, m.Outcome)
+	assert.Zero(t, m.HitRate)
+}
+
 func TestReadCompilationCacheMetrics_TruncatedGzip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "trunc.xcactivitylog")
@@ -149,6 +167,7 @@ func TestOutcomeString(t *testing.T) {
 		xcactivitylog.OutcomeFileMissing: "file_missing",
 		xcactivitylog.OutcomeEmpty:       "empty",
 		xcactivitylog.OutcomeUnparsed:    "unparsed",
+		xcactivitylog.OutcomeReadError:   "read_error",
 	}
 	for o, want := range cases {
 		assert.Equal(t, want, o.String(), o)
