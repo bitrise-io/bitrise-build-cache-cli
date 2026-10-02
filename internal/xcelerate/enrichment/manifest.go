@@ -97,9 +97,15 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 }
 
 // ManifestEntryGroup is a set of ManifestEntry rows from the same xcodebuild
-// invocation. Grouping key is manifest-path + scheme + time-gap cluster; group
-// aggregation lets the watcher emit one PUT per invocation instead of one per
-// entry.
+// invocation and the same LogStoreManifest.plist. Grouping key is scheme +
+// time-gap cluster; group aggregation lets the watcher emit one PUT per
+// invocation instead of one per entry.
+//
+// Invariant: a group never contains entries from different manifests. The
+// enricher resolves `<manifest-dir>/<Primary().FileName>` to locate the
+// sibling xcactivitylog, which only makes sense when every entry shares that
+// manifest directory. Any future cross-manifest fusion must either keep the
+// single-manifest guarantee or redesign the sibling-log resolution.
 //
 // Two known aggregation trade-offs:
 //   - Cross-manifest fusion (Logs/Build/... + Logs/Test/...) is not attempted:
@@ -245,6 +251,9 @@ func (g ManifestEntryGroup) FullCommand() string {
 	return g.Primary().Signature
 }
 
+// GroupManifestEntries clusters entries from a single manifest. Callers must
+// not merge entries from different LogStoreManifest.plist files into one
+// `entries` slice — see the ManifestEntryGroup invariant.
 func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil

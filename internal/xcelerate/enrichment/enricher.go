@@ -38,7 +38,11 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-func (e *Enricher) Enrich(group ManifestEntryGroup) {
+// Enrich is the Watcher.Handle callback. manifestPath is the LogStoreManifest.plist
+// path the group was parsed from; it is the anchor used to locate the sibling
+// xcactivitylog once the enricher starts reading compile-cache metrics.
+func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
+	_ = manifestPath // consumed in the HitRate wiring commit that follows
 	logger := logOr(e.Logger)
 
 	if len(group.Entries) == 0 {
