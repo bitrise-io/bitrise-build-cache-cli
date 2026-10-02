@@ -34,11 +34,15 @@ type Enricher struct {
 	Health           *HealthWriter
 	Now              func() time.Time
 
-	// LogPollMaxWait caps the total time Enrich spends waiting for the
-	// sibling .xcactivitylog to materialise. Zero falls back to
-	// logPollMaxWait. Tests override this to keep "log missing" cases fast.
+	// LogPollMaxWait caps the total wait for the sibling .xcactivitylog. Zero
+	// uses defaultLogPollMaxWait. Tests override to keep missing-log cases fast.
 	LogPollMaxWait time.Duration
 }
+
+// defaultLogPollMaxWait is empirical headroom for the manifest→log gap plus a
+// safety margin; the watcher scan is single-goroutine, so blocking too long
+// here delays every subsequent group.
+const defaultLogPollMaxWait = 2 * time.Second
 
 func (e *Enricher) now() time.Time {
 	if e.Now != nil {
@@ -47,16 +51,6 @@ func (e *Enricher) now() time.Time {
 
 	return time.Now()
 }
-
-// logPollMaxWait caps the total time Enrich spends waiting for the sibling
-// xcactivitylog to materialise after the manifest row appeared. The watcher
-// scan loop is single-goroutine so a long cumulative wait blocks every
-// subsequent group; 2s is empirical headroom plus a safety margin.
-//
-// TODO: measure manifest -> log gap on ≥20 real builds (both xcodebuild CLI
-// and Xcode.app IDE). If the gap is reliably <100ms, collapse pollLogFile to
-// a single Sleep(100ms) + stat and drop the backoff loop.
-const logPollMaxWait = 2 * time.Second
 
 // Enrich is the Watcher.Handle callback. manifestPath is the LogStoreManifest.plist
 // path the group was parsed from; it anchors the sibling xcactivitylog resolve
@@ -193,7 +187,7 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 
 	maxWait := e.LogPollMaxWait
 	if maxWait == 0 {
-		maxWait = logPollMaxWait
+		maxWait = defaultLogPollMaxWait
 	}
 	deadline := e.now().Add(maxWait)
 
@@ -210,11 +204,10 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
 	}
 
+	//exhaustive:ignore // FileMissing is handled above by pollLogFile.
 	switch metrics.Outcome {
 	case xcactivitylog.OutcomeOK:
 		return metrics.HitRate, analytics.MetricsSourceActivityLog
-	case xcactivitylog.OutcomeFileMissing:
-		return 0, analytics.MetricsSourceLogMissing
 	case xcactivitylog.OutcomeEmpty:
 		logger.Debugf("xcactivitylog empty at %s", logPath)
 
