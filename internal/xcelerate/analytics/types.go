@@ -76,6 +76,11 @@ type Invocation struct {
 	ExternalWorkflowName string              `json:"externalWorkflowName,omitempty"`
 	BenchmarkPhase       string              `json:"benchmarkPhase,omitempty"`
 	CacheBlobStats       *blobstats.Snapshot `json:"cacheBlobStats,omitempty"`
+	// MetricsSource tags where HitRate came from on this row — see the
+	// MetricsSource* consts in invocations.go. Empty when the wrapper owns
+	// the PUT (hit rate comes from the wrapper's own counters, not the log).
+	// BE schema alignment pending: metricsSource vs enrichmentSource vs cacheMetricsSource.
+	MetricsSource string `json:"metricsSource,omitempty"`
 	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
 	Targets  []TargetSummary  `json:"targets,omitempty"`
 	Failures []FailureSummary `json:"failures,omitempty"`
