@@ -94,11 +94,12 @@ gates have passed.
    workspace. The workspace comes from the build's own
    credential, resolved like any other command does: the `BITRISE_BUILD_CACHE_*`
    envs, else a GitHub Actions OIDC exchange, a Build Hub broker exchange or a
-   stored login (the services token's `org_id` claim names the workspace). No credential, no workspace, no list, or a workspace not on
-   the list all mean: log one line, write nothing, exit 0. `all` skips the list but
+   stored login (the services token's `org_id` claim names the workspace). No credential, a credential that cannot be resolved, no workspace, no list, or a
+   workspace not on the list all mean: log one line, write nothing, exit 0. `all` skips the list but
    not the credential: with no workspace resolved, nothing is activated.
 2. **Entitlement, fails open.** Entitlement is per workspace, not per build tool.
-   Every `activate <tool>` command, and `activate all`, asks whether the workspace
+   Every cache activation command (gradle, bazel, xcode, c++, react-native) and
+   `activate all` asks whether the workspace
    has Build Cache and stops before writing anything on an explicit "no", printing
    where to start a trial. The answer is three-valued: an unreachable website, a missing
    workspace or an unexpected response is Unknown, and Unknown carries on, so a
@@ -179,7 +180,7 @@ CLI. Same flow, with the loop and the gate since moved into the CLI.
 
 ### What the runs established
 
-- The hook installs from the host VM cache, activates every tool in about 1 to 6 s,
+- The hook installs from the host VM cache, activates every tool in about 1 s (6 s in the first measurement, see the cost note above),
   and the first step already sees the exported `PATH` (the Xcode wrapper first).
 - The allowlist gate holds: an excluded organization writes nothing, prints one
   line and sends no analytics (staging negative control).
@@ -323,7 +324,7 @@ Roughly in order of how likely they are to matter.
    upload everything. A cold Xcode build uploaded 3.6 to 4.2 GB. Warm-up took
    several runs per datacenter on staging, so early adopters see little benefit and
    full upload cost.
-8. **Time added to every build.** About 6 seconds when everything works. Up to two
+8. **Time added to every build.** About 1 to 6 seconds when everything works (see the cost note above). Up to two
    minutes if the cache backend or the install source is slow, because the hook
    waits for the limit.
 9. **Silent non-activation.** A skipped or failed activation never fails the build.
