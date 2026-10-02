@@ -29,6 +29,10 @@ const (
 	MetricsSourceLogEmpty = "log_empty"
 	// MetricsSourceLogUnparsed — log present with content but no CompilationCacheMetrics match.
 	MetricsSourceLogUnparsed = "log_unparsed"
+	// MetricsSourceLogReadError — log present but open/stat/read failed (EACCES,
+	// EIO, EMFILE, EISDIR). Distinct from LogUnparsed: we never got to read the
+	// body, so "no match" cannot be concluded.
+	MetricsSourceLogReadError = "log_read_error"
 )
 
 type InvocationRunStats struct {
