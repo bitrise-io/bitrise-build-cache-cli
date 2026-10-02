@@ -13,28 +13,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
-// MetricsSource tags the origin of the HitRate on an Invocation row so
-// downstream analytics can tell wrapper-counter rows apart from log-scraped
-// enrichment rows. The enricher maps xcactivitylog.Outcome into these.
-//
-// BE schema alignment pending: metricsSource vs enrichmentSource vs
-// cacheMetricsSource. Confirm the field name with the BE owner before PR
-// merge — strict-schema reject would fail every orphan PUT.
-const (
-	// MetricsSourceActivityLog — HitRate parsed from the sibling .xcactivitylog.
-	MetricsSourceActivityLog = "activity_log"
-	// MetricsSourceLogMissing — log did not appear within the enricher's wait window.
-	MetricsSourceLogMissing = "log_missing"
-	// MetricsSourceLogEmpty — log present but decompressed body is empty.
-	MetricsSourceLogEmpty = "log_empty"
-	// MetricsSourceLogUnparsed — log present with content but no CompilationCacheMetrics match.
-	MetricsSourceLogUnparsed = "log_unparsed"
-	// MetricsSourceLogReadError — log present but open/stat/read failed (EACCES,
-	// EIO, EMFILE, EISDIR). Distinct from LogUnparsed: we never got to read the
-	// body, so "no match" cannot be concluded.
-	MetricsSourceLogReadError = "log_read_error"
-)
-
 type InvocationRunStats struct {
 	InvocationDate   time.Time
 	InvocationID     string
@@ -47,7 +25,6 @@ type InvocationRunStats struct {
 	XcodeVersion     string
 	XcodeBuildNumber string
 	CacheBlobStats   *blobstats.Snapshot
-	MetricsSource    string
 }
 
 func NewInvocation(runStats InvocationRunStats, authMetadata auth.Credential, commonMetadata common.CacheConfigMetadata) *Invocation {
@@ -92,7 +69,6 @@ func NewInvocation(runStats InvocationRunStats, authMetadata auth.Credential, co
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
 		BenchmarkPhase:       commonMetadata.BenchmarkPhase,
 		CacheBlobStats:       runStats.CacheBlobStats,
-		MetricsSource:        runStats.MetricsSource,
 	}
 }
 
