@@ -30,7 +30,7 @@ func BitriseTheme() huh.Theme {
 		if !isDark {
 			accent = bitrisePurpleAccent
 			muted = bitriseNeutral40
-			mutedDim = bitriseNeutral40
+			mutedDim = bitriseNeutral70
 			checkFg = bitriseGreenAccent
 			errFg = bitriseRedAccent
 		}
