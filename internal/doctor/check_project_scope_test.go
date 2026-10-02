@@ -22,21 +22,9 @@ func TestProjectScopeCheck_noMarkerIsOK(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "no .bitrise-build-cache.json")
-	assert.Contains(t, res.Detail, "mode=always")
-	assert.Contains(t, res.Detail, "would gate this directory: no")
-}
-
-func TestProjectScopeCheck_emptyMarkerReportsPath(t *testing.T) {
-	dir := t.TempDir()
-	writeMarker(t, dir, `{}`)
-	t.Chdir(dir)
-
-	d := &Doctor{Envs: map[string]string{}}
-
-	res := d.projectScopeCheck().Diagnose(context.Background())
-	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, filepath.Join(dir, paths.ProjectMarkerFilename))
+	assert.Contains(t, res.Detail, "Opt-in marker: none")
+	assert.Contains(t, res.Detail, "Mode: always")
+	assert.Contains(t, res.Detail, "Cache active here: yes")
 }
 
 func TestProjectScopeCheck_unknownFieldsIgnored(t *testing.T) {
@@ -48,7 +36,7 @@ func TestProjectScopeCheck_unknownFieldsIgnored(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, filepath.Join(dir, paths.ProjectMarkerFilename))
+	assert.Contains(t, res.Detail, "Opt-in marker: "+filepath.Join(dir, paths.ProjectMarkerFilename))
 }
 
 func TestProjectScopeCheck_malformedMarkerIsError(t *testing.T) {
@@ -74,7 +62,20 @@ func TestProjectScopeCheck_walkUpFindsMarkerInParent(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, filepath.Join(root, paths.ProjectMarkerFilename))
+	assert.Contains(t, res.Detail, "Opt-in marker: "+filepath.Join(root, paths.ProjectMarkerFilename)+" (inherited from ancestor)")
+}
+
+func TestProjectScopeCheck_markerInCwdHasNoInheritedSuffix(t *testing.T) {
+	dir := t.TempDir()
+	writeMarker(t, dir, `{}`)
+	t.Chdir(dir)
+
+	d := &Doctor{Envs: map[string]string{}}
+
+	res := d.projectScopeCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "Opt-in marker: "+filepath.Join(dir, paths.ProjectMarkerFilename))
+	assert.NotContains(t, res.Detail, "(inherited from ancestor)")
 }
 
 func TestRun_includesProjectScopeCheck(t *testing.T) {
@@ -107,8 +108,8 @@ func TestProjectScopeCheck_optInModeWithoutMarkerGates(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "mode=opt-in")
-	assert.Contains(t, res.Detail, "would gate this directory: yes")
+	assert.Contains(t, res.Detail, "Mode: opt-in")
+	assert.Contains(t, res.Detail, "Cache active here: no")
 }
 
 func TestProjectScopeCheck_corruptMachineConfigSurfacesWarning(t *testing.T) {
@@ -144,8 +145,8 @@ func TestProjectScopeCheck_optInModeWithMarkerDoesNotGate(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "mode=opt-in")
-	assert.Contains(t, res.Detail, "would gate this directory: no")
+	assert.Contains(t, res.Detail, "Mode: opt-in")
+	assert.Contains(t, res.Detail, "Cache active here: yes")
 }
 
 func TestProjectScopeCheck_cachePushDefaultReported(t *testing.T) {
@@ -160,7 +161,7 @@ func TestProjectScopeCheck_cachePushDefaultReported(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "cache_push=true (default)")
+	assert.Contains(t, res.Detail, "Cache push: enabled (default)")
 }
 
 func TestProjectScopeCheck_cachePushFromMachineConfig(t *testing.T) {
@@ -179,7 +180,7 @@ func TestProjectScopeCheck_cachePushFromMachineConfig(t *testing.T) {
 
 	res := d.projectScopeCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
-	assert.Contains(t, res.Detail, "cache_push=false (machine config)")
+	assert.Contains(t, res.Detail, "Cache push: disabled (machine config)")
 }
 
 func writeMarker(t *testing.T, dir, body string) {
