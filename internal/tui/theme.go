@@ -9,7 +9,7 @@ func BitriseTheme() huh.Theme {
 	return huh.ThemeFunc(func(isDark bool) *huh.Styles {
 		var (
 			bitrisePurple30     = lipgloss.Color("#5c2a7e")
-			bitrisePurple60     = lipgloss.Color("#ae63de")
+			bitrisePurple80     = lipgloss.Color("#D5ADEB")
 			bitrisePurpleAccent = lipgloss.Color("#7b3ba5")
 			bitriseGreen60      = lipgloss.Color("#4eb76c")
 			bitriseGreenAccent  = lipgloss.Color("#167231")
@@ -22,7 +22,7 @@ func BitriseTheme() huh.Theme {
 			bitriseWhite        = lipgloss.Color("#ffffff")
 		)
 
-		accent := bitrisePurple60
+		accent := bitrisePurple80
 		muted := bitriseNeutral70
 		mutedDim := bitriseNeutral40
 		checkFg := bitriseGreen60
