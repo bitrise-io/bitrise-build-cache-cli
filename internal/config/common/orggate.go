@@ -6,10 +6,13 @@ import (
 )
 
 // EnvAutoActivateOrgs lists the workspaces an automatic activation may run for:
-// slugs separated by commas or whitespace, or "*" for every workspace.
+// slugs separated by commas or whitespace, or "all" (or "*") for every workspace.
 const EnvAutoActivateOrgs = "BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS"
 
-const allOrgs = "*"
+const (
+	allOrgs      = "all"
+	allOrgsAlias = "*"
+)
 
 // OrgAllowedForAutoActivation fails closed: no list, no workspace, or a
 // workspace that is not on the list all deny.
@@ -20,7 +23,7 @@ func OrgAllowedForAutoActivation(allowlist, workspaceID string) bool {
 
 	entries := strings.FieldsFunc(allowlist, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
 	for _, entry := range entries {
-		if entry == allOrgs || strings.EqualFold(entry, workspaceID) {
+		if strings.EqualFold(entry, allOrgs) || entry == allOrgsAlias || strings.EqualFold(entry, workspaceID) {
 			return true
 		}
 	}

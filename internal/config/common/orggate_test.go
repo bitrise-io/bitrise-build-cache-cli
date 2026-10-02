@@ -28,6 +28,10 @@ func TestOrgAllowedForAutoActivation(t *testing.T) {
 		{"slugs compare case-insensitively", "DBD227A0AEB70859", "dbd227a0aeb70859", true},
 		{"star allows every workspace", "*", "dbd227a0aeb70859", true},
 		{"star among others", "322a005426441b60,*", "dbd227a0aeb70859", true},
+		{"all allows every workspace", "all", "dbd227a0aeb70859", true},
+		{"all is case-insensitive", "ALL", "dbd227a0aeb70859", true},
+		{"all among others", "322a005426441b60, all", "dbd227a0aeb70859", true},
+		{"no workspace denies even with all", "all", "", false},
 		{"no workspace denies even with star", "*", "", false},
 		{"no workspace denies", "dbd227a0aeb70859", "", false},
 	}

@@ -69,7 +69,8 @@ Two checks, in this order, both before anything is written:
 
 1. **Org allowlist, `--auto` only, fails closed.**
    `BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS` holds workspace slugs separated by
-   commas or whitespace, or `*`. The workspace comes from the build's own
+   commas or whitespace, or `all` (`*` also works) to bypass the gate for every
+   workspace. The workspace comes from the build's own
    credential (`BITRISE_BUILD_CACHE_WORKSPACE_ID`, else the `org_id` claim of the
    services token). No credential, no workspace, no list, or a workspace not on
    the list all mean: log one line, write nothing, exit 0.
@@ -241,7 +242,7 @@ boot script.
 Roughly in order of how likely they are to matter.
 
 1. **Analytics for builds that did not ask.** The allowlist is the only guard until
-   the endpoint ships. A wrong or `*` entry reports for every workspace on the VM.
+   the endpoint ships. A wrong or `all` entry reports for every workspace on the VM.
 2. **Slow, stale rollback.** See above: pooled VMs keep the script they booted with.
 3. **Tools the build does not use get configured.** A Gradle init script for a build
    that has no Gradle, a `~/.bazelrc` block, the Xcode wrappers on `PATH`. Most are
