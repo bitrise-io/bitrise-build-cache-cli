@@ -10,6 +10,26 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
+// confirmMarker is a seam so tests can drive the opt-in confirm without going
+// through the real form.
+//
+//nolint:gochecknoglobals
+var confirmMarker = func(cwd string) (bool, error) {
+	confirmed := false
+	if err := tui.RunForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title("No marker found at " + cwd + ". Create .bitrise-build-cache.json here?").
+			Description("Without a marker this directory stays outside opt-in scope and the cache won't activate for builds launched here.").
+			Affirmative("Yes, opt this project in").
+			Negative("No, I'll do it later").
+			Value(&confirmed),
+	)); err != nil {
+		return false, err //nolint:wrapcheck // caller logs it
+	}
+
+	return confirmed, nil
+}
+
 func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 	osProxy := utils.DefaultOsProxy{}
 
@@ -50,5 +70,55 @@ func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 		}
 	}
 
+	if mode == machineconfig.ModeOptIn {
+		confirmMarkerForCwd(logger, osProxy)
+	}
+
 	return mode, nil
+}
+
+// confirmMarkerForCwd asks whether to drop the opt-in marker at the current
+// directory, when none is already found walking up from it. Any lookup or
+// write failure degrades to a warn-and-continue: this is a convenience step,
+// not a gate.
+func confirmMarkerForCwd(logger log.Logger, osProxy utils.OsProxy) {
+	cwd, err := osProxy.Getwd()
+	if err != nil {
+		logger.Warnf("Could not resolve the current directory to offer opt-in (%v). Run `bitrise-build-cache project enable` from the project root to opt it in.", err)
+
+		return
+	}
+
+	found, _, err := machineconfig.FindMarker(cwd, osProxy)
+	if err != nil {
+		logger.Warnf("Could not look up the .bitrise-build-cache.json marker (%v). Run `bitrise-build-cache project enable` from the project root to opt it in.", err)
+
+		return
+	}
+	if found {
+		return
+	}
+
+	confirmed, promptErr := confirmMarker(cwd)
+	if promptErr != nil {
+		logger.Warnf("Could not confirm opt-in for %s (%v). Run `bitrise-build-cache project enable` from the project root to opt it in.", cwd, promptErr)
+
+		return
+	}
+	if !confirmed {
+		return
+	}
+
+	wrote, ancestor, err := machineconfig.WriteMarkerIfMissing(cwd, osProxy)
+	if err != nil {
+		logger.Warnf("Could not opt %s in (%v). Run `bitrise-build-cache project enable` from the project root to retry.", cwd, err)
+
+		return
+	}
+	if ancestor != "" {
+		logger.Infof("Marker already covers %s (found at %s).", cwd, ancestor)
+
+		return
+	}
+	logger.Infof("Wrote .bitrise-build-cache.json at %s.", wrote)
 }
