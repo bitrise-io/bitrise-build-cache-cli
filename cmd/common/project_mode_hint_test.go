@@ -22,15 +22,12 @@ func TestPrintOptInGateHintIfGated(t *testing.T) {
 		name       string
 		mode       machineconfig.Mode
 		plantAt    string // "cwd", "ancestor", or "" for no marker
-		flag       string
 		wantPrints bool
 	}{
 		{name: "mode=always, no marker — no hint", mode: machineconfig.ModeAlways, wantPrints: false},
 		{name: "mode=opt-in, marker at cwd — no hint", mode: machineconfig.ModeOptIn, plantAt: "cwd", wantPrints: false},
 		{name: "mode=opt-in, ancestor marker — no hint", mode: machineconfig.ModeOptIn, plantAt: "ancestor", wantPrints: false},
 		{name: "mode=opt-in, no marker — hint printed", mode: machineconfig.ModeOptIn, wantPrints: true},
-		{name: "flag overrides stored to always — no hint", mode: machineconfig.ModeOptIn, flag: string(machineconfig.ModeAlways), wantPrints: false},
-		{name: "flag overrides stored to opt-in — hint printed", mode: machineconfig.ModeAlways, flag: string(machineconfig.ModeOptIn), wantPrints: true},
 	}
 
 	for _, tc := range cases {
@@ -60,7 +57,7 @@ func TestPrintOptInGateHintIfGated(t *testing.T) {
 			logger := &mocks.Logger{}
 			logger.On("Printf", mock.Anything, mock.Anything).Return()
 
-			PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{}, tc.flag)
+			PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{})
 
 			if tc.wantPrints {
 				logger.AssertCalled(t, "Printf", mock.Anything, mock.Anything)
@@ -73,13 +70,13 @@ func TestPrintOptInGateHintIfGated(t *testing.T) {
 
 func TestPrintOptInGateHintIfGated_NilLoggerIsNoop(t *testing.T) {
 	assert.NotPanics(t, func() {
-		PrintOptInGateHintIfGated(nil, utils.DefaultOsProxy{}, "")
+		PrintOptInGateHintIfGated(nil, utils.DefaultOsProxy{})
 	})
 }
 
 func TestPrintOptInGateHintIfGated_NilOsProxyIsNoop(t *testing.T) {
 	logger := &mocks.Logger{}
-	PrintOptInGateHintIfGated(logger, nil, "")
+	PrintOptInGateHintIfGated(logger, nil)
 	logger.AssertNotCalled(t, "Printf")
 }
 

@@ -38,7 +38,7 @@ This command will:
 		if err := common.PersistProjectMode(activateCppProjectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
-		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{}, activateCppProjectMode)
+		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{})
 
 		push, err := common.ResolveAndPersistCachePush(cmd, activateCppParams.PushEnabled, logger)
 		if err != nil {

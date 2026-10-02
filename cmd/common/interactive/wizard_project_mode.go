@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"context"
+
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -11,24 +13,11 @@ import (
 )
 
 // confirmMarker is a seam so tests can drive the opt-in confirm without going
-// through the real form.
+// through the real form. The default routes through FixProjectScopePrompt so
+// the wizard and the doctor fixer share one huh.NewConfirm definition.
 //
 //nolint:gochecknoglobals
-var confirmMarker = func(cwd string) (bool, error) {
-	confirmed := false
-	if err := tui.RunForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title("No marker found at " + cwd + ". Create .bitrise-build-cache.json here?").
-			Description("Without a marker this directory stays outside opt-in scope and the cache won't activate for builds launched here.").
-			Affirmative("Yes, opt this project in").
-			Negative("No, I'll do it later").
-			Value(&confirmed),
-	)); err != nil {
-		return false, err //nolint:wrapcheck // caller logs it
-	}
-
-	return confirmed, nil
-}
+var confirmMarker = FixProjectScopePrompt(context.Background(), log.NewLogger())
 
 func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 	osProxy := utils.DefaultOsProxy{}

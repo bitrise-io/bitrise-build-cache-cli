@@ -43,7 +43,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 		if err := common.PersistProjectMode(projectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
-		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{}, projectMode)
+		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{})
 
 		push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
 		if err != nil {
