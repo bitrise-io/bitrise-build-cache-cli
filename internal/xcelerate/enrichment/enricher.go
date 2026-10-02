@@ -2,8 +2,6 @@ package enrichment
 
 import (
 	"encoding/json"
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,16 +31,7 @@ type Enricher struct {
 	Logger           log.Logger
 	Health           *HealthWriter
 	Now              func() time.Time
-
-	// LogPollMaxWait caps the total wait for the sibling .xcactivitylog. Zero
-	// uses defaultLogPollMaxWait. Tests override to keep missing-log cases fast.
-	LogPollMaxWait time.Duration
 }
-
-// defaultLogPollMaxWait is empirical headroom for the manifest→log gap plus a
-// safety margin; the watcher scan is single-goroutine, so blocking too long
-// here delays every subsequent group.
-const defaultLogPollMaxWait = 2 * time.Second
 
 func (e *Enricher) now() time.Time {
 	if e.Now != nil {
@@ -166,9 +155,11 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	}
 }
 
-// readLogHitRate resolves the sibling xcactivitylog, waits briefly for it to
-// land, and parses the compile-cache hit rate. Returns 0 on every non-OK
-// outcome; the e2e workflow is the regex-drift guard, so this path is intentionally quiet beyond Warn-level diagnostics.
+// readLogHitRate resolves the sibling xcactivitylog and parses its compile-cache
+// hit rate. Returns 0 on any non-OK outcome; measured on 20 CasProbe builds the
+// log is on disk ~0.3ms before the manifest (manifest-write is Xcode's last
+// close-step), so no bounded wait is needed — reader's ENOENT path handles the
+// vanishing race.
 func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) float32 {
 	logger := logOr(e.Logger)
 
@@ -183,27 +174,16 @@ func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup)
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
 
-	maxWait := e.LogPollMaxWait
-	if maxWait == 0 {
-		maxWait = defaultLogPollMaxWait
-	}
-	deadline := e.now().Add(maxWait)
-
-	//exhaustive:ignore // pollLogFile only ever returns OK / FileMissing / ReadError.
-	switch e.pollLogFile(logPath, deadline) {
-	case xcactivitylog.OutcomeFileMissing, xcactivitylog.OutcomeReadError:
-		return 0
-	}
-
 	metrics, err := xcactivitylog.ReadCompilationCacheMetricsWithLogger(logPath, logger)
 	if err != nil {
 		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
 	}
 
-	//exhaustive:ignore // FileMissing is handled above by pollLogFile.
 	switch metrics.Outcome {
 	case xcactivitylog.OutcomeOK:
 		return metrics.HitRate
+	case xcactivitylog.OutcomeFileMissing:
+		logger.Debugf("xcactivitylog missing at %s", logPath)
 	case xcactivitylog.OutcomeEmpty:
 		logger.Debugf("xcactivitylog empty at %s", logPath)
 	case xcactivitylog.OutcomeUnparsed:
@@ -212,41 +192,8 @@ func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup)
 			size = st.Size()
 		}
 		logger.Warnf("xcactivitylog unparsed at %s (xcode=%s size=%d): no CompilationCacheMetrics match", logPath, e.XcodeVersion, size)
+	case xcactivitylog.OutcomeReadError:
 	}
 
 	return 0
-}
-
-// pollLogFile is a bounded wait distinct from the correlator's retry bucket.
-// Exponential backoff from 100ms until the log appears, stat surfaces a
-// non-ENOENT error (ReadError), or the deadline passes (FileMissing).
-//
-// TODO: measure manifest -> log gap on real builds; collapse to one
-// Sleep(100ms)+stat if gap is reliably <100ms.
-func (e *Enricher) pollLogFile(path string, deadline time.Time) xcactivitylog.Outcome {
-	logger := logOr(e.Logger)
-	backoff := 100 * time.Millisecond
-
-	for {
-		_, err := os.Stat(path)
-		switch {
-		case err == nil:
-			return xcactivitylog.OutcomeOK
-		case !errors.Is(err, fs.ErrNotExist):
-			logger.Warnf("xcactivitylog stat failed for %s: %s", path, err)
-
-			return xcactivitylog.OutcomeReadError
-		}
-
-		if !e.now().Before(deadline) {
-			return xcactivitylog.OutcomeFileMissing
-		}
-
-		time.Sleep(backoff)
-
-		backoff *= 2
-		if backoff > 500*time.Millisecond {
-			backoff = 500 * time.Millisecond
-		}
-	}
 }
