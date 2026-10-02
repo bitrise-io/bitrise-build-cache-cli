@@ -1,6 +1,7 @@
 package bazel
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -72,7 +73,15 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	}
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 
+	if _, _, err := clibin.EnsureInstalledInUserLocalBin(cmd.Context(), logger); err != nil {
+		logger.Debugf("self-install to ~/.local/bin skipped: %s", err)
+	}
+
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
+
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		bazelconfig.WarnIfHelperPinnedInRepo(cmd.Context(), logger, cwd, utils.DefaultOsProxy{}, clibin.OnPATH())
+	}
 
 	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
 		return fmt.Errorf("persist project mode: %w", err)
@@ -87,6 +96,7 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 
 	// Run main logic
 	if err := ActivateBazelCmdFn(
+		cmd.Context(),
 		logger,
 		bazelrcPath,
 		utils.AllEnvs(),
@@ -128,15 +138,16 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 }
 
 func ActivateBazelCmdFn(
+	ctx context.Context,
 	logger log.Logger,
 	bazelrcPath string,
 	envs map[string]string,
 	commandFunc configcommon.CommandFunc,
-	templateInventoryProvider func(log.Logger, map[string]string, configcommon.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
+	templateInventoryProvider func(context.Context, log.Logger, map[string]string, configcommon.CommandFunc, bool) (bazelconfig.TemplateInventory, error),
 	templateWriter func(bazelconfig.TemplateInventory, string) error,
 ) error {
 	// Generate template inventory
-	inventory, err := templateInventoryProvider(logger, envs, commandFunc, common.IsDebugLogMode)
+	inventory, err := templateInventoryProvider(ctx, logger, envs, commandFunc, common.IsDebugLogMode)
 	if err != nil {
 		return err
 	}

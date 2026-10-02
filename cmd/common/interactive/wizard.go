@@ -2,7 +2,6 @@ package interactive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"charm.land/huh/v2"
@@ -79,13 +78,6 @@ func (*huhWizard) Run(ctx context.Context) error {
 			Description(toolsDescription).
 			Options(toolOptions...).
 			Height(len(toolOptions) + tui.Chrome(toolsDescription)).
-			Validate(func(s []string) error {
-				if len(s) == 0 {
-					return errors.New("pick at least one tool")
-				}
-
-				return nil
-			}).
 			Value(&selectedTools),
 	)); err != nil {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error

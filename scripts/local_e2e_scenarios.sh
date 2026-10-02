@@ -107,10 +107,10 @@ else
 fi
 
 log "update --dry-run detects install method and makes no changes"
-BEFORE=$(stat -f %m "$CLI" 2>/dev/null || stat -c %Y "$CLI")
+BEFORE=$(stat -c %Y "$CLI" 2>/dev/null || stat -f %m "$CLI")
 UPDATE_OUT=$("$CLI" update --dry-run 2>&1 || true)
 echo "$UPDATE_OUT" | grep -qi "detected install method\|dry run" || fail "update --dry-run output missing (got: $UPDATE_OUT)"
-AFTER=$(stat -f %m "$CLI" 2>/dev/null || stat -c %Y "$CLI")
+AFTER=$(stat -c %Y "$CLI" 2>/dev/null || stat -f %m "$CLI")
 [ "$BEFORE" = "$AFTER" ] || fail "update --dry-run mutated binary"
 pass "update --dry-run ok"
 

@@ -277,6 +277,8 @@ func (d *Doctor) checks(opts Options) []Check {
 		d.ccacheBinaryCheck(),
 		d.logDirsCheck(),
 		d.projectScopeCheck(),
+		d.bazelCredHelperCheck(),
+		d.bazelCLIBinOnPATHCheck(),
 	)
 
 	if !opts.SkipUpdateCheck {

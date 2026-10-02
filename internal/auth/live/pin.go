@@ -17,12 +17,12 @@ func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, is
 		return cred, origin, err
 	}
 
-	// A CI JWT is short-lived and workspace-embedded; it goes to the legacy
-	// authConfig key that the analytics and React Native readers expect, and never
-	// into the credentials block, which is for credentials that outlive one build.
-	if origin.Backend == auth.BackendJWT {
+	// A JWT or an OIDC-exchanged token lives for one build at most, so it goes only to
+	// the authConfig block the analytics readers expect: the credentials block would
+	// serve it, expired, to a later job.
+	if origin.Backend == auth.BackendJWT || origin.Provenance == auth.ProvenanceOIDC {
 		if legacyErr := writeAnalyticsCredential(cred, origin); legacyErr != nil {
-			r.debugf("could not mirror the CI JWT to the analytics config: %s", legacyErr)
+			r.debugf("could not mirror the credential to the analytics config: %s", legacyErr)
 		}
 
 		return cred, origin, nil

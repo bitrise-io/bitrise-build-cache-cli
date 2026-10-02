@@ -53,7 +53,7 @@ var saveXcodeDerivedDataFilesCmd = &cobra.Command{
 
 		logger.Infof("(i) Check Auth Config")
 		allEnvs := utils.AllEnvs()
-		authConfig, _, err := live.Default(nil).ResolveNoRefresh(allEnvs)
+		authConfig, _, err := live.Default(nil).Resolve(cmd.Context(), allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
@@ -150,7 +150,7 @@ func SaveXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	}
 	logger.Infof("(i) Cache key: %s", cacheKey)
 
-	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, utils.DefaultOsProxy{}, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeUpload, &commonMetadata)
 	op.CacheKey = cacheKey

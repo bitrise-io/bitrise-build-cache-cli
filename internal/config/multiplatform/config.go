@@ -35,8 +35,7 @@ type AnalyticsAuthConfig struct {
 	AuthToken   string
 	WorkspaceID string
 	IsJWT       bool
-	// Provenance is how a JWT was obtained. Empty in files written before the CLI
-	// could broker one, where a JWT could only have been injected.
+	// How a short-lived credential was obtained; empty in files written before the CLI could mint one.
 	Provenance string
 }
 
@@ -44,6 +43,7 @@ type AnalyticsAuthConfig struct {
 const (
 	ProvenanceInjected = "injected"
 	ProvenanceBrokered = "brokered"
+	ProvenanceOIDC     = "oidc"
 )
 
 // NewAnalyticsAuthConfig records a resolved credential for the analytics readers.
@@ -52,11 +52,14 @@ func NewAnalyticsAuthConfig(cred auth.Credential, origin auth.Origin) AnalyticsA
 		AuthToken:   cred.Token,
 		WorkspaceID: cred.WorkspaceID,
 		IsJWT:       origin.Backend == auth.BackendJWT,
-		Provenance:  jwtProvenance(origin),
+		Provenance:  provenanceOf(origin),
 	}
 }
 
-func jwtProvenance(origin auth.Origin) string {
+func provenanceOf(origin auth.Origin) string {
+	if origin.Provenance == auth.ProvenanceOIDC {
+		return ProvenanceOIDC
+	}
 	if origin.Backend != auth.BackendJWT {
 		return ""
 	}
@@ -76,7 +79,7 @@ func (l AnalyticsAuthConfig) Credential() auth.Credential {
 	return auth.Credential{Token: l.AuthToken, WorkspaceID: l.WorkspaceID}
 }
 
-// Origin reports where the legacy block's credential came from. IsJWT is
+// Origin reads back the origin encoded by NewAnalyticsAuthConfig. IsJWT is
 // load-bearing: a JWT is sent as-is, a PAT is prefixed with the workspace.
 func (l AnalyticsAuthConfig) Origin() auth.Origin {
 	if l.IsJWT {
@@ -86,6 +89,11 @@ func (l AnalyticsAuthConfig) Origin() auth.Origin {
 		}
 
 		return auth.Origin{Backend: auth.BackendJWT, Provenance: provenance}
+	}
+	// Read back with the backend it was minted under, as a brokered JWT is: that is
+	// what keeps it out of the store refresh path.
+	if l.Provenance == ProvenanceOIDC {
+		return auth.Origin{Backend: auth.BackendEnv, Provenance: auth.ProvenanceOIDC}
 	}
 
 	return auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}

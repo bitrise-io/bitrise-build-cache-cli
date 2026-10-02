@@ -53,7 +53,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 		startT := time.Now()
 
 		logger.Infof("(i) Check Auth Config")
-		authConfig, _, err := live.Default(nil).ResolveNoRefresh(allEnvs)
+		authConfig, _, err := live.Default(nil).Resolve(cmd.Context(), allEnvs)
 		if err != nil {
 			return fmt.Errorf("resolve auth config: %w", err)
 		}
@@ -129,7 +129,7 @@ func restoreXcodeDerivedDataFilesCmdFn(ctx context.Context,
 	isDebugLogMode, skipExisting, forceOverwrite bool,
 	maxLoggedDownloadErrors int,
 ) (*xa.CacheOperation, error) {
-	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, logger)
+	commonMetadata := configcommon.NewMetadata(envs, invocationUsername(envs), commandFunc, utils.DefaultOsProxy{}, logger)
 
 	op := xa.NewCacheOperation(startT, xa.OperationTypeDownload, &commonMetadata)
 	kvClient, err := common.CreateKVClient(ctx,

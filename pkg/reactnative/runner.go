@@ -166,7 +166,7 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 
 	name, cmdArgs := args[0], args[1:]
 
-	if !r.isReactNativeReady() {
+	if !r.isReactNativeReady(ctx) {
 		r.logger.TWarnf(MsgRNNotActivated)
 
 		return r.execFn(environ, name, cmdArgs...)
@@ -228,13 +228,13 @@ func (r *Runner) Run(ctx context.Context, args []string, wrapperInvocationID str
 // post-run hook and the Visit-URL log line depend on. A missing or
 // empty-workspace config means we cannot safely report analytics or print
 // a working details URL, so we skip wrapping entirely (and log once).
-func (r *Runner) isReactNativeReady() bool {
+func (r *Runner) isReactNativeReady(ctx context.Context) bool {
 	cfg, err := rnconfig.ReadConfig(r.osProxy, r.decoderFactory)
 	if err != nil || !cfg.Enabled {
 		return false
 	}
 
-	cred, _, err := r.resolver.ResolveNoRefresh(utils.AllEnvs())
+	cred, _, err := r.resolver.Resolve(ctx, utils.AllEnvs())
 
 	return err == nil && cred.WorkspaceID != ""
 }

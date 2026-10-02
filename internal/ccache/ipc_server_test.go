@@ -3,12 +3,15 @@
 package ccache
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
@@ -116,4 +119,32 @@ func Test_handleSetInvocationIDResult_logsOutgoingInvocation(t *testing.T) {
 	logger.AssertCalled(t, "TInfof", "%s",
 		"Ccache stats: hits: 1 (2.0 kB) / total: 1 (100.00%). Uploaded: 0 B")
 	assert.Equal(t, CacheEffectiveness{}, s.sessionState.effectiveness())
+}
+
+func Test_getCapabilities(t *testing.T) {
+	t.Run("retries after an auth rejection", func(t *testing.T) {
+		errs := []error{kv.ErrCacheUnauthenticated, nil}
+		client := &ClientMock{GetCapabilitiesWithRetryFunc: func(context.Context) error {
+			err := errs[0]
+			errs = errs[1:]
+
+			return err
+		}}
+		s := &IpcServer{client: client}
+
+		require.ErrorIs(t, s.getCapabilities(t.Context()), kv.ErrCacheUnauthenticated)
+		require.NoError(t, s.getCapabilities(t.Context()))
+		require.NoError(t, s.getCapabilities(t.Context()))
+		assert.Len(t, client.GetCapabilitiesWithRetryCalls(), 2)
+	})
+
+	t.Run("caches any other result", func(t *testing.T) {
+		boom := errors.New("unavailable")
+		client := &ClientMock{GetCapabilitiesWithRetryFunc: func(context.Context) error { return boom }}
+		s := &IpcServer{client: client}
+
+		require.ErrorIs(t, s.getCapabilities(t.Context()), boom)
+		require.ErrorIs(t, s.getCapabilities(t.Context()), boom)
+		assert.Len(t, client.GetCapabilitiesWithRetryCalls(), 1)
+	})
 }

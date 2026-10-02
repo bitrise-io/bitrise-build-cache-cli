@@ -901,3 +901,54 @@ func TestXcelerateProxyCheck_usesThePathActivationRecorded(t *testing.T) {
 
 	assert.Equal(t, StateOK, res.State, "detail: %s", res.Detail)
 }
+
+func oidcDoctorEnvs() map[string]string {
+	return map[string]string{
+		authpkg.EnvOIDCPolicyID:           "policy-uuid",
+		authpkg.EnvWorkspaceID:            "ws-oidc",
+		authpkg.EnvGitHubOIDCRequestURL:   "https://example.com/idtoken",
+		authpkg.EnvGitHubOIDCRequestToken: "request-token",
+	}
+}
+
+// The check is offline and never exchanges, so before the first exchange there is
+// nothing on the machine, and that is not "no credentials".
+func TestAuthCheck_OIDCBeforeTheFirstExchangeIsNotMissing(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
+	r.Envs = oidcDoctorEnvs()
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "GitHub Actions OIDC")
+	assert.Contains(t, res.Detail, "policy-uuid")
+}
+
+func TestAuthCheck_OIDCWithoutIDTokenPermissionIsAnError(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
+	envs := oidcDoctorEnvs()
+	delete(envs, authpkg.EnvGitHubOIDCRequestURL)
+	delete(envs, authpkg.EnvGitHubOIDCRequestToken)
+	r.Envs = envs
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateError, res.State)
+	assert.Contains(t, res.Detail, "id-token: write")
+}
+
+// Another credential works, so builds do too, but not the way the user set up.
+func TestAuthCheck_OIDCMisconfiguredBesideAWorkingCredentialWarns(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "t", WorkspaceID: "w"}}}
+	envs := oidcDoctorEnvs()
+	delete(envs, authpkg.EnvWorkspaceID)
+	r.Envs = envs
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, authpkg.EnvWorkspaceID)
+}

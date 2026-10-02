@@ -50,6 +50,21 @@ func testResolver(ensureFresh func(context.Context) (authpkg.TokenSet, error)) *
 	return r
 }
 
+func TestResolver_Brokered_HintsExpiry(t *testing.T) {
+	isolate(t)
+	expiry := time.Now().Add(30 * time.Minute)
+	r := live.Default(nil)
+	r.Broker = func(context.Context, map[string]string) (authpkg.Credential, error) {
+		return authpkg.Credential{Token: "brokered-jwt", WorkspaceID: "ws-1", Expiry: expiry}, nil
+	}
+
+	cred, err := newResolver(r, map[string]string{}, nil)(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", cred.Token)
+	assert.Equal(t, expiry.Add(-expiresLead), cred.Expiry)
+}
+
 func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 	isolate(t)
 	envs := map[string]string{
@@ -69,14 +84,14 @@ func TestResolver_EnvSource_NoRefresh_NoExpiry(t *testing.T) {
 	assert.True(t, got.Expiry.IsZero(), "an unknown lifetime must omit the cache hint")
 }
 
-// A static PAT has no refresh token, so nothing can renew it.
-func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
+// A static PAT persisted only into the analytics block has no refresh token.
+func TestResolver_AnalyticsStaticPAT_ServesStaleAndWarns(t *testing.T) {
 	isolate(t)
-	seedLegacyAuthConfig(t, "bitpat_legacy", "ws-legacy")
+	seedAnalyticsAuthConfig(t, "bitpat_static", "ws-static")
 
 	warn := &bytes.Buffer{}
 	ensureFresh := func(context.Context) (authpkg.TokenSet, error) {
-		t.Fatal("the legacy authConfig source is not store-managed; EnsureFresh must not be called")
+		t.Fatal("the analytics authConfig source is not store-managed; EnsureFresh must not be called")
 
 		return authpkg.TokenSet{}, nil
 	}
@@ -84,7 +99,7 @@ func TestResolver_LegacyStaticPAT_ServesStaleAndWarns(t *testing.T) {
 	got, err := newResolver(testResolver(ensureFresh), map[string]string{}, warn)(t.Context())
 
 	require.NoError(t, err, "a token we cannot refresh is still better than failing the RPC")
-	assert.Equal(t, "bitpat_legacy", got.Token)
+	assert.Equal(t, "bitpat_static", got.Token)
 	assert.Empty(t, warn.String(), "nothing was attempted, so there is nothing to warn about")
 }
 
@@ -192,7 +207,7 @@ func seedKeychain(t *testing.T, token, workspaceID string) {
 	}))
 }
 
-func seedLegacyAuthConfig(t *testing.T, token, workspaceID string) {
+func seedAnalyticsAuthConfig(t *testing.T, token, workspaceID string) {
 	t.Helper()
 	cfg := multiplatformconfig.Config{
 		AuthConfig: multiplatformconfig.AnalyticsAuthConfig{AuthToken: token, WorkspaceID: workspaceID},
@@ -205,4 +220,27 @@ func oauthSaveTo(t *testing.T, s store.Store, c authpkg.TokenSet) error {
 	_, err := oauth.SaveToWithFallback(s, c, false)
 
 	return err
+}
+
+// Bazel otherwise keeps the token for its 30m default, twice a 15-minute policy's
+// lifetime, and every RPC after expiry fails.
+func TestResolver_OIDC_HintsExpiry(t *testing.T) {
+	isolate(t)
+	expiry := time.Now().Add(15 * time.Minute)
+	r := live.Default(nil)
+	r.OIDC = func(context.Context, map[string]string) (authpkg.Credential, error) {
+		return authpkg.Credential{Token: "oidc-wat", WorkspaceID: "ws-1", Expiry: expiry}, nil
+	}
+	envs := map[string]string{
+		authpkg.EnvOIDCPolicyID:           "policy-uuid",
+		authpkg.EnvWorkspaceID:            "ws-1",
+		authpkg.EnvGitHubOIDCRequestURL:   "https://example.com/idtoken",
+		authpkg.EnvGitHubOIDCRequestToken: "request-token",
+	}
+
+	cred, err := newResolver(r, envs, nil)(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "oidc-wat", cred.Token)
+	assert.Equal(t, expiry.Add(-expiresLead), cred.Expiry)
 }

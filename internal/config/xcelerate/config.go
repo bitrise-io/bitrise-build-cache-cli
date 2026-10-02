@@ -12,7 +12,6 @@ import (
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -69,15 +68,8 @@ type Config struct {
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
-	// (single canonical source for auth credentials on disk). The JSON tag is
-	// preserved for read-side backwards compatibility with older xcelerate
-	// configs that still have `authConfig` on disk from a previous CLI version;
-	// Save zeroes it before writing and `omitzero` keeps it out of the file.
+	// (single canonical source for auth credentials on disk).
 	AuthConfig authpkg.Credential `json:"-"`
-	// LegacyAuthConfig genuinely is legacy, unlike the analytics block it shares a
-	// shape with: only configs written by older CLI versions have it, nothing writes
-	// it now, and it is read solely so an upgrade does not lose the credential.
-	LegacyAuthConfig multiplatformconfig.AnalyticsAuthConfig `json:"authConfig,omitzero"`
 	// AuthOrigin says where AuthConfig came from. Runtime only — it is what
 	// tells a CI JWT (sent as-is) from a PAT (prefixed with the workspace).
 	AuthOrigin           authpkg.Origin `json:"-"`
@@ -106,10 +98,6 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 	// resolution path can guarantee that.
 	if cred, origin, credErr := live.Default(nil).ResolveNoRefresh(envs); credErr == nil {
 		config.AuthConfig, config.AuthOrigin = cred, origin
-	} else if config.LegacyAuthConfig.Populated() {
-		// Nothing resolvable, but an older CLI left a credential in this file.
-		config.AuthConfig = config.LegacyAuthConfig.Credential()
-		config.AuthOrigin = config.LegacyAuthConfig.Origin()
 	}
 
 	return config, nil
@@ -160,6 +148,7 @@ func NewConfig(ctx context.Context,
 
 			return string(output), err
 		},
+		osProxy,
 		logger)
 
 	// Check benchmark phase and override params if needed (only on CI).
@@ -289,13 +278,6 @@ func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory ut
 		return fmt.Errorf(ErrFmtCreateConfigFile, err)
 	}
 	defer f.Close()
-
-	// Auth credentials live in the multiplatform analytics config now. Strip
-	// them before writing the xcelerate config so we don't persist a second
-	// copy on disk. Older configs that still carry `authConfig` on disk are
-	// tolerated on read (see ReadConfig).
-	config.AuthConfig = authpkg.Credential{}
-	config.LegacyAuthConfig = multiplatformconfig.AnalyticsAuthConfig{}
 
 	enc := encoderFactory.Encoder(f)
 	enc.SetIndent("", "  ")

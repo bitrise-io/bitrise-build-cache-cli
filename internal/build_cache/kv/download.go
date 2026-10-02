@@ -121,7 +121,7 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true
 			}
-			if c.authGate.tripOnce(copyErr) {
+			if c.tripAuth(ctx, copyErr, kvReader.auth) {
 				return ErrCacheUnauthenticated, true
 			}
 
