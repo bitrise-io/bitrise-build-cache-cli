@@ -54,7 +54,7 @@ func TestWatcher_scan_MatchedEntry_FiresImmediately(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			calls++
 			uuids = append(uuids, g.UUIDs()...)
 		},
@@ -81,7 +81,7 @@ func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
@@ -131,7 +131,7 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
@@ -171,7 +171,7 @@ func TestWatcher_scan_ZeroRetries_MintsImmediately(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
@@ -197,7 +197,7 @@ func TestWatcher_scan_NilMatchProbe_FiresImmediately(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
@@ -223,7 +223,7 @@ func TestWatcher_scan_SeedOnlyDoesNotPopulateRetries(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			handled = append(handled, g.UUIDs()...)
 		},
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
@@ -247,7 +247,7 @@ func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
 	w := &Watcher{
 		Now:                   func() time.Time { return fixtureNow },
 		HomeDir:               home,
-		Handle:                func(ManifestEntryGroup) {},
+		Handle:                func(string, ManifestEntryGroup) {},
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
 	}
@@ -307,7 +307,7 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 			DefaultDerivedDataGlob,
 			".bitrise/cache/xcode-dd/*/Logs/*/LogStoreManifest.plist",
 		},
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			handled = append(handled, g.UUIDs()...)
 		},
 	}
@@ -330,7 +330,7 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Globs:   nil,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			handled = append(handled, g.UUIDs()...)
 		},
 	}
@@ -351,7 +351,7 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			handled = append(handled, g.UUIDs()...)
 		},
 	}
@@ -379,7 +379,7 @@ func TestWatcher_scan_HydratesSeenFromHandledStoreOnStartup(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			handled = append(handled, g.UUIDs()...)
 		},
 		HandledStore: store,
@@ -405,7 +405,7 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 
 	w := &Watcher{
 		HomeDir:      home,
-		Handle:       func(ManifestEntryGroup) {},
+		Handle:       func(string, ManifestEntryGroup) {},
 		HandledStore: store,
 		Now:          func() time.Time { return fixtureNow },
 	}
@@ -471,7 +471,7 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsOneGroup(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			groups = append(groups, g)
 		},
 	}
@@ -495,7 +495,7 @@ func TestWatcher_scan_AppendingUUIDToExistingGroup_EmitsOnceMore(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) {
 			handleCalls++
 			lastUUIDs = g.UUIDs()
 		},
@@ -522,7 +522,7 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 
 	w := &Watcher{
 		HomeDir: home,
-		Handle:  func(ManifestEntryGroup) { handles++ },
+		Handle:  func(string, ManifestEntryGroup) { handles++ },
 		Now:     func() time.Time { return time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC) },
 	}
 	w.seen = map[string]struct{}{}
