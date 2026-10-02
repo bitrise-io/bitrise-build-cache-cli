@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -44,6 +45,7 @@ type enrichSetup struct {
 	captured     *analytics.Invocation
 	enricher     *enrichment.Enricher
 	group        enrichment.ManifestEntryGroup
+	logBuf       *bytes.Buffer
 }
 
 func newEnrichSetup(t *testing.T) *enrichSetup {
@@ -64,12 +66,14 @@ func newEnrichSetup(t *testing.T) *enrichSetup {
 		},
 	}
 
+	buf := &bytes.Buffer{}
 	// Real clock: pollLogFile uses e.now() to compare against a wall-time
 	// deadline, so Now stays nil here. LogPollMaxWait is deliberately short
 	// so the log-missing path finishes in a few ms, not 2 s.
 	e := &enrichment.Enricher{
 		Store:          store,
 		Client:         mock,
+		Logger:         log.NewLogger(log.WithOutput(buf)),
 		LogPollMaxWait: 10 * time.Millisecond,
 	}
 
@@ -90,62 +94,66 @@ func newEnrichSetup(t *testing.T) *enrichSetup {
 		captured:     captured,
 		enricher:     e,
 		group:        group,
+		logBuf:       buf,
 	}
 }
 
-func TestEnricher_MetricsSource_ActivityLog(t *testing.T) {
+func TestEnricher_LogHitRate_ActivityLog(t *testing.T) {
 	s := newEnrichSetup(t)
 	writeLog(t, s.manifestDir, s.logName, []byte("header\nnote: 7 hits / 10 cacheable tasks (70%)\n"))
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceActivityLog, s.captured.MetricsSource)
 	assert.InDelta(t, float32(0.7), s.captured.HitRate, 0.001)
 }
 
-func TestEnricher_MetricsSource_LogMissing(t *testing.T) {
+func TestEnricher_LogHitRate_LogMissing_NoWarn(t *testing.T) {
 	s := newEnrichSetup(t)
 	// Do NOT write the log file; the manifest-dir exists but the sibling is absent.
 	// LogPollMaxWait on the setup is short enough to finish quickly.
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceLogMissing, s.captured.MetricsSource)
 	assert.Zero(t, s.captured.HitRate)
+	// Missing log is the common case for IDE builds that never hit the compile
+	// cache yet — must not be noisy at Warn.
+	assert.NotContains(t, s.logBuf.String(), "[WARN]")
 }
 
-func TestEnricher_MetricsSource_LogEmpty(t *testing.T) {
+func TestEnricher_LogHitRate_LogEmpty_NoWarn(t *testing.T) {
 	s := newEnrichSetup(t)
 	writeRaw(t, s.manifestDir, s.logName, nil)
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceLogEmpty, s.captured.MetricsSource)
 	assert.Zero(t, s.captured.HitRate)
+	assert.NotContains(t, s.logBuf.String(), "[WARN]")
 }
 
-func TestEnricher_MetricsSource_LogUnparsed(t *testing.T) {
+func TestEnricher_LogHitRate_LogUnparsed_WarnsForDrift(t *testing.T) {
 	s := newEnrichSetup(t)
 	writeLog(t, s.manifestDir, s.logName, []byte("random SLF noise with no CompilationCacheMetrics line\n"))
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceLogUnparsed, s.captured.MetricsSource)
 	assert.Zero(t, s.captured.HitRate)
+	// Unparsed is the Xcode-format-shift signal; the e2e regex-drift workflow
+	// is the primary guard, but the Warn still surfaces locally.
+	assert.Contains(t, s.logBuf.String(), "xcactivitylog unparsed")
 }
 
-func TestEnricher_MetricsSource_EmptyManifestPath_LogMissing(t *testing.T) {
-	// Callers that pass "" (test shims, legacy entry points) must still get a
-	// tagged row rather than a nil-rate silent orphan.
+func TestEnricher_LogHitRate_EmptyManifestPath_FastReturn(t *testing.T) {
+	// Callers that pass "" (test shims, legacy entry points) must still PUT,
+	// just with zero hit rate.
 	s := newEnrichSetup(t)
 
 	s.enricher.Enrich("", s.group)
 
-	assert.Equal(t, analytics.MetricsSourceLogMissing, s.captured.MetricsSource)
 	assert.Zero(t, s.captured.HitRate)
+	assert.NotEmpty(t, s.captured.InvocationID, "PUT still fires even when the log path can't be resolved")
 }
 
-func TestEnricher_MetricsSource_WaitThenSucceed_ActivityLog(t *testing.T) {
+func TestEnricher_LogHitRate_WaitThenSucceed(t *testing.T) {
 	// Covers the backoff loop: the log materialises after a short delay, well
 	// before LogPollMaxWait. Without this, deleting the Sleep(backoff) would
 	// still pass every other test.
@@ -159,17 +167,16 @@ func TestEnricher_MetricsSource_WaitThenSucceed_ActivityLog(t *testing.T) {
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceActivityLog, s.captured.MetricsSource)
 	assert.InDelta(t, float32(0.75), s.captured.HitRate, 0.001)
 }
 
-func TestEnricher_MetricsSource_StatFails_ReadError(t *testing.T) {
+func TestEnricher_LogHitRate_StatFails_WarnsAndSkips(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root bypasses directory-mode permission checks")
 	}
 	// Mode 0 on the manifest dir → stat on the sibling log returns EACCES, not
-	// ENOENT. The enricher must tag ReadError (not LogMissing / LogUnparsed) so
-	// operators can distinguish "we couldn't look" from "we looked and found
+	// ENOENT. The enricher still PUTs (zero hit rate) and surfaces a stat-failure
+	// Warn so operators can tell "we couldn't look" from "we looked and found
 	// nothing".
 	s := newEnrichSetup(t)
 	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 1 cacheable tasks (100%)\n"))
@@ -178,14 +185,14 @@ func TestEnricher_MetricsSource_StatFails_ReadError(t *testing.T) {
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceLogReadError, s.captured.MetricsSource)
 	assert.Zero(t, s.captured.HitRate)
+	assert.Contains(t, s.logBuf.String(), "xcactivitylog stat failed")
 }
 
-func TestEnricher_MetricsSource_MissingFileName_LogMissing(t *testing.T) {
+func TestEnricher_LogHitRate_MissingFileName_FastReturn(t *testing.T) {
 	s := newEnrichSetup(t)
 	// Primary entry with no FileName — happens on malformed manifests. The
-	// resolver has nothing to open, so we fast-path to log_missing.
+	// resolver has nothing to open, so we fast-path with zero hit rate.
 	s.group = enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
 		UUID:      "orphan",
 		Signature: "Build MyScheme",
@@ -196,6 +203,6 @@ func TestEnricher_MetricsSource_MissingFileName_LogMissing(t *testing.T) {
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.Equal(t, analytics.MetricsSourceLogMissing, s.captured.MetricsSource)
 	assert.Zero(t, s.captured.HitRate)
+	assert.NotEmpty(t, s.captured.InvocationID)
 }
