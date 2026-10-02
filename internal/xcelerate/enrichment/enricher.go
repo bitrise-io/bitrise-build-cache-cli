@@ -33,6 +33,11 @@ type Enricher struct {
 	Logger           log.Logger
 	Health           *HealthWriter
 	Now              func() time.Time
+
+	// LogPollMaxWait caps the total time Enrich spends waiting for the
+	// sibling .xcactivitylog to materialise. Zero falls back to
+	// logPollMaxWait. Tests override this to keep "log missing" cases fast.
+	LogPollMaxWait time.Duration
 }
 
 func (e *Enricher) now() time.Time {
@@ -185,7 +190,12 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
-	deadline := e.now().Add(logPollMaxWait)
+
+	maxWait := e.LogPollMaxWait
+	if maxWait == 0 {
+		maxWait = logPollMaxWait
+	}
+	deadline := e.now().Add(maxWait)
 
 	if waitOutcome := e.pollLogFile(logPath, deadline); waitOutcome == xcactivitylog.OutcomeFileMissing {
 		return 0, analytics.MetricsSourceLogMissing
