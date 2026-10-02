@@ -2,11 +2,12 @@
 
 Ticket: ACI-5515. Getting Build Cache onto builds that never added a Step.
 
-When a platform starts a build, the `bitrise` CLI runs
-`bitrise-build-cache activate all --auto` once, before the first workflow. At that
-point the build's credential, identity and environment already exist, so every
-tool gets the same full activation a Step would have run and nothing has to be
-deferred to the build tool.
+When a platform starts a build, the `bitrise` CLI installs the build cache CLI once
+and runs `bitrise-build-cache activate all --auto` before the first workflow. At
+that point the build's credential, identity and environment already exist, so
+every tool gets the same full activation a Step would have run and nothing has to
+be deferred to the build tool. The same install also runs the Gradle repository
+mirrors, so the VM no longer installs the CLI a second time at boot.
 
 ## Architecture
 
@@ -15,13 +16,13 @@ Three components, each doing one job.
 ```
  preboot startup script            bitrise CLI (thin wrapper)           bitrise-build-cache
  ----------------------            --------------------------           -------------------
- pins CLI version + sha256   --->  installs that version:               activate all --auto
- exports the opt-in env,           host VM cache, else GAR,             1. resolve the credential
+ pins CLI version + sha256   --->  installs that version once:          activate all --auto
+ exports the opt-in envs,          host VM cache, else GAR,             1. resolve the credential
  the org allowlist and the         verified against the sha256          2. org gate (fail closed)
- host cache URL                    runs the CLI with the build's        3. entitlement (fail open)
-                                   BITRISE_BUILD_CACHE_* envs and       4. activate each tool
-                                   the services token only              hands back envman exports
-                                   collects its envman exports
+ host cache URL                    runs activate gradle-mirrors         3. entitlement (fail open)
+                                   runs activate all --auto with the    4. activate each tool
+                                   build's cache envs, hands back       hands back envman exports
+                                   its envman exports
 ```
 
 **Preboot** owns policy that is per VM: which CLI version, which organizations,
@@ -30,21 +31,38 @@ the agent already passes `BITRISE_*` variables through to `bitrise run`.
 
 **The `bitrise` CLI** owns nothing about caching. In `bitrise run`, after the
 build's envs are assembled and before the first workflow, `internal/buildcache`
-does three things:
+does the following:
 
-1. Skips unless `BITRISE_BUILD_CACHE_ACTIVATE_ALL=true`, and skips a nested
-   `bitrise run` (the step execution id is already set).
-2. Installs `bitrise-build-cache` at `BITRISE_BUILD_CACHE_CLI_VERSION`, checks the
-   tarball against `BITRISE_BUILD_CACHE_CLI_SHA256`, and links it into
+1. Skips a nested `bitrise run` (the step execution id is already set) and
+   returns unless one of two independent opt-ins is `true`:
+   `BITRISE_BUILD_CACHE_ACTIVATE_ALL` or
+   `BITRISE_BUILD_CACHE_ACTIVATE_GRADLE_MIRRORS`. The mirrors are also skipped when
+   `BITRISE_DEN_DISABLE_HOSTS_OVERRIDE=true`, as the boot script did.
+2. Installs `bitrise-build-cache` once, at `BITRISE_BUILD_CACHE_CLI_VERSION`, checks
+   the tarball against `BITRISE_BUILD_CACHE_CLI_SHA256`, and links it into
    `~/.bitrise/tools`, which is on the build's `PATH`. Source order is
    `BITRISE_BUILD_CACHE_CLI_HOST_CACHE_URL`, then the public GAR mirror.
-3. Runs `bitrise-build-cache activate all --auto` with only the
-   `BITRISE_BUILD_CACHE_*` envs and the services token from the build, under a
-   two minute limit, and hands the CLI's `envman` exports to the first step.
+3. With the mirrors opt-in, runs `bitrise-build-cache activate gradle-mirrors -d`
+   with `BITRISE_MAVENCENTRAL_PROXY_ENABLED=true`. The generated init script
+   re-reads that variable at Gradle build time, so a build can still switch the
+   mirrors off.
+4. With the activation opt-in, runs `bitrise-build-cache activate all --auto` with
+   only the `BITRISE_BUILD_CACHE_*` envs, the services token and the Build Hub VM
+   token and URL (`BITRISEIO_BUILD_HUB_VM_TOKEN`, `_URL`) from the build, so the CLI
+   can broker a Build Cache token on a Build Hub runner. It hands the CLI's
+   `envman` exports to the first step.
 
-A failure at any point is a warning, never a failed build. There is no version
-pin in the `bitrise` repo: preboot already pins the version and sha256 and the
-release automation already bumps them.
+Each command runs under the same two minute limit, and one failing does not stop
+the other. A failure at any point is a warning, never a failed build. There is no
+version pin in the `bitrise` repo: preboot already pins the version and sha256 and
+the release automation already bumps them.
+
+**Why the mirrors moved.** They used to be activated at VM boot by a parallel phase
+that downloaded the same CLI to `/tmp/bin`. Both installs hit the host cache, so
+the second was pure waste. The mirrors are still configured before the first step,
+but per build instead of per VM boot, and for every build instead of per
+organization. The `/etc/hosts` pinning for the mirror hostnames stays in the boot
+script, because hosts writers must not race.
 
 **The build cache CLI** owns every decision about whether and what to activate.
 `activate all` runs `activate gradle`, `bazel`, `xcode` (macOS only) and
@@ -73,11 +91,12 @@ Two checks, in this order, both before anything is written:
    workspace. The workspace comes from the build's own
    credential (`BITRISE_BUILD_CACHE_WORKSPACE_ID`, else the `org_id` claim of the
    services token). No credential, no workspace, no list, or a workspace not on
-   the list all mean: log one line, write nothing, exit 0.
-2. **Entitlement, fails open.** Every `activate <tool>` command, and `activate
-   all` once for the whole set, asks whether the workspace has Build Cache for
-   that tool and stops before writing anything on an explicit "no", printing where
-   to start a trial. The answer is three-valued: an unreachable website, a missing
+   the list all mean: log one line, write nothing, exit 0. `all` skips the list but
+   not the credential: with no workspace resolved, nothing is activated.
+2. **Entitlement, fails open.** Entitlement is per workspace, not per build tool.
+   Every `activate <tool>` command, and `activate all`, asks whether the workspace
+   has Build Cache and stops before writing anything on an explicit "no", printing
+   where to start a trial. The answer is three-valued: an unreachable website, a missing
    workspace or an unexpected response is Unknown, and Unknown carries on, so a
    website outage cannot disable caching for everyone.
 
@@ -113,6 +132,10 @@ tools a build uses before it has started. It means every enabled build gets:
 | Xcode (macOS) | `xcodebuild` and `xcrun` wrappers first on `PATH`, `~/.bitrise-xcelerate`, a background cache proxy |
 | C++ | ccache install and config; the React Native setup |
 | All | `BITRISE_BUILD_CACHE_*` and benchmark-phase exports through `envman` |
+
+The Gradle mirrors are a separate opt-in and are not part of `activate all`: they
+write their own Gradle init script and are enabled for every build on the VM, not
+per organization.
 
 Measured cost on a macOS VM: about 6 seconds for all four.
 
@@ -183,12 +206,36 @@ Not validated:
   never runs. Linux can only be tested with a real `bitrise` release that DEN
   then requests, either globally or through its per-organization version override
   (read from the agent code, not exercised).
+- The Gradle mirrors from `bitrise run` with the boot-time phase removed: the hook
+  is unit tested and a staging run is pending. Linux keeps its boot-time phase.
+- The `all` allowlist value and per-workspace entitlement: unit tested, not yet
+  run on staging (the staging prerelease predates both).
 - The entitlement cases: trial, active subscription, none. They need the endpoint.
 - An explicit activate Step in a workflow on an auto-activated VM.
 - Builds that use none of the activated tools, and Tuist or other callers of
   `xcodebuild` by absolute path.
 - React Native iOS cache hits (the Seek build needs a deployment-target patch on Xcode 27).
 - Production DEN and non-macOS-arm64 VMs.
+
+## Observability
+
+The mirror activation used to log from the VM startup script, where the
+allocation analytics router classified two signals: any line starting with
+`activating bitrise-build-cache gradle-mirrors failed:` (a failure) and the host
+cache fallback line (a trend, not a failure). Once `bitrise run` does the
+activation those lines are written to the **build log**, so they move from
+allocation analytics to build-log analytics:
+
+- Build-log classification rules for the same two signals, in
+  `build-analytics-deployments` (`staging` branch, which covers production). The
+  allocation rules stay while the Linux boot-time phase still emits the lines.
+- Datadog monitors on the new signals in `internal-platform-services`: the mirror
+  activation failure rate and the host-cache fallback trend.
+- The strings are part of the contract between the `bitrise` CLI and the
+  classifier, and have to stay stable across rewordings.
+
+These must be live before the boot-time phase is removed from production
+preboot, or the failure signal goes dark for that window.
 
 ## Rollout plan
 
@@ -211,23 +258,32 @@ script, later by the website endpoint. Each step limits what the next can break.
 1. **Staging preboot** (done in a test form): export the opt-in, the allowlist and
    the host cache URL, and hand over the pin. Validate every tool and OS on
    staging, including the negative case: a build from a workspace not on the list
-   must activate nothing and report no invocation.
-2. **Linux and containers.** Needs step 0's `bitrise` release and a DEN request
+   must activate nothing and report no invocation. Also validate the Gradle
+   mirrors from `bitrise run` with the boot-time phase removed: the init script
+   must come from the build log, and the CLI must be installed once.
+2. **Observability before the mirrors move.** The build-log classifier rules and
+   the Datadog monitors above go live first.
+3. **Linux and containers.** Needs step 0's `bitrise` release and a DEN request
    for it. Until then Linux builds are not activated at all, because the container's
    `bitrise` has no hook.
-3. **Production preboot for internal workspaces only.** Allowlist: the Bitrise
-   monitoring and Advanced CI workspaces. Watch invocation counts, failures, and
-   build duration.
-4. **Opt in organizations one by one.** One preboot change per organization,
+4. **Production preboot, one PR.** Pass the pin and host cache URL, opt in the
+   internal workspaces (Bitrise monitoring and Advanced CI) and the Gradle
+   mirrors, and drop the boot-time mirror phase. **Merge it only after a `bitrise`
+   release with the hook is what DEN requests on production macOS VMs.** Until
+   then no build runs the mirrors, so merging earlier drops them fleet-wide.
+   Running both is harmless, since the init script is identical. Watch invocation
+   counts, failures, mirror activation failures and build duration.
+5. **Opt in organizations one by one.** One preboot change per organization,
    adding its slug to the list. Before each: confirm the workspace has a trial or
    subscription, and tell support and sales that cache activity will appear for a
    workspace with no Step. After each: watch the same signals for a day.
    Rollback is removing the slug.
-5. **Website endpoint ships.** Replace the list with the entitlement answer per
-   tool: flip `entitlementEndpointShipped`, delete the bypass, and remove the
+6. **Website endpoint ships.** Replace the list with the entitlement answer per
+   workspace: flip `entitlementEndpointShipped`, delete the bypass, and remove the
    allowlist. Opting in is then a product setting instead of a deploy.
-6. **General availability.** Remove the opt-in env from preboot so the endpoint is
-   the only gate.
+7. **General availability.** Remove the opt-in env from preboot so the endpoint is
+   the only gate. `BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS=all` is the interim way to
+   bypass the allowlist for every workspace without removing the gate code.
 
 Rollout and rollback are slower than the config change suggests. VMs are pooled
 and boot ahead of demand. On staging, builds ran on VMs that had booted 8 to 19
@@ -287,6 +343,10 @@ Roughly in order of how likely they are to matter.
     asks and each tool it then runs asks again, so once the endpoint ships a build
     makes up to five requests at five seconds each in the worst case. The answer
     should be cached for the build before that.
+16. **The mirrors move from boot to build start.** They are configured per build,
+    for every build, and the failure signal moves from the VM log to the build log.
+    A slow or failing install now adds to every build's start instead of the VM's
+    boot, and the classifier and monitors must be live first (see Observability).
 
 ## Open questions
 
@@ -298,3 +358,5 @@ Roughly in order of how likely they are to matter.
   becoming a second source of truth?
 - Who owns asking DEN for the per-organization `bitrise` version, and in what order
   relative to the preboot change?
+- Should the mirrors stay a separate, always-on opt-in, or follow the org allowlist
+  once it is `all`?
