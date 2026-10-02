@@ -49,7 +49,7 @@ func TestEnricher_MatchedPendingSkipsPUTAndPrunesRecord(t *testing.T) {
 		XcodeBuildNumber: "16C5032a",
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		UUID:       "manifest-uuid",
 		Signature:  "Build MyScheme",
 		SchemeName: "MyScheme",
@@ -87,7 +87,7 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 		Start:     time.Now(),
 		Stop:      time.Now().Add(3 * time.Second),
 	}
-	e.Enrich("",singleEntryGroup(entry))
+	e.Enrich("", singleEntryGroup(entry))
 
 	assert.NotEmpty(t, captured.InvocationID)
 	assert.False(t, captured.Success)
@@ -116,7 +116,7 @@ func TestEnricher_CommandUnknown_SkipsPUT(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	for _, sig := range []string{"Resolve Packages", "Update Signing", "Sync Localizations"} {
-		e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+		e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 			UUID:      "side-effect-" + sig,
 			Signature: sig,
 			Status:    "S",
@@ -157,7 +157,7 @@ func TestEnricher_MetadataForwarded(t *testing.T) {
 		Client: mock,
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
@@ -184,7 +184,7 @@ func TestEnricher_UpdatesHealth_OnSuccess(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -215,7 +215,7 @@ func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -244,7 +244,7 @@ func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		UUID:      "orphan",
 		Signature: "Archive S",
 		Start:     now,
@@ -273,7 +273,7 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
@@ -304,7 +304,7 @@ func TestEnricher_MatchedSkip_DoesNotTickHealth(t *testing.T) {
 		Now:    func() time.Time { return base },
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Status:    "S",
 		Start:     base.Add(2 * time.Second),
@@ -339,7 +339,7 @@ func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -367,7 +367,7 @@ func TestEnricher_OrphanDurationIsFromManifest(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich("",singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Status:    "S",
 		Start:     base.Add(1 * time.Second),
@@ -398,7 +398,7 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 		{UUID: "u2", SchemeName: "S", Signature: "Test S", Status: "S", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
 	}}
-	e.Enrich("",group)
+	e.Enrich("", group)
 
 	assert.Equal(t, "test S", captured.Command, "aggregate command uses the primary (test > build) plus scheme")
 	assert.Equal(t, "Test S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
@@ -428,7 +428,7 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 		{UUID: "u2", SchemeName: "S", Signature: "Test S", Status: "E", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
 	}}
-	e.Enrich("",group)
+	e.Enrich("", group)
 
 	assert.False(t, captured.Success, "any failed entry fails the aggregate")
 }
@@ -447,7 +447,7 @@ func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich("",enrichment.ManifestEntryGroup{})
+	e.Enrich("", enrichment.ManifestEntryGroup{})
 
 	assert.Zero(t, puts)
 }
