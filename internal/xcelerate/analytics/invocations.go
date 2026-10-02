@@ -15,7 +15,7 @@ import (
 
 // MetricsSource tags the origin of the HitRate on an Invocation row so
 // downstream analytics can tell wrapper-counter rows apart from log-scraped
-// enrichment rows. Keep in sync with xcactivitylog.Outcome.String().
+// enrichment rows. The enricher maps xcactivitylog.Outcome into these.
 //
 // BE schema alignment pending: metricsSource vs enrichmentSource vs
 // cacheMetricsSource. Confirm the field name with the BE owner before PR
