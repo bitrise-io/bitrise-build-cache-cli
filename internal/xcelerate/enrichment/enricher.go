@@ -96,7 +96,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
-	hitRate, metricsSource := e.readLogMetrics(manifestPath, group)
+	hitRate := e.readLogHitRate(manifestPath, group)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
@@ -108,7 +108,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
-		MetricsSource:    metricsSource,
 	}, e.Auth, e.Metadata)
 
 	TickAttempt(e.Health, e.Logger, e.now())
@@ -167,20 +166,19 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	}
 }
 
-// readLogMetrics resolves the sibling xcactivitylog, waits briefly for it to
-// land, parses the compile-cache hit rate, and maps the reader Outcome onto a
-// MetricsSource tag. An empty manifestPath (seen in tests that construct
-// Enricher directly) short-circuits to log_missing without touching disk.
-func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup) (float32, string) {
+// readLogHitRate resolves the sibling xcactivitylog, waits briefly for it to
+// land, and parses the compile-cache hit rate. Returns 0 on every non-OK
+// outcome; the e2e workflow is the regex-drift guard, so this path is intentionally quiet beyond Warn-level diagnostics.
+func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) float32 {
 	logger := logOr(e.Logger)
 
 	if manifestPath == "" {
-		return 0, analytics.MetricsSourceLogMissing
+		return 0
 	}
 
 	primary := group.Primary()
 	if primary.FileName == "" {
-		return 0, analytics.MetricsSourceLogMissing
+		return 0
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
@@ -193,10 +191,8 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 
 	//exhaustive:ignore // pollLogFile only ever returns OK / FileMissing / ReadError.
 	switch e.pollLogFile(logPath, deadline) {
-	case xcactivitylog.OutcomeFileMissing:
-		return 0, analytics.MetricsSourceLogMissing
-	case xcactivitylog.OutcomeReadError:
-		return 0, analytics.MetricsSourceLogReadError
+	case xcactivitylog.OutcomeFileMissing, xcactivitylog.OutcomeReadError:
+		return 0
 	}
 
 	metrics, err := xcactivitylog.ReadCompilationCacheMetricsWithLogger(logPath, logger)
@@ -207,24 +203,18 @@ func (e *Enricher) readLogMetrics(manifestPath string, group ManifestEntryGroup)
 	//exhaustive:ignore // FileMissing is handled above by pollLogFile.
 	switch metrics.Outcome {
 	case xcactivitylog.OutcomeOK:
-		return metrics.HitRate, analytics.MetricsSourceActivityLog
+		return metrics.HitRate
 	case xcactivitylog.OutcomeEmpty:
 		logger.Debugf("xcactivitylog empty at %s", logPath)
-
-		return 0, analytics.MetricsSourceLogEmpty
-	case xcactivitylog.OutcomeReadError:
-		return 0, analytics.MetricsSourceLogReadError
 	case xcactivitylog.OutcomeUnparsed:
 		size := int64(-1)
 		if st, statErr := os.Stat(logPath); statErr == nil {
 			size = st.Size()
 		}
 		logger.Warnf("xcactivitylog unparsed at %s (xcode=%s size=%d): no CompilationCacheMetrics match", logPath, e.XcodeVersion, size)
-
-		return 0, analytics.MetricsSourceLogUnparsed
-	default:
-		return 0, analytics.MetricsSourceLogUnparsed
 	}
+
+	return 0
 }
 
 // pollLogFile is a bounded wait distinct from the correlator's retry bucket.
