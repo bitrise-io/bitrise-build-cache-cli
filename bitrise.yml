@@ -1999,6 +1999,11 @@ workflows:
 
               ../bitrise-build-cache-cli -d activate xcode --cache
 
+              # activate xcode writes PATH export via envman for subsequent steps;
+              # current step's shell needs the override to resolve the wrapper that
+              # auto-spawns the proxy socket the CAS plugin connects to.
+              export PATH="$HOME/.bitrise-xcelerate/bin:$PATH"
+
               xcodebuild build \
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
