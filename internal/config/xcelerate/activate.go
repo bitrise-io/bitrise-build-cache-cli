@@ -99,6 +99,8 @@ func Activate(
 		} else {
 			logger.Debugf("Wrote Xcode.app override xcconfig")
 		}
+
+		installXcodeToolchain(ctx, logger, osProxy, commandFunc, config.ProxySocketPath, config.OriginalXcodebuildPath)
 	}
 
 	ensureLogDir(logger, osProxy)

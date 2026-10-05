@@ -39,6 +39,12 @@ func Deactivate(ctx context.Context, logger log.Logger, params DeactivateParams)
 		errs = append(errs, err)
 	}
 
+	if params.DryRun {
+		logger.TInfof("[dry-run] would remove Xcode toolchain bundle under %s", paths.FromHome(home).XcodeToolchainBundleDir())
+	} else {
+		uninstallXcodeToolchain(logger, osProxy)
+	}
+
 	if err := removeXcelerateRoot(logger, home, params.DryRun); err != nil {
 		errs = append(errs, err)
 	}
