@@ -73,7 +73,7 @@ func TestWriteOverrideXCConfig_honorsEnvOverride(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock")
 
-	// The default path must NOT have been written: writer and reader must agree.
+	// Writer and reader must agree on the resolved path.
 	defaultPath := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
 	_, err = os.Stat(defaultPath)
 	assert.True(t, os.IsNotExist(err), "default path should not be written when env override is set, got err=%v", err)
