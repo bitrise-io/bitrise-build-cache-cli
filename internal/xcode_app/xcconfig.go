@@ -12,7 +12,10 @@ import (
 )
 
 // AppleCASPluginPath is the stock LLVM CAS plugin dylib that ships with Xcode;
-// it speaks the same gRPC protocol as our proxy.
+// it speaks the same gRPC protocol as our proxy. Hardcoded for the common
+// install location; when the toolchain bundle is installed, its OverrideBuildSettings
+// supplies a dynamically-resolved path (via xcode-select) which wins at build time
+// for Xcode-beta or sidecar installs.
 const AppleCASPluginPath = "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"
 
 // Render omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES on purpose:
