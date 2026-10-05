@@ -163,7 +163,7 @@ func ensureDsymutilCasShim(ctx context.Context, logger log.Logger, osProxy utils
 		Paths:   p,
 		OsProxy: osProxy,
 		Logger:  logger,
-		CLIPath: filepath.Join(p.XcelerateBinDir(), cliBasename),
+		CLIPath: filepath.Join(p.XcelerateBinDir(), paths.XcelerateCLIBinaryName),
 	})
 	if err != nil {
 		logger.Warnf("Failed to stage dsymutil CAS shim toolchain (dSYMs may be smaller under cache): %v", err)
