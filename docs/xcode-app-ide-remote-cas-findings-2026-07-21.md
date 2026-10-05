@@ -1,5 +1,11 @@
 # Xcode.app IDE remote CAS — findings 2026-07-21
 
+> **Historical.** This document captures what we knew in July 2026, when IDE
+> builds had no remote CAS reach at all. Subsequent spikes resolved both the
+> IDE RPC path (via `xcconfig` carrying the per-build setting) and SPM package
+> coverage (via a custom toolchain bundle). Current state + planned changes
+> live in [`xcode-caching.md`](xcode-caching.md).
+
 ## Context
 
 Verified end-to-end whether `xcode-app enable` (launchctl `XCODE_XCCONFIG_FILE`)
