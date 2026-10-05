@@ -51,7 +51,7 @@ func TestRenderToolchainInfoPlist_isValidXML(t *testing.T) {
 	body, err := RenderToolchainInfoPlist("/tmp/proxy.sock", "/dev/null")
 	require.NoError(t, err)
 
-	// Full plist decode isn't portable, but well-formed XML is the minimum.
+	// Well-formed XML is the minimum; full plist decode isn't portable.
 	decoder := xml.NewDecoder(bytesReader(body))
 	for {
 		_, err := decoder.Token()
@@ -80,13 +80,11 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 
 	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"))
 
-	// Plist file written.
 	plist := filepath.Join(installPath, toolchainInfoPlistFile)
 	plistBody, err := os.ReadFile(plist) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
 	assert.Contains(t, string(plistBody), "<key>Identifier</key>")
 
-	// usr/bin entries mirrored as symlinks.
 	for _, name := range []string{"swiftc", "clang"} {
 		linkPath := filepath.Join(installPath, "usr", "bin", name)
 		target, err := os.Readlink(linkPath)
@@ -94,7 +92,7 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 		assert.Equal(t, filepath.Join(defaultTC, "usr", "bin", name), target)
 	}
 
-	// Top-level usr dirs symlinked (lib exists in seed, libexec doesn't → absent).
+	// libexec not in the seed; must not be synthesised.
 	libLink := filepath.Join(installPath, "usr", "lib")
 	target, err := os.Readlink(libLink)
 	require.NoError(t, err)
@@ -102,7 +100,6 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 	_, err = os.Lstat(filepath.Join(installPath, "usr", "libexec"))
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 
-	// Developer dir symlinked.
 	devLink := filepath.Join(installPath, "Developer")
 	target, err = os.Readlink(devLink)
 	require.NoError(t, err)
@@ -120,7 +117,6 @@ func TestInstallToolchain_isIdempotent(t *testing.T) {
 	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p1.sock", "/dev/null"))
 	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p2.sock", "/dev/null"))
 
-	// Second install must still produce a valid plist referencing the new socket.
 	body, err := os.ReadFile(filepath.Join(installPath, toolchainInfoPlistFile)) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "<string>/tmp/p2.sock</string>")
@@ -178,8 +174,7 @@ func TestUninstallToolchain_leavesForeignLinkUntouched(t *testing.T) {
 	require.NoError(t, os.MkdirAll(installPath, 0o755))
 	require.NoError(t, os.MkdirAll(otherTarget, 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Dir(linkPath), 0o755))
-	// A pre-existing link that points elsewhere must survive our uninstall —
-	// we don't own it.
+	// Foreign link (not pointing at our install path) must survive uninstall.
 	require.NoError(t, os.Symlink(otherTarget, linkPath))
 
 	require.NoError(t, UninstallToolchain(installPath, linkPath))
@@ -191,8 +186,6 @@ func TestUninstallToolchain_leavesForeignLinkUntouched(t *testing.T) {
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 }
 
-// seedFakeDefaultToolchain creates a minimal Default toolchain layout under
-// `root` so InstallToolchain has something to symlink.
 func seedFakeDefaultToolchain(t *testing.T, root string) {
 	t.Helper()
 

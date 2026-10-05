@@ -14,9 +14,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
-// xcodeRecentBuildWindow is wide enough to catch a typical build-think-build
-// cadence while narrow enough that stale logs from yesterday don't drown the
-// signal. Only the newest match in the window is reported.
 const xcodeRecentBuildWindow = 1 * time.Hour
 
 func (d *Doctor) xcodeRecentBuildCheck() Check {
@@ -85,10 +82,8 @@ func diagnoseXcodeRecentBuild(derivedDataRoot string, now time.Time) Result {
 	}
 }
 
-// findNewestRecentActivityLog walks ~/Library/Developer/Xcode/DerivedData/*/Logs/Build/
-// for `.xcactivitylog` files modified after cutoff. Returns the newest path and
-// the enclosing project dir name (e.g. "MyApp-abc123def"); empty string + nil
-// error means no match.
+// findNewestRecentActivityLog returns the newest xcactivitylog modified after
+// cutoff plus its enclosing project dir name; "" + nil means no match.
 func findNewestRecentActivityLog(derivedDataRoot string, cutoff time.Time) (string, string, error) {
 	entries, err := os.ReadDir(derivedDataRoot)
 	if err != nil {

@@ -13,9 +13,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// Toolchain bundle identity. ToolchainID is the single source of truth, also
-// consumed by the xcconfig writer so the TOOLCHAINS build setting resolves the
-// bundle Xcode discovers.
+// ToolchainID is shared with the TOOLCHAINS xcconfig setting so SwiftBuild
+// resolves the same bundle.
 const (
 	ToolchainID                          = paths.XcodeToolchainBundleID
 	ToolchainDisplayName                 = "Bitrise Build Cache"
@@ -24,16 +23,11 @@ const (
 	toolchainInfoPlistFile               = "ToolchainInfo.plist"
 )
 
-// toolchainSymlinkedUsrDirs mirror the Default toolchain's layout under the
-// bundle's usr/, so Xcode's `TOOLCHAINS` lookup resolves every binary / lib /
-// header exactly as the Default toolchain would.
 var toolchainSymlinkedUsrDirs = []string{"lib", "libexec", "include", "share"} //nolint:gochecknoglobals // immutable layout data
 
-// RenderToolchainInfoPlist produces the ToolchainInfo.plist body carrying the
-// compile-cache build-setting overrides. `pluginPath` is Apple's
-// libToolchainCASPlugin.dylib (derived from the active Xcode developer dir —
-// never hardcoded to /Applications/Xcode.app so Xcode-beta / sidecar
-// installs work).
+// RenderToolchainInfoPlist builds a ToolchainInfo.plist carrying the
+// compile-cache OverrideBuildSettings. pluginPath is derived from the active
+// developer dir so Xcode-beta / sidecar installs work.
 func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error) {
 	if proxySocketPath == "" {
 		return nil, errors.New("proxy socket path is empty")
@@ -56,10 +50,9 @@ func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error
 	return []byte(marshalToolchainPlist(settings)), nil
 }
 
-// InstallToolchain writes a thin toolchain bundle under installPath that
-// shadows every binary of defaultToolchainPath via symlink and carries
-// OverrideBuildSettings for the CAS wiring. Idempotent: re-running produces
-// the same bundle state.
+// InstallToolchain writes a thin toolchain bundle that shadows
+// defaultToolchainPath via symlinks and carries CAS OverrideBuildSettings.
+// Idempotent.
 func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath string) error {
 	if installPath == "" {
 		return errors.New("install path is empty")
@@ -97,10 +90,9 @@ func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, plugin
 	return nil
 }
 
-// UninstallToolchain removes the installed bundle and the discovery symlink
-// under ~/Library/Developer/Toolchains if it points at installPath.
-// `toolchainsLinkPath` is the full path of the discovery symlink
-// (`~/Library/Developer/Toolchains/<id>`).
+// UninstallToolchain removes the bundle and the discovery symlink, but only
+// drops the symlink when it still points at installPath (so we don't clobber
+// a foreign bundle that reused the same name).
 func UninstallToolchain(installPath, toolchainsLinkPath string) error {
 	if toolchainsLinkPath != "" {
 		if target, err := os.Readlink(toolchainsLinkPath); err == nil && target == installPath {
@@ -121,10 +113,8 @@ func UninstallToolchain(installPath, toolchainsLinkPath string) error {
 	return nil
 }
 
-// LinkToolchain places a symlink at toolchainsLinkPath pointing at installPath
-// so Xcode discovers the bundle via its canonical lookup dir. Replaces an
-// existing symlink (stale pointer from a prior install); refuses to clobber a
-// non-symlink file or directory the user put there.
+// LinkToolchain creates the discovery symlink. Replaces an existing symlink
+// (stale pointer); refuses to clobber a non-symlink the user put there.
 func LinkToolchain(installPath, toolchainsLinkPath string) error {
 	if toolchainsLinkPath == "" {
 		return errors.New("toolchains link path is empty")
@@ -152,8 +142,6 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 
 	return nil
 }
-
-// Private — toolchain bundle layout helpers.
 
 func symlinkUsrBinEntries(installPath, defaultToolchainPath string) error {
 	srcBin := filepath.Join(defaultToolchainPath, "usr", "bin")
@@ -212,9 +200,8 @@ func symlinkDeveloperDir(installPath, defaultToolchainPath string) error {
 	return nil
 }
 
-// marshalToolchainPlist renders a minimal Apple-style XML plist. Hand-written
-// because encoding/xml does not emit the DOCTYPE and dict/key/string pairs
-// Xcode's plist parser expects.
+// marshalToolchainPlist is hand-written because encoding/xml does not emit the
+// DOCTYPE Xcode's plist parser requires.
 func marshalToolchainPlist(overrideSettings map[string]string) string {
 	keys := make([]string, 0, len(overrideSettings))
 	for k := range overrideSettings {

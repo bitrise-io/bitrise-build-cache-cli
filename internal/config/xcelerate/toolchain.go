@@ -14,13 +14,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
-// installXcodeToolchain installs the thin toolchain bundle under
-// ~/.bitrise-xcelerate/toolchain/<id> and links it into
-// ~/Library/Developer/Toolchains so Xcode discovers it.
-//
-// The bundle's OverrideBuildSettings is the only mechanism that reaches SPM
-// package targets on CLI xcodebuild runs. Failures are non-fatal: a missing
-// toolchain just means SPM targets fall back to no cache, same as before.
+// installXcodeToolchain installs the toolchain bundle and links it under
+// ~/Library/Developer/Toolchains. Best-effort: failures just mean SPM targets
+// miss the CAS wiring.
 func installXcodeToolchain(
 	ctx context.Context,
 	logger log.Logger,
@@ -63,9 +59,8 @@ func installXcodeToolchain(
 	logger.Infof("Installed Xcode toolchain bundle at %s (linked under %s)", installPath, linkPath)
 }
 
-// uninstallXcodeToolchain removes the installed bundle plus discovery symlink,
-// mirroring installXcodeToolchain's two steps in reverse. Failures are
-// non-fatal — deactivate must not block on a stale toolchain.
+// uninstallXcodeToolchain removes the bundle and discovery symlink.
+// Best-effort: deactivate must not block on a stale toolchain.
 func uninstallXcodeToolchain(logger log.Logger, osProxy utils.OsProxy) {
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
@@ -87,9 +82,8 @@ func uninstallXcodeToolchain(logger log.Logger, osProxy utils.OsProxy) {
 	logger.Infof("Removed Xcode toolchain bundle at %s", installPath)
 }
 
-// resolveDeveloperDir prefers deriving from the known xcodebuild path so the
-// toolchain install matches the CLI's configured Xcode, and falls back to
-// xcode-select -p for the stock terminal / Build Hub flows.
+// resolveDeveloperDir derives from the configured xcodebuild path when possible
+// so the install matches the CLI's Xcode; falls back to xcode-select -p.
 func resolveDeveloperDir(ctx context.Context, cmdFunc utils.CommandFunc, originalXcodebuildPath string) (string, error) {
 	if derived := developerDirFromXcodebuildPath(originalXcodebuildPath); derived != "" {
 		return derived, nil
@@ -108,9 +102,8 @@ func resolveDeveloperDir(ctx context.Context, cmdFunc utils.CommandFunc, origina
 	return developerDir, nil
 }
 
-// developerDirFromXcodebuildPath returns the active Xcode's developer dir if
-// `path` looks like `<DeveloperDir>/usr/bin/xcodebuild`; otherwise returns ""
-// so the caller falls back to `xcode-select -p`.
+// developerDirFromXcodebuildPath returns "" when path doesn't match
+// <DeveloperDir>/usr/bin/xcodebuild, signalling the caller to fall back.
 func developerDirFromXcodebuildPath(path string) string {
 	const suffix = "/usr/bin/xcodebuild"
 	if !strings.HasSuffix(path, suffix) {

@@ -41,10 +41,8 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-// Enrich is the Watcher.Handle callback. manifestPath is the LogStoreManifest.plist
-// path the group was parsed from; it anchors the sibling xcactivitylog resolve
-// (manifestDir/Primary().FileName) used to read compile-cache metrics into the
-// orphan PUT.
+// Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
+// xcactivitylog read used to populate the orphan hit rate.
 func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
 
@@ -155,11 +153,9 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	}
 }
 
-// readLogHitRate resolves the sibling xcactivitylog and parses its compile-cache
-// hit rate. Returns 0 on any non-OK outcome; measured on 20 CasProbe builds the
-// log is on disk ~0.3ms before the manifest (manifest-write is Xcode's last
-// close-step), so no bounded wait is needed — reader's ENOENT path handles the
-// vanishing race.
+// readLogHitRate returns 0 on any non-OK outcome. The log lands on disk before
+// the manifest (Xcode writes the manifest last), so no bounded wait is needed —
+// the reader's ENOENT path handles the vanishing race.
 func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) float32 {
 	logger := logOr(e.Logger)
 
