@@ -3,15 +3,8 @@
 > **Historical.** This document captures what we knew in July 2026, when IDE
 > builds had no remote CAS reach at all. Subsequent spikes resolved both the
 > IDE RPC path (via `xcconfig` carrying the per-build setting) and SPM package
-> coverage (via a custom toolchain bundle). See:
->
-> - [`xcode-toolchain-approach.md`](xcode-toolchain-approach.md) — current
->   production approach: thin toolchain bundle with `OverrideBuildSettings`
->   wiring the compile-cache for every target, including SPM packages.
-> - [`xcode-toolchain-roadmap.md`](xcode-toolchain-roadmap.md) — v2 (Xcode 27.1
->   IDE-SPM unlock) and v3 (proxy-side peer-PID session correlation) follow-ons.
-> - [`xcode-toolchain-spike-findings-2026-10-05.md`](xcode-toolchain-spike-findings-2026-10-05.md) —
->   the toolchain spike that this document is superseded by.
+> coverage (via a custom toolchain bundle). Current state + planned changes
+> live in [`xcode-caching.md`](xcode-caching.md).
 
 ## Context
 
