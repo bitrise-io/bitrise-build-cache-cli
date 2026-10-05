@@ -50,6 +50,11 @@ const (
 	// enrichment watcher and retry queue share.
 	xcelerateEnrichmentSubdir = "enrichment"
 
+	// xcelerateDsymShimSubdir holds the per-invocation touch files the
+	// dsymutil CAS shim drops; the xcodebuild wrapper drains them at
+	// end-of-run and folds the counts into analytics.
+	xcelerateDsymShimSubdir = "dsymshim"
+
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
@@ -73,6 +78,27 @@ const (
 
 	// xcelerateBinSubdir holds the xcelerate wrapper scripts (xcodebuild / xcrun) and CLI copy.
 	xcelerateBinSubdir = "bin"
+
+	// xcelerateToolchainsSubdir holds staged custom Xcode toolchains the CLI installs
+	// (currently just the dsymutil-CAS-shim farm).
+	xcelerateToolchainsSubdir = "toolchains"
+
+	// DsymutilCasShimToolchainBundleName is the on-disk directory name of the staged custom
+	// toolchain. It is also the CFBundleIdentifier used in TOOLCHAINS=<id> $(inherited).
+	DsymutilCasShimToolchainBundleName = "com.bitrise.cas-shim.xctoolchain"
+
+	// DsymutilCasShimToolchainID is the toolchain identifier passed to xcodebuild via the
+	// TOOLCHAINS build setting; matches the farm's Info.plist CFBundleIdentifier.
+	DsymutilCasShimToolchainID = "com.bitrise.cas-shim"
+
+	// XcodeUserToolchainsDirRelative is Apple's per-user Toolchains dir scanned by xcodebuild
+	// when resolving TOOLCHAINS=<id>; relative to $HOME.
+	XcodeUserToolchainsDirRelative = "Library/Developer/Toolchains"
+
+	// CompilationCachePluginDirRelative is the plugin store the Apple compile-cache plugin
+	// writes under either DerivedData or PROJECT_TEMP_DIR. The shim reads it to pass -cas <dir>
+	// to dsymutil.
+	CompilationCachePluginDirRelative = "CompilationCache.noindex/plugin"
 
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
@@ -225,6 +251,53 @@ func (p Paths) XcelerateBinDir() string {
 // XcelerateBinFile returns a file path under XcelerateBinDir.
 func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// XcelerateToolchainsDir returns ~/.bitrise-xcelerate/toolchains, where custom Xcode
+// toolchains the CLI stages live before being symlinked into Apple's scan paths.
+func (p Paths) XcelerateToolchainsDir() string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateToolchainsSubdir)
+}
+
+// DsymutilCasShimToolchainStagingDir returns the on-disk toolchain-farm root the CLI
+// stages, under ~/.bitrise-xcelerate/toolchains/.
+func (p Paths) DsymutilCasShimToolchainStagingDir() string {
+	return filepath.Join(p.XcelerateToolchainsDir(), DsymutilCasShimToolchainBundleName)
+}
+
+// DsymutilCasShimToolchainBinDir returns the usr/bin dir inside the staged toolchain farm,
+// where the shim binary and symlinks to stock toolchain siblings live.
+func (p Paths) DsymutilCasShimToolchainBinDir() string {
+	return filepath.Join(p.DsymutilCasShimToolchainStagingDir(), "usr", "bin")
+}
+
+// DsymutilCasShimPath returns the on-disk path of the staged dsymutil shim.
+func (p Paths) DsymutilCasShimPath() string {
+	return filepath.Join(p.DsymutilCasShimToolchainBinDir(), "dsymutil")
+}
+
+// DsymutilCasShimToolchainStampFile returns the farm's version-stamp file. The CLI
+// re-stages when the stamp disagrees with the current Xcode location + build number.
+func (p Paths) DsymutilCasShimToolchainStampFile() string {
+	return filepath.Join(p.DsymutilCasShimToolchainStagingDir(), "stamp.json")
+}
+
+// XcodeUserToolchainsDir returns Apple's ~/Library/Developer/Toolchains dir, which Xcode
+// scans for TOOLCHAINS=<id> matches. The CLI symlinks its staged farm into this dir.
+func (p Paths) XcodeUserToolchainsDir() string {
+	return filepath.Join(p.Home, XcodeUserToolchainsDirRelative)
+}
+
+// DsymutilCasShimUserToolchainSymlink returns the symlink the CLI maintains inside
+// Apple's user Toolchains dir, pointing at the staged farm.
+func (p Paths) DsymutilCasShimUserToolchainSymlink() string {
+	return filepath.Join(p.XcodeUserToolchainsDir(), DsymutilCasShimToolchainBundleName)
+}
+
+// XcelerateDsymShimDir returns ~/.local/state/xcelerate/dsymshim, the drop dir for the
+// shim's per-invocation touch files; the xcodebuild wrapper drains it at end-of-run.
+func (p Paths) XcelerateDsymShimDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateDsymShimSubdir)
 }
 
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
