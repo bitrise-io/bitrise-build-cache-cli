@@ -358,8 +358,9 @@ script, later by the website endpoint. Each step limits what the next can break.
    counts, failures, mirror activation failures and build duration.
 5. **Opt in organizations one by one.** One preboot change per organization,
    adding its slug to the list. Before each: confirm the workspace has a trial or
-   subscription, and tell support and sales that cache activity will appear for a
-   workspace with no Step. After each: watch the same signals for a day.
+   subscription, check its invocation quota against the projected volume (risk 17),
+   and tell support and sales that cache activity will appear for a workspace with
+   no Step. After each: watch the same signals for a day.
    Rollback is removing the slug.
 6. **Website endpoint ships.** Replace the list with the entitlement answer per
    workspace: flip `entitlementEndpointShipped`, delete the bypass, and remove the
@@ -436,9 +437,31 @@ Roughly in order of how likely they are to matter.
     for every build, and the failure signal moves from the VM log to the build log.
     A slow or failing install now adds to every build's start instead of the VM's
     boot, and the classifier and monitors must be live first (see Observability).
+17. **Concern: invocation volume and quota.** Activating every workflow multiplies
+    what the entitled customers produce, and the entitlement gate asks whether a
+    workspace has Build Cache, not whether it has quota left. On 5 Oct 2026, across
+    the 100 trialing and subscribed workspaces with the most invocations, only about
+    26% of active workflows (1,446 of 5,634) used Build Cache and 581 of 816 active
+    apps had none. Enabling the rest is estimated at about 659,000 extra
+    invocations per 30 days, 72% on top of today's 911,000 (range 62% to 127%), and
+    two workspaces account for about two thirds of it. Of the 76 with a quota, 21
+    were already over it on billable invocations and 17 more would pass it; 17 others
+    are under on billable but over on total invocations, so their status is unclear.
+    All 24 trials have no quota set. A smaller set of workflows carries known
+    incompatibilities (Tuist build or test bypasses the wrapper in two workspaces,
+    Periphery in ten). The numbers are estimates from step and script text, with gaps
+    (repo-only configuration is invisible, some invocations do not map to Bitrise
+    builds). Per-workspace figures are in the internal report
+    ([Build Cache rollout impact](https://claude.ai/artifact/LotBFE5uMBUkfxLS799ks6),
+    private to its owner until shared). Decide how auto-activation should treat
+    quota before opting in paying customers, and hold the largest and the
+    incompatible workspaces back until each is checked.
 
 ## Open questions
 
+- What should auto-activation do for a workspace at or over its invocation quota:
+  skip it, activate and let the backend limit it, or require a quota check in the
+  entitlement answer? (risk 17)
 - Two variables opt out of two activations. Is a single documented switch (for
   example `BITRISE_BUILD_CACHE_DISABLE_AUTO_ACTIVATION`) worth adding so customers
   do not have to know both?
