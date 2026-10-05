@@ -45,6 +45,44 @@ Benefits over xcactivitylog parse:
 
 Not required to ship this PR, but unblocks a strict analytics signal path. Can land independently once Xcode 27.1 makes IDE builds reach the proxy for SPM too.
 
+### Enricher parity with the wrapper's invocation payload
+
+The wrapper (`cmd/xcode/xcodebuild.go`) emits a richer invocation row than the
+enricher does today, because it owns the whole build lifecycle:
+
+| Field | Wrapper | Enricher | Gap |
+|---|---|---|---|
+| `HitRate` | session-counter (preferred) + log (fallback) | log only | v3 unblocks session-counter path for the enricher |
+| `CacheBlobStats` | from proxy session observation | — | v3 (per-build proxy accounting) |
+| `Error` | runStats error string | — | cheap manifest-side extraction; small follow-up |
+| xcresult summary | parses `.xcresult` bundle | — | separate ticket; wrapper-only path today |
+| `BitriseBuildSlug` / `WorkflowName` / `BitriseStepID` | from CI env | empty for local IDE builds (fills in on CI) | by design |
+
+v3 closes the two cache-metrics gaps (`CacheBlobStats`, session-counter HitRate
+precedence) alongside its primary goal. The xcresult summary + `Error` string
+are orthogonal cleanups that can land independently.
+
+### Multi-Xcode behavior
+
+The toolchain bundle's `usr/bin/*`, `usr/{lib,libexec,include,share}`,
+`Developer`, and plugin path in `ToolchainInfo.plist` all symlink to **one**
+Xcode install — the one `activate xcode` resolved via `OriginalXcodebuildPath`
+or `xcode-select -p` at install time.
+
+- Single Xcode on the machine: works as expected.
+- Multiple Xcode installs: works for the Xcode that was active at `activate
+  xcode` time. If the user switches `xcode-select` (or opens a project under a
+  different Xcode) without re-running `activate xcode`, SwiftBuild resolves our
+  toolchain but invokes stale binaries → cryptic frontend/ABI mismatches.
+- Minor auto-updates inside the same `/Applications/Xcode.app` are fine
+  (symlinks stay valid).
+
+Mitigation today is user-triggered: re-run `activate xcode` after switching
+Xcode. A follow-up `doctor` check that compares the toolchain bundle's resolved
+`Developer/` symlink against `xcode-select -p` and warns on drift is planned —
+it keeps the toolchain install logic unchanged and surfaces the stale-pointer
+case with a one-line suggestion.
+
 ## Unpursued paths (recorded briefly to prevent re-exploration)
 
 - **`-cas-plugin-option session-id=<uuid>` for in-band correlation.** Validated empirically that Apple's `libToolchainCASPlugin.dylib` consumes the option internally and never forwards it in gRPC metadata or request bodies. Not usable as a correlation signal unless Apple changes plugin behavior.
