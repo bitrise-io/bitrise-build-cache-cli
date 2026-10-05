@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -39,10 +40,12 @@ func Deactivate(ctx context.Context, logger log.Logger, params DeactivateParams)
 		errs = append(errs, err)
 	}
 
-	if params.DryRun {
-		logger.TInfof("[dry-run] would remove Xcode toolchain bundle under %s", paths.FromHome(home).XcodeToolchainBundleDir())
-	} else {
-		uninstallXcodeToolchain(logger, osProxy)
+	if runtime.GOOS == "darwin" {
+		if params.DryRun {
+			logger.TInfof("[dry-run] would remove Xcode toolchain bundle under %s", paths.FromHome(home).XcodeToolchainBundleDir())
+		} else {
+			uninstallXcodeToolchain(logger, osProxy)
+		}
 	}
 
 	if err := removeXcelerateRoot(logger, home, params.DryRun); err != nil {
