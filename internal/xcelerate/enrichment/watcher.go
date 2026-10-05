@@ -20,8 +20,7 @@ type Watcher struct {
 	HomeDir      string
 	Globs        []string
 	PollInterval time.Duration
-	// Handle receives (manifestPath, group) so the callback can locate the
-	// manifest's sibling xcactivitylog without re-walking DerivedData.
+	// Handle receives manifestPath so the callback can resolve the sibling xcactivitylog.
 	Handle func(manifestPath string, group ManifestEntryGroup)
 	Logger log.Logger
 
