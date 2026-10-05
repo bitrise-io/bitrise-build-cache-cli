@@ -39,6 +39,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/dsymshim"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -488,6 +489,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.attachXcresultSummary(ctx, inv)
+	c.attachDsymutilCasShimStats(inv, runStats.StartTime)
 
 	c.writeJobSummary(runStats, proxyOutcome)
 
@@ -1001,6 +1003,38 @@ func (c *XcodebuildRunner) resolveXcresultParser() xcresult.Parser {
 	}
 
 	return xcresult.NewDefaultParser(c.Logger)
+}
+
+// attachDsymutilCasShimStats drains per-invocation touch files the shim dropped
+// during this xcodebuild run and folds the aggregate into analytics.
+// Installed=false means the shim was never staged; Installed=true + InvocationCount=0
+// means the shim is deployed but the build didn't exercise GenerateDSYMFile.
+func (c *XcodebuildRunner) attachDsymutilCasShimStats(inv *analytics.Invocation, since time.Time) {
+	p := c.resolvePaths()
+	stats := analytics.DsymutilCasShimStats{
+		Installed: dsymshim.ShimInstalled(p),
+	}
+
+	summary := dsymshim.Drain(p, since)
+	stats.InvocationCount = summary.InvocationCount
+	stats.BypassCount = summary.BypassCount
+	stats.Resolved = summary.Resolved
+	stats.Missed = summary.Missed
+	stats.FilteredStderrLns = summary.FilteredStderrLines
+	stats.TotalDurationMs = summary.TotalDurationMs
+
+	if !stats.Installed && stats.InvocationCount == 0 && stats.BypassCount == 0 {
+		return
+	}
+
+	inv.DsymutilCasShim = &stats
+
+	if stats.InvocationCount > 0 || stats.BypassCount > 0 {
+		c.Logger.Infof(
+			"dsymutil CAS shim: %d invocations (%d bypass), %d resolved / %d missed, %d filtered stderr lines",
+			stats.InvocationCount, stats.BypassCount, stats.Resolved, stats.Missed, stats.FilteredStderrLns,
+		)
+	}
 }
 
 // sourcePackagesArgvForQueryAction points a resolving query action at the checkout dir the build

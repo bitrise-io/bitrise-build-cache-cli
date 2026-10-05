@@ -79,6 +79,22 @@ type Invocation struct {
 	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
 	Targets  []TargetSummary  `json:"targets,omitempty"`
 	Failures []FailureSummary `json:"failures,omitempty"`
+
+	// DsymutilCasShim carries the per-xcodebuild dsymutil shim telemetry: whether
+	// the shim is installed on disk, whether it was invoked at all (summed over
+	// every dsymutil call this xcodebuild run issued), and the resolved / missed
+	// / filtered-stderr totals.
+	DsymutilCasShim *DsymutilCasShimStats `json:"dsymutilCasShim,omitempty"`
+}
+
+type DsymutilCasShimStats struct {
+	Installed         bool  `json:"installed"`
+	InvocationCount   int   `json:"invocationCount,omitempty"`
+	BypassCount       int   `json:"bypassCount,omitempty"`
+	Resolved          int   `json:"resolved,omitempty"`
+	Missed            int   `json:"missed,omitempty"`
+	FilteredStderrLns int   `json:"filteredStderrLns,omitempty"`
+	TotalDurationMs   int64 `json:"totalDurationMs,omitempty"`
 }
 
 type TargetSummary struct {
