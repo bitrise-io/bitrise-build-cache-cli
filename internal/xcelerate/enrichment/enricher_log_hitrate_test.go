@@ -18,7 +18,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
-// writeLog gzip-wraps body under <dir>/<name>.
 func writeLog(t *testing.T, dir, name string, body []byte) {
 	t.Helper()
 
@@ -31,7 +30,6 @@ func writeLog(t *testing.T, dir, name string, body []byte) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, name), buf.Bytes(), 0o644))
 }
 
-// writeRaw writes raw bytes under <dir>/<name> (no gzip wrapper).
 func writeRaw(t *testing.T, dir, name string, body []byte) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, name), body, 0o644))
@@ -105,14 +103,11 @@ func TestEnricher_LogHitRate_ActivityLog(t *testing.T) {
 
 func TestEnricher_LogHitRate_LogMissing_NoWarn(t *testing.T) {
 	s := newEnrichSetup(t)
-	// Do NOT write the log file; the manifest-dir exists but the sibling is absent.
-	// LogPollMaxWait on the setup is short enough to finish quickly.
+	// No log written — sibling absent is the common case; must not warn.
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
 	assert.Zero(t, s.captured.HitRate)
-	// Missing log is the common case for IDE builds that never hit the compile
-	// cache yet — must not be noisy at Warn.
 	assert.NotContains(t, s.logBuf.String(), "[WARN]")
 }
 
@@ -133,20 +128,18 @@ func TestEnricher_LogHitRate_LogUnparsed_WarnsForDrift(t *testing.T) {
 	s.enricher.Enrich(s.manifestPath, s.group)
 
 	assert.Zero(t, s.captured.HitRate)
-	// Unparsed is the Xcode-format-shift signal; the e2e regex-drift workflow
-	// is the primary guard, but the Warn still surfaces locally.
+	// Unparsed signals Xcode format drift — must surface a local Warn.
 	assert.Contains(t, s.logBuf.String(), "xcactivitylog unparsed")
 }
 
 func TestEnricher_LogHitRate_EmptyManifestPath_FastReturn(t *testing.T) {
-	// Callers that pass "" (test shims, legacy entry points) must still PUT,
-	// just with zero hit rate.
+	// "" manifestPath must still PUT with zero hit rate (test shims / legacy entry points).
 	s := newEnrichSetup(t)
 
 	s.enricher.Enrich("", s.group)
 
 	assert.Zero(t, s.captured.HitRate)
-	assert.NotEmpty(t, s.captured.InvocationID, "PUT still fires even when the log path can't be resolved")
+	assert.NotEmpty(t, s.captured.InvocationID)
 }
 
 func TestEnricher_LogHitRate_ReadFails_WarnsAndSkips(t *testing.T) {
@@ -166,8 +159,7 @@ func TestEnricher_LogHitRate_ReadFails_WarnsAndSkips(t *testing.T) {
 
 func TestEnricher_LogHitRate_MissingFileName_FastReturn(t *testing.T) {
 	s := newEnrichSetup(t)
-	// Primary entry with no FileName — happens on malformed manifests. The
-	// resolver has nothing to open, so we fast-path with zero hit rate.
+	// Malformed manifest: primary entry has no FileName.
 	s.group = enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
 		UUID:      "orphan",
 		Signature: "Build MyScheme",

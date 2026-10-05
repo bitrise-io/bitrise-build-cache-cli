@@ -26,8 +26,7 @@ func TestInstallXcodeToolchain_endToEnd(t *testing.T) {
 	home := t.TempDir()
 	fakeDeveloperDir := filepath.Join(t.TempDir(), "Developer")
 	seedFakeDeveloperDir(t, fakeDeveloperDir)
-	// Pass a path shaped like <developer>/usr/bin/xcodebuild so
-	// devdir.FromXcodebuildPath resolves without needing xcode-select.
+	// <developer>/usr/bin/xcodebuild shape → devdir.FromXcodebuildPath resolves without xcode-select.
 	fakeXcodebuild := filepath.Join(fakeDeveloperDir, "usr", "bin", "xcodebuild")
 
 	osProxy := &utilsMocks.OsProxyMock{
@@ -74,8 +73,7 @@ func TestInstallXcodeToolchain_fallsBackToXcodeSelect(t *testing.T) {
 		return nil
 	}
 
-	// Pass a path that doesn't match <developer>/usr/bin/xcodebuild so
-	// devdir.FromXcodebuildPath returns "" and the fallback kicks in.
+	// Non-matching shape → devdir.FromXcodebuildPath returns "" and xcode-select fallback kicks in.
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, cmdFunc,
 		nil, "/tmp/proxy.sock", "/opt/xcode-wrapper/xcodebuild")
 
@@ -102,11 +100,9 @@ func TestInstallXcodeToolchain_isNonFatalOnBrokenDeveloperDir(t *testing.T) {
 		}
 	}
 
-	// Must not panic / propagate an error — toolchain install is best-effort.
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, cmdFunc,
 		nil, "/tmp/proxy.sock", "/opt/not-matching/path")
 
-	// Nothing created.
 	_, err := os.Stat(paths.FromHome(home).XcodeToolchainBundleDir())
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 }
@@ -203,8 +199,6 @@ func TestUninstallXcodeToolchain_removesBundleAndSymlink(t *testing.T) {
 	_, err = os.Lstat(p.XcodeToolchainsLinkPath())
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 }
-
-// Helpers.
 
 func seedFakeDeveloperDir(t *testing.T, root string) {
 	t.Helper()
