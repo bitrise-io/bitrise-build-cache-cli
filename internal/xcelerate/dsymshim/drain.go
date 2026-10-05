@@ -17,8 +17,6 @@ type DrainSummary struct {
 	// BypassCount is the number of shim runs that fell through to stock dsymutil
 	// (killswitch, feature-unsupported, resolve-failure, idempotent passthrough).
 	BypassCount int
-	// Resolved sums the "resolved CAS ids" counter across all shim invocations.
-	Resolved int
 	// Missed sums "no such file or directory" warnings the plugin couldn't resolve.
 	Missed int
 	// FilteredStderrLines sums the paired warning+note stderr lines the filter stripped.
@@ -27,18 +25,24 @@ type DrainSummary struct {
 	TotalDurationMs int64
 }
 
-// Drain reads every NDJSON touch file under the drop dir newer than since, aggregates
-// counts, and best-effort removes the consumed files. Files that can't be parsed are
-// skipped silently; a corrupt touch file never fails the wrapper. Returns the aggregate
-// and (separately) whether the shim is installed on disk, so analytics can distinguish
-// "shim never shipped" from "shim shipped, nothing to do this run".
-func Drain(p paths.Paths, since time.Time) DrainSummary {
+// Drain reads every NDJSON touch file under the drop dir whose name is scoped to
+// sessionID, aggregates counts, and best-effort removes the consumed files.
+// Scoping by sessionID keeps concurrent xcodebuilds from draining each other's
+// drops; passing an empty sessionID matches every file (useful for tests).
+// Files that can't be parsed are skipped silently; a corrupt touch file never
+// fails the wrapper.
+func Drain(p paths.Paths, sessionID string) DrainSummary {
 	var out DrainSummary
 
 	dir := p.XcelerateDsymShimDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return out
+	}
+
+	prefix := ""
+	if sessionID != "" {
+		prefix = sessionID + "-"
 	}
 
 	for _, e := range entries {
@@ -48,15 +52,11 @@ func Drain(p paths.Paths, since time.Time) DrainSummary {
 		if !strings.HasSuffix(e.Name(), ".ndjson") {
 			continue
 		}
+		if prefix != "" && !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
 
 		path := filepath.Join(dir, e.Name())
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if !since.IsZero() && info.ModTime().Before(since) {
-			continue
-		}
 
 		data, err := os.ReadFile(path) //nolint:gosec // path controlled by shim
 		if err != nil {
@@ -75,7 +75,6 @@ func Drain(p paths.Paths, since time.Time) DrainSummary {
 				out.InvocationCount++
 			}
 
-			out.Resolved += rec.ResolvedCount
 			out.Missed += rec.MissedCount
 			out.FilteredStderrLines += rec.FilteredStderr
 			out.TotalDurationMs += rec.DurationMillis

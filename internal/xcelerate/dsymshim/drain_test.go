@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,14 +26,13 @@ func TestDrain_AggregatesAndRemovesFiles(t *testing.T) {
 	home := t.TempDir()
 	p := paths.FromHome(home)
 
-	writeTouch(t, p, "1.ndjson", touchRecord{Mode: "shim", ResolvedCount: 10, FilteredStderr: 4, DurationMillis: 120})
-	writeTouch(t, p, "2.ndjson", touchRecord{Mode: "shim", MissedCount: 2, FilteredStderr: 4, DurationMillis: 80})
-	writeTouch(t, p, "3.ndjson", touchRecord{Mode: "bypass:killswitch", DurationMillis: 10})
+	writeTouch(t, p, "sess-1.ndjson", touchRecord{Mode: "shim", FilteredStderr: 4, DurationMillis: 120})
+	writeTouch(t, p, "sess-2.ndjson", touchRecord{Mode: "shim", MissedCount: 2, FilteredStderr: 4, DurationMillis: 80})
+	writeTouch(t, p, "sess-3.ndjson", touchRecord{Mode: "bypass:killswitch", DurationMillis: 10})
 
-	summary := Drain(p, time.Time{})
+	summary := Drain(p, "sess")
 	assert.Equal(t, 2, summary.InvocationCount)
 	assert.Equal(t, 1, summary.BypassCount)
-	assert.Equal(t, 10, summary.Resolved)
 	assert.Equal(t, 2, summary.Missed)
 	assert.Equal(t, 8, summary.FilteredStderrLines)
 	assert.Equal(t, int64(210), summary.TotalDurationMs)
@@ -44,24 +42,19 @@ func TestDrain_AggregatesAndRemovesFiles(t *testing.T) {
 	assert.Empty(t, entries, "touch files must be removed after drain")
 }
 
-func TestDrain_IgnoresFilesOlderThanSince(t *testing.T) {
+func TestDrain_IgnoresFilesFromOtherSessions(t *testing.T) {
 	home := t.TempDir()
 	p := paths.FromHome(home)
 
-	writeTouch(t, p, "old.ndjson", touchRecord{Mode: "shim", ResolvedCount: 99})
-	// Push mtime back 10 minutes.
-	oldPath := filepath.Join(p.XcelerateDsymShimDir(), "old.ndjson")
-	oldTime := time.Now().Add(-10 * time.Minute)
-	require.NoError(t, os.Chtimes(oldPath, oldTime, oldTime))
+	writeTouch(t, p, "other-1.ndjson", touchRecord{Mode: "shim", MissedCount: 99})
+	writeTouch(t, p, "mine-1.ndjson", touchRecord{Mode: "shim", MissedCount: 1})
 
-	writeTouch(t, p, "new.ndjson", touchRecord{Mode: "shim", ResolvedCount: 1})
-
-	summary := Drain(p, time.Now().Add(-1*time.Minute))
+	summary := Drain(p, "mine")
 	assert.Equal(t, 1, summary.InvocationCount)
-	assert.Equal(t, 1, summary.Resolved)
+	assert.Equal(t, 1, summary.Missed)
 
-	// Old file must survive.
-	_, err := os.Stat(oldPath)
+	// Other-session file must survive — concurrent xcodebuild still needs it.
+	_, err := os.Stat(filepath.Join(p.XcelerateDsymShimDir(), "other-1.ndjson"))
 	assert.NoError(t, err)
 }
 

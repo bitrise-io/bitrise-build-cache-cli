@@ -32,6 +32,12 @@ import (
 // per-invocation without reactivating.
 const EnvKillSwitch = "BITRISE_BUILD_CACHE_SKIP_DSYMUTIL_SHIM"
 
+// EnvSessionID scopes touch-file writes + drains to one xcodebuild wrapper run,
+// so concurrent xcodebuilds on the same host do not read-then-delete each
+// other's touch files. The wrapper injects it on the xcodebuild subprocess env;
+// shim invocations inherit it transitively through the toolchain trampoline.
+const EnvSessionID = "BITRISE_BUILD_CACHE_DSYMSHIM_SESSION_ID"
+
 // setupBudget is the hard upper bound for all pre-exec work (resolve, feature
 // detect, filter plumbing). If we overrun, we bypass to stock dsymutil to keep
 // the archive wall-clock honest.
@@ -72,13 +78,12 @@ type Params struct {
 	ExecCommand func(ctx context.Context, name string, argv ...string) *exec.Cmd
 }
 
-// touchRecord is one line of ~/.local/state/xcelerate/dsymshim/<pid>-<ns>.json
-// (NDJSON). The wrapper drains + aggregates these at end-of-xcodebuild.
+// touchRecord is one line of ~/.local/state/xcelerate/dsymshim/<session>-<pid>-<ns>.ndjson.
+// The wrapper drains + aggregates these at end-of-xcodebuild.
 type touchRecord struct {
 	Timestamp      time.Time `json:"timestamp"`
 	MachOPath      string    `json:"machoPath,omitempty"`
 	Mode           string    `json:"mode"`
-	ResolvedCount  int       `json:"resolved"`
 	MissedCount    int       `json:"missed"`
 	FilteredStderr int       `json:"filteredStderr"`
 	DurationMillis int64     `json:"durationMs"`
@@ -142,15 +147,14 @@ func (p Params) Run(ctx context.Context) int {
 
 	exit, counts := p.runStock(ctx, stockPath, rewritten)
 
-	summary := fmt.Sprintf("[%s] resolved %d of %d CAS ids (filtered %d stderr lines)",
-		SummaryToken, counts.Resolved, counts.Resolved+counts.Missed, counts.FilteredStderr)
+	summary := fmt.Sprintf("[%s] missed %d CAS ids (filtered %d stderr lines)",
+		SummaryToken, counts.Missed, counts.FilteredStderr)
 	fmt.Fprintln(p.Stderr, summary)
 
 	rec := touchRecord{
 		Timestamp:      p.now(),
 		MachOPath:      firstPositional(p.Argv),
 		Mode:           "shim",
-		ResolvedCount:  counts.Resolved,
 		MissedCount:    counts.Missed,
 		FilteredStderr: counts.FilteredStderr,
 		DurationMillis: p.elapsed(start).Milliseconds(),
@@ -166,7 +170,6 @@ func (p Params) Run(ctx context.Context) int {
 }
 
 type counts struct {
-	Resolved       int
 	Missed         int
 	FilteredStderr int
 }
@@ -189,22 +192,12 @@ func (p Params) runStock(ctx context.Context, stockPath string, argv []string) (
 
 	flushed := filter.Close()
 
-	// Resolved count is a derived quantity: dsymutil writes nothing per-resolve
-	// to stderr; we infer resolved = total-ids-in-argv-mach-o - missed. The
-	// shim doesn't peek inside the Mach-O, so for now Resolved is set to zero
-	// when we can't count and Missed is the ground truth from stderr.
-	// This is accurate for the "did the fix work?" telemetry: Missed==0 means
-	// every CAS id resolved; Missed>0 means we still have gaps.
-	c := counts{
-		Resolved:       0,
+	// Missed is the only ground-truth signal dsymutil emits: one paired warning
+	// per CAS id the plugin failed to resolve. Missed==0 means every id resolved.
+	return exit, counts{
 		Missed:         flushed.FilteredPaired,
 		FilteredStderr: flushed.FilteredPaired * 2,
 	}
-	if exit == 0 && c.Missed == 0 {
-		c.Resolved = flushed.ObservedCASIDs
-	}
-
-	return exit, c
 }
 
 // Private — helpers
@@ -326,7 +319,12 @@ func (p Params) writeTouch(osProxy utils.OsProxy, rec touchRecord) {
 		return
 	}
 
-	name := fmt.Sprintf("%d-%d.ndjson", os.Getpid(), rec.Timestamp.UnixNano())
+	session := p.Env[EnvSessionID]
+	if session == "" {
+		session = "nosession"
+	}
+
+	name := fmt.Sprintf("%s-%d-%d.ndjson", session, os.Getpid(), rec.Timestamp.UnixNano())
 	path := filepath.Join(dir, name)
 
 	data, err := json.Marshal(rec)

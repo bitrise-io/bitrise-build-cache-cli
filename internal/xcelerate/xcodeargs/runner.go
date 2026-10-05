@@ -46,6 +46,11 @@ type DefaultRunner struct {
 	logger  log.Logger
 	config  xcelerate.Config
 	logFile io.Writer
+
+	// ExtraEnv is appended on top of the inherited process environment when
+	// launching xcodebuild. Entries use the KEY=VALUE form of os/exec.Cmd.Env;
+	// a later entry overrides an earlier one for the same key.
+	ExtraEnv []string
 }
 
 var compCacheStatLineRegex = regexp.MustCompile(`^note:\s+(\d+)\s+hits\s*/\s*(\d+)\s+cacheable`)
@@ -84,6 +89,9 @@ func (runner *DefaultRunner) Run(ctx context.Context, args []string) RunStats {
 
 	innerCmd := exec.CommandContext(ctx, xcodePath, args...)
 	innerCmd.Stdin = os.Stdin
+	if len(runner.ExtraEnv) > 0 {
+		innerCmd.Env = append(os.Environ(), runner.ExtraEnv...)
+	}
 	var wg sync.WaitGroup
 	runner.setupOutputPipes(ctx, innerCmd, &wg, capturer)
 

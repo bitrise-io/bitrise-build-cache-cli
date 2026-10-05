@@ -102,8 +102,7 @@ func (f *StderrFilter) emitLine(line []byte) error {
 	// Warning first: observe the id, hold the warning until we see whether the
 	// paired note follows. If the next line matches the note, drop both.
 	// If it does not match, flush the warning + the next line normally.
-	// Dsymutil writes the two lines back-to-back in all observed cases
-	// (see /tmp/aci-5540-repro/B2-on.log 1948–1953).
+	// Dsymutil writes the two lines back-to-back in all observed cases.
 	if reWarning.Match(line) {
 		f.ids++
 		// Hold this warning until the next line is examined.

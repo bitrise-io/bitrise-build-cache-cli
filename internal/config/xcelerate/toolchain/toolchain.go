@@ -130,8 +130,6 @@ func Require(ctx context.Context, p Params) (Stamp, error) {
 		return Stamp{}, fmt.Errorf("register toolchain under %s: %w", p.Paths.XcodeUserToolchainsDir(), err)
 	}
 
-	logger.Infof("Wrote dsymutil CAS shim toolchain: %s", farmDir)
-
 	return want, nil
 }
 

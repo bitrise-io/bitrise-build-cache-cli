@@ -82,8 +82,9 @@ type Invocation struct {
 
 	// DsymutilCasShim carries the per-xcodebuild dsymutil shim telemetry: whether
 	// the shim is installed on disk, whether it was invoked at all (summed over
-	// every dsymutil call this xcodebuild run issued), and the resolved / missed
-	// / filtered-stderr totals.
+	// every dsymutil call this xcodebuild run issued), and the missed /
+	// filtered-stderr totals. Missed is the ground-truth signal for "did the fix
+	// work?" — zero means every CAS id resolved under the plugin.
 	DsymutilCasShim *DsymutilCasShimStats `json:"dsymutilCasShim,omitempty"`
 }
 
@@ -91,7 +92,6 @@ type DsymutilCasShimStats struct {
 	Installed         bool  `json:"installed"`
 	InvocationCount   int   `json:"invocationCount,omitempty"`
 	BypassCount       int   `json:"bypassCount,omitempty"`
-	Resolved          int   `json:"resolved,omitempty"`
 	Missed            int   `json:"missed,omitempty"`
 	FilteredStderrLns int   `json:"filteredStderrLns,omitempty"`
 	TotalDurationMs   int64 `json:"totalDurationMs,omitempty"`

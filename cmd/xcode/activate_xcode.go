@@ -42,7 +42,7 @@ This command will:
 - Create an executable wrapper for xcodebuild that will use the proxy to connect to the Bitrise Build Cache.
 - Stage a dsymutil CAS-plugin shim under a custom Xcode toolchain so dSYMs stay
   complete under compile-cache replay (set BITRISE_BUILD_CACHE_SKIP_DSYMUTIL_SHIM=1
-  in the env to skip; see docs/aci-5540-plan-2026-10-02.md).
+  in the env to skip).
 `,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {

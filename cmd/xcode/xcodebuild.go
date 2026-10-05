@@ -283,6 +283,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 	}, osProxy, logger)
 
 	xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
+	xcodeRunner.ExtraEnv = []string{dsymshim.EnvSessionID + "=" + invocationID}
 
 	runner := &XcodebuildRunner{
 		Config:             config,
@@ -489,7 +490,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.attachXcresultSummary(ctx, inv)
-	c.attachDsymutilCasShimStats(inv, runStats.StartTime)
+	c.attachDsymutilCasShimStats(inv)
 
 	c.writeJobSummary(runStats, proxyOutcome)
 
@@ -1006,19 +1007,20 @@ func (c *XcodebuildRunner) resolveXcresultParser() xcresult.Parser {
 }
 
 // attachDsymutilCasShimStats drains per-invocation touch files the shim dropped
-// during this xcodebuild run and folds the aggregate into analytics.
+// during this xcodebuild run and folds the aggregate into analytics. Scopes the
+// drain to this wrapper's invocation ID so concurrent xcodebuilds on the same
+// host don't consume each other's drops.
 // Installed=false means the shim was never staged; Installed=true + InvocationCount=0
 // means the shim is deployed but the build didn't exercise GenerateDSYMFile.
-func (c *XcodebuildRunner) attachDsymutilCasShimStats(inv *analytics.Invocation, since time.Time) {
+func (c *XcodebuildRunner) attachDsymutilCasShimStats(inv *analytics.Invocation) {
 	p := c.resolvePaths()
 	stats := analytics.DsymutilCasShimStats{
 		Installed: dsymshim.ShimInstalled(p),
 	}
 
-	summary := dsymshim.Drain(p, since)
+	summary := dsymshim.Drain(p, c.InvocationID)
 	stats.InvocationCount = summary.InvocationCount
 	stats.BypassCount = summary.BypassCount
-	stats.Resolved = summary.Resolved
 	stats.Missed = summary.Missed
 	stats.FilteredStderrLns = summary.FilteredStderrLines
 	stats.TotalDurationMs = summary.TotalDurationMs
@@ -1031,8 +1033,8 @@ func (c *XcodebuildRunner) attachDsymutilCasShimStats(inv *analytics.Invocation,
 
 	if stats.InvocationCount > 0 || stats.BypassCount > 0 {
 		c.Logger.Infof(
-			"dsymutil CAS shim: %d invocations (%d bypass), %d resolved / %d missed, %d filtered stderr lines",
-			stats.InvocationCount, stats.BypassCount, stats.Resolved, stats.Missed, stats.FilteredStderrLns,
+			"dsymutil CAS shim: %d invocations (%d bypass), %d missed CAS ids, %d filtered stderr lines",
+			stats.InvocationCount, stats.BypassCount, stats.Missed, stats.FilteredStderrLns,
 		)
 	}
 }
