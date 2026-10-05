@@ -33,6 +33,10 @@ func Render(proxySocketPath string) (string, error) {
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
 		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
+		// TOOLCHAINS selects the Bitrise toolchain bundle installed under
+		// ~/Library/Developer/Toolchains/. The bundle's OverrideBuildSettings is
+		// the only reach we have into SPM package targets.
+		"TOOLCHAINS": ToolchainID,
 	}
 
 	keys := make([]string, 0, len(settings))
