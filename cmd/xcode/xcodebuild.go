@@ -880,6 +880,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	}
 
 	maps.Copy(additional, xcodeargs.BuildCacheArgs(c.Config.NoSwiftCache))
+	maps.Copy(additional, xcodeargs.DsymutilShimToolchainsArg(c.resolvePaths(), utils.DefaultOsProxy{}, utils.AllEnvs()))
 
 	diagnosticRemarks := "NO"
 	if c.Config.DebugLogging {

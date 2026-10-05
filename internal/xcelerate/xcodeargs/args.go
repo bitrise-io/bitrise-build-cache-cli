@@ -44,11 +44,16 @@ const (
 // individual COMPILATION_CACHE_* keys but never emits -cache-compile-job on
 // swiftc argv, so the plugin never loads and the remote CAS stays dark for
 // projects whose target defaults don't already have caching on.
+//
+// COMPILATION_CACHE_KEEP_CAS_DIRECTORY is required for the dsymutil CAS shim:
+// without it, the plugin store may be wiped between swiftc and GenerateDSYMFile
+// (observed in field: `actions.v1` gone between sub-steps).
 var CacheArgs = map[string]string{
 	"COMPILATION_CACHE_ENABLE_CACHING":              "YES",
 	"COMPILATION_CACHE_ENABLE_PLUGIN":               "YES",
 	"COMPILATION_CACHE_ENABLE_INTEGRATED_QUERIES":   "YES",
 	"COMPILATION_CACHE_ENABLE_DETACHED_KEY_QUERIES": "YES",
+	"COMPILATION_CACHE_KEEP_CAS_DIRECTORY":          "YES",
 	SwiftEnableCompileCacheKey:                      "YES",
 	SwiftEnableExplicitModulesKey:                   "YES",
 	SwiftUseIntegratedDriverKey:                     "YES",
@@ -56,6 +61,14 @@ var CacheArgs = map[string]string{
 	"CLANG_ENABLE_MODULES":                          "YES",
 	SupportedLanguagesKey:                           cachedLanguages,
 }
+
+// DsymutilCasShimToolchainsValue is the xcodebuild TOOLCHAINS build setting value that
+// swaps GenerateDSYMFile's dsymutil for the staged CAS-plugin shim without displacing
+// user-set toolchains.
+const DsymutilCasShimToolchainsValue = "com.bitrise.cas-shim $(inherited)"
+
+// ToolchainsKey is the xcodebuild build-setting key for the custom toolchain override.
+const ToolchainsKey = "TOOLCHAINS"
 
 // BuildCacheArgs returns the wrapper-owned build settings for a cached build.
 // noSwiftCache drops the whole Swift leg because Swift caching requires

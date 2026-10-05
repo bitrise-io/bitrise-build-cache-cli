@@ -8,6 +8,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate/toolchain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
@@ -38,6 +39,11 @@ func Deactivate(ctx context.Context, logger log.Logger, params DeactivateParams)
 	if err := stopProxyForDeactivate(ctx, logger, osProxy, params.DryRun); err != nil {
 		errs = append(errs, err)
 	}
+
+	// Must precede removeXcelerateRoot so the farm's symlink target is still present
+	// when we unlink from ~/Library/Developer/Toolchains (os.Remove on a dangling
+	// symlink works, but logging + rollback is clearer when the target exists).
+	removeDsymutilCasShim(logger, osProxy, home, params.DryRun)
 
 	if err := removeXcelerateRoot(logger, home, params.DryRun); err != nil {
 		errs = append(errs, err)
@@ -85,6 +91,27 @@ func resolveHome(envs map[string]string) (string, error) {
 	}
 
 	return p.Home, nil
+}
+
+func removeDsymutilCasShim(logger log.Logger, osProxy utils.OsProxy, home string, dryRun bool) {
+	p := paths.FromHome(home)
+	symlink := p.DsymutilCasShimUserToolchainSymlink()
+
+	if dryRun {
+		if _, err := os.Lstat(symlink); err == nil {
+			logger.TInfof("[dry-run] would remove dsymutil CAS shim symlink %s", symlink)
+		}
+
+		return
+	}
+
+	if err := toolchain.Remove(osProxy, p); err != nil {
+		logger.Warnf("Failed to remove dsymutil CAS shim symlink %s: %v", symlink, err)
+
+		return
+	}
+
+	logger.TInfof("Removed dsymutil CAS shim symlink: %s", symlink)
 }
 
 func removeXcelerateRoot(logger log.Logger, home string, dryRun bool) error {

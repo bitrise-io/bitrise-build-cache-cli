@@ -13,10 +13,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate/toolchain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/dsymshim"
 )
 
 const (
@@ -125,6 +127,8 @@ func Activate(
 		return fmt.Errorf("failed to add xcelerate command: %w", err)
 	}
 
+	ensureDsymutilCasShim(ctx, logger, osProxy, envs)
+
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
 	logger.TInfof(ActivateXcodeSuccessful)
@@ -133,6 +137,41 @@ func Activate(
 	logger.TInfof(ProxyRestartNotice)
 
 	return nil
+}
+
+// ensureDsymutilCasShim stages the custom-toolchain farm that reroutes dsymutil
+// to our CAS-plugin shim. On by default; set BITRISE_BUILD_CACHE_SKIP_DSYMUTIL_SHIM
+// in env to skip. A failure to stage is logged but never fatal: the rest of the
+// activate completes and the build still runs through the stock toolchain (just
+// without the dSYM fix).
+func ensureDsymutilCasShim(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, envs map[string]string) {
+	if envs[dsymshim.EnvKillSwitch] != "" {
+		logger.Infof("Skipping dsymutil CAS shim install: %s is set.", dsymshim.EnvKillSwitch)
+
+		return
+	}
+
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		logger.Debugf("Could not resolve home dir for dsymutil CAS shim: %v", err)
+
+		return
+	}
+
+	p := paths.FromHome(home)
+	stamp, err := toolchain.Require(ctx, toolchain.Params{
+		Paths:   p,
+		OsProxy: osProxy,
+		Logger:  logger,
+		CLIPath: filepath.Join(p.XcelerateBinDir(), cliBasename),
+	})
+	if err != nil {
+		logger.Warnf("Failed to stage dsymutil CAS shim toolchain (dSYMs may be smaller under cache): %v", err)
+
+		return
+	}
+
+	logger.Infof("Wrote dsymutil CAS shim: %s (stamp: %s)", p.DsymutilCasShimPath(), stamp.XcodeBuildNumber)
 }
 
 // ensureLogDir creates the dir the proxy would otherwise create on its first run,
