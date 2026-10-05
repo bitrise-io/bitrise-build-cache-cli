@@ -2003,7 +2003,8 @@ workflows:
                 -workspace ComposableArchitecture.xcworkspace \
                 -scheme ComposableArchitecture \
                 -destination "generic/platform=iOS" \
-                -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
+                -skipMacroValidation \
+                TOOLCHAINS=io.bitrise.cas.xctoolchain 2> wrapper.log | tee xcodebuild.log | xcpretty
 
               cp xcodebuild.log wrapper.log "$BITRISE_DEPLOY_DIR"/
     - script:
