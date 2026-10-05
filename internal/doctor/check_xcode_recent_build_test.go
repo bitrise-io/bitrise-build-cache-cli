@@ -39,7 +39,7 @@ func writeGzipLog(t *testing.T, derivedData, project, name string, body []byte, 
 
 func TestXcodeRecentBuildCheck_derivedDataMissing(t *testing.T) {
 	// Fresh temp with no DerivedData subtree — reports OK (informational), not a failure.
-	res := diagnoseXcodeRecentBuild(filepath.Join(t.TempDir(), "DerivedData"), time.Now())
+	res := diagnoseXcodeRecentBuild([]string{filepath.Join(t.TempDir(), "DerivedData")}, time.Now())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "no recent Xcode build found")
 }
@@ -52,7 +52,7 @@ func TestXcodeRecentBuildCheck_noRecentBuild(t *testing.T) {
 		[]byte("note: 10 hits / 10 cacheable tasks (100%)\n"),
 		now.Add(-2*time.Hour))
 
-	res := diagnoseXcodeRecentBuild(dd, now)
+	res := diagnoseXcodeRecentBuild([]string{dd}, now)
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "no recent Xcode build found")
 }
@@ -64,7 +64,7 @@ func TestXcodeRecentBuildCheck_happyPath(t *testing.T) {
 		[]byte("header\nnote: 7 hits / 10 cacheable tasks (70%)\n"),
 		now.Add(-5*time.Minute))
 
-	res := diagnoseXcodeRecentBuild(dd, now)
+	res := diagnoseXcodeRecentBuild([]string{dd}, now)
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "recent xcode build: 7/10 hits (70%)")
 	assert.Contains(t, res.Detail, "project MyApp-abc123def")
@@ -83,7 +83,7 @@ func TestXcodeRecentBuildCheck_picksNewestAcrossProjects(t *testing.T) {
 		[]byte("note: 9 hits / 10 cacheable tasks (90%)\n"),
 		now.Add(-1*time.Minute))
 
-	res := diagnoseXcodeRecentBuild(dd, now)
+	res := diagnoseXcodeRecentBuild([]string{dd}, now)
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "9/10 hits (90%)")
 	assert.Contains(t, res.Detail, "project AppB-bbb")
@@ -98,7 +98,7 @@ func TestXcodeRecentBuildCheck_unparsedBuildReportsOK(t *testing.T) {
 		[]byte("random SLF content with no match\n"),
 		now.Add(-1*time.Minute))
 
-	res := diagnoseXcodeRecentBuild(dd, now)
+	res := diagnoseXcodeRecentBuild([]string{dd}, now)
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "regex drift")
 }
