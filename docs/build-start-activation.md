@@ -213,6 +213,33 @@ CLI. Same flow, with the loop and the gate since moved into the CLI.
 | Bazel | AMS | success, 5.0 min, 179 of 5,161 actions from the remote cache (cold datacenter) |
 | Gradle, DuckDuckGo | Linux | **not testable**, see below |
 
+### Gradle mirrors from `bitrise run` (staging, `bitrise` 3.1.1, boot phase removed)
+
+Gradle on macOS, no activate Step, `ACTIVATE_GRADLE_MIRRORS=true` exported by the
+boot script:
+
+- The VM's boot log has no `gradle_mirrors` phase and no `/tmp/bin` download, so
+  the second CLI install is gone.
+- The build log shows the hook's `Activate Bitrise mirrors for Gradle` line, the
+  mirror URLs exported, the generated init script pointing at them, and the build
+  succeeded.
+- Not covered: Linux, which keeps its boot-time phase, and the classifier and
+  monitors reading the new build-log lines.
+
+### Explicit activate Step on an auto-activated VM (staging)
+
+Both the hook and the workflow's own activate Step ran, on the same VM:
+
+| Tool | Result |
+|---|---|
+| Gradle (`test-cli-macos-with-step`) | success, cache used, 68% hit rate, the same as without the Step; the Step installed its own CLI (v3.15.0), ran `activate gradle`, rewrote the benchmark phase file and overwrote the init script |
+| Xcode (`e2e-test-comp-cache-with-step`) | success, 100% hit rate |
+
+The Gradle invocation count matched the run without the Step (two), so there was
+no sign of doubled analytics. One mismatch is left in place: the generated configs
+call `bitrise-build-cache` from `PATH`, which is the hook's pinned binary, while
+the Step generated them with its own version.
+
 ### Opt-out by env (staging, `bitrise` 3.1.2)
 
 Gradle on macOS, no activate Step, VM exporting both opt-ins as `true`:
@@ -263,12 +290,11 @@ Not validated:
   never runs. Linux can only be tested with a real `bitrise` release that DEN
   then requests, either globally or through its per-organization version override
   (read from the agent code, not exercised).
-- The Gradle mirrors from `bitrise run` with the boot-time phase removed: the hook
-  is unit tested and a staging run is pending. Linux keeps its boot-time phase.
 - The `all` allowlist value and per-workspace entitlement: unit tested, not yet
   run on staging (the staging prerelease predates both).
 - The entitlement cases: trial, active subscription, none. They need the endpoint.
-- An explicit activate Step in a workflow on an auto-activated VM.
+- An explicit activate Step on an auto-activated VM beyond Gradle and Xcode on
+  macOS (Bazel, React Native, Linux).
 - Builds that use none of the activated tools, and Tuist or other callers of
   `xcodebuild` by absolute path.
 - React Native iOS cache hits (the Seek build needs a deployment-target patch on Xcode 27).
@@ -362,8 +388,11 @@ Roughly in order of how likely they are to matter.
    harmless on an ephemeral VM; the Xcode wrappers change what every `xcodebuild`
    call does.
 4. **Interaction with an explicit activate Step.** A workflow that already has a
-   Step now activates twice. Both activations are meant to be idempotent, which has
-   not been tested.
+   Step now activates twice. On staging this worked for Gradle and Xcode on macOS:
+   both builds succeeded with the same cache hit rates as without the Step. The
+   Step's CLI version can differ from the pinned one, and the later activation
+   overwrites the earlier one's generated config. Bazel, React Native and Linux
+   were not tried.
 5. **The Xcode wrapper and proxy.** Builds that call `xcodebuild` or `xcrun` by
    absolute path bypass the wrapper and get no cache (Tuist is one known case). A
    background cache proxy is started for every Xcode-capable build, and an earlier
@@ -415,7 +444,8 @@ Roughly in order of how likely they are to matter.
   do not have to know both?
 - Should the allowlist also be readable at build time from somewhere other than the
   boot script, so rollback does not wait for VMs to recycle?
-- Does an explicit Step on an auto-activated VM double count invocations?
+- Does an explicit Step on an auto-activated VM double count invocations? Not on
+  Gradle, where the count matched; unchecked for the other tools.
 - Can the activated tool list be narrowed by what the build declares
   (`project_type`, the presence of `build.gradle`, an Xcode project) without
   becoming a second source of truth?
