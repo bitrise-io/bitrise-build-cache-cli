@@ -135,6 +135,18 @@ The `cache-ccache-test` workflow in `gradle-plugins/bitrise.yml` asserts on the 
 
 These are annotated with `// CI: asserted by cache-ccache-test workflow` in the source.
 
+## dsymutil CAS shim
+
+Xcode's `GenerateDSYMFile` invokes `/usr/bin/dsymutil` with no `-cas-plugin-path`, so swiftc-written CAS id indirections in `.o` files are unresolved under compile-cache replay — the resulting dSYM is 25–40% smaller than the native build. Fix shape: a staged custom toolchain farm that reroutes dsymutil to a CLI subcommand which prepends `-cas-plugin-path` + `-cas` and execs the stock dsymutil.
+
+- `internal/xcelerate/dsymshim/` — argv rewrite, plugin/cas resolution, paired-warning stderr filter, per-invocation NDJSON touch files, end-of-run drain + aggregate.
+- `internal/config/xcelerate/toolchain/` — stages `~/.bitrise-xcelerate/toolchains/com.bitrise.cas-shim.xctoolchain/` as a symlink mirror of `XcodeDefault.xctoolchain` with `usr/bin/dsymutil` replaced by a bash trampoline. `stamp.json` holds `xcode-select -p` + Xcode build number so a bump re-stages.
+- `cmd/xcode/dsymutil_shim.go` — the hidden `xcelerate dsymutil-shim` cobra subcommand the trampoline execs.
+- Wiring in `activate.go` (stage toolchain), `xcodeargs/args.go` (`COMPILATION_CACHE_KEEP_CAS_DIRECTORY=YES` always; `TOOLCHAINS=com.bitrise.cas-shim $(inherited)` through `DsymutilShimToolchainsArg`), `xcodebuild.go` (`attachDsymutilCasShimStats` drains + folds into analytics).
+- Killswitch: `BITRISE_BUILD_CACHE_SKIP_DSYMUTIL_SHIM`. Honored at both activate time (skip stage) and wrapper time (skip TOOLCHAINS even if the farm is stale on disk).
+
+Design notes + Phase-0 feasibility: `docs/aci-5540-plan-2026-10-02.md`, `docs/aci-5540-repro-2026-10-02.md`.
+
 ## Benchmark Phasing
 
 Benchmark phasing allows measuring build performance with and without cache. The phase is queried from the Bitrise API during activation and affects both Gradle and Xcode builds.
