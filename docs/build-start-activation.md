@@ -125,6 +125,41 @@ branch that reads it, and the test), so the flip and the cleanup cannot drift
 apart. The request path in that file is provisional and will change when the
 endpoint is designed.
 
+## Opting out
+
+The platform runs the hook only when it is switched on, and a customer can switch
+it off again for a single build, a workflow or an app, with the same variables the
+VM uses to switch it on:
+
+| To stop | Set |
+|---|---|
+| The cache activation (`activate all --auto`) | `BITRISE_BUILD_CACHE_ACTIVATE_ALL: "false"` |
+| The Gradle repository mirrors | `BITRISE_BUILD_CACHE_ACTIVATE_GRADLE_MIRRORS: "false"` |
+| Only the mirrors, later, at Gradle build time | `BITRISE_MAVENCENTRAL_PROXY_ENABLED: "false"` (the init script re-reads it) |
+
+Where to set it:
+
+- **Per workflow:** under that workflow's `envs:` in `bitrise.yml` (tested).
+- **Per build:** as an environment variable of the build trigger, the trigger API's
+  `environments` (tested; the "Start build" dialog uses the same field and was not
+  tried).
+- **Per app:** under the app's `envs:`. It sits before the workflow envs in the
+  order above, so it follows the same rule; not exercised on staging.
+
+How the hook reads it: it takes the **last** occurrence of the variable among the
+build's own envs, ordered secrets, app envs, then workflow envs, and that value
+beats the one the VM exported. Only the exact value `true` means on; `false`, an
+empty value or anything else means off. Because workflow envs come last, a
+workflow that sets the variable wins over a trigger-level value: a trigger
+`ACTIVATE_ALL=false` does not turn off a workflow that itself says `true`. The
+org allowlist is a separate rollout control and is not an opt-out.
+
+The opt-out is read at the start of `bitrise run`, before the first step, so it
+reaches the hook. An explicit activate Step is unaffected: it still runs, which is
+the way to stay activated when the auto-activation is off. The hook skips
+silently when off, so a customer who expects activation and set the variable by
+mistake sees no log line.
+
 ## What activate all does to a build
 
 Activating every tool is accepted, because the alternative is detecting which
@@ -177,6 +212,22 @@ CLI. Same flow, with the loop and the gate since moved into the CLI.
 | | ORD, third visit | 83.7% blob hits, 30.9% task hits, 8.1 min, still warming |
 | Bazel | AMS | success, 5.0 min, 179 of 5,161 actions from the remote cache (cold datacenter) |
 | Gradle, DuckDuckGo | Linux | **not testable**, see below |
+
+### Opt-out by env (staging, `bitrise` 3.1.2)
+
+Gradle on macOS, no activate Step, VM exporting both opt-ins as `true`:
+
+| Setting | Result |
+|---|---|
+| Trigger env `ACTIVATE_ALL=false` | mirrors activated, no `activate all`, no cache init script |
+| Trigger env `ACTIVATE_GRADLE_MIRRORS=false` | no mirror activation line; `activate all` ran |
+| Workflow envs `ACTIVATE_ALL=false` and `ACTIVATE_GRADLE_MIRRORS=false` | no hook output at all, no cache init script |
+| Trigger env `ACTIVATE_ALL=false` on a workflow whose own envs say `true` | activated: the workflow value wins |
+
+The last row was found first, because the original test workflow carried
+`ACTIVATE_ALL: "true"` itself; the other rows were then reproduced on workflows
+without it. The test workflow ends by printing the cache init script, so it fails
+when nothing was activated, which is what the opted-out runs did.
 
 ### What the runs established
 
@@ -359,6 +410,9 @@ Roughly in order of how likely they are to matter.
 
 ## Open questions
 
+- Two variables opt out of two activations. Is a single documented switch (for
+  example `BITRISE_BUILD_CACHE_DISABLE_AUTO_ACTIVATION`) worth adding so customers
+  do not have to know both?
 - Should the allowlist also be readable at build time from somewhere other than the
   boot script, so rollback does not wait for VMs to recycle?
 - Does an explicit Step on an auto-activated VM double count invocations?
