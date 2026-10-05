@@ -31,6 +31,19 @@ const (
 	// written by `activate xcode` and consumed by `xcode link`.
 	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
 
+	// XcodeToolchainBundleID is the Xcode toolchain-bundle identifier the CLI
+	// installs. Shared with the TOOLCHAINS xcconfig setting so SwiftBuild
+	// resolves the same bundle.
+	XcodeToolchainBundleID = "io.bitrise.cas.xctoolchain"
+
+	// xcodeToolchainSubdir is the per-user dir under XcelerateRoot holding the
+	// toolchain bundle itself.
+	xcodeToolchainSubdir = "toolchain"
+
+	// XcodeToolchainsLinkDirRelative is the per-user dir Xcode scans for
+	// toolchain bundles via symlink.
+	XcodeToolchainsLinkDirRelative = "Library/Developer/Toolchains"
+
 	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next to a
 	// .xcodeproj when a build configuration has no baseConfigurationReference.
 	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
@@ -238,6 +251,18 @@ func (p Paths) XcelerateBinFile(name string) string {
 // XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
 func (p Paths) XcodeAppOverrideXCConfigFile() string {
 	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
+}
+
+// XcodeToolchainBundleDir returns the per-user dir the CLI installs the
+// toolchain bundle into (~/.bitrise-xcelerate/toolchain/<id>).
+func (p Paths) XcodeToolchainBundleDir() string {
+	return filepath.Join(p.XcelerateRoot(), xcodeToolchainSubdir, XcodeToolchainBundleID)
+}
+
+// XcodeToolchainsLinkPath returns the discovery symlink path Xcode scans
+// (~/Library/Developer/Toolchains/<id>).
+func (p Paths) XcodeToolchainsLinkPath() string {
+	return filepath.Join(p.Home, XcodeToolchainsLinkDirRelative, XcodeToolchainBundleID)
 }
 
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
