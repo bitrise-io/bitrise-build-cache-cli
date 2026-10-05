@@ -33,19 +33,51 @@ func (d *Doctor) xcodeRecentBuildCheck() Check {
 				return Result{State: StateError, Detail: "resolve home dir: " + err.Error()}
 			}
 
-			return diagnoseXcodeRecentBuild(filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData"), d.now())
+			roots := []string{filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")}
+			if override := os.Getenv("BITRISE_XCODE_DERIVED_DATA_PATH"); override != "" {
+				roots = append(roots, override)
+			}
+			if cacheDir := filepath.Join(home, ".bitrise", "cache", "xcode-dd"); cacheDir != "" {
+				roots = append(roots, cacheDir)
+			}
+
+			return diagnoseXcodeRecentBuild(roots, d.now())
 		},
 	}
 }
 
-func diagnoseXcodeRecentBuild(derivedDataRoot string, now time.Time) Result {
+func diagnoseXcodeRecentBuild(derivedDataRoots []string, now time.Time) Result {
 	cutoff := now.Add(-xcodeRecentBuildWindow)
 
-	newest, project, err := findNewestRecentActivityLog(derivedDataRoot, cutoff)
-	if err != nil {
-		return Result{State: StateOK, Detail: "no recent Xcode build found (" + err.Error() + ")"}
+	var (
+		newest  string
+		project string
+		newestT time.Time
+		errs    []string
+	)
+	for _, root := range derivedDataRoots {
+		path, proj, err := findNewestRecentActivityLog(root, cutoff)
+		if err != nil {
+			errs = append(errs, err.Error())
+
+			continue
+		}
+		if path == "" {
+			continue
+		}
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			continue
+		}
+		if newest == "" || info.ModTime().After(newestT) {
+			newest, project, newestT = path, proj, info.ModTime()
+		}
 	}
 	if newest == "" {
+		if len(errs) > 0 {
+			return Result{State: StateOK, Detail: "no recent Xcode build found (" + strings.Join(errs, "; ") + ")"}
+		}
+
 		return Result{State: StateOK, Detail: "no recent Xcode build found"}
 	}
 
