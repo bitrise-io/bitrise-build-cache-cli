@@ -122,7 +122,9 @@ func UninstallToolchain(installPath, toolchainsLinkPath string) error {
 }
 
 // LinkToolchain places a symlink at toolchainsLinkPath pointing at installPath
-// so Xcode discovers the bundle via its canonical lookup dir.
+// so Xcode discovers the bundle via its canonical lookup dir. Replaces an
+// existing symlink (stale pointer from a prior install); refuses to clobber a
+// non-symlink file or directory the user put there.
 func LinkToolchain(installPath, toolchainsLinkPath string) error {
 	if toolchainsLinkPath == "" {
 		return errors.New("toolchains link path is empty")
@@ -135,10 +137,11 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 		return fmt.Errorf("create toolchains link dir %s: %w", filepath.Dir(toolchainsLinkPath), err)
 	}
 
-	// Idempotency: replace any existing entry at the link path so a stale
-	// pointer from an earlier install doesn't shadow the fresh bundle.
-	if _, err := os.Lstat(toolchainsLinkPath); err == nil {
-		if err := os.RemoveAll(toolchainsLinkPath); err != nil {
+	if info, err := os.Lstat(toolchainsLinkPath); err == nil {
+		if info.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("toolchains link path %s exists and is not a symlink; refusing to replace", toolchainsLinkPath)
+		}
+		if err := os.Remove(toolchainsLinkPath); err != nil {
 			return fmt.Errorf("replace existing toolchains link %s: %w", toolchainsLinkPath, err)
 		}
 	}
