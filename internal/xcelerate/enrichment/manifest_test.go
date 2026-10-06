@@ -229,6 +229,28 @@ func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing
 	assert.Equal(t, "burst-only", id, "the sole pending record wins the overlap")
 }
 
+func TestManifestEntryGroup_ErrorMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		statuses []string
+		want     string
+	}{
+		{name: "empty", statuses: nil, want: ""},
+		{name: "all success", statuses: []string{"S", "S"}, want: ""},
+		{name: "single error", statuses: []string{"E"}, want: "xcodebuild failed (status=E)"},
+		{name: "mixed picks first failing entry", statuses: []string{"S", "E", "E"}, want: "xcodebuild failed (status=E)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var entries []enrichment.ManifestEntry
+			for _, s := range tc.statuses {
+				entries = append(entries, enrichment.ManifestEntry{Status: s})
+			}
+			group := enrichment.ManifestEntryGroup{Entries: entries}
+			assert.Equal(t, tc.want, group.ErrorMessage())
+		})
+	}
+}
+
 func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	groups, err := enrichment.LoadManifestGrouped("testdata/LogStoreManifest.plist", 60*time.Second)
 	require.NoError(t, err)
