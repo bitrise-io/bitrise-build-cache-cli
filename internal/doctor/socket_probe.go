@@ -15,6 +15,9 @@ type socketCheckParams struct {
 	Fixer      Fixer
 
 	Handshake spawn.Handshake
+	// LazySpawn reports Stopped as a benign "idle" state. The build spawns the
+	// socket on first use, so pre-first-build it is not running on purpose.
+	LazySpawn bool
 }
 
 func (d *Doctor) socketCheck(p socketCheckParams) Check {
@@ -27,6 +30,10 @@ func (d *Doctor) socketCheck(p socketCheckParams) Check {
 
 			switch spawn.Probe(ctx, p.SocketPath, p.Handshake) {
 			case spawn.Stopped:
+				if p.LazySpawn {
+					return Result{State: StateOK, Detail: "idle; starts on first build"}
+				}
+
 				return Result{State: StateWarn, Detail: "not running (no socket file)", Fixable: true, Fixer: p.Fixer}
 			case spawn.Stuck:
 				return Result{
