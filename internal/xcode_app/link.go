@@ -97,6 +97,7 @@ func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, res
 		projDir:         projDir,
 		fileRefs:        fileRefs,
 		siblingPath:     filepath.Join(projDir, SiblingXCConfigName),
+		siblingFileRef:  findExistingSiblingFileRef(fileRefs),
 		touchedXCConfig: map[string]struct{}{},
 		updatedPbx:      content,
 		projectPath:     projectPath,
@@ -180,6 +181,16 @@ func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, erro
 	c.updatedPbx = updated
 
 	return c.siblingPath, nil
+}
+
+func findExistingSiblingFileRef(fileRefs map[string]pbxFileRef) string {
+	for id, ref := range fileRefs {
+		if ref.Path == SiblingXCConfigName {
+			return id
+		}
+	}
+
+	return ""
 }
 
 func (c *linkContext) mintSiblingFileRefID() (string, error) {
