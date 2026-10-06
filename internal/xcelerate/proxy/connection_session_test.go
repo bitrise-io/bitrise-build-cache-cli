@@ -15,23 +15,16 @@ import (
 func TestSessionRegistry_PutGetForget(t *testing.T) {
 	r := newSessionRegistry()
 
-	cs1 := newConnectionSession(100, time.Now())
-	cs2 := newConnectionSession(200, time.Now())
+	cs1 := newConnectionSession("k1", 100, time.Now())
+	cs2 := newConnectionSession("k2", 200, time.Now())
 
-	r.put("k1", cs1)
-	r.put("k2", cs2)
+	r.put(cs1)
+	r.put(cs2)
 
 	assert.Equal(t, 2, registryLen(r))
 
-	k, ok := r.keyFor(cs1)
-	assert.True(t, ok)
-	assert.Equal(t, "k1", k)
-
 	r.forget("k1")
 	assert.Equal(t, 1, registryLen(r))
-
-	_, ok = r.keyFor(cs1)
-	assert.False(t, ok)
 }
 
 func TestSessionRegistry_ConcurrentPut(t *testing.T) {
@@ -43,7 +36,7 @@ func TestSessionRegistry_ConcurrentPut(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 
-			r.put(keyAt(i), newConnectionSession(i, time.Now()))
+			r.put(newConnectionSession(keyAt(i), i, time.Now()))
 		}(i)
 	}
 	wg.Wait()
@@ -64,7 +57,7 @@ func TestSessionRegistry_FlushAllInvokesEveryOutstandingSession(t *testing.T) {
 	r := newSessionRegistry()
 
 	for i := 0; i < 5; i++ {
-		r.put(keyAt(i), newConnectionSession(i, time.Now()))
+		r.put(newConnectionSession(keyAt(i), i, time.Now()))
 	}
 
 	var mu sync.Mutex
@@ -91,7 +84,7 @@ func TestFlushSession_SkipsWhenConnectionHadNoActivity(t *testing.T) {
 		ancestryResolver: func(int) []string { return nil },
 	}
 
-	cs := newConnectionSession(42, time.Now())
+	cs := newConnectionSession("k", 42, time.Now())
 	h.flushSession(cs)
 
 	entries, err := os.ReadDir(dir)
@@ -106,7 +99,7 @@ func TestFlushSession_WritesWhenConnectionHadActivity(t *testing.T) {
 		ancestryResolver: func(int) []string { return nil },
 	}
 
-	cs := newConnectionSession(42, time.Now())
+	cs := newConnectionSession("k", 42, time.Now())
 	cs.markActivity()
 	h.flushSession(cs)
 
