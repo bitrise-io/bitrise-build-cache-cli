@@ -68,6 +68,15 @@ func (m ManifestEntry) Success() bool {
 	return m.Status != manifestStatusError
 }
 
+// ErrorMessage synthesizes a failure string — manifest has no richer payload.
+func (m ManifestEntry) ErrorMessage() string {
+	if m.Success() {
+		return ""
+	}
+
+	return "xcodebuild failed (status=" + m.Status + ")"
+}
+
 // WalkManifests expands each glob against homeDir, loads every matched
 // LogStoreManifest.plist, and invokes visit(manifestPath, entries) for each
 // successfully parsed manifest. Glob or load failures are logged at debug and
@@ -178,6 +187,18 @@ func (g ManifestEntryGroup) Duration() time.Duration {
 	}
 
 	return stop.Sub(start)
+}
+
+// ErrorMessage returns the first non-empty entry message so a mixed-status
+// group surfaces failure signal while mirroring Success()'s AND semantics.
+func (g ManifestEntryGroup) ErrorMessage() string {
+	for _, e := range g.Entries {
+		if msg := e.ErrorMessage(); msg != "" {
+			return msg
+		}
+	}
+
+	return ""
 }
 
 func (g ManifestEntryGroup) Success() bool {
