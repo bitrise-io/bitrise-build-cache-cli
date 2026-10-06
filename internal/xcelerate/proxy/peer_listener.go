@@ -20,9 +20,6 @@ type PeerListener struct {
 	conns map[string]*peerConn // keyed by RemoteAddr().String()
 }
 
-// NewPeerListener returns a listener that tags each accepted connection with
-// the peer PID (darwin) and a unique synthetic remote-addr string the gRPC
-// stats handler can look up via LookupConn.
 func NewPeerListener(inner net.Listener) *PeerListener {
 	return &PeerListener{
 		Listener: inner,
