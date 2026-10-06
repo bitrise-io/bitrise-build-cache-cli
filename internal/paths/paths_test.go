@@ -80,6 +80,7 @@ func TestPaths_xcelerateState(t *testing.T) {
 
 	assert.Equal(t, "/h/.local/state/xcelerate", p.XcelerateStateDir())
 	assert.Equal(t, "/h/.local/state/xcelerate/logs", p.XcelerateLogDir())
+	assert.Equal(t, "/h/.local/state/xcelerate/sessions", p.XcelerateSessionsDir())
 }
 
 func TestPaths_xcelerateEnrichment(t *testing.T) {
