@@ -167,6 +167,37 @@ func TestLink_noBaseConfigCreatesSibling(t *testing.T) {
 	assert.Contains(t, pbxStr, SiblingXCConfigName, "pbxproj must reference the sibling by filename")
 }
 
+func TestLink_relinkReusesExistingSiblingFileRef(t *testing.T) {
+	tmp := t.TempDir()
+	projPath := writeProject(t, tmp, "NoBase.xcodeproj", minimalPbxNoBaseRef, nil)
+
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	_, err := Link(utils.DefaultOsProxy{}, LinkParams{ProjectPath: projPath, OverrideXCConfigPath: override})
+	require.NoError(t, err)
+
+	pbxAfterFirst, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+
+	cfgs := parseBuildConfigurations(string(pbxAfterFirst))
+	require.Len(t, cfgs, 1)
+	require.NotEmpty(t, cfgs[0].BaseConfigRefID)
+	stripped := strings.Replace(string(pbxAfterFirst),
+		"baseConfigurationReference = "+cfgs[0].BaseConfigRefID+` /* `+SiblingXCConfigName+" */;\n\t\t\t", "", 1)
+	require.NotEqual(t, string(pbxAfterFirst), stripped)
+	require.NoError(t, os.WriteFile(filepath.Join(projPath, "project.pbxproj"), []byte(stripped), 0o644))
+
+	_, err = Link(utils.DefaultOsProxy{}, LinkParams{ProjectPath: projPath, OverrideXCConfigPath: override})
+	require.NoError(t, err)
+
+	pbxAfterSecond, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, strings.Count(string(pbxAfterSecond), `path = "`+SiblingXCConfigName+`"`),
+		"second Link() must not insert a duplicate sibling PBXFileReference")
+}
+
 func TestUnlink_removesEmptySibling(t *testing.T) {
 	tmp := t.TempDir()
 	projPath := writeProject(t, tmp, "NoBase.xcodeproj", minimalPbxNoBaseRef, nil)
