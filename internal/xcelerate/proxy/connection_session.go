@@ -68,10 +68,8 @@ func contextWithSession(ctx context.Context, cs *connectionSession) context.Cont
 	return context.WithValue(ctx, connSessionCtxKey{}, cs)
 }
 
-// fanoutState writes every sessionState mutation to each wrapped state. Used by
-// the Proxy handlers so counters land in both the global sessionState (keeps
-// SetSession/GetSessionStats behaviour untouched) and the per-conn sessionState
-// (feeds the sidecar on connection close).
+// fanoutState mirrors every record call to each wrapped sessionState — index 0
+// is the global, used as the saveKeyOnce source of truth.
 type fanoutState struct {
 	states []*sessionState
 }
@@ -100,9 +98,6 @@ func (f *fanoutState) recordError(op cacheOp, err error) {
 	}
 }
 
-// saveKeyOnce fans the dedup check out but anchors the "already saved"
-// decision on the global state so a long-lived IDE connection and a wrapper
-// session agree on what has already been pushed.
 func (f *fanoutState) saveKeyOnce(key string) bool {
 	loaded := false
 

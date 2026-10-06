@@ -57,7 +57,6 @@ type WrapperSessionLink struct {
 	InvocationID string `json:"invocation_id"`
 }
 
-// sidecarWriter persists SessionSidecars under the sessions directory.
 type sidecarWriter struct {
 	dir    string
 	logger log.Logger
