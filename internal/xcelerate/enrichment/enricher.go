@@ -104,7 +104,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	if sidecarFound && (hitRateOutcome == xcactivitylog.OutcomeFileMissing || hitRateOutcome == xcactivitylog.OutcomeUnparsed) {
+	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK {
 		if total := sidecarStats.Hits + sidecarStats.Misses; total > 0 {
 			hitRate = float32(sidecarStats.Hits) / float32(total)
 		}
