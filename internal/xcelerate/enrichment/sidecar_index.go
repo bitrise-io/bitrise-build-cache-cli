@@ -67,10 +67,10 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 
 	var (
 		merged         SidecarStats
-		consumedPaths  []string
 		versionSkipped bool
 		bestBlobTotal  int64
 	)
+	consumedPaths := make([]string, 0, len(entries))
 
 	for _, de := range entries {
 		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
@@ -146,10 +146,10 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 // sessionSidecar mirrors the proxy's SessionSidecar JSON for the subset the
 // reader consumes.
 type sessionSidecar struct {
-	SchemaVersion int               `json:"schema_version"`
-	PeerAncestry  []string          `json:"peer_ancestry"`
-	AcceptedAt    time.Time         `json:"accepted_at"`
-	ClosedAt      time.Time         `json:"closed_at"`
+	SchemaVersion int                `json:"schema_version"`
+	PeerAncestry  []string           `json:"peer_ancestry"`
+	AcceptedAt    time.Time          `json:"accepted_at"`
+	ClosedAt      time.Time          `json:"closed_at"`
 	Stats         sidecarStatsOnDisk `json:"stats"`
 }
 
