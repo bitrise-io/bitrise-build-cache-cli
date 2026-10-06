@@ -26,3 +26,9 @@ func (p *Proxy) InactivityDuration() time.Duration { return p.inactivityDuration
 
 // IsSessionServiceMethod exposes the private helper for tests.
 func IsSessionServiceMethod(fullMethod string) bool { return isSessionServiceMethod(fullMethod) }
+
+// PeerPIDForTest exposes peerConn.peerPID to the external test package.
+func (p *peerConn) PeerPIDForTest() int { return p.peerPID }
+
+// RemoteAddrTagForTest exposes the synthetic remote-addr tag to tests.
+func (p *peerConn) RemoteAddrTagForTest() string { return p.remote.tag }
