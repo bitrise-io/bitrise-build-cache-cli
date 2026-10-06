@@ -24,6 +24,28 @@ type connectionSession struct {
 	// flushOnce guards the sidecar write so flushAll on GracefulStop racing a
 	// ConnEnd is a no-op.
 	flushOnce sync.Once
+
+	// firstActivityAt is stamped on the first cache RPC through the handler.
+	// Zero means the conn never issued one (health probe, aborted dial) and
+	// flushSession suppresses the sidecar write.
+	activityMu      sync.Mutex
+	firstActivityAt time.Time
+}
+
+func (c *connectionSession) markActivity() {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	if c.firstActivityAt.IsZero() {
+		c.firstActivityAt = time.Now()
+	}
+}
+
+func (c *connectionSession) hadActivity() bool {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	return !c.firstActivityAt.IsZero()
 }
 
 func newConnectionSession(peerPID int, acceptedAt time.Time) *connectionSession {
@@ -162,9 +184,14 @@ func (h *sidecarStatsHandler) HandleConn(ctx context.Context, cs grpcstats.ConnS
 }
 
 // flushSession writes the sidecar exactly once (sync.Once dedup across the
-// ConnEnd and GracefulStop flushAll paths).
+// ConnEnd and GracefulStop flushAll paths). A conn that never issued an RPC
+// (health probe, aborted dial) emits nothing — no file churn for the reader.
 func (h *sidecarStatsHandler) flushSession(cs *connectionSession) {
 	cs.flushOnce.Do(func() {
+		if !cs.hadActivity() {
+			return
+		}
+
 		sidecar := newSessionSidecar(cs, time.Now(), h.ancestryResolver)
 		h.writer.write(sidecar)
 	})

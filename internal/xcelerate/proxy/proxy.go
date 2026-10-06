@@ -184,6 +184,7 @@ func (p *Proxy) stateFor(ctx context.Context) *fanoutState {
 	states := []*sessionState{p.sessionState}
 
 	if cs := sessionFromContext(ctx); cs != nil {
+		cs.markActivity()
 		states = append(states, cs.state)
 	}
 
