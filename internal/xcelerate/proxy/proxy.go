@@ -173,19 +173,19 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	}
 }
 
-// stateFor returns a recorder that writes to the global sessionState first and
-// then to the per-conn session (if any). Callers use its methods in place of
-// p.sessionState.* so sidecar accounting stays in lockstep without changing
-// the global session's semantics.
-func (p *Proxy) stateFor(ctx context.Context) *fanoutState {
-	states := []*sessionState{p.sessionState}
-
-	if cs := sessionFromContext(ctx); cs != nil {
-		cs.markActivity()
-		states = append(states, cs.state)
+// stateFor returns a recorder that writes to the global sessionState and, if
+// the ctx is tied to a per-conn session, to that one too. Callers use its
+// methods in place of p.sessionState.* so sidecar accounting stays in lockstep
+// without changing the global session's semantics.
+func (p *Proxy) stateFor(ctx context.Context) *recorder {
+	cs := sessionFromContext(ctx)
+	if cs == nil {
+		return &recorder{global: p.sessionState}
 	}
 
-	return &fanoutState{states: states}
+	cs.markActivity()
+
+	return &recorder{global: p.sessionState, conn: cs.state}
 }
 
 // Sized off the machine, not the client: the plugin will open as many streams
