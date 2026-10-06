@@ -208,6 +208,63 @@ func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
 	assert.NotContains(t, got, `"project", "scope-check"`)
 }
 
+func Test_GenerateInitGradle_SuppressAnalyticsPluginElidesAnalyticsBlock(t *testing.T) {
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode:             "opt-in",
+			CIProvider:              "bitrise",
+			Version:                 "CommonVersionValue",
+			SuppressAnalyticsPlugin: true,
+		},
+		Cache: CacheTemplateInventory{Usage: UsageLevelNone},
+		Analytics: AnalyticsTemplateInventory{
+			Usage:        UsageLevelEnabled,
+			Version:      "AnalyticsVersionValue",
+			Endpoint:     "AnalyticsEndpointURLValue",
+			Port:         123,
+			HTTPEndpoint: "AnalyticsHttpEndpointValue",
+			GRPCEndpoint: "AnalyticsGRPCEndpointValue",
+		},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.NotContains(t, got, "AnalyticsPlugin>")
+	assert.NotContains(t, got, "AnalyticsPluginExtension")
+	assert.NotContains(t, got, `extensions.create("analytics"`)
+}
+
+func Test_GenerateInitGradle_NoSuppressKeepsAnalyticsBlock(t *testing.T) {
+	// Mirror the suppress case but with the flag off → analytics block must stay.
+	inventory := TemplateInventory{
+		Common: PluginCommonTemplateInventory{
+			ProjectMode:             "opt-in",
+			CIProvider:              "bitrise",
+			Version:                 "CommonVersionValue",
+			SuppressAnalyticsPlugin: false,
+		},
+		Cache: CacheTemplateInventory{Usage: UsageLevelNone},
+		Analytics: AnalyticsTemplateInventory{
+			Usage:        UsageLevelEnabled,
+			Version:      "AnalyticsVersionValue",
+			Endpoint:     "AnalyticsEndpointURLValue",
+			Port:         123,
+			HTTPEndpoint: "AnalyticsHttpEndpointValue",
+			GRPCEndpoint: "AnalyticsGRPCEndpointValue",
+		},
+		TestDistro: TestDistroTemplateInventory{Usage: UsageLevelNone},
+	}
+
+	got, err := inventory.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+
+	assert.Contains(t, got, "AnalyticsPluginExtension")
+	assert.Contains(t, got, `extensions.create("analytics"`)
+	assert.Contains(t, got, "apply<io.bitrise.gradle.analytics.AnalyticsPlugin>()")
+}
+
 func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{

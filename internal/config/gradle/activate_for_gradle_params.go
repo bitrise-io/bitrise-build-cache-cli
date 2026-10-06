@@ -142,8 +142,9 @@ func (params ActivateGradleParams) TemplateInventory(
 	}
 
 	projectMode := resolveProjectMode(osProxy, logger)
+	suppressAnalyticsPlugin := machineconfig.ProjectOptedOut(osProxy, logger)
 
-	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode)
+	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode, suppressAnalyticsPlugin)
 
 	cacheInventory, err := params.cacheTemplateInventory(logger, envs)
 	if err != nil {
@@ -169,6 +170,7 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	metadata common.CacheConfigMetadata,
 	isDebug bool,
 	projectMode machineconfig.Mode,
+	suppressAnalyticsPlugin bool,
 ) PluginCommonTemplateInventory {
 	cliPath := params.CLIPath
 	if cliPath == "" {
@@ -176,13 +178,14 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	}
 
 	return PluginCommonTemplateInventory{
-		AuthToken:   authpkg.GradleToken(authConfig, authOrigin),
-		Debug:       isDebug,
-		AppSlug:     metadata.BitriseAppID,
-		CIProvider:  metadata.CIProvider,
-		Version:     consts.GradleCommonPluginDepVersion,
-		CLIPath:     cliPath,
-		ProjectMode: string(projectMode),
+		AuthToken:               authpkg.GradleToken(authConfig, authOrigin),
+		Debug:                   isDebug,
+		AppSlug:                 metadata.BitriseAppID,
+		CIProvider:              metadata.CIProvider,
+		Version:                 consts.GradleCommonPluginDepVersion,
+		CLIPath:                 cliPath,
+		ProjectMode:             string(projectMode),
+		SuppressAnalyticsPlugin: suppressAnalyticsPlugin,
 	}
 }
 
