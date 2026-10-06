@@ -36,6 +36,7 @@ type Enricher struct {
 	Health           *HealthWriter
 	Now              func() time.Time
 	XcresultParser   xcresult.Parser
+	SidecarReader    SidecarReader
 }
 
 func (e *Enricher) now() time.Time {
@@ -88,14 +89,29 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
-	hitRate, _ := e.readLogHitRate(manifestPath, group)
+	hitRate, hitRateOutcome := e.readLogHitRate(manifestPath, group)
+
+	var (
+		sidecarStats  SidecarStats
+		consumedPaths []string
+		sidecarFound  bool
+	)
+	if e.SidecarReader != nil {
+		sidecarStats, consumedPaths, sidecarFound = e.SidecarReader.Lookup(group)
+	}
+
+	if sidecarFound && (hitRateOutcome == xcactivitylog.OutcomeFileMissing || hitRateOutcome == xcactivitylog.OutcomeUnparsed) {
+		if total := sidecarStats.Hits + sidecarStats.Misses; total > 0 {
+			hitRate = float32(sidecarStats.Hits) / float32(total)
+		}
+	}
 
 	var runErr error
 	if !group.Success() {
 		runErr = errors.New(group.ErrorMessage())
 	}
 
-	inv := analytics.NewInvocation(analytics.InvocationRunStats{
+	runStats := analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
 		Duration:         group.Duration().Milliseconds(),
@@ -106,7 +122,20 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
-	}, e.Auth, e.Metadata)
+	}
+	if sidecarFound {
+		runStats.CacheHits = sidecarStats.Hits
+		runStats.CacheMisses = sidecarStats.Misses
+		runStats.KVCacheHits = sidecarStats.KVHits
+		runStats.KVCacheMisses = sidecarStats.KVMisses
+		runStats.CacheUploads = sidecarStats.Uploads
+		runStats.CacheUploadBytes = sidecarStats.UploadBytes
+		runStats.CacheDownloadBytes = sidecarStats.DownloadBytes
+		runStats.KVUploadBytes = sidecarStats.KVUploadBytes
+		runStats.CacheBlobStats = sidecarStats.BlobStats
+	}
+
+	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
 
 	e.attachXcresultSummary(manifestPath, group, inv)
 
@@ -115,10 +144,14 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		_ = e.recordWrapperlessFailure(invocationID, inv, err)
+		if persisted := e.recordWrapperlessFailure(invocationID, inv, err); persisted {
+			unlinkSidecars(consumedPaths, logger)
+		}
 
 		return
 	}
+
+	unlinkSidecars(consumedPaths, logger)
 
 	// matched=false always: matched groups short-circuit above and LastMatched
 	// is reserved for correlated re-PUTs, which no longer happen.
@@ -138,6 +171,9 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
+// recordWrapperlessFailure returns true when the enriched payload was persisted to
+// the retry store, so sidecar unlink can proceed; false when the record was
+// dropped and sidecars must be left for a later invocation to re-consume.
 func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
 		return false
@@ -168,6 +204,14 @@ func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.
 	}
 
 	return true
+}
+
+func unlinkSidecars(paths []string, logger log.Logger) {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
+		}
+	}
 }
 
 // attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
