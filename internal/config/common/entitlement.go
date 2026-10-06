@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -127,6 +128,27 @@ func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential,
 // EntitlementChecker is the seam that lets command tests force an answer.
 var EntitlementChecker = CheckEntitlement //nolint:gochecknoglobals
 
+// entitlementAnswers remembers the answer per workspace for the life of the process, so an
+// activation that passes several gates (a command, then the activator it calls) asks once.
+var entitlementAnswers sync.Map //nolint:gochecknoglobals
+
+// ResetEntitlementAnswers forgets the remembered answers; tests that change the answer call it.
+func ResetEntitlementAnswers() { entitlementAnswers.Clear() }
+
+func checkRemembered(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) EntitlementState {
+	key := baseURL + "\x00" + cred.WorkspaceID
+	if known, ok := entitlementAnswers.Load(key); ok {
+		state, _ := known.(EntitlementState)
+
+		return state
+	}
+
+	state := EntitlementChecker(ctx, baseURL, cred, logger)
+	entitlementAnswers.Store(key, state)
+
+	return state
+}
+
 // SkipActivationForEntitlement reports whether activation should stop before
 // doing anything, and prints the reason when it should.
 func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) bool {
@@ -137,7 +159,7 @@ func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth
 		return false
 	}
 
-	if EntitlementChecker(ctx, baseURL, cred, logger) != EntitlementNone {
+	if checkRemembered(ctx, baseURL, cred, logger) != EntitlementNone {
 		return false
 	}
 

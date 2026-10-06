@@ -55,6 +55,9 @@ func isolatedWorkspace(t *testing.T) string {
 func forceEntitlement(t *testing.T, state configcommon.EntitlementState) *int {
 	t.Helper()
 
+	configcommon.ResetEntitlementAnswers()
+	t.Cleanup(configcommon.ResetEntitlementAnswers)
+
 	asked := 0
 	orig := configcommon.EntitlementChecker
 	configcommon.EntitlementChecker = func(context.Context, string, auth.Credential, log.Logger) configcommon.EntitlementState {

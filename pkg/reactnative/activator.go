@@ -17,6 +17,7 @@ import (
 	rnconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/reactnative"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/dependencies"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/entitlementgate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -40,6 +41,9 @@ type ActivatorParams struct {
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
+
+	// SkipForEntitlement overrides the entitlement gate. If nil, the real check runs.
+	SkipForEntitlement func(ctx context.Context) bool
 }
 
 // Activator orchestrates Bitrise Build Cache activation for React Native.
@@ -49,6 +53,8 @@ type Activator struct {
 	cpp          *ccachepkg.Activator
 	debugLogging bool
 	logger       log.Logger
+
+	skipForEntitlement func(ctx context.Context) bool
 }
 
 // NewActivator creates an Activator with production defaults.
@@ -58,9 +64,15 @@ func NewActivator(params ActivatorParams) *Activator {
 		logger = log.NewLogger(log.WithDebugLog(params.DebugLogging))
 	}
 
+	skipForEntitlement := params.SkipForEntitlement
+	if skipForEntitlement == nil {
+		skipForEntitlement = func(ctx context.Context) bool { return entitlementgate.SkipFor(ctx, logger) }
+	}
+
 	a := &Activator{
-		debugLogging: params.DebugLogging,
-		logger:       logger,
+		debugLogging:       params.DebugLogging,
+		logger:             logger,
+		skipForEntitlement: skipForEntitlement,
 	}
 
 	if params.GradleEnabled {
@@ -88,9 +100,10 @@ func NewActivator(params ActivatorParams) *Activator {
 	// --gradle=false` doesn't leave a stray ccache helper running.
 	if params.CppEnabled && params.GradleEnabled {
 		a.cpp = ccachepkg.NewActivator(ccachepkg.ActivatorParams{
-			PushEnabled:  params.PushEnabled,
-			DebugLogging: params.DebugLogging,
-			Logger:       logger,
+			PushEnabled:        params.PushEnabled,
+			DebugLogging:       params.DebugLogging,
+			Logger:             logger,
+			SkipForEntitlement: skipForEntitlement,
 		})
 	} else if params.CppEnabled && !params.GradleEnabled {
 		logger.Infof("(i) Skipping C++ (ccache) activation: Gradle is disabled — ccache only wraps the Android/Gradle native build path.")
@@ -103,6 +116,10 @@ func NewActivator(params ActivatorParams) *Activator {
 // dependencies, activate each sub-system,
 // save config.
 func (a *Activator) Activate(ctx context.Context) error {
+	if a.skipForEntitlement(ctx) {
+		return nil
+	}
+
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for React Native")
 

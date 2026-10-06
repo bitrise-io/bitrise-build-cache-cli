@@ -97,13 +97,19 @@ gates have passed.
    stored login (the services token's `org_id` claim names the workspace). No credential, a credential that cannot be resolved, no workspace, no list, or a
    workspace not on the list all mean: log one line, write nothing, exit 0. `all` skips the list but
    not the credential: with no workspace resolved, nothing is activated.
-2. **Entitlement, fails open.** Entitlement is per workspace, not per build tool.
-   Every cache activation command (gradle, bazel, xcode, c++, react-native) and
-   `activate all` asks whether the workspace
-   has Build Cache and stops before writing anything on an explicit "no", printing
-   where to start a trial. The answer is three-valued: an unreachable website, a missing
-   workspace or an unexpected response is Unknown, and Unknown carries on, so a
-   website outage cannot disable caching for everyone.
+2. **Entitlement, fails open, required on every activation path.** Entitlement is
+   per workspace, not per build tool, and it applies to automatic and manual
+   activation alike: every cache activation command (gradle, bazel, xcode, c++,
+   react-native), `activate all` with or without `--auto`, the interactive wizard,
+   and the Go activators in `pkg/` that step libraries call directly (React Native
+   and ccache). Each asks whether the workspace has Build Cache and stops before
+   writing anything on an explicit "no", printing where to start a trial. The
+   answer is three-valued: an unreachable website, a missing credential or
+   workspace, or an unexpected response is Unknown, and Unknown carries on, so a
+   website outage cannot disable caching for anyone. The answer is remembered per
+   workspace for the life of the process, so a command and the activator it calls
+   ask once. Not gated: `activate gradle-mirrors` (it does not configure the cache)
+   and the deactivate commands.
 3. **Auto-activation for this app and workflow, `--auto` only, fails closed.** A
    workspace can have a trial or subscription and still want Build Cache only in
    workflows it picked and activated by hand. Entitlement cannot express that, so
@@ -447,8 +453,9 @@ Roughly in order of how likely they are to matter.
     check, but each tool it starts is a separate process and resolves again. With a
     credential that has to be minted (Build Hub broker, GitHub OIDC) that is up to
     five exchanges per build, and once the endpoint ships up to five entitlement
-    requests at five seconds each in the worst case. The answer should be cached for
-    the build before that.
+    requests at five seconds each in the worst case. Within one process the
+    entitlement answer is remembered, so a command and the activator it calls ask
+    once; sharing it across the child processes is still open.
 16. **The mirrors move from boot to build start.** They are configured per build,
     for every build, and the failure signal moves from the VM log to the build log.
     A slow or failing install now adds to every build's start instead of the VM's

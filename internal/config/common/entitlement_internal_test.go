@@ -3,6 +3,7 @@
 package common
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -60,6 +61,9 @@ func serve(t *testing.T, status int, body string) *httptest.Server {
 
 func shipped(t *testing.T) {
 	t.Helper()
+
+	ResetEntitlementAnswers()
+	t.Cleanup(ResetEntitlementAnswers)
 
 	endpointLive = true
 	t.Cleanup(func() { endpointLive = entitlementEndpointShipped })
@@ -138,4 +142,30 @@ func TestSkipActivationForEntitlement_TheBypassSuppressesAGenuineNo(t *testing.T
 
 	t.Setenv(EnvSkipEntitlementCheck, "true")
 	assert.False(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
+}
+
+func TestSkipActivationForEntitlement_AsksOncePerWorkspaceInAProcess(t *testing.T) {
+	t.Setenv(EnvSkipEntitlementCheck, "")
+	ResetEntitlementAnswers()
+	t.Cleanup(ResetEntitlementAnswers)
+	asked := 0
+	orig := EntitlementChecker
+	EntitlementChecker = func(context.Context, string, auth.Credential, log.Logger) EntitlementState {
+		asked++
+
+		return EntitlementNone
+	}
+	t.Cleanup(func() { EntitlementChecker = orig })
+
+	for range 3 {
+		assert.True(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
+	}
+	assert.Equal(t, 1, asked)
+
+	assert.True(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-2"), testLogger()))
+	assert.Equal(t, 2, asked, "another workspace is another question")
+
+	ResetEntitlementAnswers()
+	assert.True(t, SkipActivationForEntitlement(t.Context(), "https://example.invalid", credFor("ws-1"), testLogger()))
+	assert.Equal(t, 3, asked)
 }
