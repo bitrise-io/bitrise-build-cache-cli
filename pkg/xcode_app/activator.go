@@ -62,13 +62,6 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 		logger.Debugf("Created sibling xcconfig: %s", f)
 	}
 
-	if len(result.ModifiedXCConfigs)+len(result.CreatedSiblings) == 0 {
-		logger.Infof("Project already linked — no changes to %s", projectPath)
-	} else {
-		logger.Infof("Linked %s (%d xcconfig(s) modified, %d sibling(s) created)",
-			projectPath, len(result.ModifiedXCConfigs), len(result.CreatedSiblings))
-	}
-
 	return result, nil
 }
 
@@ -95,13 +88,6 @@ func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult,
 	}
 	for _, f := range result.RemovedSiblings {
 		logger.Debugf("Removed sibling xcconfig: %s", f)
-	}
-
-	if len(result.ModifiedXCConfigs)+len(result.RemovedSiblings) == 0 {
-		logger.Infof("Nothing to revert for %s", projectPath)
-	} else {
-		logger.Infof("Unlinked %s (%d xcconfig(s) stripped, %d sibling(s) removed)",
-			projectPath, len(result.ModifiedXCConfigs), len(result.RemovedSiblings))
 	}
 
 	return result, nil
