@@ -226,6 +226,7 @@ type analyticsBundle struct {
 	handledManifests *enrichment.HandledManifestStore
 	healthPath       string
 	homeDir          string
+	sessionsDir      string
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
@@ -272,6 +273,7 @@ func newAnalyticsBundle(
 		b.handledManifests = &enrichment.HandledManifestStore{Path: pathResolver.HandledManifestsFile()}
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
+		b.sessionsDir = pathResolver.XcelerateSessionsDir()
 	}
 
 	return b
@@ -301,6 +303,9 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	}
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
+	}
+	if b.sessionsDir != "" {
+		enricher.SidecarReader = enrichment.NewSidecarIndex(b.sessionsDir, logger)
 	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
