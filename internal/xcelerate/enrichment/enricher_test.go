@@ -459,6 +459,186 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 	assert.False(t, captured.Success, "any failed entry fails the aggregate")
 }
 
+type fakeSidecarReader struct {
+	stats SidecarStatsStub
+	paths []string
+	found bool
+}
+
+type SidecarStatsStub = enrichment.SidecarStats
+
+func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (enrichment.SidecarStats, []string, bool) {
+	return f.stats, f.paths, f.found
+}
+
+func TestEnricher_SidecarPopulatesCacheStats(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		SidecarReader: &fakeSidecarReader{
+			found: true,
+			stats: enrichment.SidecarStats{
+				Hits: 7, Misses: 3, KVHits: 5, KVMisses: 2,
+				Uploads: 4, UploadBytes: 1024, DownloadBytes: 2048, KVUploadBytes: 256,
+			},
+		},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.Equal(t, int64(7), captured.CacheHits)
+	assert.Equal(t, int64(3), captured.CacheMisses)
+	assert.Equal(t, int64(5), captured.KVCacheHits)
+	assert.Equal(t, int64(2), captured.KVCacheMisses)
+	assert.Equal(t, int64(4), captured.CacheUploads)
+	assert.Equal(t, int64(1024), captured.CacheUploadBytes)
+	assert.Equal(t, int64(2048), captured.CacheDownloadBytes)
+	assert.Equal(t, int64(256), captured.KVUploadBytes)
+}
+
+func TestEnricher_NoSidecarReaderLeavesCacheStatsZero(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.Zero(t, captured.CacheHits)
+	assert.Zero(t, captured.CacheMisses)
+	assert.Zero(t, captured.KVUploadBytes)
+}
+
+func TestEnricher_SidecarDerivesHitRateWhenLogMissing(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		SidecarReader: &fakeSidecarReader{
+			found: true,
+			stats: enrichment.SidecarStats{Hits: 3, Misses: 1},
+		},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.InDelta(t, 0.75, captured.HitRate, 0.0001)
+}
+
+func TestEnricher_SidecarPathsUnlinkedOnSuccessfulPut(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	p1 := filepath.Join(dir, "sidecar-a.json")
+	p2 := filepath.Join(dir, "sidecar-b.json")
+	require.NoError(t, os.WriteFile(p1, []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(p2, []byte("{}"), 0o600))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		SidecarReader: &fakeSidecarReader{
+			found: true,
+			paths: []string{p1, p2},
+		},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	_, err := os.Stat(p1)
+	assert.True(t, os.IsNotExist(err), "p1 must be unlinked after a successful PUT")
+	_, err = os.Stat(p2)
+	assert.True(t, os.IsNotExist(err), "p2 must be unlinked after a successful PUT")
+}
+
+func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	p1 := filepath.Join(dir, "sidecar-a.json")
+	require.NoError(t, os.WriteFile(p1, []byte("{}"), 0o600))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("boom") },
+	}
+
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		SidecarReader: &fakeSidecarReader{
+			found: true,
+			paths: []string{p1},
+		},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	_, err := os.Stat(p1)
+	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked when the orphan record is persisted")
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1, "pending retry record must be persisted")
+}
+
 func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}

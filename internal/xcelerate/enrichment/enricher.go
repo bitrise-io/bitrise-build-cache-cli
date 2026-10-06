@@ -32,6 +32,7 @@ type Enricher struct {
 	Logger           log.Logger
 	Health           *HealthWriter
 	Now              func() time.Time
+	SidecarReader    SidecarReader
 }
 
 func (e *Enricher) now() time.Time {
@@ -84,14 +85,29 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
-	hitRate := e.readLogHitRate(manifestPath, group)
+	hitRate, hitRateOutcome := e.readLogHitRate(manifestPath, group)
+
+	var (
+		sidecarStats  SidecarStats
+		consumedPaths []string
+		sidecarFound  bool
+	)
+	if e.SidecarReader != nil {
+		sidecarStats, consumedPaths, sidecarFound = e.SidecarReader.Lookup(group)
+	}
+
+	if sidecarFound && (hitRateOutcome == xcactivitylog.OutcomeFileMissing || hitRateOutcome == xcactivitylog.OutcomeUnparsed) {
+		if total := sidecarStats.Hits + sidecarStats.Misses; total > 0 {
+			hitRate = float32(sidecarStats.Hits) / float32(total)
+		}
+	}
 
 	var runErr error
 	if !group.Success() {
 		runErr = errors.New(group.ErrorMessage())
 	}
 
-	inv := analytics.NewInvocation(analytics.InvocationRunStats{
+	runStats := analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
 		Duration:         group.Duration().Milliseconds(),
@@ -102,17 +118,34 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
-	}, e.Auth, e.Metadata)
+	}
+	if sidecarFound {
+		runStats.CacheHits = sidecarStats.Hits
+		runStats.CacheMisses = sidecarStats.Misses
+		runStats.KVCacheHits = sidecarStats.KVHits
+		runStats.KVCacheMisses = sidecarStats.KVMisses
+		runStats.CacheUploads = sidecarStats.Uploads
+		runStats.CacheUploadBytes = sidecarStats.UploadBytes
+		runStats.CacheDownloadBytes = sidecarStats.DownloadBytes
+		runStats.KVUploadBytes = sidecarStats.KVUploadBytes
+		runStats.CacheBlobStats = sidecarStats.BlobStats
+	}
+
+	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
 
 	TickAttempt(e.Health, e.Logger, e.now())
 
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		e.recordOrphanFailure(invocationID, inv, err)
+		if persisted := e.recordOrphanFailure(invocationID, inv, err); persisted {
+			unlinkSidecars(consumedPaths, logger)
+		}
 
 		return
 	}
+
+	unlinkSidecars(consumedPaths, logger)
 
 	// matched=false always: matched groups short-circuit above and LastMatched
 	// is reserved for correlated re-PUTs, which no longer happen.
@@ -132,9 +165,12 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
-func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invocation, putErr error) {
+// recordOrphanFailure returns true when the enriched payload was persisted to
+// the retry store, so sidecar unlink can proceed; false when the record was
+// dropped and sidecars must be left for a later invocation to re-consume.
+func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
-		return
+		return false
 	}
 
 	logger := logOr(e.Logger)
@@ -143,7 +179,7 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	if err != nil {
 		logger.Warnf("Failed to marshal enriched invocation %s for retry: %s", invocationID, err)
 
-		return
+		return false
 	}
 
 	now := e.now()
@@ -157,22 +193,34 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	}
 	if err := e.Store.Append(rec); err != nil {
 		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
+
+		return false
+	}
+
+	return true
+}
+
+func unlinkSidecars(paths []string, logger log.Logger) {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
+		}
 	}
 }
 
 // readLogHitRate returns 0 on any non-OK outcome. The log lands on disk before
 // the manifest (Xcode writes the manifest last), so no bounded wait is needed —
 // the reader's ENOENT path handles the vanishing race.
-func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) float32 {
+func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) (float32, xcactivitylog.Outcome) {
 	logger := logOr(e.Logger)
 
 	if manifestPath == "" {
-		return 0
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	primary := group.Primary()
 	if primary.FileName == "" {
-		return 0
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
@@ -184,7 +232,7 @@ func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup)
 
 	switch metrics.Outcome {
 	case xcactivitylog.OutcomeOK:
-		return metrics.HitRate
+		return metrics.HitRate, metrics.Outcome
 	case xcactivitylog.OutcomeFileMissing:
 		logger.Debugf("xcactivitylog missing at %s", logPath)
 	case xcactivitylog.OutcomeEmpty:
@@ -198,5 +246,5 @@ func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup)
 	case xcactivitylog.OutcomeReadError:
 	}
 
-	return 0
+	return 0, metrics.Outcome
 }
