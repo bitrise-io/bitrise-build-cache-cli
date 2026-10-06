@@ -185,7 +185,12 @@ func StartXcodeCacheProxy(
 
 	emitter := bundle.emitter()
 
-	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+	sidecarOpts, peerListener := buildSidecarOptions(listener, initialLogger)
+	if peerListener != nil {
+		listener = peerListener
+	}
+
+	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
 
 	if bundle.enrichmentEnabled() {
@@ -399,6 +404,29 @@ func getLogDir(osProxy utils.OsProxy) (string, error) {
 	}
 
 	return logDir, nil
+}
+
+// buildSidecarOptions sets up the per-connection sidecar writer and wraps
+// the listener with the peer-PID tagger. Falls back to a no-op SidecarOptions
+// (and nil wrapped listener) when the sessions dir can't be resolved.
+func buildSidecarOptions(listener net.Listener, logger log.Logger) (proxy.SidecarOptions, net.Listener) {
+	p, err := paths.Default()
+	if err != nil {
+		logger.Debugf("Sidecar writer disabled, cannot resolve paths: %v", err)
+
+		return proxy.SidecarOptions{}, nil
+	}
+
+	dir := p.XcelerateSessionsDir()
+	if err := paths.EnsureDir(utils.DefaultOsProxy{}, dir); err != nil {
+		logger.Warnf("Sidecar writer disabled, cannot create %s: %v", dir, err)
+
+		return proxy.SidecarOptions{}, nil
+	}
+
+	wrapped := proxy.NewPeerListener(listener)
+
+	return proxy.SidecarOptions{Dir: dir, Listener: wrapped}, wrapped
 }
 
 // resolveInactivityTimeout parses TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT off
