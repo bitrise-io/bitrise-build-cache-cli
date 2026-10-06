@@ -460,12 +460,10 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 }
 
 type fakeSidecarReader struct {
-	stats SidecarStatsStub
+	stats enrichment.SidecarStats
 	paths []string
 	found bool
 }
-
-type SidecarStatsStub = enrichment.SidecarStats
 
 func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (enrichment.SidecarStats, []string, bool) {
 	return f.stats, f.paths, f.found
