@@ -637,6 +637,31 @@ func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
 	require.Len(t, loaded, 1, "pending retry record must be persisted")
 }
 
+func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
+	s := newEnrichSetup(t)
+	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 10 cacheable tasks (10%)\n"))
+
+	s.enricher.SidecarReader = &fakeSidecarReader{
+		found: true,
+		stats: enrichment.SidecarStats{
+			Hits: 7, Misses: 3, KVHits: 5, KVMisses: 2,
+			Uploads: 4, UploadBytes: 1024, DownloadBytes: 2048, KVUploadBytes: 256,
+		},
+	}
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.InDelta(t, float32(0.1), s.captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
+	assert.Equal(t, int64(7), s.captured.CacheHits)
+	assert.Equal(t, int64(3), s.captured.CacheMisses)
+	assert.Equal(t, int64(5), s.captured.KVCacheHits)
+	assert.Equal(t, int64(2), s.captured.KVCacheMisses)
+	assert.Equal(t, int64(4), s.captured.CacheUploads)
+	assert.Equal(t, int64(1024), s.captured.CacheUploadBytes)
+	assert.Equal(t, int64(2048), s.captured.CacheDownloadBytes)
+	assert.Equal(t, int64(256), s.captured.KVUploadBytes)
+}
+
 func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
