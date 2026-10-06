@@ -3,11 +3,13 @@
 package proxy
 
 import (
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionRegistry_PutGetForget(t *testing.T) {
@@ -80,4 +82,35 @@ func TestSessionRegistry_FlushAllInvokesEveryOutstandingSession(t *testing.T) {
 
 func keyAt(i int) string {
 	return "k-" + string(rune('A'+i))
+}
+
+func TestFlushSession_SkipsWhenConnectionHadNoActivity(t *testing.T) {
+	dir := t.TempDir()
+	h := &sidecarStatsHandler{
+		writer:           newSidecarWriter(dir, nil),
+		ancestryResolver: func(int) []string { return nil },
+	}
+
+	cs := newConnectionSession(42, time.Now())
+	h.flushSession(cs)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "zero-RPC connection must not produce a sidecar file")
+}
+
+func TestFlushSession_WritesWhenConnectionHadActivity(t *testing.T) {
+	dir := t.TempDir()
+	h := &sidecarStatsHandler{
+		writer:           newSidecarWriter(dir, nil),
+		ancestryResolver: func(int) []string { return nil },
+	}
+
+	cs := newConnectionSession(42, time.Now())
+	cs.markActivity()
+	h.flushSession(cs)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "a conn that recorded an RPC must emit a sidecar")
 }
