@@ -19,7 +19,7 @@ Three components, each doing one job.
  pins CLI version + sha256   --->  installs that version once:          activate all --auto
  exports the opt-in envs,          host VM cache, else GAR,             1. resolve the credential
  the org allowlist and the         verified against the sha256          2. org gate (fail closed)
- host cache URL                    runs activate gradle-mirrors         3. entitlement (fail open)
+ host cache URL                    runs activate gradle-mirrors         3. website decision (fail closed)
                                    runs activate all --auto with the    4. activate each tool
                                    build's cache envs, hands back       hands back envman exports
                                    its envman exports
@@ -76,75 +76,63 @@ need.
 The reason for gating is an *analytics flood*. Activating reports nothing by
 itself, but every build that then runs a wrapped tool reports an invocation. The
 analytics endpoint accepts an invocation from any workspace and does not reject
-unentitled ones, so a workspace that never asked for Build Cache would fill the
-invocation data. Nothing downstream of activation can decline, so the decision is
+ones from workspaces without Build Cache, so a workspace that never asked for it
+would fill the invocation data. Nothing downstream of activation can decline, so the decision is
 made before activation.
 
 The gates live in the build cache CLI, not the `bitrise` CLI, so every consumer
 gets the same behavior and the `bitrise` CLI stays a thin wrapper.
 
-Three checks, in this order, all before anything is written. `activate all` itself
-skips the version check and the stats sweep that other `activate` commands run, so a
-skipped workspace is left untouched; the tools it starts each do their own once the
-gates have passed.
+Two checks, in this order, both `--auto` only and both before anything is written.
+`activate all` itself skips the version check and the stats sweep that other
+`activate` commands run, so a skipped workspace is left untouched; the tools it
+starts each do their own once the gates have passed.
 
-1. **Org allowlist, `--auto` only, fails closed.**
+1. **Org allowlist, fails closed.**
    `BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS` holds workspace slugs separated by
    commas or whitespace, or `all` (`*` also works) to bypass the gate for every
    workspace. The workspace comes from the build's own
    credential, resolved like any other command does: the `BITRISE_BUILD_CACHE_*`
    envs, else a GitHub Actions OIDC exchange, a Build Hub broker exchange or a
-   stored login (the services token's `org_id` claim names the workspace). No credential, a credential that cannot be resolved, no workspace, no list, or a
-   workspace not on the list all mean: log one line, write nothing, exit 0. `all` skips the list but
-   not the credential: with no workspace resolved, nothing is activated.
-2. **Entitlement, fails open, required on every activation path.** Entitlement is
-   per workspace, not per build tool, and it applies to automatic and manual
-   activation alike: every cache activation command (gradle, bazel, xcode, c++,
-   react-native), `activate all` with or without `--auto`, the interactive wizard,
-   and the Go activators in `pkg/` that step libraries call directly (React Native
-   and ccache). Each asks whether the workspace has Build Cache and stops before
-   writing anything on an explicit "no", printing where to start a trial. The
-   answer is three-valued: an unreachable website, a missing credential or
-   workspace, or an unexpected response is Unknown, and Unknown carries on, so a
-   website outage cannot disable caching for anyone. The answer is remembered per
-   workspace for the life of the process, so a command and the activator it calls
-   ask once. Not gated: `activate gradle-mirrors` (it does not configure the cache)
-   and the deactivate commands.
-3. **Auto-activation for this app and workflow, `--auto` only, fails closed.** A
-   workspace can have a trial or subscription and still want Build Cache only in
-   workflows it picked and activated by hand. Entitlement cannot express that, so
-   the CLI also asks `GET /build-cache/<workspace>/auto_activation` with the app
-   and workflow (`app_slug` and `workflow_name` on Bitrise CI, `external_app_id`
-   and `external_workflow_name` on another CI provider, the names the
-   benchmark-status call uses). `{"enabled": false}` stops the activation with one
-   log line. Any other outcome, an error, a timeout or an unreadable answer, also
-   stops it: an automatic activation is a convenience, and a failed lookup must not
-   switch caching on for a workflow whose owner limited it. It runs after the org
-   gate and entitlement, so an unlisted or unentitled workspace never reaches it.
-   The endpoint does not exist yet, so until it ships the check is skipped and
-   allows everything (`autoActivationEndpointShipped` in
-   `internal/config/common/auto_activation.go`; the path is provisional).
+   stored login (the services token's `org_id` claim names the workspace). No
+   credential, a credential that cannot be resolved, no workspace, no list, or a
+   workspace not on the list all mean: log one line, write nothing, exit 0. `all`
+   skips the list but not the credential: with no workspace resolved, nothing is
+   activated.
+2. **The website's decision, fails closed.** One request answers two questions:
+   does the workspace have Build Cache (an ongoing trial or an active
+   subscription, whatever its quota state), and are this app and workflow enabled
+   for automatic activation. A workspace can have a trial or subscription and still
+   want Build Cache only in workflows it picked and activated by hand. The CLI asks
+   `GET /build-cache/<workspace>/auto_activation` with the app and workflow
+   (`app_slug` and `workflow_name` on Bitrise CI, `external_app_id` and
+   `external_workflow_name` on another CI provider, the names the benchmark-status
+   call uses) and reads `{"enabled": true|false}`. `false` stops the activation
+   with one log line. Any other outcome, an error, a timeout or an unreadable
+   answer, also stops it: an automatic activation is a convenience, and a failed
+   lookup must not switch caching on for a workspace without Build Cache or a
+   workflow whose owner limited it. It runs after the org gate, so an unlisted
+   workspace never reaches it, and it is asked once per `activate all`, not once per
+   tool.
 
-Without `--auto` (a person ran `activate all`) there is no allowlist and no
-per-workflow decision: asking for it explicitly is the consent. Entitlement still
-applies.
+**Manual activation is not gated.** A person running `activate gradle|bazel|xcode|c++|react-native`,
+`activate all` without `--auto`, the interactive wizard, or an activate Step is
+asking for it explicitly, so none of them ask the website. There is no separate
+entitlement endpoint for the CLI. The website's existing entitlement check is a
+hard stop on quota for other uses, and an activation must not stop on quota, so
+this endpoint carries its own definition of "has Build Cache": a trial or
+subscription, regardless of how much quota is left.
 
-**The entitlement endpoint does not exist yet.** Until it ships, every answer is
-Unknown and the check stops nothing, which makes the allowlist the only thing
-protecting analytics. That is why the allowlist fails closed while entitlement
-fails open. The allowlist is a rollout control and not a security boundary: the
-workspace is read from the unsigned services token, and a build's own
-`BITRISE_BUILD_CACHE_*` envs override the boot script's value, so a workspace can
-put itself on the list from its own `bitrise.yml`. That only turns on for itself
-what an activate Step already could, and the cache backend still authorizes the
-real token on every request.
-
-When the endpoint ships, flip `entitlementEndpointShipped` in
-`internal/config/common/entitlement.go`. A unit test then fails and names what to
-delete (the temporary bypass `BITRISE_BUILD_CACHE_TMP_SKIP_ENTITLEMENT_CHECK`, the
-branch that reads it, and the test), so the flip and the cleanup cannot drift
-apart. The request path in that file is provisional and will change when the
-endpoint is designed.
+**The endpoint does not exist yet.** Until it ships the check is skipped and
+allows everything (`autoActivationEndpointShipped` in
+`internal/config/common/auto_activation.go`; the path is provisional), which makes
+the allowlist the only thing protecting analytics. The allowlist is a rollout
+control and not a security boundary: the workspace is read from the unsigned
+services token, and a build's own `BITRISE_BUILD_CACHE_*` envs override the boot
+script's value, so a workspace can put itself on the list from its own
+`bitrise.yml`. That only turns on for itself what an activate Step already could,
+and the cache backend still authorizes the real token on every request. When the
+endpoint ships, flip the constant and adjust the path; nothing else needs deleting.
 
 ## Opting out
 
@@ -311,9 +299,10 @@ Not validated:
   never runs. Linux can only be tested with a real `bitrise` release that DEN
   then requests, either globally or through its per-organization version override
   (read from the agent code, not exercised).
-- The `all` allowlist value and per-workspace entitlement: unit tested, not yet
-  run on staging (the staging prerelease predates both).
-- The entitlement cases: trial, active subscription, none. They need the endpoint.
+- The `all` allowlist value and the website decision: unit tested, not yet run on
+  staging (the staging prerelease predates both, and the endpoint does not exist).
+- The website's answers: no Build Cache, workflow disabled, and an outage. They
+  need the endpoint.
 - An explicit activate Step on an auto-activated VM beyond Gradle and Xcode on
   macOS (Bazel, React Native, Linux).
 - Builds that use none of the activated tools, and Tuist or other callers of
@@ -384,9 +373,10 @@ script, later by the website endpoint. Each step limits what the next can break.
    and tell support and sales that cache activity will appear for a workspace with
    no Step. After each: watch the same signals for a day.
    Rollback is removing the slug.
-6. **Website endpoint ships.** Replace the list with the entitlement answer per
-   workspace: flip `entitlementEndpointShipped`, delete the bypass, and remove the
-   allowlist. Opting in is then a product setting instead of a deploy.
+6. **Website endpoint ships.** Replace the list with the website's decision per
+   workspace, app and workflow: flip `autoActivationEndpointShipped`, adjust the
+   path, and remove the allowlist. Opting in is then a product setting instead of a
+   deploy.
 7. **General availability.** Remove the opt-in env from preboot so the endpoint is
    the only gate. `BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS=all` is the interim way to
    bypass the allowlist for every workspace without removing the gate code.
@@ -448,21 +438,20 @@ Roughly in order of how likely they are to matter.
     cluster and broke both the cache and the Maven mirror for IAD and ORD until its
     IPs were synced. Validate on staging only after checking it still matches
     production.
-15. **Entitlement and the credential are resolved once per process.** `activate all`
-    resolves the credential once and reuses it for the allowlist and the entitlement
-    check, but each tool it starts is a separate process and resolves again. With a
-    credential that has to be minted (Build Hub broker, GitHub OIDC) that is up to
-    five exchanges per build, and once the endpoint ships up to five entitlement
-    requests at five seconds each in the worst case. Within one process the
-    entitlement answer is remembered, so a command and the activator it calls ask
-    once; sharing it across the child processes is still open.
+15. **The credential is resolved once per process.** `activate all` resolves the
+    credential once and reuses it for the allowlist and the website decision, which
+    is asked once per run, but each tool it starts is a separate process and
+    resolves again. With a credential that has to be minted (Build Hub broker,
+    GitHub OIDC) that is up to five exchanges per build. Sharing the credential
+    with the child processes is still open.
 16. **The mirrors move from boot to build start.** They are configured per build,
     for every build, and the failure signal moves from the VM log to the build log.
     A slow or failing install now adds to every build's start instead of the VM's
     boot, and the classifier and monitors must be live first (see Observability).
 17. **Concern: invocation volume and quota.** Activating every workflow multiplies
-    what the entitled customers produce, and the entitlement gate asks whether a
-    workspace has Build Cache, not whether it has quota left. On 5 Oct 2026, across
+    what the entitled customers produce, and the website's decision deliberately
+    does not stop on quota: it asks whether the workspace has Build Cache and
+    whether the workflow is enabled, not whether quota is left. On 5 Oct 2026, across
     the 100 trialing and subscribed workspaces with the most invocations, only about
     26% of active workflows (1,446 of 5,634) used Build Cache and 581 of 816 active
     apps had none. Enabling the rest is estimated at about 659,000 extra
@@ -476,9 +465,10 @@ Roughly in order of how likely they are to matter.
     (repo-only configuration is invisible, some invocations do not map to Bitrise
     builds). Per-workspace figures are in the internal report
     ([Build Cache rollout impact](https://claude.ai/artifact/LotBFE5uMBUkfxLS799ks6),
-    private to its owner until shared). Decide how auto-activation should treat
-    quota before opting in paying customers, and hold the largest and the
-    incompatible workspaces back until each is checked.
+    private to its owner until shared). Quota is not a stop for an activation by
+    decision, so hold the largest, the over-quota and the incompatible workspaces
+    back through the rollout order and the website's per-workflow settings until
+    each is checked.
 
 ## Open questions
 
@@ -487,9 +477,9 @@ Roughly in order of how likely they are to matter.
   `enabled`, so the website can change this without a CLI release. Failing closed
   means a website outage stops all automatic activations for workspaces that reach
   this check; is that the right trade?
-- What should auto-activation do for a workspace at or over its invocation quota:
-  skip it, activate and let the backend limit it, or require a quota check in the
-  entitlement answer? (risk 17)
+- Quota is not a stop for an activation. Should the website's decision still hold
+  back workspaces that are over quota during the rollout, for example by leaving
+  them unconfigured? (risk 17)
 - Two variables opt out of two activations. Is a single documented switch (for
   example `BITRISE_BUILD_CACHE_DISABLE_AUTO_ACTIVATION`) worth adding so customers
   do not have to know both?
