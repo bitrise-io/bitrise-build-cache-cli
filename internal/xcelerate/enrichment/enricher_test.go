@@ -407,6 +407,32 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")
 }
 
+func TestEnricher_OrphanFailurePopulatesSyntheticError(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "orphan-failed",
+		Signature: "Build S",
+		Status:    "E",
+		Start:     time.Now(),
+		Stop:      time.Now().Add(time.Second),
+	}))
+
+	assert.False(t, captured.Success)
+	assert.Equal(t, "xcodebuild failed (status=E)", captured.Error,
+		"orphan PUT must carry a synthetic Error so BE rows surface failure signal")
+}
+
 func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}

@@ -2,6 +2,7 @@ package enrichment
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -85,6 +86,11 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	hitRate := e.readLogHitRate(manifestPath, group)
 
+	var runErr error
+	if !group.Success() {
+		runErr = errors.New(group.ErrorMessage())
+	}
+
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
@@ -92,6 +98,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		Command:          command,
 		FullCommand:      group.FullCommand(),
 		Success:          group.Success(),
+		Error:            runErr,
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
