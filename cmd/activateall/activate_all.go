@@ -28,7 +28,8 @@ var ActivateAllCmd = &cobra.Command{ //nolint:gochecknoglobals
 
 With --auto the activation was not asked for by the user, as when a platform starts it for every build.
 It then runs only for workspaces listed in ` + configcommon.EnvAutoActivateOrgs + ` (or when that is "all" or "*", for every
-workspace that has a credential) and does nothing for the rest.`,
+workspace that has a credential) and does nothing for the rest. It also asks the website whether the app and
+workflow may be activated automatically, and stops when the answer is no.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
@@ -41,9 +42,10 @@ workspace that has a credential) and does nothing for the rest.`,
 			entitled: func(ctx context.Context, cred auth.Credential) bool {
 				return !common.SkipForEntitlementWith(ctx, logger, cred)
 			},
-			runStep:   runSelf,
-			autoGated: autoMode,
-			debug:     common.IsDebugLogMode,
+			autoEnabled: common.AutoActivationEnabled,
+			runStep:     runSelf,
+			autoGated:   autoMode,
+			debug:       common.IsDebugLogMode,
 		}
 
 		return a.activate(cmd.Context())
@@ -63,7 +65,9 @@ type activator struct {
 	debug     bool
 	resolve   func(ctx context.Context) (cred auth.Credential, found bool, err error)
 	entitled  func(ctx context.Context, cred auth.Credential) bool
-	runStep   func(ctx context.Context, args []string) error
+	// autoEnabled is the per app and workflow decision, asked only for an automatic activation.
+	autoEnabled func(ctx context.Context, logger log.Logger, cred auth.Credential) bool
+	runStep     func(ctx context.Context, args []string) error
 }
 
 func (a activator) activate(ctx context.Context) error {
@@ -79,6 +83,12 @@ func (a activator) activate(ctx context.Context) error {
 
 	// Absence is not a "no": the activations report a missing credential better than this gate.
 	if err == nil && found && !a.entitled(ctx, cred) {
+		return nil
+	}
+
+	if a.autoGated && err == nil && found && !a.autoEnabled(ctx, a.logger, cred) {
+		a.logger.Infof("Bitrise Build Cache auto-activation skipped: this app or workflow is not enabled for it")
+
 		return nil
 	}
 

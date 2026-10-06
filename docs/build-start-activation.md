@@ -83,7 +83,7 @@ made before activation.
 The gates live in the build cache CLI, not the `bitrise` CLI, so every consumer
 gets the same behavior and the `bitrise` CLI stays a thin wrapper.
 
-Two checks, in this order, both before anything is written. `activate all` itself
+Three checks, in this order, all before anything is written. `activate all` itself
 skips the version check and the stats sweep that other `activate` commands run, so a
 skipped workspace is left untouched; the tools it starts each do their own once the
 gates have passed.
@@ -104,9 +104,24 @@ gates have passed.
    where to start a trial. The answer is three-valued: an unreachable website, a missing
    workspace or an unexpected response is Unknown, and Unknown carries on, so a
    website outage cannot disable caching for everyone.
+3. **Auto-activation for this app and workflow, `--auto` only, fails closed.** A
+   workspace can have a trial or subscription and still want Build Cache only in
+   workflows it picked and activated by hand. Entitlement cannot express that, so
+   the CLI also asks `GET /build-cache/<workspace>/auto_activation` with the app
+   and workflow (`app_slug` and `workflow_name` on Bitrise CI, `external_app_id`
+   and `external_workflow_name` on another CI provider, the names the
+   benchmark-status call uses). `{"enabled": false}` stops the activation with one
+   log line. Any other outcome, an error, a timeout or an unreadable answer, also
+   stops it: an automatic activation is a convenience, and a failed lookup must not
+   switch caching on for a workflow whose owner limited it. It runs after the org
+   gate and entitlement, so an unlisted or unentitled workspace never reaches it.
+   The endpoint does not exist yet, so until it ships the check is skipped and
+   allows everything (`autoActivationEndpointShipped` in
+   `internal/config/common/auto_activation.go`; the path is provisional).
 
-Without `--auto` (a person ran `activate all`) there is no allowlist: asking for
-it explicitly is the consent. Entitlement still applies.
+Without `--auto` (a person ran `activate all`) there is no allowlist and no
+per-workflow decision: asking for it explicitly is the consent. Entitlement still
+applies.
 
 **The entitlement endpoint does not exist yet.** Until it ships, every answer is
 Unknown and the check stops nothing, which makes the allowlist the only thing
@@ -357,7 +372,8 @@ script, later by the website endpoint. Each step limits what the next can break.
    Running both is harmless, since the init script is identical. Watch invocation
    counts, failures, mirror activation failures and build duration.
 5. **Opt in organizations one by one.** One preboot change per organization,
-   adding its slug to the list. Before each: confirm the workspace has a trial or
+   adding its slug to the list (until the per-workflow endpoint ships, every
+   workflow of that workspace is activated). Before each: confirm the workspace has a trial or
    subscription, check its invocation quota against the projected volume (risk 17),
    and tell support and sales that cache activity will appear for a workspace with
    no Step. After each: watch the same signals for a day.
@@ -459,6 +475,11 @@ Roughly in order of how likely they are to matter.
 
 ## Open questions
 
+- How should the auto-activation endpoint decide: an allowlist of workflows, an
+  opt-out list, or a per-workspace default with exceptions? The CLI only reads
+  `enabled`, so the website can change this without a CLI release. Failing closed
+  means a website outage stops all automatic activations for workspaces that reach
+  this check; is that the right trade?
 - What should auto-activation do for a workspace at or over its invocation quota:
   skip it, activate and let the backend limit it, or require a quota check in the
   entitlement answer? (risk 17)

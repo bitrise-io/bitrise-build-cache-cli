@@ -24,8 +24,11 @@ type harness struct {
 	entitled bool
 	asked    int
 	resolved int
-	debug    bool
-	failing  map[string]error
+	// autoOff makes the per app and workflow decision a "no"; autoAsked counts the questions.
+	autoOff   bool
+	autoAsked int
+	debug     bool
+	failing   map[string]error
 }
 
 func (h *harness) activator(goos string, auto bool, envs map[string]string, cred auth.Credential, found bool, resolveErr error) activator {
@@ -44,6 +47,11 @@ func (h *harness) activator(goos string, auto bool, envs map[string]string, cred
 			h.asked++
 
 			return h.entitled
+		},
+		autoEnabled: func(context.Context, log.Logger, auth.Credential) bool {
+			h.autoAsked++
+
+			return !h.autoOff
 		},
 		runStep: func(_ context.Context, args []string) error {
 			h.ran = append(h.ran, args)
@@ -182,4 +190,30 @@ func TestActivate_OneFailingToolDoesNotStopTheOthers(t *testing.T) {
 	assert.Contains(t, err.Error(), "activate bazel: exit status 1")
 	assert.NotContains(t, err.Error(), "activate gradle")
 	assert.Len(t, h.ran, 4)
+}
+
+func TestActivate_AutoStopsWhenTheWorkflowIsNotEnabled(t *testing.T) {
+	h := &harness{entitled: true, autoOff: true}
+	a := h.activator("darwin", true, listed(monitoringOrg), auth.Credential{WorkspaceID: monitoringOrg}, true, nil)
+
+	require.NoError(t, a.activate(context.Background()))
+
+	assert.Empty(t, h.ran)
+	assert.Equal(t, 1, h.asked, "entitlement is asked before the per workflow decision")
+	assert.Equal(t, 1, h.autoAsked)
+}
+
+func TestActivate_AutoDecisionIsAskedOnlyForAnAutomaticActivationThatPassedTheOtherGates(t *testing.T) {
+	manual := &harness{entitled: true, autoOff: true}
+	require.NoError(t, manual.activator("darwin", false, map[string]string{}, auth.Credential{WorkspaceID: monitoringOrg}, true, nil).activate(context.Background()))
+	assert.Equal(t, 0, manual.autoAsked, "a person running activate all is not an automatic activation")
+	assert.NotEmpty(t, manual.ran)
+
+	unlisted := &harness{entitled: true, autoOff: true}
+	require.NoError(t, unlisted.activator("darwin", true, listed("someone-else"), auth.Credential{WorkspaceID: monitoringOrg}, true, nil).activate(context.Background()))
+	assert.Equal(t, 0, unlisted.autoAsked, "the org gate comes first")
+
+	noEntitlement := &harness{entitled: false, autoOff: true}
+	require.NoError(t, noEntitlement.activator("darwin", true, listed(monitoringOrg), auth.Credential{WorkspaceID: monitoringOrg}, true, nil).activate(context.Background()))
+	assert.Equal(t, 0, noEntitlement.autoAsked, "entitlement comes before the per workflow decision")
 }
