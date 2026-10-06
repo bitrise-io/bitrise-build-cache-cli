@@ -137,7 +137,6 @@ func NewProxyWithOptions(
 			resp, err := handler(ctx, req)
 			if !isSessionServiceMethod(info.FullMethod) {
 				proxy.touchSession() //nolint:contextcheck // timer callback fires after RPC ctx is done
-				proxy.touchConnSession(ctx)
 			}
 
 			return resp, err
@@ -174,24 +173,7 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		registry:         p.sidecarRegistry,
 		writer:           newSidecarWriter(opts.Dir, p.logger),
 		ancestryResolver: ancestry.resolveAncestry,
-		inactivityWindow: p.inactivityDuration,
 	}
-}
-
-// touchConnSession additively writes activity + lazy-arms the per-conn
-// inactivity timer. The global touchSession path still runs — this is purely
-// additive instrumentation feeding the sidecar writer.
-func (p *Proxy) touchConnSession(ctx context.Context) {
-	if p.sidecarStats == nil {
-		return
-	}
-
-	cs := sessionFromContext(ctx)
-	if cs == nil {
-		return
-	}
-
-	p.sidecarStats.armInactivity(cs)
 }
 
 // stateFor returns a recorder that writes to the global sessionState first and

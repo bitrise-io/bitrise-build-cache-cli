@@ -15,21 +15,15 @@ import (
 type connSessionCtxKey struct{}
 
 // connectionSession is the per-conn counterpart of Proxy.sessionState. One
-// per accepted connection; flushed exactly once on the first of (gRPC
-// ConnEnd, per-conn inactivity timeout).
+// per accepted connection; flushed exactly once on gRPC ConnEnd.
 type connectionSession struct {
 	peerPID    int
 	acceptedAt time.Time
 	state      *sessionState
 
-	// flushOnce guards the sidecar write so a late ConnEnd after an inactivity
-	// fire (or vice versa) is a no-op.
+	// flushOnce guards the sidecar write so flushAll on GracefulStop racing a
+	// ConnEnd is a no-op.
 	flushOnce sync.Once
-
-	// touchMu guards lastActivity + inactivityTimer the same way Proxy does.
-	touchMu         sync.Mutex
-	lastActivity    time.Time
-	inactivityTimer *time.Timer
 }
 
 func newConnectionSession(peerPID int, acceptedAt time.Time) *connectionSession {
@@ -40,62 +34,14 @@ func newConnectionSession(peerPID int, acceptedAt time.Time) *connectionSession 
 	}
 }
 
-// touch records activity for the per-conn inactivity timer, arming it on the
-// first call. onInactivity fires flushFn when the window elapses with no new
-// touches.
-func (c *connectionSession) touch(window time.Duration, flushFn func()) {
-	c.touchMu.Lock()
-	defer c.touchMu.Unlock()
-
-	c.lastActivity = time.Now()
-
-	if c.inactivityTimer == nil && window > 0 {
-		c.inactivityTimer = time.AfterFunc(window, func() {
-			c.onInactivity(window, flushFn)
-		})
-	}
-}
-
-func (c *connectionSession) onInactivity(window time.Duration, flushFn func()) {
-	c.touchMu.Lock()
-
-	elapsed := time.Since(c.lastActivity)
-	if remaining := window - elapsed; remaining > 0 {
-		c.inactivityTimer = time.AfterFunc(remaining, func() {
-			c.onInactivity(window, flushFn)
-		})
-		c.touchMu.Unlock()
-
-		return
-	}
-
-	c.inactivityTimer = nil
-	c.touchMu.Unlock()
-
-	flushFn()
-}
-
-func (c *connectionSession) stopTimer() {
-	c.touchMu.Lock()
-	defer c.touchMu.Unlock()
-
-	if c.inactivityTimer != nil {
-		c.inactivityTimer.Stop()
-		c.inactivityTimer = nil
-	}
-}
-
-// sessionFromContext returns the per-conn session hung off the gRPC call ctx.
-// Nil means the stats handler never saw a ConnBegin (bufconn tests, non-gRPC
-// callers) — the global sessionState path still runs so no counters are lost.
+// sessionFromContext returns the per-conn session hung off the gRPC call ctx,
+// or nil if the stats handler never saw a ConnBegin (bufconn tests).
 func sessionFromContext(ctx context.Context) *connectionSession {
 	v, _ := ctx.Value(connSessionCtxKey{}).(*connectionSession)
 
 	return v
 }
 
-// contextWithSession stamps the session on the ctx returned by TagConn. gRPC
-// derives every subsequent RPC ctx on this connection from it.
 func contextWithSession(ctx context.Context, cs *connectionSession) context.Context {
 	return context.WithValue(ctx, connSessionCtxKey{}, cs)
 }
@@ -168,9 +114,6 @@ type sidecarStatsHandler struct {
 	registry         *sessionRegistry
 	writer           *sidecarWriter
 	ancestryResolver func(pid int) []string
-	// inactivityWindow is read lazily so callers that set Proxy.InactivityTimeout
-	// after NewProxy still get the overridden window.
-	inactivityWindow func() time.Duration
 }
 
 var _ grpcstats.Handler = (*sidecarStatsHandler)(nil)
@@ -218,12 +161,10 @@ func (h *sidecarStatsHandler) HandleConn(ctx context.Context, cs grpcstats.ConnS
 	h.cleanupForContext(ctx)
 }
 
-// flushSession writes the sidecar exactly once (sync.Once dedup across
-// ConnEnd / inactivity timer firing paths).
+// flushSession writes the sidecar exactly once (sync.Once dedup across the
+// ConnEnd and GracefulStop flushAll paths).
 func (h *sidecarStatsHandler) flushSession(cs *connectionSession) {
 	cs.flushOnce.Do(func() {
-		cs.stopTimer()
-
 		sidecar := newSessionSidecar(cs, time.Now(), h.ancestryResolver)
 		h.writer.write(sidecar)
 	})
@@ -247,19 +188,6 @@ func (h *sidecarStatsHandler) cleanupForContext(ctx context.Context) {
 	if h.listener != nil {
 		h.listener.Forget(key)
 	}
-}
-
-// armInactivity exposes the per-conn touch path to the UnaryInterceptor —
-// factored out so proxy.go stays focused on RPC dispatch.
-func (h *sidecarStatsHandler) armInactivity(cs *connectionSession) {
-	window := time.Duration(0)
-	if h.inactivityWindow != nil {
-		window = h.inactivityWindow()
-	}
-
-	cs.touch(window, func() {
-		h.flushSession(cs)
-	})
 }
 
 // sessionRegistry is the key → *connectionSession map, keyed by the same
