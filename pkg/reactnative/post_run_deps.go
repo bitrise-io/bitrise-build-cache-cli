@@ -15,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -62,6 +63,10 @@ type postRunDeps struct {
 	// invocation log. If nil, resolveLocalLogger builds paths.Default +
 	// invocations.NewWriter at call time (production default).
 	localLogger localInvocationLogger
+
+	// osProxy drives analytics opt-out gating. If nil, utils.DefaultOsProxy{}
+	// is used (production default).
+	osProxy utils.OsProxy
 }
 
 func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
@@ -192,20 +197,23 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 
 	outcome.ChildInvocations = summary.ChildCount + summary.NoActivityCount + summary.SkippedCount
 
-	if err := d.sendInvocation(*inv); err != nil {
-		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
-		outcome.InvocationSaveFailed = true
+	if machineconfig.ProjectOptedOut(d.resolveOsProxy(), d.logger) {
+		d.logger.TInfof("[project-mode] opt-in active, no marker; skipping React Native invocation analytics")
 	} else {
-		// BE confirmed the invocation was stored — surface the details URL
-		// so users can jump to it from the build log.
-		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(d.authConfig.WorkspaceID, wrapperInvocationID))
+		if err := d.sendInvocation(*inv); err != nil {
+			d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
+			outcome.InvocationSaveFailed = true
+		} else {
+			// BE confirmed the invocation was stored — surface the details URL
+			// so users can jump to it from the build log.
+			d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(d.authConfig.WorkspaceID, wrapperInvocationID))
+		}
+		d.appendLocalInvocationLog(wrapperInvocationID, command, metadata, summary, duration, execErr)
 	}
 
 	if err := agg.Cleanup(); err != nil {
 		d.logger.TWarnf("Failed to clean up child stats ledger: %v", err)
 	}
-
-	d.appendLocalInvocationLog(wrapperInvocationID, command, metadata, summary, duration, execErr)
 
 	return outcome
 }
@@ -213,6 +221,14 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 // ---------------------------------------------------------------------------
 // Private — postRunDeps methods
 // ---------------------------------------------------------------------------
+
+func (d *postRunDeps) resolveOsProxy() utils.OsProxy {
+	if d.osProxy != nil {
+		return d.osProxy
+	}
+
+	return utils.DefaultOsProxy{}
+}
 
 func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 	envs := utils.AllEnvs()

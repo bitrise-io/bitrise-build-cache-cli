@@ -52,33 +52,10 @@ func mergeDebugFlag(cfg xcelerate.Config) xcelerate.Config {
 }
 
 // projectModeGates reports whether the machine-wide opt-in mode should silence
-// the wrapper for this invocation: only when opt-in is active AND no marker is
-// found walking up from the current dir. Any resolution error is treated as
-// "no marker" — the wrapper never fails a build because of the check.
+// the wrapper for this invocation. Thin alias over the shared helper so the
+// wrapper and other tools agree on the opt-out rule.
 func projectModeGates(osProxy utils.OsProxy) bool {
-	p, err := paths.Default()
-	if err != nil {
-		return false
-	}
-	current, err := machineconfig.Read(osProxy, p, nil)
-	if err != nil {
-		return false
-	}
-	if machineconfig.ResolvedProjectMode(current) != machineconfig.ModeOptIn {
-		return false
-	}
-
-	cwd, err := osProxy.Getwd()
-	if err != nil {
-		return true
-	}
-
-	found, _, err := machineconfig.FindMarker(cwd, osProxy)
-	if err != nil {
-		return true
-	}
-
-	return !found
+	return machineconfig.ProjectOptedOut(osProxy, nil)
 }
 
 const (
@@ -96,6 +73,7 @@ const (
 	MsgInvocationSuccess        = "Invocation succeeded ✅ after %s"
 	MsgInvocationFailed         = "Invocation failed ❌ after %s: %s"
 	MsgInvocationSaved          = "Invocation saved. Visit 👉 https://app.bitrise.io/build-cache/invocations/xcode/%s"
+	MsgProjectModeOptedOut      = "[project-mode] opt-in active, no marker; skipping invocation analytics"
 
 	ErrExecutingXcode = "Error executing xcodebuild: %v"
 	ErrReadConfig     = "Error reading config: %v"
@@ -402,6 +380,9 @@ type XcodebuildRunner struct {
 	// Paths is the on-disk root resolver. If zero, paths.Default() is used.
 	Paths paths.Paths
 
+	// OsProxy is used by analytics opt-out gating. If nil, utils.DefaultOsProxy{}.
+	OsProxy utils.OsProxy
+
 	// invocationAPI saves invocations. If nil, a production analytics client is created.
 	invocationAPI invocationSaver
 	// relationAPI sends invocation relations. If nil, a production multiplatform client is created.
@@ -411,6 +392,15 @@ type XcodebuildRunner struct {
 	// xcresultParser parses the xcresult bundle for wrapper self-enrich. If nil,
 	// a production xcresult.DefaultParser is created on demand.
 	xcresultParser xcresult.Parser
+}
+
+// resolveOsProxy returns the configured OsProxy or the production default.
+func (c *XcodebuildRunner) resolveOsProxy() utils.OsProxy {
+	if c.OsProxy != nil {
+		return c.OsProxy
+	}
+
+	return utils.DefaultOsProxy{}
 }
 
 // Run executes the xcodebuild wrapper: runs xcodebuild, collects stats,
@@ -484,8 +474,12 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	c.attachXcresultSummary(ctx, inv)
 
-	c.appendLocalInvocationLog(*inv, runStats)
-	c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+	if machineconfig.ProjectOptedOut(c.resolveOsProxy(), c.Logger) {
+		c.Logger.TInfof(MsgProjectModeOptedOut)
+	} else {
+		c.appendLocalInvocationLog(*inv, runStats)
+		c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+	}
 
 	// Signal build-done AFTER the wrapper's own PUT + marker write so the proxy's slim emit sees the marker and skips.
 	if c.ProxySessionClient != nil {
