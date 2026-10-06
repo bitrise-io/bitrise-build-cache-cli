@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-// peerListener wraps a net.Listener so every accepted connection carries the
+// PeerListener wraps a net.Listener so every accepted connection carries the
 // peer process's PID (darwin only — zero elsewhere). The sidecar writer uses
 // the PID to correlate a session with the compiler that opened it.
-type peerListener struct {
+type PeerListener struct {
 	net.Listener
 
 	nextConnID atomic.Int64
@@ -23,8 +23,8 @@ type peerListener struct {
 // NewPeerListener returns a listener that tags each accepted connection with
 // the peer PID (darwin) and a unique synthetic remote-addr string the gRPC
 // stats handler can look up via LookupConn.
-func NewPeerListener(inner net.Listener) *peerListener { //nolint:revive // exported type returned via constructor is intentional
-	return &peerListener{
+func NewPeerListener(inner net.Listener) *PeerListener {
+	return &PeerListener{
 		Listener: inner,
 		conns:    make(map[string]*peerConn),
 	}
@@ -33,7 +33,7 @@ func NewPeerListener(inner net.Listener) *peerListener { //nolint:revive // expo
 // Accept returns a *peerConn whose RemoteAddr() carries a connection-unique
 // tag. The underlying conn is kept embedded so gRPC's transport sees the real
 // read/write / close semantics unchanged.
-func (l *peerListener) Accept() (net.Conn, error) {
+func (l *PeerListener) Accept() (net.Conn, error) {
 	raw, err := l.Listener.Accept()
 	if err != nil {
 		//nolint:wrapcheck // passthrough from the embedded listener
@@ -61,7 +61,7 @@ func (l *peerListener) Accept() (net.Conn, error) {
 
 // LookupConn returns the *peerConn that was tagged with the given RemoteAddr
 // string. gRPC's stats.Handler.TagConn uses this to pull the peer PID.
-func (l *peerListener) LookupConn(remoteAddrStr string) (*peerConn, bool) {
+func (l *PeerListener) LookupConn(remoteAddrStr string) (*peerConn, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -71,7 +71,7 @@ func (l *peerListener) LookupConn(remoteAddrStr string) (*peerConn, bool) {
 }
 
 // Forget drops the registry entry. Call on connection close to bound memory.
-func (l *peerListener) Forget(remoteAddrStr string) {
+func (l *PeerListener) Forget(remoteAddrStr string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
