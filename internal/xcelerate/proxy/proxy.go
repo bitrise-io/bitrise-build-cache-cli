@@ -68,8 +68,6 @@ type Proxy struct {
 	inactivityTimer   *time.Timer
 	lastActivity      time.Time
 
-	// Per-connection sidecar machinery. nil when SidecarDir is empty — the
-	// global session path above runs unchanged either way.
 	sidecarStats    *sidecarStatsHandler
 	sidecarRegistry *sessionRegistry
 }
@@ -89,9 +87,8 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	return NewProxyWithOptions(kvClient, pushEnabled, logger, loggerFactory, emitter, SidecarOptions{})
 }
 
-// NewProxyWithOptions is the full constructor accepting sidecar wiring.
-// NewProxy delegates with zero-value SidecarOptions so existing callers (and
-// every test using bufconn) keep behaving as before.
+// NewProxyWithOptions is the full constructor; zero-value SidecarOptions
+// preserves prior behaviour.
 func NewProxyWithOptions(
 	kvClient Client,
 	pushEnabled bool,
