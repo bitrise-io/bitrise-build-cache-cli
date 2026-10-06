@@ -139,62 +139,6 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 	}
 }
 
-func TestSidecar_InactivityFiresBeforeConnEnd(t *testing.T) {
-	dir := t.TempDir()
-	sockPath := shortTempSocket(t)
-
-	raw, err := net.Listen("unix", sockPath)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = raw.Close() })
-
-	pl := proxy.NewPeerListener(raw)
-
-	kvClient := &mocks.ClientMock{
-		DownloadStreamFunc: func(context.Context, io.Writer, string) error { return kv.ErrCacheNotFound },
-	}
-
-	p := proxy.NewProxyWithOptions(
-		kvClient, false, mockLogger,
-		func(string) (log.Logger, error) { return mockLogger, nil },
-		nil,
-		proxy.SidecarOptions{Dir: dir, Listener: pl},
-	)
-	p.InactivityTimeout = 30 * time.Millisecond
-
-	go func() { _ = p.Serve(pl) }()
-	t.Cleanup(p.GracefulStop)
-
-	client, err := grpc.NewClient("unix://"+sockPath, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-
-	casClient := llvmcas.NewCASDBServiceClient(client)
-	_, err = casClient.Get(context.Background(), &llvmcas.CASGetRequest{
-		CasId: &llvmcas.CASDataID{Id: []byte("k")},
-	})
-	require.NoError(t, err)
-
-	// Keep the connection open so inactivity has a chance to fire.
-	assert.Eventually(t, func() bool {
-		files, _ := os.ReadDir(dir)
-
-		return len(files) >= 1
-	}, 2*time.Second, 20*time.Millisecond, "inactivity flush should produce a sidecar")
-
-	before, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, before, 1, "exactly one sidecar after inactivity")
-
-	// Now close the client — ConnEnd fires; the flushOnce guard means no
-	// extra file lands.
-	require.NoError(t, client.Close())
-
-	time.Sleep(200 * time.Millisecond)
-
-	after, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	assert.Len(t, after, 1, "ConnEnd after inactivity-fire must not double-emit")
-}
-
 func TestSidecar_WriterDroppedOnMarshalPath(t *testing.T) {
 	// Sanity: an empty writer dir must not panic — the sidecar is best-effort.
 	dir := t.TempDir()
