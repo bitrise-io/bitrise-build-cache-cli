@@ -35,13 +35,10 @@ workflow may be activated automatically, and stops when the answer is no.`,
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
 		a := activator{
-			logger:  logger,
-			envs:    utils.AllEnvs(),
-			goos:    runtime.GOOS,
-			resolve: resolveCredential(logger),
-			entitled: func(ctx context.Context, cred auth.Credential) bool {
-				return !common.SkipForEntitlementWith(ctx, logger, cred)
-			},
+			logger:      logger,
+			envs:        utils.AllEnvs(),
+			goos:        runtime.GOOS,
+			resolve:     resolveCredential(logger),
 			autoEnabled: common.AutoActivationEnabled,
 			runStep:     runSelf,
 			autoGated:   autoMode,
@@ -64,8 +61,7 @@ type activator struct {
 	autoGated bool
 	debug     bool
 	resolve   func(ctx context.Context) (cred auth.Credential, found bool, err error)
-	entitled  func(ctx context.Context, cred auth.Credential) bool
-	// autoEnabled is the per app and workflow decision, asked only for an automatic activation.
+	// autoEnabled is the website's decision for this workspace, app and workflow, asked only for an automatic activation.
 	autoEnabled func(ctx context.Context, logger log.Logger, cred auth.Credential) bool
 	runStep     func(ctx context.Context, args []string) error
 }
@@ -79,17 +75,12 @@ func (a activator) activate(ctx context.Context) error {
 
 			return nil
 		}
-	}
 
-	// Absence is not a "no": the activations report a missing credential better than this gate.
-	if err == nil && found && !a.entitled(ctx, cred) {
-		return nil
-	}
+		if !a.autoEnabled(ctx, a.logger, cred) {
+			a.logger.Infof("Bitrise Build Cache auto-activation skipped: this workspace, app or workflow is not enabled for it")
 
-	if a.autoGated && err == nil && found && !a.autoEnabled(ctx, a.logger, cred) {
-		a.logger.Infof("Bitrise Build Cache auto-activation skipped: this app or workflow is not enabled for it")
-
-		return nil
+			return nil
+		}
 	}
 
 	var errs []error

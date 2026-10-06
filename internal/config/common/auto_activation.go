@@ -16,9 +16,10 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// A workspace can have Build Cache and still want it only in selected workflows.
-// For an automatic activation, the website decides per app and workflow; entitlement
-// stays a separate, workspace-wide check.
+// For an automatic activation the website makes one decision: the workspace has Build
+// Cache (a trial or subscription, not its quota state) and this app and workflow are
+// enabled for it. A workspace can have Build Cache and still want it only in the workflows
+// it enabled by hand. Manual activation is never gated.
 
 // autoActivationEndpointShipped records whether the website endpoint exists yet.
 // Until it does the check is skipped and the org allowlist is the only guard.
@@ -27,7 +28,7 @@ const autoActivationEndpointShipped = false
 // autoActivationLive is the test seam over autoActivationEndpointShipped.
 var autoActivationLive = autoActivationEndpointShipped //nolint:gochecknoglobals
 
-// Provisional, like the endpoint: same shape as the entitlement path.
+// Provisional, like the endpoint.
 const autoActivationPath = "%s/build-cache/%s/auto_activation"
 
 const autoActivationTimeout = 5 * time.Second
@@ -77,7 +78,7 @@ func (a AppIdentity) query() string {
 	return params.Encode()
 }
 
-// AutoActivationEnabled asks whether this app and workflow may be activated
+// AutoActivationEnabled asks whether this workspace, app and workflow may be activated
 // automatically. It fails closed once the endpoint exists: an automatic activation
 // is a convenience, and an answer we could not get must not switch caching on for a
 // workflow whose owner limited it. Before then it allows everything.

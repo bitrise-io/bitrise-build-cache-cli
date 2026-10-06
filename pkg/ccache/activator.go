@@ -12,7 +12,6 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/entitlementgate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -30,9 +29,6 @@ type ActivatorParams struct {
 	BaseDirOverride       string
 	DebugLogging          bool
 	Envs                  map[string]string
-
-	// SkipForEntitlement overrides the entitlement gate. If nil, the real check runs.
-	SkipForEntitlement func(ctx context.Context) bool
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -57,7 +53,6 @@ type Activator struct {
 	baseDirOverride       string
 	debugLogging          bool
 	envs                  map[string]string
-	skipForEntitlement    func(ctx context.Context) bool
 }
 
 // NewActivator creates an Activator with production defaults.
@@ -87,11 +82,6 @@ func NewActivator(params ActivatorParams) *Activator {
 		encoderFactory = utils.DefaultEncoderFactory{}
 	}
 
-	skipForEntitlement := params.SkipForEntitlement
-	if skipForEntitlement == nil {
-		skipForEntitlement = func(ctx context.Context) bool { return entitlementgate.SkipForEnvs(ctx, logger, envs) }
-	}
-
 	return &Activator{
 		logger:         logger,
 		osProxy:        osProxy,
@@ -104,17 +94,12 @@ func NewActivator(params ActivatorParams) *Activator {
 		baseDirOverride:       params.BaseDirOverride,
 		debugLogging:          params.DebugLogging,
 		envs:                  envs,
-		skipForEntitlement:    skipForEntitlement,
 	}
 }
 
 // Activate creates the ccache config and exports the required environment
 // variables via envman.
 func (a *Activator) Activate(ctx context.Context) error {
-	if a.skipForEntitlement(ctx) {
-		return nil
-	}
-
 	configcommon.LogCLIVersion(a.logger)
 	a.logger.TInfof("Activate Bitrise Build Cache for C++")
 

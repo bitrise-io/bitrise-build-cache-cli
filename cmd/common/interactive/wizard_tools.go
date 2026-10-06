@@ -17,7 +17,6 @@ import (
 	bazelconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/bazel"
 	gradleconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/gradle"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/entitlementgate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/tui"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -86,10 +85,6 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 }
 
 func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool) error {
-	if entitlementgate.SkipForEnvs(ctx, logger, envs) {
-		return nil
-	}
-
 	for _, t := range tools {
 		var err error
 		switch interactiveTool(t) {

@@ -8,11 +8,19 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
+
+func credFor(workspaceID string) auth.Credential {
+	return auth.Credential{Token: "tok", WorkspaceID: workspaceID}
+}
+
+func testLogger() log.Logger { return log.NewLogger() }
 
 func autoLive(t *testing.T) {
 	t.Helper()
