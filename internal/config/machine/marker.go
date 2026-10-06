@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
@@ -61,4 +63,43 @@ func FindMarker(startDir string, osProxy utils.OsProxy) (bool, string, error) {
 	}
 
 	return marker != nil, path, nil
+}
+
+// ProjectOptedOut reports whether the current project should be treated as
+// opted-out of analytics: machine ProjectMode is opt-in AND no project marker
+// is found walking up from the caller's cwd.
+//
+// Caller's cwd MUST be the project root. Daemons spawned via the
+// detached-spawn convention inherit the client's cwd (see
+// pkg/ccache/storage_helper.go) — safe to call from such daemons. Not safe
+// to call from long-lived daemons started independently of a build (e.g.
+// xcelerate proxy's Enricher) — they must resolve project dir separately.
+//
+// Any read/config error returns true (silent-suppress): a failure to prove
+// opt-in explicitly is treated as opted-out. Matches cmd/xcode.projectModeGates.
+func ProjectOptedOut(osProxy utils.OsProxy, logger log.Logger) bool {
+	p, err := paths.Default()
+	if err != nil {
+		return false
+	}
+
+	current, err := Read(osProxy, p, logger)
+	if err != nil {
+		return false
+	}
+	if ResolvedProjectMode(current) != ModeOptIn {
+		return false
+	}
+
+	cwd, err := osProxy.Getwd()
+	if err != nil {
+		return true
+	}
+
+	found, _, err := FindMarker(cwd, osProxy)
+	if err != nil {
+		return true
+	}
+
+	return !found
 }
