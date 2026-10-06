@@ -42,7 +42,7 @@ type sidecarIndex struct {
 
 // NewSidecarIndex returns a SidecarReader backed by dir. A reader fresh-reads
 // per Lookup; no caching.
-func NewSidecarIndex(dir string, logger log.Logger) *sidecarIndex {
+func NewSidecarIndex(dir string, logger log.Logger) SidecarReader {
 	return &sidecarIndex{dir: dir, logger: logger}
 }
 
