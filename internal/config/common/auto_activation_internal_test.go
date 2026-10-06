@@ -5,7 +5,6 @@ package common
 import (
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -22,23 +21,6 @@ func credFor(workspaceID string) auth.Credential {
 
 func testLogger() log.Logger { return log.NewLogger() }
 
-func autoLive(t *testing.T) {
-	t.Helper()
-
-	autoActivationLive = true
-	t.Cleanup(func() { autoActivationLive = autoActivationEndpointShipped })
-}
-
-func TestAutoActivationEnabled_AllowsEverythingWhileTheEndpointDoesNotExist(t *testing.T) {
-	require.False(t, autoActivationEndpointShipped, "this test describes the pre-ship state")
-	var calls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }))
-	t.Cleanup(srv.Close)
-
-	assert.True(t, AutoActivationEnabled(t.Context(), srv.URL, credFor("ws-1"), AppIdentity{}, testLogger()))
-	assert.EqualValues(t, 0, calls.Load(), "nothing is asked before the endpoint ships")
-}
-
 func TestAutoActivationEnabled_Answers(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -48,6 +30,9 @@ func TestAutoActivationEnabled_Answers(t *testing.T) {
 	}{
 		{"enabled", http.StatusOK, `{"enabled":true}`, true},
 		{"disabled", http.StatusOK, `{"enabled":false}`, false},
+		{"no Build Cache", http.StatusOK, `{"enabled":false,"reason":"no_build_cache"}`, false},
+		{"enabled with extra fields", http.StatusOK, `{"enabled":true,"reason":""}`, true},
+		{"an unauthorized token is a no", http.StatusUnauthorized, "", false},
 		{"an error is a no", http.StatusInternalServerError, "", false},
 		{"a not found is a no", http.StatusNotFound, "", false},
 		{"a forbidden is a no", http.StatusForbidden, "", false},
@@ -56,7 +41,6 @@ func TestAutoActivationEnabled_Answers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			autoLive(t)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "/build-cache/ws-1/auto-activation", r.URL.Path)
 				assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
@@ -71,7 +55,6 @@ func TestAutoActivationEnabled_Answers(t *testing.T) {
 }
 
 func TestAutoActivationEnabled_UnreachableIsANo(t *testing.T) {
-	autoLive(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	srv.Close()
 
@@ -91,7 +74,6 @@ func TestAutoActivationEnabled_SendsTheAppAndWorkflow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			autoLive(t)
 			var got string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				got = r.URL.RawQuery

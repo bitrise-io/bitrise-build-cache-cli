@@ -99,11 +99,13 @@ starts each do their own once the gates have passed.
    workspace not on the list all mean: log one line, write nothing, exit 0. `all`
    skips the list but not the credential: with no workspace resolved, nothing is
    activated.
-2. **The website's decision, fails closed.** One request answers two questions:
-   does the workspace have Build Cache (an ongoing trial or an active
+2. **The website's decision, fails closed.** One request is meant to answer two
+   questions: does the workspace have Build Cache (an ongoing trial or an active
    subscription, whatever its quota state), and are this app and workflow enabled
    for automatic activation. A workspace can have a trial or subscription and still
-   want Build Cache only in workflows it picked and activated by hand. The CLI asks
+   want Build Cache only in workflows it picked and activated by hand. Today the
+   website answers only the first question; per-app and per-workflow settings are a
+   follow-up there. The CLI asks
    `GET /build-cache/<workspace>/auto-activation` with the app and workflow
    (`app_slug` and `workflow_name` on Bitrise CI, `external_app_id` and
    `external_workflow_name` on another CI provider, the names the benchmark-status
@@ -123,16 +125,23 @@ hard stop on quota for other uses, and an activation must not stop on quota, so
 this endpoint carries its own definition of "has Build Cache": a trial or
 subscription, regardless of how much quota is left.
 
-**The endpoint does not exist yet.** Until it ships the check is skipped and
-allows everything (`autoActivationEndpointShipped` in
-`internal/config/common/auto_activation.go`; the path is provisional), which makes
-the allowlist the only thing protecting analytics. The allowlist is a rollout
+**The endpoint is live** (bitrise-website#21266, merged 6 Oct 2026). It answers
+`200 {"enabled": true}`, or `200 {"enabled": false, "reason": "no_build_cache"}` for
+a workspace with no ongoing trial and no subscription, `401` for a missing, invalid
+or other-workspace token, and `404` for an unknown workspace. A subscription counts
+whatever its quota state, because the website's `has_build_cache_subscription?` does
+not include the quota check that `build_cache_enabled?` has. It accepts the services
+JWT (its `org_id` claim must match the workspace) or a PAT or workspace access token
+whose user can view Build Cache, the same tokens the benchmark-status call accepts,
+and it caches the answer per workspace for 30 seconds. The app and workflow params
+are accepted and ignored for now, so a workspace with Build Cache is enabled for
+every app and workflow. The CLI logs the `reason` at debug level. The org
+allowlist stays as the first gate. It is a rollout
 control and not a security boundary: the workspace is read from the unsigned
 services token, and a build's own `BITRISE_BUILD_CACHE_*` envs override the boot
 script's value, so a workspace can put itself on the list from its own
 `bitrise.yml`. That only turns on for itself what an activate Step already could,
-and the cache backend still authorizes the real token on every request. When the
-endpoint ships, flip the constant and adjust the path; nothing else needs deleting.
+and the cache backend still authorizes the real token on every request.
 
 ## Opting out
 
@@ -299,10 +308,13 @@ Not validated:
   never runs. Linux can only be tested with a real `bitrise` release that DEN
   then requests, either globally or through its per-organization version override
   (read from the agent code, not exercised).
-- The `all` allowlist value and the website decision: unit tested, not yet run on
-  staging (the staging prerelease predates both, and the endpoint does not exist).
-- The website's answers: no Build Cache, workflow disabled, and an outage. They
-  need the endpoint.
+- The `all` allowlist value and the website decision from a real build: both are
+  unit tested, and the live endpoint was probed read-only on 6 Oct 2026 (both
+  internal workspaces answered `enabled: true`, a bad token `401`, an unknown
+  workspace `404`), but the staging prerelease predates the client, so no build has
+  asked it yet.
+- The website's "no" answers from a build: a workspace without Build Cache, and an
+  outage. Per-workflow answers do not exist yet.
 - An explicit activate Step on an auto-activated VM beyond Gradle and Xcode on
   macOS (Bazel, React Native, Linux).
 - Builds that use none of the activated tools, and Tuist or other callers of
@@ -367,16 +379,16 @@ script, later by the website endpoint. Each step limits what the next can break.
    Running both is harmless, since the init script is identical. Watch invocation
    counts, failures, mirror activation failures and build duration.
 5. **Opt in organizations one by one.** One preboot change per organization,
-   adding its slug to the list (until the per-workflow endpoint ships, every
-   workflow of that workspace is activated). Before each: confirm the workspace has a trial or
+   adding its slug to the list (until the website has per-app and per-workflow
+   settings, every workflow of a workspace with Build Cache is activated). Before each: confirm the workspace has a trial or
    subscription, check its invocation quota against the projected volume (risk 17),
    and tell support and sales that cache activity will appear for a workspace with
    no Step. After each: watch the same signals for a day.
    Rollback is removing the slug.
-6. **Website endpoint ships.** Replace the list with the website's decision per
-   workspace, app and workflow: flip `autoActivationEndpointShipped`, adjust the
-   path, and remove the allowlist. Opting in is then a product setting instead of a
-   deploy.
+6. **Per-app and per-workflow settings ship on the website.** The endpoint is
+   already live and already gates on Build Cache. Once it can also answer per app
+   and workflow, remove the allowlist: opting in is then a product setting instead
+   of a deploy.
 7. **General availability.** Remove the opt-in env from preboot so the endpoint is
    the only gate. `BITRISE_BUILD_CACHE_AUTO_ACTIVATE_ORGS=all` is the interim way to
    bypass the allowlist for every workspace without removing the gate code.
@@ -393,8 +405,10 @@ boot script.
 
 Roughly in order of how likely they are to matter.
 
-1. **Analytics for builds that did not ask.** The allowlist is the only guard until
-   the endpoint ships. A wrong or `all` entry reports for every workspace on the VM.
+1. **Analytics for builds that did not ask.** The allowlist and the website's Build
+   Cache check are the guards, and the website cannot yet hold back individual
+   workflows. A wrong or `all` entry reports for every workspace with Build Cache
+   on the VM.
 2. **Slow, stale rollback.** See above: pooled VMs keep the script they booted with.
 3. **Tools the build does not use get configured.** A Gradle init script for a build
    that has no Gradle, a `~/.bazelrc` block, the Xcode wrappers on `PATH`. Most are
@@ -472,9 +486,9 @@ Roughly in order of how likely they are to matter.
 
 ## Open questions
 
-- How should the auto-activation endpoint decide: an allowlist of workflows, an
-  opt-out list, or a per-workspace default with exceptions? The CLI only reads
-  `enabled`, so the website can change this without a CLI release. Failing closed
+- How should the website decide per app and workflow once it can: an allowlist of
+  workflows, an opt-out list, or a per-workspace default with exceptions? The CLI
+  only reads `enabled`, so the website can change this without a CLI release. Failing closed
   means a website outage stops all automatic activations for workspaces that reach
   this check; is that the right trade?
 - Quota is not a stop for an activation. Should the website's decision still hold

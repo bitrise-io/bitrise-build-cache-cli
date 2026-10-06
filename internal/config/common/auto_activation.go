@@ -21,20 +21,14 @@ import (
 // enabled for it. A workspace can have Build Cache and still want it only in the workflows
 // it enabled by hand. Manual activation is never gated.
 
-// autoActivationEndpointShipped records whether the website endpoint exists yet.
-// Until it does the check is skipped and the org allowlist is the only guard.
-const autoActivationEndpointShipped = false
-
-// autoActivationLive is the test seam over autoActivationEndpointShipped.
-var autoActivationLive = autoActivationEndpointShipped //nolint:gochecknoglobals
-
-// Provisional, like the endpoint.
 const autoActivationPath = "%s/build-cache/%s/auto-activation"
 
 const autoActivationTimeout = 5 * time.Second
 
 type autoActivationResponse struct {
 	Enabled bool `json:"enabled"`
+	// Reason accompanies a "no", e.g. "no_build_cache"; it is only logged.
+	Reason string `json:"reason"`
 }
 
 // AppIdentity names the app and workflow asking, with the parameter names of the
@@ -79,14 +73,10 @@ func (a AppIdentity) query() string {
 }
 
 // AutoActivationEnabled asks whether this workspace, app and workflow may be activated
-// automatically. It fails closed once the endpoint exists: an automatic activation
-// is a convenience, and an answer we could not get must not switch caching on for a
-// workflow whose owner limited it. Before then it allows everything.
+// automatically. It fails closed: an automatic activation is a convenience, and an
+// answer we could not get must not switch caching on for a workspace without Build Cache
+// or a workflow whose owner limited it.
 func AutoActivationEnabled(ctx context.Context, baseURL string, cred auth.Credential, app AppIdentity, logger log.Logger) bool {
-	if !autoActivationLive {
-		return true
-	}
-
 	client := retryhttp.NewClient(logger)
 	client.RetryMax = 1
 	client.HTTPClient.Timeout = autoActivationTimeout
@@ -125,6 +115,10 @@ func AutoActivationEnabled(ctx context.Context, baseURL string, cred auth.Creden
 		logger.Debugf("Could not decode the auto-activation response: %s", err)
 
 		return false
+	}
+
+	if !body.Enabled {
+		logger.Debugf("Auto-activation is not enabled: %s", body.Reason)
 	}
 
 	return body.Enabled
