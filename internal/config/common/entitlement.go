@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 // A workspace with no Build Cache trial or subscription should never be
@@ -64,10 +66,42 @@ const (
 	EntitlementNone
 )
 
+// EntitlementApp identifies the app asking, so the server can apply rollout and
+// opt-out rules per app. The names match the benchmark-status request.
+type EntitlementApp struct {
+	BitriseAppSlug string
+	ExternalAppID  string
+}
+
+// NewEntitlementApp reads the app from the build's environment: the Bitrise app
+// slug on Bitrise CI, the repository or project on another CI provider.
+func NewEntitlementApp(envs map[string]string, osProxy utils.OsProxy) EntitlementApp {
+	provider := DetectCIProvider(envs, osProxy)
+	if provider == CIProviderBitrise {
+		return EntitlementApp{BitriseAppSlug: envs["BITRISE_APP_SLUG"]}
+	}
+
+	externalAppID, _, _ := detectExternalIDs(provider, envs)
+
+	return EntitlementApp{ExternalAppID: externalAppID}
+}
+
+func (a EntitlementApp) query() string {
+	params := url.Values{}
+	if a.BitriseAppSlug != "" {
+		params.Set("app_slug", a.BitriseAppSlug)
+	}
+	if a.ExternalAppID != "" {
+		params.Set("external_app_id", a.ExternalAppID)
+	}
+
+	return params.Encode()
+}
+
 // CheckEntitlement asks whether the workspace has Build Cache. Any failure is
 // Unknown, never None: this gate exists to stop pointless activations, not to
 // become a new way for the website being down to break everyone's builds.
-func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) EntitlementState {
+func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential, app EntitlementApp, logger log.Logger) EntitlementState {
 	if !endpointLive {
 		return EntitlementUnknown
 	}
@@ -83,8 +117,11 @@ func CheckEntitlement(ctx context.Context, baseURL string, cred auth.Credential,
 	ctx, cancel := context.WithTimeout(ctx, entitlementTimeout)
 	defer cancel()
 
-	url := fmt.Sprintf(entitlementPath, baseURL, cred.WorkspaceID)
-	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	requestURL := fmt.Sprintf(entitlementPath, baseURL, cred.WorkspaceID)
+	if query := app.query(); query != "" {
+		requestURL += "?" + query
+	}
+	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		logger.Debugf("Could not build the entitlement request: %s", err)
 
@@ -129,7 +166,7 @@ var EntitlementChecker = CheckEntitlement //nolint:gochecknoglobals
 
 // SkipActivationForEntitlement reports whether activation should stop before
 // doing anything, and prints the reason when it should.
-func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth.Credential, logger log.Logger) bool {
+func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth.Credential, app EntitlementApp, logger log.Logger) bool {
 	if os.Getenv(EnvSkipEntitlementCheck) != "" {
 		logger.Warnf("TEMPORARY: the Build Cache entitlement check is bypassed via %s (ACI-5515). "+
 			"Remove it once the entitlement endpoint ships.", EnvSkipEntitlementCheck)
@@ -137,7 +174,7 @@ func SkipActivationForEntitlement(ctx context.Context, baseURL string, cred auth
 		return false
 	}
 
-	if EntitlementChecker(ctx, baseURL, cred, logger) != EntitlementNone {
+	if EntitlementChecker(ctx, baseURL, cred, app, logger) != EntitlementNone {
 		return false
 	}
 

@@ -103,7 +103,10 @@ gates have passed.
    has Build Cache and stops before writing anything on an explicit "no", printing
    where to start a trial. The answer is three-valued: an unreachable website, a missing
    workspace or an unexpected response is Unknown, and Unknown carries on, so a
-   website outage cannot disable caching for everyone.
+   website outage cannot disable caching for everyone. The request also names the
+   app (`app_slug` on Bitrise CI, `external_app_id` on another CI provider, the same
+   names as the benchmark-status call), so the website can apply rollout and opt-out
+   rules per app and not only per workspace.
 
 Without `--auto` (a person ran `activate all`) there is no allowlist: asking for
 it explicitly is the consent. Entitlement still applies.
