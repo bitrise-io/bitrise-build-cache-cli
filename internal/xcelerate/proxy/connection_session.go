@@ -17,6 +17,11 @@ type connSessionCtxKey struct{}
 // connectionSession is the per-conn counterpart of Proxy.sessionState. One
 // per accepted connection; flushed exactly once on gRPC ConnEnd.
 type connectionSession struct {
+	// key is the synthetic RemoteAddr tag the registry and peer-listener
+	// index this session under. Stamped at TagConn, so cleanup doesn't need
+	// a reverse lookup.
+	key string
+
 	peerPID    int
 	acceptedAt time.Time
 	state      *sessionState
@@ -48,8 +53,9 @@ func (c *connectionSession) hadActivity() bool {
 	return !c.firstActivityAt.IsZero()
 }
 
-func newConnectionSession(peerPID int, acceptedAt time.Time) *connectionSession {
+func newConnectionSession(key string, peerPID int, acceptedAt time.Time) *connectionSession {
 	return &connectionSession{
+		key:        key,
 		peerPID:    peerPID,
 		acceptedAt: acceptedAt,
 		state:      newSessionState(),
@@ -151,13 +157,14 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 		return ctx
 	}
 
-	pc, ok := h.listener.LookupConn(info.RemoteAddr.String())
+	key := info.RemoteAddr.String()
+	pc, ok := h.listener.LookupConn(key)
 	if !ok {
 		return ctx
 	}
 
-	cs := newConnectionSession(pc.peerPID, pc.acceptedAt)
-	h.registry.put(info.RemoteAddr.String(), cs)
+	cs := newConnectionSession(key, pc.peerPID, pc.acceptedAt)
+	h.registry.put(cs)
 
 	return contextWithSession(ctx, cs)
 }
@@ -192,71 +199,46 @@ func (h *sidecarStatsHandler) flushSession(cs *connectionSession) {
 	})
 }
 
-// cleanupForContext removes the registry + listener entries. Walks the
-// registry to find the key — HandleConn gives us the ctx but not the key.
+// cleanupForContext removes the registry + listener entries for the ctx's
+// session. No-op if the stats handler never tagged this ctx.
 func (h *sidecarStatsHandler) cleanupForContext(ctx context.Context) {
 	session := sessionFromContext(ctx)
 	if session == nil {
 		return
 	}
 
-	key, ok := h.registry.keyFor(session)
-	if !ok {
-		return
-	}
-
-	h.registry.forget(key)
+	h.registry.forget(session.key)
 
 	if h.listener != nil {
-		h.listener.Forget(key)
+		h.listener.Forget(session.key)
 	}
 }
 
 // sessionRegistry is the key → *connectionSession map, keyed by the same
 // synthetic RemoteAddr tag the peer-listener uses.
 type sessionRegistry struct {
-	mu sync.Mutex
-	// Two maps so cleanupForContext can look a session up by pointer without
-	// scanning the whole registry on every HandleConn.
-	byKey     map[string]*connectionSession
-	keyBySess map[*connectionSession]string
+	mu    sync.Mutex
+	byKey map[string]*connectionSession
 }
 
 func newSessionRegistry() *sessionRegistry {
 	return &sessionRegistry{
-		byKey:     make(map[string]*connectionSession),
-		keyBySess: make(map[*connectionSession]string),
+		byKey: make(map[string]*connectionSession),
 	}
 }
 
-func (r *sessionRegistry) put(key string, cs *connectionSession) {
+func (r *sessionRegistry) put(cs *connectionSession) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.byKey[key] = cs
-	r.keyBySess[cs] = key
-}
-
-func (r *sessionRegistry) keyFor(cs *connectionSession) (string, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	k, ok := r.keyBySess[cs]
-
-	return k, ok
+	r.byKey[cs.key] = cs
 }
 
 func (r *sessionRegistry) forget(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	cs, ok := r.byKey[key]
-	if !ok {
-		return
-	}
-
 	delete(r.byKey, key)
-	delete(r.keyBySess, cs)
 }
 
 // flushAll fires every outstanding session's sidecar. Called on Proxy
