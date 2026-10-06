@@ -104,7 +104,7 @@ starts each do their own once the gates have passed.
    subscription, whatever its quota state), and are this app and workflow enabled
    for automatic activation. A workspace can have a trial or subscription and still
    want Build Cache only in workflows it picked and activated by hand. The CLI asks
-   `GET /build-cache/<workspace>/auto_activation` with the app and workflow
+   `GET /build-cache/<workspace>/auto-activation` with the app and workflow
    (`app_slug` and `workflow_name` on Bitrise CI, `external_app_id` and
    `external_workflow_name` on another CI provider, the names the benchmark-status
    call uses) and reads `{"enabled": true|false}`. `false` stops the activation

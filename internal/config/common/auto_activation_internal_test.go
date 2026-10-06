@@ -58,7 +58,7 @@ func TestAutoActivationEnabled_Answers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			autoLive(t)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/build-cache/ws-1/auto_activation", r.URL.Path)
+				assert.Equal(t, "/build-cache/ws-1/auto-activation", r.URL.Path)
 				assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
 				w.WriteHeader(tt.status)
 				_, _ = w.Write([]byte(tt.body))

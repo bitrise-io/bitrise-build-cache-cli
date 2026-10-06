@@ -29,7 +29,7 @@ const autoActivationEndpointShipped = false
 var autoActivationLive = autoActivationEndpointShipped //nolint:gochecknoglobals
 
 // Provisional, like the endpoint.
-const autoActivationPath = "%s/build-cache/%s/auto_activation"
+const autoActivationPath = "%s/build-cache/%s/auto-activation"
 
 const autoActivationTimeout = 5 * time.Second
 
