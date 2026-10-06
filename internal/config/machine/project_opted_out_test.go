@@ -91,6 +91,20 @@ func TestProjectOptedOut_PathsDefaultError(t *testing.T) {
 	assert.False(t, got, "paths.Default error must fall through to not-opted-out (fail-open on config resolution)")
 }
 
+func TestProjectOptedOut_MachineConfigReadError(t *testing.T) {
+	// Malformed machine config → Read() errors → fail OPEN (returns false).
+	// Covers the Read() error branch not reached by PathsDefaultError.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	p := paths.FromHome(home)
+	require.NoError(t, os.MkdirAll(p.BitriseCacheRoot(), 0o755))
+	require.NoError(t, os.WriteFile(p.MachineConfigFile(), []byte(`{not json`), 0o644))
+
+	got := ProjectOptedOut(utils.DefaultOsProxy{}, nil)
+	assert.False(t, got, "machineconfig.Read error must fall through to not-opted-out (fail-open on config resolution)")
+}
+
 func TestProjectOptedOut_GetwdError_SilentSuppress(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

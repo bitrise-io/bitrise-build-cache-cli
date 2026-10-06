@@ -46,9 +46,17 @@ func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
 }
 
 //go:generate moq -stub -out post_run_deps_local_log_mock_test.go -pkg reactnative . localInvocationLogger
+//go:generate moq -stub -out post_run_deps_invocation_client_mock_test.go -pkg reactnative . invocationClient
 
 type localInvocationLogger interface {
 	Append(rec invocations.Record) error
+}
+
+// invocationClient is the analytics-send surface used by postRunDeps. The real
+// implementation is *ccacheanalytics.Client; tests inject a stub to assert the
+// opt-out gate's observable behaviour without a live analytics backend.
+type invocationClient interface {
+	PutInvocation(inv multiplatform.Invocation) error
 }
 
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
@@ -57,7 +65,7 @@ type postRunDeps struct {
 	logger     log.Logger
 	authConfig authpkg.Credential
 	username   string
-	client     *ccacheanalytics.Client
+	client     invocationClient
 
 	// localLogger appends the wrapper's parent record to the shared local
 	// invocation log. If nil, resolveLocalLogger builds paths.Default +

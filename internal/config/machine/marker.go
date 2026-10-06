@@ -75,8 +75,11 @@ func FindMarker(startDir string, osProxy utils.OsProxy) (bool, string, error) {
 // to call from long-lived daemons started independently of a build (e.g.
 // xcelerate proxy's Enricher) — they must resolve project dir separately.
 //
-// Any read/config error returns true (silent-suppress): a failure to prove
-// opt-in explicitly is treated as opted-out. Matches cmd/xcode.projectModeGates.
+// paths.Default / machineconfig.Read errors fail OPEN (returns false): if we
+// cannot resolve the machine config we assume opt-in is not in effect.
+// Getwd / FindMarker errors fail SILENT (returns true): opt-in is confirmed
+// active but we cannot prove the marker exists, so treat as opted-out.
+// Matches cmd/xcode.projectModeGates semantics.
 func ProjectOptedOut(osProxy utils.OsProxy, logger log.Logger) bool {
 	p, err := paths.Default()
 	if err != nil {
