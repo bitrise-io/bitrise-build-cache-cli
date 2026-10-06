@@ -139,8 +139,7 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 	}
 }
 
-func TestSidecar_WriterDroppedOnMarshalPath(t *testing.T) {
-	// Sanity: an empty writer dir must not panic — the sidecar is best-effort.
+func TestSidecar_GracefulStopOnNeverServedProxyDoesNotPanic(t *testing.T) {
 	dir := t.TempDir()
 	kvClient := &mocks.ClientMock{
 		DownloadStreamFunc: func(context.Context, io.Writer, string) error { return kv.ErrCacheNotFound },
@@ -150,10 +149,8 @@ func TestSidecar_WriterDroppedOnMarshalPath(t *testing.T) {
 		kvClient, false, mockLogger,
 		func(string) (log.Logger, error) { return mockLogger, nil },
 		nil,
-		proxy.SidecarOptions{Dir: dir, Listener: nil}, // no PeerListener → stats handler short-circuits
+		proxy.SidecarOptions{Dir: dir, Listener: nil},
 	)
-	p.GracefulStop()
 
-	// GracefulStop on a never-served proxy should return.
-	assert.True(t, true)
+	assert.NotPanics(t, p.GracefulStop)
 }
