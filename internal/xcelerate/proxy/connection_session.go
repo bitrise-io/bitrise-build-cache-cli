@@ -74,58 +74,63 @@ func contextWithSession(ctx context.Context, cs *connectionSession) context.Cont
 	return context.WithValue(ctx, connSessionCtxKey{}, cs)
 }
 
-// fanoutState mirrors every record call to each wrapped sessionState — index 0
-// is the global, used as the saveKeyOnce source of truth.
-type fanoutState struct {
-	states []*sessionState
+// recorder mirrors every record call to the global sessionState and, when
+// set, to the per-conn one. saveKeyOnce reports the global's decision so
+// long-lived IDE connections and wrapper sessions can't disagree on what's
+// already pushed.
+type recorder struct {
+	global *sessionState
+	conn   *sessionState
 }
 
-func (f *fanoutState) recordDownload(op cacheOp, bytes int64, duration time.Duration) {
-	for _, s := range f.states {
-		s.recordDownload(op, bytes, duration)
+func (r *recorder) recordDownload(op cacheOp, bytes int64, duration time.Duration) {
+	r.global.recordDownload(op, bytes, duration)
+	if r.conn != nil {
+		r.conn.recordDownload(op, bytes, duration)
 	}
 }
 
-func (f *fanoutState) recordUpload(op cacheOp, bytes int64, duration time.Duration) {
-	for _, s := range f.states {
-		s.recordUpload(op, bytes, duration)
+func (r *recorder) recordUpload(op cacheOp, bytes int64, duration time.Duration) {
+	r.global.recordUpload(op, bytes, duration)
+	if r.conn != nil {
+		r.conn.recordUpload(op, bytes, duration)
 	}
 }
 
-func (f *fanoutState) recordMiss(op cacheOp) {
-	for _, s := range f.states {
-		s.recordMiss(op)
+func (r *recorder) recordMiss(op cacheOp) {
+	r.global.recordMiss(op)
+	if r.conn != nil {
+		r.conn.recordMiss(op)
 	}
 }
 
-func (f *fanoutState) recordError(op cacheOp, err error) {
-	for _, s := range f.states {
-		s.recordError(op, err)
+func (r *recorder) recordError(op cacheOp, err error) {
+	r.global.recordError(op, err)
+	if r.conn != nil {
+		r.conn.recordError(op, err)
 	}
 }
 
-func (f *fanoutState) saveKeyOnce(key string) bool {
-	loaded := false
-
-	for i, s := range f.states {
-		v := s.saveKeyOnce(key)
-		if i == 0 {
-			loaded = v
-		}
+func (r *recorder) saveKeyOnce(key string) bool {
+	loaded := r.global.saveKeyOnce(key)
+	if r.conn != nil {
+		r.conn.saveKeyOnce(key)
 	}
 
 	return loaded
 }
 
-func (f *fanoutState) markKeyUnsaved(key string) {
-	for _, s := range f.states {
-		s.markKeyUnsaved(key)
+func (r *recorder) markKeyUnsaved(key string) {
+	r.global.markKeyUnsaved(key)
+	if r.conn != nil {
+		r.conn.markKeyUnsaved(key)
 	}
 }
 
-func (f *fanoutState) recordSkippedAlreadySaved(op cacheOp) {
-	for _, s := range f.states {
-		s.recordSkippedAlreadySaved(op)
+func (r *recorder) recordSkippedAlreadySaved(op cacheOp) {
+	r.global.recordSkippedAlreadySaved(op)
+	if r.conn != nil {
+		r.conn.recordSkippedAlreadySaved(op)
 	}
 }
 
