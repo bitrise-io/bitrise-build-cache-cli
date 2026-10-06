@@ -1,6 +1,7 @@
 package bazelconfig
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -9,6 +10,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 type CacheParams struct {
@@ -56,6 +58,7 @@ func DefaultActivateBazelParams() ActivateBazelParams {
 }
 
 func (params ActivateBazelParams) TemplateInventory(
+	ctx context.Context,
 	logger log.Logger,
 	envs map[string]string,
 	commandFunc common.CommandFunc,
@@ -63,7 +66,7 @@ func (params ActivateBazelParams) TemplateInventory(
 ) (TemplateInventory, error) {
 	logger.Infof("(i) Checking parameters")
 
-	commonInventory, err := params.commonTemplateInventory(logger, envs, commandFunc, isDebug)
+	commonInventory, err := params.commonTemplateInventory(ctx, logger, envs, commandFunc, isDebug)
 	if err != nil {
 		return TemplateInventory{}, err
 	}
@@ -81,6 +84,7 @@ func (params ActivateBazelParams) TemplateInventory(
 }
 
 func (params ActivateBazelParams) commonTemplateInventory(
+	ctx context.Context,
 	logger log.Logger,
 	envs map[string]string,
 	commandFunc common.CommandFunc,
@@ -92,7 +96,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	logger.Infof("(i) Check Auth Config")
 	resolver := live.Default(nil)
 
-	authConfig, _, err := resolver.ResolveNoRefresh(envs)
+	authConfig, _, err := resolver.Resolve(ctx, envs)
 	if err != nil {
 		return CommonTemplateInventory{},
 			fmt.Errorf("resolve auth config: %w", err)
@@ -101,6 +105,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 	username, _ := resolver.ResolveUsername(envs)
 	cacheConfig := common.NewMetadata(envs, username,
 		commandFunc,
+		utils.DefaultOsProxy{},
 		logger)
 	logger.Infof("(i) Cache Config: %+v", cacheConfig)
 

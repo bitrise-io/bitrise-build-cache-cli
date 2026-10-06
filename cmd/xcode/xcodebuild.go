@@ -27,12 +27,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/jobsummary"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -255,7 +257,7 @@ func runXcodebuildWrapper(ctx context.Context, argv []string, cobraCmd *cobra.Co
 		o, err := utils.DefaultCommandFunc()(ctx, cmd, args...).CombinedOutput()
 
 		return string(o), err
-	}, logger)
+	}, osProxy, logger)
 
 	xcodeRunner := xcodeargs.NewRunner(logger, config, logFileWC)
 
@@ -392,6 +394,8 @@ type XcodebuildRunner struct {
 	// xcresultParser parses the xcresult bundle for wrapper self-enrich. If nil,
 	// a production xcresult.DefaultParser is created on demand.
 	xcresultParser xcresult.Parser
+	// resolveCredential re-resolves after the build. If nil, the live resolver is used.
+	resolveCredential func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error)
 }
 
 // resolveOsProxy returns the configured OsProxy or the production default.
@@ -457,6 +461,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	hitRate, proxyOutcome := getHitRateFromSessionAndRunStats(ctx, c.ProxySessionClient, runStats, c.Logger)
 
 	c.Metadata.BenchmarkPhase = resolveBenchmarkPhase(c.Logger)
+	c.refreshCredential(ctx)
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   runStats.StartTime,
@@ -473,6 +478,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.attachXcresultSummary(ctx, inv)
+
+	c.writeJobSummary(runStats, proxyOutcome)
 
 	if machineconfig.ProjectOptedOut(c.resolveOsProxy(), c.Logger) {
 		c.Logger.TInfof(MsgProjectModeOptedOut)
@@ -557,6 +564,25 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 	w.Logger = c.Logger
 
 	return w
+}
+
+// The build can outlive a brokered JWT resolved when the config was read.
+func (c *XcodebuildRunner) refreshCredential(ctx context.Context) {
+	resolve := c.resolveCredential
+	if resolve == nil {
+		resolve = func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error) {
+			return live.Default(nil).Resolve(ctx, utils.AllEnvs())
+		}
+	}
+
+	cred, origin, err := resolve(ctx)
+	if err != nil {
+		c.Logger.Debugf("Keeping the credential resolved before the build: %v", err)
+
+		return
+	}
+
+	c.Config.AuthConfig, c.Config.AuthOrigin = cred, origin
 }
 
 func (c *XcodebuildRunner) saveInvocationAndRelation(ctx context.Context, inv analytics.Invocation, hits, total int64) {
@@ -742,6 +768,31 @@ func getHitRateFromSessionAndRunStats(ctx context.Context,
 	return hitRate, outcome
 }
 
+// The same figures as the stats lines above, on the GitHub Actions job page.
+func (c *XcodebuildRunner) writeJobSummary(runStats xcodeargs.RunStats, outcome proxyOutcome) {
+	invocation := jobsummary.Invocation{
+		Success:        runStats.Success,
+		Command:        c.XcodeArgs.ShortCommand(),
+		BenchmarkPhase: c.Metadata.BenchmarkPhase,
+		Duration:       time.Duration(runStats.DurationMS) * time.Millisecond,
+	}
+
+	if outcome.BlobStats != nil {
+		down, up := outcome.BlobStats.Download.BytesTotal, outcome.BlobStats.Upload.BytesTotal
+		invocation.DownloadedBytes, invocation.UploadedBytes = &down, &up
+	}
+
+	if c.InvocationID != "" {
+		invocation.InvocationURL = "https://app.bitrise.io/build-cache/invocations/xcode/" + c.InvocationID
+	}
+
+	jobsummary.WriteAnnotation(invocation)
+
+	if _, err := jobsummary.Write(jobsummary.Block(invocation), "xcode-"+c.InvocationID); err != nil {
+		c.Logger.Debugf("Failed to write the GitHub Actions job summary: %v", err)
+	}
+}
+
 // Latency and size are bucket bounds; only throughput retains samples for an exact percentile.
 func logBlobStatsProfile(logger log.Logger, snapshot *blobstats.Snapshot) {
 	if snapshot == nil {
@@ -857,7 +908,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 
 	if mergedOtherCFlags != "" {
 		toPass = replaceOrAppendBuildSetting(toPass, xcodeargs.OtherCFlagsKey, mergedOtherCFlags)
-		if userOtherCFlagsToSplice != "" && c.Metadata.CIProvider == "" {
+		if userOtherCFlagsToSplice != "" && !configcommon.IsCI(utils.AllEnvs(), utils.DefaultOsProxy{}) {
 			c.Logger.TWarnf("Merged user OTHER_CFLAGS with Bitrise prefix-map rules; pass --no-prefix-map to opt out.")
 		}
 	}

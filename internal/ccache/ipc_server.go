@@ -13,6 +13,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/gofrs/uuid/v5"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -28,7 +29,8 @@ type IpcServer struct {
 	config               ccacheconfig.Config
 	metadata             configcommon.CacheConfigMetadata
 	timerMutex           sync.Mutex
-	capabilitiesOnce     sync.Once
+	capabilitiesMu       sync.Mutex
+	capabilitiesDone     bool
 	capabilitiesErr      error
 	activeInvocationID   string
 	activeParentID       string
@@ -108,9 +110,16 @@ func (s *IpcServer) acceptLoop(ctx context.Context, cancelFn context.CancelFunc)
 }
 
 func (s *IpcServer) getCapabilities(ctx context.Context) error {
-	s.capabilitiesOnce.Do(func() {
-		s.capabilitiesErr = s.client.GetCapabilitiesWithRetry(ctx)
-	})
+	s.capabilitiesMu.Lock()
+	defer s.capabilitiesMu.Unlock()
+
+	if s.capabilitiesDone {
+		return s.capabilitiesErr
+	}
+
+	s.capabilitiesErr = s.client.GetCapabilitiesWithRetry(ctx)
+	// A rejected credential can be replaced by a refresh, so it is re-checked next connection.
+	s.capabilitiesDone = !errors.Is(s.capabilitiesErr, kv.ErrCacheUnauthenticated)
 
 	return s.capabilitiesErr
 }

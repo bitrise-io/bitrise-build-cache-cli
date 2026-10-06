@@ -1,6 +1,7 @@
 package bazelconfig
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -42,7 +43,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(cmd string, params ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(cmd string, params ...string) (string, error) {
 			fullcommand := append([]string{cmd}, params...)
 			if slices.ContainsFunc(fullcommand, func(s string) bool {
 				return strings.Contains(s, "uname")
@@ -96,7 +97,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		envVars := map[string]string{}
 
 		// when
-		_, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		_, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -117,7 +118,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -139,7 +140,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -160,7 +161,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -182,7 +183,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -204,7 +205,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -226,7 +227,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 
@@ -247,7 +248,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		}
 
 		// when
-		inventory, err := params.TemplateInventory(mockLogger, envVars, func(_ string, _ ...string) (string, error) {
+		inventory, err := params.TemplateInventory(context.Background(), mockLogger, envVars, func(_ string, _ ...string) (string, error) {
 			return "", nil
 		}, false)
 

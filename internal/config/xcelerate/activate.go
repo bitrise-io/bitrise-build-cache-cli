@@ -4,16 +4,13 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/shirou/gopsutil/v4/process"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/clibin"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -32,14 +29,13 @@ const (
 		"see docs/xcode-scheme-self-check.md for a scheme pre-action that does it for you."
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
-	cliBasename                    = "bitrise-build-cache-cli"
 	xcodebuildWrapperScriptContent = `#!/bin/bash
 set -e
 
 if [ "${1-}" = "-version" ]; then
   %s "$@"
 else
-  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+  %s/` + paths.XcelerateCLIBinaryName + ` xcelerate xcodebuild "$@"
 fi
 `
 	xcrunWrapperScriptContent = `#!/bin/bash
@@ -49,7 +45,7 @@ if [ "${1-}" = "xcodebuild" ] && [ "${2-}" = "-version" ]; then
   %s "$@"
 elif [ "${1-}" = "xcodebuild" ]; then
   shift
-  %s/bitrise-build-cache-cli xcelerate xcodebuild "$@"
+  %s/` + paths.XcelerateCLIBinaryName + ` xcelerate xcodebuild "$@"
 else
   %s "$@"
 fi
@@ -103,7 +99,7 @@ func Activate(
 
 	// Materialise an env- or JWT-sourced credential: the proxy and the analytics
 	// readers start in shells that never saw those variables.
-	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.DetectCIProvider(envs) != ""); err != nil {
+	if _, _, err := live.Default(logger).ResolvePinned(ctx, envs, configcommon.IsCI(envs, osProxy)); err != nil {
 		return fmt.Errorf("persist auth credentials: %w", err)
 	}
 
@@ -117,7 +113,11 @@ func Activate(
 	}
 	logger.Infof("Wrote multiplatform analytics config: %s", multiplatformconfig.FilePath(osProxy))
 
-	if err := copyCLIToXcelerateBinDir(ctx, osProxy, logger); err != nil {
+	if _, _, err := clibin.InstallCLIAt(ctx, PathFor(osProxy, BinDir), clibin.InstallOpts{
+		OsProxy:     osProxy,
+		KillRunning: true,
+		Basename:    paths.XcelerateCLIBinaryName,
+	}, logger); err != nil {
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
 
@@ -216,132 +216,6 @@ func isXcelerateInPath(osProxy utils.OsProxy, envs map[string]string) bool {
 	}
 
 	return false
-}
-
-func copyCLIToXcelerateBinDir(ctx context.Context, osProxy utils.OsProxy, logger log.Logger) error {
-	src, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to determine executable path: %w", err)
-	}
-
-	reader, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source executable: %w", err)
-	}
-	defer reader.Close()
-
-	binPath := PathFor(osProxy, BinDir)
-	if err := osProxy.MkdirAll(binPath, 0o755); err != nil {
-		return fmt.Errorf("failed to create bin dir: %w", err)
-	}
-
-	target := filepath.Join(binPath, cliBasename)
-
-	// Already the pinned copy: there is nothing to copy, and the rename this
-	// guards is what made terminating the running CLI necessary in the first place.
-	if src == target {
-		logger.TDonef("CLI already in place at %s", target)
-
-		return nil
-	}
-
-	if err := makeSureCLIIsNotRunning(ctx, target, logger); err != nil {
-		return fmt.Errorf("failed to ensure cli is not running: %w", err)
-	}
-
-	if err := writeExecutableAtomically(binPath, target, reader); err != nil {
-		return err
-	}
-
-	logger.TInfof("Copied CLI to %s", target)
-
-	return nil
-}
-
-// writeExecutableAtomically renames a temp copy over target, so a failed write or a still-running old CLI can't leave a corrupted binary in place.
-func writeExecutableAtomically(dir, target string, src io.Reader) error {
-	tmp, err := os.CreateTemp(dir, cliBasename+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("failed to create temp executable: %w", err)
-	}
-	defer func() {
-		_ = os.Remove(tmp.Name())
-	}()
-
-	if _, err = io.Copy(tmp, src); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("failed to copy executable: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("failed to close temp executable: %w", err)
-	}
-
-	if err := os.Chmod(tmp.Name(), 0o755); err != nil {
-		return fmt.Errorf("failed to chmod temp executable: %w", err)
-	}
-
-	if err := os.Rename(tmp.Name(), target); err != nil {
-		return fmt.Errorf("failed to move executable into place: %w", err)
-	}
-
-	return nil
-}
-
-func makeSureCLIIsNotRunning(ctx context.Context, target string, logger log.Logger) error {
-	processes, err := process.ProcessesWithContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list processes: %w", err)
-	}
-
-	for _, p := range processes {
-		// Since activate pins the bin dir onto PATH, target is what
-		// `bitrise-build-cache-cli` resolves to on any machine that has activated
-		// before — so without this the second activation terminates itself.
-		if int(p.Pid) == os.Getpid() {
-			continue
-		}
-
-		exe, err := p.ExeWithContext(ctx)
-		if err != nil {
-			continue
-		}
-
-		if exe != target {
-			continue
-		}
-
-		logger.TWarnf("Terminating already running CLI (pid: %d)", p.Pid)
-
-		if err := p.TerminateWithContext(ctx); err != nil {
-			logger.TWarnf("Failed to terminate already running CLI, attempting to kill it")
-
-			if err := p.KillWithContext(ctx); err != nil {
-				return fmt.Errorf("failed to kill already running CLI (pid: %d): %w", p.Pid, err)
-			}
-		}
-
-		waitForProcessExit(ctx, p, logger)
-	}
-
-	return nil
-}
-
-func waitForProcessExit(ctx context.Context, p *process.Process, logger log.Logger) {
-	for range 50 {
-		if running, err := p.IsRunningWithContext(ctx); err == nil && !running {
-			return
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
-
-	logger.TWarnf("Already running CLI (pid: %d) did not exit in time", p.Pid)
 }
 
 func addXcelerateCommandToPathWithScriptWrapper(

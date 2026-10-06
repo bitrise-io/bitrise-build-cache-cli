@@ -75,3 +75,16 @@ func TestAnalyticsAuthConfig_PATIsUnaffected(t *testing.T) {
 		auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic},
 		got.Origin())
 }
+
+// Not a JWT, so IsJWT stays false and it is sent workspace-prefixed; the recorded
+// provenance is what stops it reading back as a static PAT.
+func TestAnalyticsAuthConfig_OIDCTokenSurvivesTheFile(t *testing.T) {
+	cred := auth.Credential{Token: "oidc-wat", WorkspaceID: "org-slug"}
+	origin := auth.Origin{Backend: auth.BackendEnv, Provenance: auth.ProvenanceOIDC}
+
+	got := roundTrip(t, multiplatformconfig.NewAnalyticsAuthConfig(cred, origin))
+
+	assert.False(t, got.IsJWT)
+	assert.Equal(t, origin, got.Origin())
+	assert.Equal(t, "org-slug:oidc-wat", auth.GradleToken(got.Credential(), got.Origin()))
+}

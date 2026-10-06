@@ -19,6 +19,9 @@ func init() {
 	// The test binary itself lives on a transient path, so CLI-path resolution
 	// logs where the generated config will look for the binary.
 	mockLogger.On("Infof", mock.Anything, mock.Anything, mock.Anything).Return()
+	// clibin.logResolution logs a 3-vararg Infof when the running binary path
+	// differs from the on-PATH copy (bare CLI name + on-PATH + running exe).
+	mockLogger.On("Infof", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("Warnf", mock.Anything).Return()
 }

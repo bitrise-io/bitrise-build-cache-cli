@@ -18,10 +18,11 @@ L5  CONSUMERS
          │  imports: live, auth · (store/oauth only for login, logout, clear)
          ▼
 L4  internal/auth/live                  the resolver
-         │  imports: auth, store, oauth, buildhub
+         │  imports: auth, store, oauth, buildhub, githuboidc
          ▼
 L3  internal/auth/oauth                 sign-in · refresh · token exchange
     internal/auth/buildhub              Build Hub VM token → Build Cache token
+    internal/auth/githuboidc            GitHub Actions OIDC token → Workspace API token
          │  imports: auth, store
          ▼
 L2  internal/auth/store                 backend selection · persistence
@@ -107,9 +108,11 @@ they differ in `Provenance` (`OAuthLogin`/`Manual` vs `Static`). Backend alone
 cannot express that, and provenance alone cannot tell you which file to write.
 
 `authConfig` is *not* deprecated despite being the older of the two — nothing is
-migrating off it, and three `pkg/` consumers read it as their only source. What
-`Static` means is narrower and permanent: no refresh machinery, so never
-refreshable.
+migrating off it, and three `pkg/` consumers read it as their only source. The CLI
+itself also reads it back as the last precedence step, because `pin.go` writes the
+brokered CI JWT only there (see below), and a later offline `ResolveNoRefresh`
+needs a channel to find that JWT. What `Static` means is narrower and permanent:
+no refresh machinery, so never refreshable.
 
 `Resolve` prefers an OAuth-managed record over a manual one wherever it lives: a
 manual `auth set` token in an earlier backend would otherwise hide a login in a
@@ -229,11 +232,12 @@ The resolver. The only package a consumer needs.
 | `Prefer` (`PreferEnv` default, `PreferStored`) | `PreferStored` puts the store ahead of env vars. The interactive wizard uses it so a stale `BITRISE_BUILD_CACHE_AUTH_TOKEN` in a shell rc file can't shadow a real login. Nothing else should. |
 | `(*Resolver).Resolve(ctx, envs) (Credential, Origin, error)` | **The one resolve path.** Precedence, then refresh when store-managed. |
 | `Resolver.OnRefreshFailure` (`ServeStale` default, `FailFast`) | What to do when a store-managed credential cannot be refreshed. `ServeStale` hands back the stored token — a slightly stale token still authenticates far more often than it doesn't, and failing would take a build down over a transient error. `FailFast` reports it: the wizard and the Bazel helper both need to act on a dead refresh token rather than serve one the backend will reject. |
-| `(*Resolver).ResolveNoRefresh(envs) (Credential, Origin, error)` | Same precedence, no network, no writes. For `status`, which documents that it never refreshes. |
+| `(*Resolver).ResolveNoRefresh(envs) (Credential, Origin, error)` | Same precedence, no network, no writes. **Diagnostics only** — `status`, the doctor, `auth workspace`, and config reads shared with them. It never brokers, so anything that authenticates with the result gets whatever JWT activation left in the `authConfig` block, which may have expired. |
 | `(*Resolver).ResolveTokenOnly(ctx, envs) (Credential, Origin, error)` | Same precedence and refresh, but a stored record counts as usable on its token alone. **For `auth workspace` only** — it asks the API which workspaces the token can access, which is the one question that precedes having a workspace. The Credential it returns can carry an empty `WorkspaceID`, so nothing that talks to the cache may use it. |
 | `(*Resolver).ResolvePinned(ctx, envs, isCI) (Credential, Origin, error)` | Resolve, and materialise an ephemeral env- or JWT-sourced credential to disk so processes started by `activate` can find it without the env vars. Read-modify-write, and **not** exclusive — see `store.SaveWithFallback`. Returns the origin the credential *resolved* from, not where the copy landed. |
 | `(*Resolver).Bind(envs) *Bound` | Pins the environment for a long-lived process. |
 | `(*Bound).Get(ctx) auth.Credential` | Per-RPC credential. Structurally satisfies `kv.AuthSource` without `live` importing `kv`. |
+| `(*Bound).Cached(ttl) *Cached` | `Get` for a hot path: re-resolves at most once per ttl, or earlier near expiry, and serves the last good credential on failure. |
 | `(*Resolver).ResolveUsername(envs) (string, UsernameSource)` | Names the person behind a local invocation, for analytics attribution: env → stored record → OS user. Deliberately **not** part of `Resolve` — `auth username` writes the name independently of the token, so finding it costs a store read that the per-RPC callers must not pay for a value they never use. |
 | `Describe(Credential, Origin) string` | The one-line human description. Pure formatting, no I/O — `Origin` already carries everything it needs. |
 
@@ -242,19 +246,40 @@ The resolver. The only package a consumer needs.
 ```
 env vars (AUTH_TOKEN + WORKSPACE_ID)
   → CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)
+  → GitHub Actions OIDC exchange (OIDC_POLICY_ID + WORKSPACE_ID + GitHub's ACTIONS_ID_TOKEN_REQUEST_*)
   → brokered Build Hub token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL)
   → OS keychain
   → config file, `credentials` key
   → config file, `authConfig` (analytics) block
 ```
 
-The brokered step sits after the injected credentials and before the stores. A Build
-Hub runner can always broker one, so trying it earlier would shadow a token the user
-configured deliberately, and later would shadow it behind a stale login on the
-machine. It is the only precedence step that makes a network call, so it is passed
-into `resolveWith` rather than called from it: `ResolveNoRefresh` passes nil and
-therefore stays offline, which is what `status` and the doctor depend on. A failed
-exchange is not fatal — resolution falls through to the stores.
+The two exchange steps sit after the injected credentials and before the stores.
+The job can always mint a credential, so trying earlier would shadow a token the
+user configured deliberately, and later would shadow it behind a stale login on the
+machine. They are the only precedence steps that make a network call, so they are
+passed into `resolveWith` as one step rather than called from it: `ResolveNoRefresh`
+passes nil and therefore stays offline, which is what `status` and the doctor depend
+on. A failed exchange is not fatal — resolution falls through to the stores. Each
+exchange client is process-wide (`githuboidc.Shared`, `buildhub.Shared`), so every
+resolver in one command shares a single cached token.
+
+The OIDC exchange runs first because a trust policy ID is something the user set,
+while a Build Hub runner offers its token whether or not it was asked for. For the
+same reason its failures are not only logged at debug level, as a failed Build Hub
+exchange is: when another credential stands in, the failure is a warning (once per
+message), and when nothing does, it is the error `Resolve` returns instead of "no
+token set". The workspace comes from
+`BITRISE_BUILD_CACHE_WORKSPACE_ID`, not the token: what the exchange returns is a
+Workspace API token, opaque and not a JWT. That has three consequences:
+
+- It is sent workspace-prefixed like any other PAT or WAT, so its origin is
+  `BackendEnv` with `ProvenanceOIDC`. `BackendJWT` would make `GradleToken` drop
+  the prefix.
+- `ResolvePinned` mirrors it to the analytics block only, like a JWT. Anything else
+  goes to the credentials block, which is for credentials that outlive a build.
+- Each exchange spends a GitHub token (single use, replay-checked by Bitrise) and
+  mints a token server-side, so the client caches, serialises refreshes and backs
+  off after a failure.
 
 `PreferStored` moves the two file/keychain steps ahead of the env vars. That is the
 only variation, and it exists for one caller.
@@ -401,22 +426,29 @@ question, not a resolution.
 
 ```
 cmd/xcode.startProxy
-└─ bound := (&live.Resolver{Logger: l}).Bind(envs)                   L4
+└─ bound := live.Default(l).Bind(envs)                               L4
+   └─ kv AuthSource: bound.Cached(live.HotPathTTL)
 
   ── per RPC ──
   kv.Client.Do(ctx, …)
-  └─ authSource.Get(ctx)          satisfied by *live.Bound
-     └─ live.Resolver.Resolve(ctx, envs)
+  └─ authSource.Get(ctx)          satisfied by *live.Cached
+     └─ live.Resolver.Resolve(ctx, envs)   at most once per minute
      ⇒ auth.Credential{… Expiry: real PATExpiry}
 ```
 
-The xcelerate proxy and the Bazel credential helper use this shape. `ctx` arrives
-per call; neither holds one in a struct.
+The xcelerate proxy and the ccache IPC storage helper use this shape. `Cached`
+resolves at most once per minute, sooner when the credential is within a minute of
+expiry, with one caller refreshing while the rest keep the current credential, and
+it serves the last good credential when a re-resolve fails. Without it a keychain
+login costs two keychain reads per RPC. The proxy's analytics uploads call
+`bound.Resolve` directly, since they need the origin to format the token. The
+ccache stats upload, the xcodebuild wrapper's invocation upload and the React
+Native post-run hook re-resolve after the build, because the build can outlive the
+credential.
 
-The ccache IPC storage helper still resolves once at startup and holds the result
-for the life of the process, so a PAT that expires mid-build goes stale there. It
-is the same gap the proxy had; the fix is `Bind` plus a per-request `Get`, and it
-is deliberately left out of the facade change because it touches the IPC hot path.
+The Bazel credential helper is one short-lived process per Bazel request, so an
+in-process cache would serve a single lookup; Bazel caches the answer instead, until
+the `expires` the helper returns.
 
 The Bazel helper wraps it with failure policy only:
 
@@ -440,9 +472,10 @@ cmd/common.currentAuthStatus
    └─ cred.Expired()                                                 L0
 ```
 
-The invocation PUT and the doctor's `auth-backend` probe both resolve through this
-path with default precedence, which is what stops them disagreeing about which
-credential is current. The doctor's `auth` check is the one deliberate exception —
+The doctor's `auth-backend` probe resolves through this path with default precedence,
+so it agrees with a build about which credential is current — except that it never
+brokers, so on a Build Hub runner it reports the credential a failed exchange would
+fall back to. The doctor's `auth` check is the one deliberate exception —
 it is `PreferStored`, because it reports what is on the machine rather than what a
 build would send.
 
@@ -454,7 +487,8 @@ workspace, not signing in again.
 ## Adding to this
 
 **A new consumer** calls `live.Resolve` (or `ResolveNoRefresh` for read-only
-diagnostics, `ResolvePinned` for an activation path). It does not read the keychain,
+diagnostics, `ResolvePinned` for an activation path). Anything that sends the
+credential uses `Resolve`, resolving as close to the send as it can. It does not read the keychain,
 does not read the config file, and does not call `oauth.EnsureFreshFrom`. Reading a
 credential off a config struct counts as reading the config file — `lint_arch.sh`
 cannot see that, so it is on review to catch.

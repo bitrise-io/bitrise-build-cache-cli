@@ -33,6 +33,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			UserHomeDirFunc: func() (string, error) {
 				return home, nil
 			},
+			HostnameFunc:  func() (string, error) { return "test-host", nil },
 			MkdirAllFunc:  os.MkdirAll,
 			CreateFunc:    os.Create,
 			OpenFileFunc:  os.OpenFile,
@@ -119,6 +120,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			UserHomeDirFunc: func() (string, error) {
 				return home, nil
 			},
+			HostnameFunc: func() (string, error) { return "test-host", nil },
 			MkdirAllFunc: os.MkdirAll,
 			CreateFunc: func(name string) (*os.File, error) {
 				return nil, expectedError

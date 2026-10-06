@@ -62,10 +62,9 @@ type invocationClient interface {
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
 // collection, and invocation relation registration.
 type postRunDeps struct {
-	logger     log.Logger
-	authConfig authpkg.Credential
-	username   string
-	client     invocationClient
+	logger   log.Logger
+	resolver *live.Resolver
+	username string
 
 	// localLogger appends the wrapper's parent record to the shared local
 	// invocation log. If nil, resolveLocalLogger builds paths.Default +
@@ -75,30 +74,21 @@ type postRunDeps struct {
 	// osProxy drives analytics opt-out gating. If nil, utils.DefaultOsProxy{}
 	// is used (production default).
 	osProxy utils.OsProxy
+
+	// client overrides the lazy-resolved analytics client. Nil in production:
+	// run() builds a client from the resolver. Tests inject a stub to assert
+	// the opt-out gate's observable behaviour without a live backend.
+	client invocationClient
 }
 
+// The credential is resolved in run: a brokered JWT resolved before the build can expire during it.
 func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
-	cred, origin, err := resolver.ResolveNoRefresh(utils.AllEnvs())
-	if err != nil {
-		logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
-
-		return nil
-	}
-
 	username, _ := resolver.ResolveUsername(utils.AllEnvs())
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), logger)
-	if err != nil {
-		logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
-
-		return nil
-	}
-
 	return &postRunDeps{
-		logger:     logger,
-		authConfig: cred,
-		username:   username,
-		client:     client,
+		logger:   logger,
+		resolver: resolver,
+		username: username,
 	}
 }
 
@@ -190,33 +180,26 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	// observability; the only signal that flips Success here is execErr.
 	wrapperSuccess := execErr == nil
 
-	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
-		InvocationDate: time.Now().Add(-duration),
-		InvocationID:   wrapperInvocationID,
-		Duration:       duration,
-		Command:        command,
-		FullCommand:    fullCommand,
-		Success:        wrapperSuccess,
-		Error:          execErr,
-		BuildTool:      "react-native",
-		Wrapper:        "bitrise-build-cache-cli react-native",
-		HitRate:        summary.MeanHitRate,
-	}, d.authConfig, metadata)
-
 	outcome.ChildInvocations = summary.ChildCount + summary.NoActivityCount + summary.SkippedCount
 
 	if machineconfig.ProjectOptedOut(d.resolveOsProxy(), d.logger) {
 		d.logger.TInfof("[project-mode] opt-in active, no marker; skipping React Native invocation analytics")
 	} else {
-		if err := d.sendInvocation(*inv); err != nil {
-			d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
-			outcome.InvocationSaveFailed = true
-		} else {
-			// BE confirmed the invocation was stored — surface the details URL
-			// so users can jump to it from the build log.
-			d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(d.authConfig.WorkspaceID, wrapperInvocationID))
+		stats := multiplatform.InvocationRunStats{
+			InvocationDate: time.Now().Add(-duration),
+			InvocationID:   wrapperInvocationID,
+			Duration:       duration,
+			Command:        command,
+			FullCommand:    fullCommand,
+			Success:        wrapperSuccess,
+			Error:          execErr,
+			BuildTool:      "react-native",
+			Wrapper:        "bitrise-build-cache-cli react-native",
+			HitRate:        summary.MeanHitRate,
 		}
-		d.appendLocalInvocationLog(wrapperInvocationID, command, metadata, summary, duration, execErr)
+		if d.sendAndLogInvocation(ctx, stats, metadata, summary, duration, execErr) {
+			outcome.InvocationSaveFailed = true
+		}
 	}
 
 	if err := agg.Cleanup(); err != nil {
@@ -224,6 +207,68 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	}
 
 	return outcome
+}
+
+// sendAndLogInvocation sends the wrapper's analytics invocation and appends
+// the local log record. Returns true when the PUT failed (so the caller can
+// mark outcome.InvocationSaveFailed); the local-log append is warn-only.
+// A resolver/client build failure is also warn-only and treated as a non-send:
+// outcome.InvocationSaveFailed stays false, matching main's pre-opt-out
+// behaviour when the resolver returned nothing.
+func (d *postRunDeps) sendAndLogInvocation(
+	ctx context.Context,
+	stats multiplatform.InvocationRunStats,
+	metadata common.CacheConfigMetadata,
+	summary childstats.Summary,
+	duration time.Duration,
+	execErr error,
+) bool {
+	cred, client, ok := d.resolveClientAndCred(ctx)
+	if !ok {
+		return false
+	}
+
+	inv := multiplatform.NewInvocation(stats, cred, metadata)
+
+	sendFailed := false
+	if err := client.PutInvocation(*inv); err != nil {
+		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
+		sendFailed = true
+	} else {
+		// BE confirmed the invocation was stored — surface the details URL
+		// so users can jump to it from the build log.
+		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(cred.WorkspaceID, stats.InvocationID))
+	}
+
+	d.appendLocalInvocationLog(stats.InvocationID, stats.Command, metadata, summary, duration, execErr)
+
+	return sendFailed
+}
+
+// resolveClientAndCred returns a credential + analytics client for the
+// post-run analytics emit. If d.client is set (test override), the resolver is
+// not consulted and cred is empty. On production, resolve + build-client
+// failures warn and return ok=false so the caller skips the emit.
+func (d *postRunDeps) resolveClientAndCred(ctx context.Context) (authpkg.Credential, invocationClient, bool) {
+	if d.client != nil {
+		return authpkg.Credential{}, d.client, true
+	}
+
+	cred, origin, err := d.resolver.Resolve(ctx, utils.AllEnvs())
+	if err != nil {
+		d.logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
+
+		return authpkg.Credential{}, nil, false
+	}
+
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), d.logger)
+	if err != nil {
+		d.logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
+
+		return authpkg.Credential{}, nil, false
+	}
+
+	return cred, client, true
 }
 
 // ---------------------------------------------------------------------------
@@ -245,15 +290,7 @@ func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 		out, err := osexec.CommandContext(context.Background(), name, args...).Output() //nolint:gosec
 
 		return string(out), err
-	}, d.logger)
-}
-
-func (d *postRunDeps) sendInvocation(inv multiplatform.Invocation) error {
-	if err := d.client.PutInvocation(inv); err != nil {
-		return fmt.Errorf("send invocation: %w", err)
-	}
-
-	return nil
+	}, utils.DefaultOsProxy{}, d.logger)
 }
 
 // appendLocalInvocationLog writes the wrapper's parent record to the shared

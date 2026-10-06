@@ -35,8 +35,10 @@ func (s *stubInvocationsAPI) PutInvocationRelation(rel multiplatform.InvocationR
 
 func newTestRegistry(envs map[string]string) *InvocationRegistry {
 	return &InvocationRegistry{
-		cred:   auth.Credential{Token: "test-token", WorkspaceID: "test-workspace"},
-		origin: auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic},
+		resolve: func(context.Context) (auth.Credential, auth.Origin, error) {
+			return auth.Credential{Token: "test-token", WorkspaceID: "test-workspace"},
+				auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}, nil
+		},
 		params: InvocationRegistryParams{
 			Envs: envs,
 		},
@@ -157,4 +159,22 @@ func TestInvocationRegistry_RegisterRelation(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, stub.capturedRelation.InvocationDate.IsZero())
 	})
+}
+
+func TestInvocationRegistry_ResolveFailure(t *testing.T) {
+	stub := &stubInvocationsAPI{}
+	reg := newTestRegistry(map[string]string{})
+	reg.api = stub
+	reg.resolve = func(context.Context) (auth.Credential, auth.Origin, error) {
+		return auth.Credential{}, auth.Origin{}, assert.AnError
+	}
+
+	err := reg.RegisterMultiplatformInvocation(context.Background(), RegisterInvocationParams{InvocationID: "inv"})
+	require.ErrorIs(t, err, assert.AnError)
+
+	err = reg.RegisterRelation(context.Background(), RegisterRelationParams{ParentID: "p", ChildID: "c"})
+	require.ErrorIs(t, err, assert.AnError)
+
+	assert.Empty(t, stub.capturedInvocation.InvocationID)
+	assert.Empty(t, stub.capturedRelation.ParentInvocationID)
 }

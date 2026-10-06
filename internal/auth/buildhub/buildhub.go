@@ -52,10 +52,10 @@ type Client struct {
 // Both or neither: a half-set pair means the runner is not offering to broker, and
 // guessing at the other half would produce a confusing failure later.
 func FromEnv(envs map[string]string) (*Client, bool) {
-	tokenURL, vmToken := envs[auth.EnvBuildHubVMTokenURL], envs[auth.EnvBuildHubVMToken]
-	if tokenURL == "" || vmToken == "" {
+	if !auth.OnBuildHub(envs) {
 		return nil, false
 	}
+	tokenURL, vmToken := envs[auth.EnvBuildHubVMTokenURL], envs[auth.EnvBuildHubVMToken]
 
 	return &Client{
 		tokenURL:    tokenURL,
@@ -66,6 +66,25 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 		token:       "",
 		expiresAt:   time.Time{},
 	}, true
+}
+
+// Process-wide, so every resolver in one command shares a single cached exchange.
+var shared sync.Map //nolint:gochecknoglobals
+
+func Shared(envs map[string]string) (*Client, bool) {
+	key := envs[auth.EnvBuildHubVMTokenURL] + "\x00" + envs[auth.EnvBuildHubVMToken]
+	if c, ok := shared.Load(key); ok {
+		return c.(*Client), true //nolint:forcetypeassert // only *Client is stored
+	}
+
+	c, ok := FromEnv(envs)
+	if !ok {
+		return nil, false
+	}
+
+	actual, _ := shared.LoadOrStore(key, c)
+
+	return actual.(*Client), true //nolint:forcetypeassert // only *Client is stored
 }
 
 // Token returns a Build Cache token, exchanging the VM token for a fresh one when
@@ -93,7 +112,17 @@ func (c *Client) Token(ctx context.Context) (string, time.Time, error) {
 		return token, expiresAt, nil
 	}
 
-	return c.exchange(ctx)
+	token, expiresAt, err := c.exchange(ctx)
+	if err != nil {
+		// A failed early refresh must not cost the caller a token that still works.
+		if token, expiresAt, ok := c.unexpired(); ok {
+			return token, expiresAt, nil
+		}
+
+		return "", time.Time{}, err
+	}
+
+	return token, expiresAt, nil
 }
 
 func (c *Client) exchange(ctx context.Context) (string, time.Time, error) {

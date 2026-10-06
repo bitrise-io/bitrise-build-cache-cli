@@ -2,6 +2,7 @@
 package gradle_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -66,7 +67,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return templateInventory, nil
 			},
 			func(
@@ -108,7 +109,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, inventoryCreationError
 			},
 			func(
@@ -145,7 +146,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
@@ -182,7 +183,7 @@ func Test_activateGradleCmdFn(t *testing.T) {
 			mockLogger,
 			"~/.gradle",
 			authEnvsWithScratchStore(t),
-			func(log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
+			func(context.Context, log.Logger, map[string]string, bool, common.BenchmarkPhaseProvider, utils.OsProxy) (gradleconfig.TemplateInventory, error) {
 				return gradleconfig.TemplateInventory{}, nil
 			},
 			func(
