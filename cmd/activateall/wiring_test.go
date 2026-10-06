@@ -57,7 +57,7 @@ func forceEntitlement(t *testing.T, state configcommon.EntitlementState) *int {
 
 	asked := 0
 	orig := configcommon.EntitlementChecker
-	configcommon.EntitlementChecker = func(context.Context, string, auth.Credential, configcommon.EntitlementApp, log.Logger) configcommon.EntitlementState {
+	configcommon.EntitlementChecker = func(context.Context, string, auth.Credential, log.Logger) configcommon.EntitlementState {
 		asked++
 
 		return state

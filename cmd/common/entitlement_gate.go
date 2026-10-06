@@ -29,7 +29,5 @@ func SkipForEntitlement(ctx context.Context, logger log.Logger) bool {
 
 // SkipForEntitlementWith is SkipForEntitlement for a caller that already resolved the credential.
 func SkipForEntitlementWith(ctx context.Context, logger log.Logger, cred auth.Credential) bool {
-	app := configcommon.NewEntitlementApp(utils.AllEnvs(), utils.DefaultOsProxy{})
-
-	return configcommon.SkipActivationForEntitlement(ctx, consts.BitriseWebsiteBaseURL, cred, app, logger)
+	return configcommon.SkipActivationForEntitlement(ctx, consts.BitriseWebsiteBaseURL, cred, logger)
 }

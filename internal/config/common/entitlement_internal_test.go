@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
 func credFor(workspaceID string) auth.Credential {
@@ -42,7 +41,7 @@ func TestCheckEntitlement_IsUnknownWhileTheEndpointDoesNotExist(t *testing.T) {
 
 	srv := serve(t, http.StatusPaymentRequired, "")
 
-	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), EntitlementApp{}, testLogger()))
+	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 }
 
 func serve(t *testing.T, status int, body string) *httptest.Server {
@@ -87,7 +86,7 @@ func TestCheckEntitlement_Answers(t *testing.T) {
 			shipped(t)
 			srv := serve(t, tt.status, tt.body)
 
-			assert.Equal(t, tt.want, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), EntitlementApp{}, testLogger()))
+			assert.Equal(t, tt.want, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 		})
 	}
 }
@@ -97,14 +96,14 @@ func TestCheckEntitlement_UnreachableIsNotANo(t *testing.T) {
 	srv := serve(t, http.StatusOK, "")
 	srv.Close()
 
-	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), EntitlementApp{}, testLogger()))
+	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 }
 
 func TestCheckEntitlement_NoWorkspaceIsUnknown(t *testing.T) {
 	shipped(t)
 	srv := serve(t, http.StatusPaymentRequired, "")
 
-	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor(""), EntitlementApp{}, testLogger()))
+	assert.Equal(t, EntitlementUnknown, CheckEntitlement(t.Context(), srv.URL, credFor(""), testLogger()))
 }
 
 func TestSkipActivationForEntitlement_SkipsOnlyOnANo(t *testing.T) {
@@ -125,7 +124,7 @@ func TestSkipActivationForEntitlement_SkipsOnlyOnANo(t *testing.T) {
 			t.Setenv(EnvSkipEntitlementCheck, "")
 			srv := serve(t, tt.status, tt.body)
 
-			assert.Equal(t, tt.skip, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), EntitlementApp{}, testLogger()))
+			assert.Equal(t, tt.skip, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 		})
 	}
 }
@@ -135,46 +134,8 @@ func TestSkipActivationForEntitlement_TheBypassSuppressesAGenuineNo(t *testing.T
 	srv := serve(t, http.StatusPaymentRequired, "")
 
 	t.Setenv(EnvSkipEntitlementCheck, "")
-	require.True(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), EntitlementApp{}, testLogger()), "precondition: no bypass means skip")
+	require.True(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()), "precondition: no bypass means skip")
 
 	t.Setenv(EnvSkipEntitlementCheck, "true")
-	assert.False(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), EntitlementApp{}, testLogger()))
-}
-
-func TestCheckEntitlement_SendsTheApp(t *testing.T) {
-	tests := []struct {
-		name  string
-		app   EntitlementApp
-		query string
-	}{
-		{"a Bitrise app", EntitlementApp{BitriseAppSlug: "app-1"}, "app_slug=app-1"},
-		{"an external project", EntitlementApp{ExternalAppID: "org/repo"}, "external_app_id=org%2Frepo"},
-		{"no app", EntitlementApp{}, ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			shipped(t)
-			var got string
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				got = r.URL.RawQuery
-				_, _ = w.Write([]byte(`{"active":true}`))
-			}))
-			t.Cleanup(srv.Close)
-
-			require.Equal(t, EntitlementActive, CheckEntitlement(t.Context(), srv.URL, credFor("ws-1"), tt.app, testLogger()))
-
-			assert.Equal(t, tt.query, got)
-		})
-	}
-}
-
-func TestNewEntitlementApp(t *testing.T) {
-	osProxy := &mocks.OsProxyMock{HostnameFunc: func() (string, error) { return "build-vm", nil }}
-
-	assert.Equal(t, EntitlementApp{BitriseAppSlug: "app-1"},
-		NewEntitlementApp(map[string]string{"BITRISE_IO": "true", "BITRISE_BUILD_SLUG": "b", "BITRISE_APP_SLUG": "app-1"}, osProxy))
-	assert.Equal(t, EntitlementApp{ExternalAppID: "org/repo"},
-		NewEntitlementApp(map[string]string{"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "org/repo", "BITRISE_APP_SLUG": "ignored"}, osProxy))
-	assert.Equal(t, EntitlementApp{}, NewEntitlementApp(map[string]string{}, osProxy))
+	assert.False(t, SkipActivationForEntitlement(t.Context(), srv.URL, credFor("ws-1"), testLogger()))
 }
