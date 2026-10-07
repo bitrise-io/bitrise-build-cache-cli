@@ -37,17 +37,10 @@ type SessionSidecar struct {
 	WrapperSession *WrapperSessionLink `json:"wrapper_session"`
 }
 
-// SidecarStats is the per-connection session-counter snapshot.
+// SidecarStats carries the per-connection blob snapshot; readers derive hits,
+// misses, byte totals and the KV subset from it.
 type SidecarStats struct {
-	Hits          int64               `json:"hits"`
-	Misses        int64               `json:"misses"`
-	KVHits        int64               `json:"kv_hits"`
-	KVMisses      int64               `json:"kv_misses"`
-	Uploads       int64               `json:"uploads"`
-	UploadBytes   int64               `json:"upload_bytes"`
-	DownloadBytes int64               `json:"download_bytes"`
-	KVUploadBytes int64               `json:"kv_upload_bytes"`
-	BlobStats     *blobstats.Snapshot `json:"blob_stats,omitempty"`
+	BlobStats *blobstats.Snapshot `json:"blob_stats,omitempty"`
 }
 
 // WrapperSessionLink is the reserved slot for a future wrapper-side
@@ -133,7 +126,7 @@ func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAnces
 		PeerAncestry:   resolveAncestry(conn.peerPID),
 		AcceptedAt:     conn.acceptedAt.UTC(),
 		ClosedAt:       closedAt.UTC(),
-		Stats:          SidecarStats(stats),
+		Stats:          SidecarStats{BlobStats: stats.BlobStats},
 		WrapperSession: nil,
 	}
 }
