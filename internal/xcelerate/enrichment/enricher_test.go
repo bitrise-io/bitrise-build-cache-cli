@@ -3,9 +3,11 @@
 package enrichment_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
 func singleEntryGroup(e enrichment.ManifestEntry) enrichment.ManifestEntryGroup {
@@ -645,6 +648,73 @@ func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
 	assert.Equal(t, int64(7), s.captured.CacheBlobStats.Download.OpCount)
 	assert.Equal(t, int64(3), s.captured.CacheBlobStats.Download.MissCount)
 	assert.Equal(t, int64(4), s.captured.CacheBlobStats.Upload.OpCount)
+}
+
+type fakeXcresultParser struct {
+	summary xcresult.Summary
+	calls   atomic.Int32
+}
+
+func (p *fakeXcresultParser) Parse(_ context.Context, _ string) xcresult.Summary {
+	p.calls.Add(1)
+
+	return p.summary
+}
+
+func TestEnricher_OrphanAttachesXcresultSummary(t *testing.T) {
+	s := newEnrichSetup(t)
+
+	bundlePath := filepath.Join(s.manifestDir, "AAAA-BBBB.xcresult")
+	require.NoError(t, os.Mkdir(bundlePath, 0o755))
+
+	parser := &fakeXcresultParser{summary: xcresult.Summary{
+		Targets: []xcresult.TargetSummary{
+			{Name: "TargetA", BuildDurationMs: 1234},
+			{Name: "TargetB", BuildDurationMs: 5678},
+		},
+		Failures: []xcresult.FailureSummary{
+			{TargetName: "TargetA", Message: "compile error"},
+		},
+	}}
+	s.enricher.XcresultParser = parser
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	require.Equal(t, int32(1), parser.calls.Load())
+	require.Len(t, s.captured.Targets, 2)
+	assert.Equal(t, "TargetA", s.captured.Targets[0].Name)
+	assert.Equal(t, int64(1234), s.captured.Targets[0].BuildDurationMs)
+	assert.Equal(t, "TargetB", s.captured.Targets[1].Name)
+	require.Len(t, s.captured.Failures, 1)
+	assert.Equal(t, "TargetA", s.captured.Failures[0].TargetName)
+	assert.Equal(t, "compile error", s.captured.Failures[0].Message)
+}
+
+func TestEnricher_OrphanSkipsXcresultWhenBundleMissing(t *testing.T) {
+	s := newEnrichSetup(t)
+
+	parser := &fakeXcresultParser{summary: xcresult.Summary{
+		Targets: []xcresult.TargetSummary{{Name: "TargetA"}},
+	}}
+	s.enricher.XcresultParser = parser
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Zero(t, parser.calls.Load(), "parser must not be invoked when the bundle is absent")
+	assert.Empty(t, s.captured.Targets)
+	assert.Empty(t, s.captured.Failures)
+}
+
+func TestEnricher_OrphanSkipsXcresultWhenParserNil(t *testing.T) {
+	s := newEnrichSetup(t)
+
+	bundlePath := filepath.Join(s.manifestDir, "AAAA-BBBB.xcresult")
+	require.NoError(t, os.Mkdir(bundlePath, 0o755))
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Empty(t, s.captured.Targets)
+	assert.Empty(t, s.captured.Failures)
 }
 
 func TestEnricher_EmptyGroup_NoOp(t *testing.T) {

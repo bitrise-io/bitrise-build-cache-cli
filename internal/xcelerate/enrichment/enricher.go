@@ -1,10 +1,12 @@
 package enrichment
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -15,6 +17,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg enrichment_test . InvocationPutter
@@ -34,6 +37,7 @@ type Enricher struct {
 	Health           *HealthWriter
 	Now              func() time.Time
 	SidecarReader    SidecarReader
+	XcresultParser   xcresult.Parser
 }
 
 func (e *Enricher) now() time.Time {
@@ -124,6 +128,8 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
 
+	e.attachXcresultSummary(manifestPath, group, inv)
+
 	TickAttempt(e.Health, e.Logger, e.now())
 
 	if err := e.Client.PutInvocation(*inv); err != nil {
@@ -197,6 +203,61 @@ func unlinkSidecars(paths []string, logger log.Logger) {
 			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
 		}
 	}
+}
+
+// attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
+// Xcode writes next to the activity log. Silent no-op when parser is unset,
+// bundle is absent, or the summary is empty.
+func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntryGroup, inv *analytics.Invocation) {
+	if e.XcresultParser == nil {
+		return
+	}
+
+	bundlePath := xcresultBundlePath(manifestPath, group)
+	if bundlePath == "" {
+		return
+	}
+	if _, err := os.Stat(bundlePath); err != nil {
+		return
+	}
+
+	summary := e.XcresultParser.Parse(context.Background(), bundlePath)
+	if len(summary.Targets) == 0 && len(summary.Failures) == 0 {
+		return
+	}
+
+	for _, t := range summary.Targets {
+		inv.Targets = append(inv.Targets, analytics.TargetSummary{
+			Name:            t.Name,
+			BuildDurationMs: t.BuildDurationMs,
+		})
+	}
+	for _, f := range summary.Failures {
+		inv.Failures = append(inv.Failures, analytics.FailureSummary{
+			TargetName: f.TargetName,
+			Message:    f.Message,
+		})
+	}
+
+	logOr(e.Logger).Debugf("Attached xcresult summary to invocation %s (targets=%d, failures=%d)", inv.InvocationID, len(inv.Targets), len(inv.Failures))
+}
+
+// xcresultBundlePath derives the sibling xcresult bundle path from the manifest
+// group's primary activity-log entry: same directory as the manifest, same
+// basename as the .xcactivitylog with the extension swapped for .xcresult.
+func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
+	if manifestPath == "" {
+		return ""
+	}
+
+	primary := group.Primary()
+	if primary.FileName == "" {
+		return ""
+	}
+
+	base := strings.TrimSuffix(primary.FileName, filepath.Ext(primary.FileName))
+
+	return filepath.Join(filepath.Dir(manifestPath), base+".xcresult")
 }
 
 // readLogHitRate returns 0 on any non-OK outcome. The log lands on disk before
