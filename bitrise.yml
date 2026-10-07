@@ -2213,7 +2213,7 @@ workflows:
             "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
             sleep 10
             ls ~/.local/state/xcelerate/logs/ || true
-            ORPHAN_ID=$(cat ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | grep -oE 'Enriched invocation PUT [a-f0-9-]+' | tail -1 | awk '{print $NF}')
+            ORPHAN_ID=$({ cat ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | grep -oE 'Enriched invocation PUT [a-f0-9-]+' || true; } | tail -1 | awk '{print $NF}')
             if [ -z "$ORPHAN_ID" ]; then
               echo "FAIL: no 'Enriched invocation PUT' line found across proxy logs"
               echo "---- all proxy logs tail: ----"
