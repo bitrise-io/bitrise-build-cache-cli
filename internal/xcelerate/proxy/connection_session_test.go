@@ -44,8 +44,6 @@ func TestSessionRegistry_ConcurrentPut(t *testing.T) {
 	assert.Equal(t, 100, registryLen(r))
 }
 
-// registryLen walks the registry via flushAll — the private byKey map is
-// package-local so this is only usable from this test file.
 func registryLen(r *sessionRegistry) int {
 	n := 0
 	r.flushAll(func(*connectionSession) { n++ })

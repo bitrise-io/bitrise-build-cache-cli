@@ -8,31 +8,27 @@ import (
 	grpcstats "google.golang.org/grpc/stats"
 )
 
-// connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx
-// so UnaryInterceptor can additively write to it alongside the global
-// p.sessionState — the global stays the source of truth for the SetSession
-// / GetSessionStats wrapper flow and must not change behaviour.
+// connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
+// Per-conn accounting runs additively alongside the global p.sessionState,
+// which remains the source of truth for the SetSession / GetSessionStats
+// wrapper flow — do not change behaviour there.
 type connSessionCtxKey struct{}
 
 // connectionSession is the per-conn counterpart of Proxy.sessionState. One
 // per accepted connection; flushed exactly once on gRPC ConnEnd.
 type connectionSession struct {
-	// key is the synthetic RemoteAddr tag the registry and peer-listener
-	// index this session under. Stamped at TagConn, so cleanup doesn't need
-	// a reverse lookup.
+	// key is the synthetic RemoteAddr tag used across registry and listener.
 	key string
 
 	peerPID    int
 	acceptedAt time.Time
 	state      *sessionState
 
-	// flushOnce guards the sidecar write so flushAll on GracefulStop racing a
-	// ConnEnd is a no-op.
+	// flushOnce guards against a GracefulStop flushAll racing ConnEnd.
 	flushOnce sync.Once
 
-	// firstActivityAt is stamped on the first cache RPC through the handler.
-	// Zero means the conn never issued one (health probe, aborted dial) and
-	// flushSession suppresses the sidecar write.
+	// Zero firstActivityAt means no cache RPC ran (health probe, aborted
+	// dial); flushSession suppresses the sidecar write in that case.
 	activityMu      sync.Mutex
 	firstActivityAt time.Time
 }
@@ -146,8 +142,7 @@ type sidecarStatsHandler struct {
 
 var _ grpcstats.Handler = (*sidecarStatsHandler)(nil)
 
-// TagRPC is a no-op; UnaryInterceptor on the Proxy already enriches the ctx
-// for method dispatch, and we have no RPC-scoped state to attach.
+// TagRPC is a no-op; no RPC-scoped state to attach.
 func (h *sidecarStatsHandler) TagRPC(ctx context.Context, _ *grpcstats.RPCTagInfo) context.Context {
 	return ctx
 }
