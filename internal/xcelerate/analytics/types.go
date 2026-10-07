@@ -76,16 +76,6 @@ type Invocation struct {
 	ExternalWorkflowName string              `json:"externalWorkflowName,omitempty"`
 	BenchmarkPhase       string              `json:"benchmarkPhase,omitempty"`
 	CacheBlobStats       *blobstats.Snapshot `json:"cacheBlobStats,omitempty"`
-	// Populated from the proxy sidecar on the toolchain-only path; zero when no
-	// sidecar matched this invocation.
-	CacheHits          int64 `json:"cacheHits,omitempty"`
-	CacheMisses        int64 `json:"cacheMisses,omitempty"`
-	KVCacheHits        int64 `json:"kvCacheHits,omitempty"`
-	KVCacheMisses      int64 `json:"kvCacheMisses,omitempty"`
-	CacheUploads       int64 `json:"cacheUploads,omitempty"`
-	CacheUploadBytes   int64 `json:"cacheUploadBytes,omitempty"`
-	CacheDownloadBytes int64 `json:"cacheDownloadBytes,omitempty"`
-	KVUploadBytes      int64 `json:"kvUploadBytes,omitempty"`
 	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
 	Targets  []TargetSummary  `json:"targets,omitempty"`
 	Failures []FailureSummary `json:"failures,omitempty"`
