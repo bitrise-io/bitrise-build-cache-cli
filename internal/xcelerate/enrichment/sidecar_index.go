@@ -10,11 +10,12 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
 )
 
-// supportedSidecarSchema matches the proxy's SidecarSchemaVersion; higher
-// values are left on disk for a newer binary to consume.
-const supportedSidecarSchema = 1
+// supportedSidecarSchema matches sessions.SidecarSchemaVersion; higher values
+// are left on disk for a newer binary to consume.
+const supportedSidecarSchema = sessions.SidecarSchemaVersion
 
 // expectedAncestor must appear in a sidecar's PeerAncestry list to qualify.
 const expectedAncestor = "xcodebuild"
@@ -86,7 +87,7 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 			continue
 		}
 
-		var s sessionSidecar
+		var s sessions.Sidecar
 		if err := json.Unmarshal(body, &s); err != nil {
 			logger.Debugf("Sidecar unmarshal %s: %s", path, err)
 
@@ -112,17 +113,8 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 			continue
 		}
 
-		merged.Hits += s.Stats.Hits
-		merged.Misses += s.Stats.Misses
-		merged.KVHits += s.Stats.KVHits
-		merged.KVMisses += s.Stats.KVMisses
-		merged.Uploads += s.Stats.Uploads
-		merged.UploadBytes += s.Stats.UploadBytes
-		merged.DownloadBytes += s.Stats.DownloadBytes
-		merged.KVUploadBytes += s.Stats.KVUploadBytes
-
-		if blob := s.Stats.BlobStats; blob != nil {
-			total := s.Stats.Hits + s.Stats.Misses
+		if blob := s.BlobStats; blob != nil {
+			total := blob.Download.OpCount + blob.Download.MissCount + blob.Upload.OpCount
 			if merged.BlobStats == nil || total > bestBlobTotal {
 				merged.BlobStats = blob
 				bestBlobTotal = total
@@ -142,28 +134,6 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 // ---------------------------------------------------------------------------
 // Private
 // ---------------------------------------------------------------------------
-
-// sessionSidecar mirrors the proxy's SessionSidecar JSON for the subset the
-// reader consumes.
-type sessionSidecar struct {
-	SchemaVersion int                `json:"schema_version"`
-	PeerAncestry  []string           `json:"peer_ancestry"`
-	AcceptedAt    time.Time          `json:"accepted_at"`
-	ClosedAt      time.Time          `json:"closed_at"`
-	Stats         sidecarStatsOnDisk `json:"stats"`
-}
-
-type sidecarStatsOnDisk struct {
-	Hits          int64               `json:"hits"`
-	Misses        int64               `json:"misses"`
-	KVHits        int64               `json:"kv_hits"`
-	KVMisses      int64               `json:"kv_misses"`
-	Uploads       int64               `json:"uploads"`
-	UploadBytes   int64               `json:"upload_bytes"`
-	DownloadBytes int64               `json:"download_bytes"`
-	KVUploadBytes int64               `json:"kv_upload_bytes"`
-	BlobStats     *blobstats.Snapshot `json:"blob_stats,omitempty"`
-}
 
 func ancestryMatches(ancestry []string) bool {
 	for _, a := range ancestry {
