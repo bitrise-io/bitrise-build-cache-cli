@@ -135,8 +135,8 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 		assert.NotZero(t, sc.AcceptedAt)
 		assert.NotZero(t, sc.ClosedAt)
 		assert.Nil(t, sc.WrapperSession, "wrapper_session reserved for later PR")
-		require.NotNil(t, sc.Stats.BlobStats, "blob stats must be populated for an active connection")
-		assert.Equal(t, int64(1), sc.Stats.BlobStats.Download.OpCount, "one Get call => one download op")
+		require.NotNil(t, sc.BlobStats, "blob stats must be populated for an active connection")
+		assert.Equal(t, int64(1), sc.BlobStats.Download.OpCount, "one Get call => one download op")
 	}
 }
 

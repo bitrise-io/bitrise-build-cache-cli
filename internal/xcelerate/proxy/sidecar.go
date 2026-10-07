@@ -16,7 +16,7 @@ import (
 // SidecarSchemaVersion is the on-disk version written by the proxy and read by
 // the enrichment side. Readers must leave files with a higher version on disk
 // so a newer binary can pick them up — never delete, never attempt to parse.
-const SidecarSchemaVersion = 1
+const SidecarSchemaVersion = 2
 
 // SessionSidecar is one line's worth of per-connection accounting written by
 // the proxy on connection close (gRPC ConnEnd) or per-conn inactivity.
@@ -30,17 +30,11 @@ type SessionSidecar struct {
 	AcceptedAt   time.Time `json:"accepted_at"`
 	ClosedAt     time.Time `json:"closed_at"`
 
-	Stats SidecarStats `json:"stats"`
+	BlobStats *blobstats.Snapshot `json:"blobStats"`
 
 	// WrapperSession reserved for a later PR that correlates wrapper-emitted
 	// invocation state with the proxy-side sidecar. Always nil in PR-B1.
 	WrapperSession *WrapperSessionLink `json:"wrapper_session"`
-}
-
-// SidecarStats carries the per-connection blob snapshot; readers derive hits,
-// misses, byte totals and the KV subset from it.
-type SidecarStats struct {
-	BlobStats *blobstats.Snapshot `json:"blob_stats,omitempty"`
 }
 
 // WrapperSessionLink is the reserved slot for a future wrapper-side
@@ -126,7 +120,7 @@ func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAnces
 		PeerAncestry:   resolveAncestry(conn.peerPID),
 		AcceptedAt:     conn.acceptedAt.UTC(),
 		ClosedAt:       closedAt.UTC(),
-		Stats:          SidecarStats{BlobStats: stats.BlobStats},
+		BlobStats:      stats.BlobStats,
 		WrapperSession: nil,
 	}
 }
