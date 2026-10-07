@@ -193,19 +193,27 @@ func StartXcodeCacheProxy(
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
 
+	// Cancelled only after the final sweep so sidecars written during GracefulStop still get drained.
+	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelEnrich()
+
 	if bundle.enrichmentEnabled() {
-		go bundle.watcher(ctx, initialLogger).Run(ctx)
-		go bundle.retrier(initialLogger).Run(ctx)
+		go bundle.watcher(enrichCtx, initialLogger).Run(enrichCtx)
+		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
+
+	bgCtx := context.WithoutCancel(ctx)
 
 	go func() {
 		<-ctx.Done()
 		p.GracefulStop()
+		bundle.finalEnrichmentSweep(bgCtx, initialLogger)
+		cancelEnrich()
 	}()
 
 	serveErr := p.Serve(listener)
 
-	p.FlushCurrentSession(context.WithoutCancel(ctx))
+	p.FlushCurrentSession(bgCtx)
 
 	//nolint:wrapcheck
 	return serveErr
@@ -343,6 +351,16 @@ func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
 		Client: b.client,
 		Logger: logger,
 	}
+}
+
+// finalEnrichmentSweep is the shutdown-time synchronous drain of manifests and the retry queue.
+func (b *analyticsBundle) finalEnrichmentSweep(ctx context.Context, logger log.Logger) {
+	if !b.enrichmentEnabled() {
+		return
+	}
+
+	b.watcher(ctx, logger).ScanOnce()
+	b.retrier(logger).Sweep()
 }
 
 type slimInvocationEmitter struct {
