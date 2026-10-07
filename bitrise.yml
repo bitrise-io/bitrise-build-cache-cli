@@ -763,7 +763,7 @@ workflows:
             # Strip both credential env vars: the build can then only authenticate on what
             # activate pinned to disk, the shape of a GitHub Actions job that scopes the secret.
             (env -u BITRISE_BUILD_CACHE_AUTH_TOKEN -u BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN \
-              ./gradlew debug --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
+              ./gradlew assembleInternalDebug -Pforce-default-variant --stacktrace 2>&1) | tee "$BITRISE_DEPLOY_DIR/logs.txt"
     - script:
         title: Assert auth came from the pinned credential
         inputs:
@@ -2089,7 +2089,7 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            ./gradlew debug --info --stacktrace > "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1
+            ./gradlew assembleInternalDebug -Pforce-default-variant --info --stacktrace > "$BITRISE_DEPLOY_DIR/logs.txt" 2>&1
             # Robolectric unit test to exercise the android-all jar audit + native-runtime probes (tolerate failure; append logs).
             # --rerun forces just this task to re-execute (bypasses both up-to-date and the build cache for the test task only,
             # so its compile deps still load FROM-CACHE): served FROM-CACHE the test never forks a JVM, so Robolectric never
