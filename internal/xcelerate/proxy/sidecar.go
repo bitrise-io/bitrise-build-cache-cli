@@ -32,8 +32,7 @@ type SessionSidecar struct {
 
 	BlobStats *blobstats.Snapshot `json:"blobStats"`
 
-	// WrapperSession reserved for a later PR that correlates wrapper-emitted
-	// invocation state with the proxy-side sidecar. Always nil in PR-B1.
+	// WrapperSession is reserved for wrapper↔proxy invocation correlation; currently always nil.
 	WrapperSession *WrapperSessionLink `json:"wrapper_session"`
 }
 

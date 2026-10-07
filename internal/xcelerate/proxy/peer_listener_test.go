@@ -60,7 +60,6 @@ func TestPeerListener_TagsPIDOnDarwin(t *testing.T) {
 	assert.Equal(t, os.Getpid(), pc.PeerPIDForTest(), "peer PID should match this process")
 	assert.NotEmpty(t, pc.RemoteAddrTagForTest(), "remote addr tag should be non-empty")
 
-	// Registry lookup round-trips.
 	looked, found := pl.LookupConn(pc.RemoteAddrTagForTest())
 	assert.True(t, found)
 	assert.NotNil(t, looked)
