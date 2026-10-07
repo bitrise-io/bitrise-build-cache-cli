@@ -2103,6 +2103,151 @@ workflows:
               fi
     - deploy-to-bitrise-io: {}
 
+  e2e-xcode-parity-compare:
+    description: |
+      Produces two BE invocation records on the same minimal Swift fixture — one
+      via the wrapper path, one via the orphan (toolchain-only, enricher
+      post-shutdown sweep) path — and prints both URLs so reviewers can diff
+      the two UIs side by side without local reproduction. Guards the ingest
+      path exercised by PR-B2 (enricher orphan-path ingest).
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
+    - FIXTURE_DIR: $BITRISE_SOURCE_DIR/_tmp/parity-fixture
+    - SCHEME: ParityApp
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Install xcodegen
+        inputs:
+        - content: |-
+            set -exo pipefail
+            if ! command -v xcodegen >/dev/null; then
+              brew install xcodegen
+            fi
+    - script:
+        title: Build minimal Swift fixture
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf "$FIXTURE_DIR"
+            mkdir -p "$FIXTURE_DIR/Source"
+            cat > "$FIXTURE_DIR/project.yml" <<'EOF'
+            name: ParityApp
+            options:
+              bundleIdPrefix: io.bitrise
+              deploymentTarget:
+                iOS: "16.0"
+            targets:
+              ParityApp:
+                type: application
+                platform: iOS
+                sources: [Source]
+                settings:
+                  base:
+                    PRODUCT_BUNDLE_IDENTIFIER: io.bitrise.ParityApp
+            EOF
+            cat > "$FIXTURE_DIR/Source/App.swift" <<'EOF'
+            import SwiftUI
+            @main struct App: SwiftUI.App {
+              var body: some Scene { WindowGroup { Text("hi") } }
+            }
+            EOF
+            cd "$FIXTURE_DIR" && xcodegen
+    - script:
+        title: Activate xcelerate (toolchain + wrapper + proxy auto-start)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli activate xcode -d --cache --cache-push
+            # make the wrapper visible to this shell
+            export PATH="$HOME/.bitrise-xcelerate/bin:$PATH"
+            command -v xcodebuild
+            which xcodebuild | tee /tmp/wrapper-path.txt
+    - script:
+        title: Wrapper build + capture invocation URL
+        inputs:
+        - content: |-
+            set -exo pipefail
+            export PATH="$HOME/.bitrise-xcelerate/bin:$PATH"
+            cd "$FIXTURE_DIR"
+            set +e
+            "$HOME/.bitrise-xcelerate/bin/xcodebuild" -scheme "$SCHEME" -configuration Debug build \
+              -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO 2>&1 | tee /tmp/wrapper.log
+            WRAP_RC=${PIPESTATUS[0]}
+            set -e
+            WRAPPER_URL=$(grep -oE 'https://app.bitrise.io/build-cache/invocations/xcode/[a-f0-9-]+' /tmp/wrapper.log | tail -1)
+            [ -n "$WRAPPER_URL" ] || { echo "FAIL: no wrapper invocation URL in wrapper.log"; exit 1; }
+            envman add --key WRAPPER_URL --value "$WRAPPER_URL"
+            echo "WRAPPER_URL=$WRAPPER_URL (wrapper exit=$WRAP_RC)"
+    - script:
+        title: Reset state for orphan run
+        inputs:
+        - content: |-
+            set -exo pipefail
+            "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
+            rm -rf ~/.local/state/xcelerate/sessions/*
+            rm -rf ~/Library/Developer/Xcode/DerivedData/ParityApp-*
+    - script:
+        title: Wrapperless build (toolchain-only)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # wrapperless xcodebuild doesn't auto-start the proxy
+            nohup "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate start-proxy -d >/tmp/proxy.log 2>&1 &
+            sleep 3
+            cd "$FIXTURE_DIR"
+            set +e
+            /usr/bin/xcodebuild -scheme "$SCHEME" -configuration Debug build \
+              -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO \
+              TOOLCHAINS=io.bitrise.cas.xctoolchain 2>&1 | tee /tmp/orphan.log
+            ORPHAN_RC=${PIPESTATUS[0]}
+            set -e
+            echo "orphan xcodebuild rc=$ORPHAN_RC"
+    - script:
+        title: Stop proxy and capture orphan invocation URL
+        inputs:
+        - content: |-
+            set -exo pipefail
+            "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
+            # allow finalEnrichmentSweep + PUT to settle
+            sleep 10
+            ORPHAN_ID=$(grep -oE 'Enriched invocation PUT [a-f0-9-]+' /tmp/proxy.log | tail -1 | awk '{print $NF}')
+            [ -n "$ORPHAN_ID" ] || { echo "FAIL: no orphan invocation emitted"; tail -200 /tmp/proxy.log; exit 1; }
+            ORPHAN_URL="https://app.bitrise.io/build-cache/invocations/xcode/$ORPHAN_ID"
+            envman add --key ORPHAN_URL --value "$ORPHAN_URL"
+            echo "ORPHAN_URL=$ORPHAN_URL"
+    - script:
+        title: Emit side-by-side comparison summary
+        is_always_run: true
+        inputs:
+        - content: |-
+            set -exo pipefail
+            if [ -z "$WRAPPER_URL" ] || [ -z "$ORPHAN_URL" ]; then
+              echo "FAIL: missing WRAPPER_URL=$WRAPPER_URL or ORPHAN_URL=$ORPHAN_URL"
+              exit 1
+            fi
+            cat >>"$BITRISE_STEP_FORMATTED_OUTPUT_FILE_PATH" <<EOF
+            ## Xcode wrapper vs orphan parity comparison
+
+            | Flow | Invocation URL |
+            |---|---|
+            | Wrapper (full \`xcodebuild\` through the shim) | $WRAPPER_URL |
+            | Orphan (\`/usr/bin/xcodebuild\` + \`TOOLCHAINS=io.bitrise.cas.xctoolchain\`, enricher post-shutdown sweep) | $ORPHAN_URL |
+
+            Side-by-side the two should match on \`cacheHitRate\`, \`usesCache\`, \`status\`, \`cacheBlobStats\`, \`targets\`, \`failures\`, \`cliVersion\`, \`tool\`, \`workflowName\`, \`projectTitle\`, \`username\`, \`ciProvider\`.
+
+            Known divergences: \`command\` (argv vs manifest Signature), \`shortCommand\` (wrapper carries \`[scheme/config]\`, orphan scheme-only), \`duration\` (manifest span lag ±seconds), \`startedAt\` (different runs).
+            EOF
+            echo "Wrapper: $WRAPPER_URL"
+            echo "Orphan: $ORPHAN_URL"
+    - deploy-to-bitrise-io: {}
+
   e2e-proxy-cache-macos:
     description: |
       Guard the xcelerate proxy's cache-operation latency under a real compile.
@@ -2929,6 +3074,7 @@ pipelines:
       e2e-xcode-wrapper-watcher-race: {}
       e2e-xcode-activitylog-parse: {}
       e2e-xcode-activitylog-parse-native: {}
+      e2e-xcode-parity-compare: {}
       e2e-proxy-cache-macos: {}
       e2e-scenarios-linux: {}
       e2e-scenarios-macos: {}
