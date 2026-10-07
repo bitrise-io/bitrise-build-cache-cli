@@ -95,7 +95,7 @@ func TestGroupManifestEntries_SingleEntry(t *testing.T) {
 	assert.Equal(t, "S", groups[0].SchemeName())
 	assert.Equal(t, 10*time.Second, groups[0].Duration())
 	assert.True(t, groups[0].Success())
-	assert.Equal(t, "build S", groups[0].Command())
+	assert.Equal(t, "build [S]", groups[0].Command())
 	assert.Equal(t, "Build S", groups[0].FullCommand())
 }
 
@@ -113,7 +113,7 @@ func TestGroupManifestEntries_MultiEntrySameSchemeWithinGap(t *testing.T) {
 	assert.Equal(t, base, groups[0].Start())
 	assert.Equal(t, base.Add(55*time.Second), groups[0].Stop())
 	assert.Equal(t, 55*time.Second, groups[0].Duration())
-	assert.Equal(t, "test S", groups[0].Command(), "Test outranks Build as primary")
+	assert.Equal(t, "test [S]", groups[0].Command(), "Test outranks Build as primary")
 	assert.Equal(t, "Test S", groups[0].FullCommand())
 	assert.True(t, groups[0].Success())
 }
@@ -170,7 +170,7 @@ func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "archive S", groups[0].Command(), "Archive outranks Build even when Build starts first")
+	assert.Equal(t, "archive [S]", groups[0].Command(), "Archive outranks Build even when Build starts first")
 }
 
 func TestGroupManifestEntries_SameRankBreaksByEarliestStart(t *testing.T) {
@@ -194,7 +194,7 @@ func TestGroupManifestEntries_HigherRankWinsOverUnknown(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "build S", groups[0].Command())
+	assert.Equal(t, "build [S]", groups[0].Command())
 }
 
 // Pins the wide-span trade-off documented on ManifestEntryGroup so nobody
