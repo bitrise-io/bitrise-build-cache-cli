@@ -3082,7 +3082,6 @@ pipelines:
       e2e-xcode-wrapper-watcher-race: {}
       e2e-xcode-activitylog-parse: {}
       e2e-xcode-activitylog-parse-native: {}
-      e2e-xcode-parity-compare: {}
       e2e-proxy-cache-macos: {}
       e2e-scenarios-linux: {}
       e2e-scenarios-macos: {}
