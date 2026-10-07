@@ -16,9 +16,8 @@ const (
 )
 
 // ancestryCache is a bounded LRU keyed by (pid, process-start-time) so a
-// recycled PID can't return a stale ancestry chain. The second key is why we
-// can't just cache on PID alone — gopsutil's CreateTime gives us ms-precision
-// start which is enough to disambiguate reuse within one build.
+// recycled PID can't return a stale chain. CreateTime (ms precision) is
+// enough to disambiguate PID reuse within one build.
 type ancestryCache struct {
 	mu    sync.Mutex
 	index map[ancestryKey]*list.Element
@@ -147,7 +146,6 @@ func walkAncestry(ctx context.Context, pid int) []string {
 }
 
 // processStartTime returns the ms-since-epoch start time of pid; zero on error.
-// Kept separate so tests can override by wrapping ancestryCache.resolveAncestry.
 func processStartTime(ctx context.Context, pid int32) (int64, error) {
 	proc, err := process.NewProcessWithContext(ctx, pid)
 	if err != nil {

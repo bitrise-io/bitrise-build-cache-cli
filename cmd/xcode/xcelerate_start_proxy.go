@@ -351,7 +351,6 @@ func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
 	}
 }
 
-// finalEnrichmentSweep is the shutdown-time synchronous drain of manifests and the retry queue.
 func (b *analyticsBundle) finalEnrichmentSweep(ctx context.Context, logger log.Logger) {
 	if !b.enrichmentEnabled() {
 		return

@@ -24,7 +24,6 @@ func TestPruneSessionSidecars_DropsStaleJSONAndEveryTmp(t *testing.T) {
 	require.NoError(t, os.WriteFile(stale, []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(leftoverTmp, []byte("{}"), 0o600))
 
-	// Age stale.json past the cutoff.
 	oldTime := now.Add(-10 * 24 * time.Hour)
 	require.NoError(t, os.Chtimes(stale, oldTime, oldTime))
 

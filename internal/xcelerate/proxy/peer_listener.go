@@ -56,8 +56,7 @@ func (l *PeerListener) Accept() (net.Conn, error) {
 	return pc, nil
 }
 
-// LookupConn returns the *peerConn that was tagged with the given RemoteAddr
-// string. gRPC's stats.Handler.TagConn uses this to pull the peer PID.
+// LookupConn returns the *peerConn tagged with the given RemoteAddr string.
 func (l *PeerListener) LookupConn(remoteAddrStr string) (*peerConn, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
