@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
@@ -24,14 +25,14 @@ type sidecarFixture struct {
 }
 
 type fixtureSts struct {
-	Hits          int64 `json:"hits"`
-	Misses        int64 `json:"misses"`
-	KVHits        int64 `json:"kv_hits"`
-	KVMisses      int64 `json:"kv_misses"`
-	Uploads       int64 `json:"uploads"`
-	UploadBytes   int64 `json:"upload_bytes"`
-	DownloadBytes int64 `json:"download_bytes"`
-	KVUploadBytes int64 `json:"kv_upload_bytes"`
+	BlobStats *blobstats.Snapshot `json:"blob_stats,omitempty"`
+}
+
+func blob(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
+	return &blobstats.Snapshot{
+		Download: blobstats.DirectionSnapshot{OpCount: downloadOps, MissCount: downloadMiss},
+		Upload:   blobstats.DirectionSnapshot{OpCount: uploadOps},
+	}
 }
 
 func writeSidecar(t *testing.T, dir, name string, s sidecarFixture) string {
@@ -56,10 +57,10 @@ func TestSidecarIndex_EmptyDirReturnsNotFound(t *testing.T) {
 	dir := t.TempDir()
 	idx := enrichment.NewSidecarIndex(dir, nil)
 
-	stats, paths, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
+	snap, paths, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
 	assert.False(t, ok)
 	assert.Empty(t, paths)
-	assert.Zero(t, stats.Hits)
+	assert.Nil(t, snap)
 }
 
 func TestSidecarIndex_MissingDirReturnsNotFound(t *testing.T) {
@@ -84,7 +85,7 @@ func TestSidecarIndex_AncestryRejectedWhenXcodebuildAbsent(t *testing.T) {
 		PeerAncestry:  []string{"swift-driver", "clang"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
-		Stats:         fixtureSts{Hits: 7},
+		Stats:         fixtureSts{BlobStats: blob(7, 0, 0)},
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -100,7 +101,7 @@ func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{Hits: 7},
+		Stats:         fixtureSts{BlobStats: blob(7, 0, 0)},
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -108,7 +109,7 @@ func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestSidecarIndex_SingleMatchPopulatesStatsAndPath(t *testing.T) {
+func TestSidecarIndex_SingleMatchPopulatesBlobAndPath(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	path := writeSidecar(t, dir, "a.json", sidecarFixture{
@@ -116,52 +117,45 @@ func TestSidecarIndex_SingleMatchPopulatesStatsAndPath(t *testing.T) {
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
-		Stats: fixtureSts{
-			Hits: 3, Misses: 2, KVHits: 5, KVMisses: 1,
-			Uploads: 4, UploadBytes: 1024, DownloadBytes: 2048, KVUploadBytes: 256,
-		},
+		Stats:         fixtureSts{BlobStats: blob(3, 2, 4)},
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	stats, paths, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)))
+	snap, paths, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)))
 	require.True(t, ok)
 	assert.Equal(t, []string{path}, paths)
-	assert.Equal(t, int64(3), stats.Hits)
-	assert.Equal(t, int64(2), stats.Misses)
-	assert.Equal(t, int64(5), stats.KVHits)
-	assert.Equal(t, int64(1), stats.KVMisses)
-	assert.Equal(t, int64(4), stats.Uploads)
-	assert.Equal(t, int64(1024), stats.UploadBytes)
-	assert.Equal(t, int64(2048), stats.DownloadBytes)
-	assert.Equal(t, int64(256), stats.KVUploadBytes)
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(3), snap.Download.OpCount)
+	assert.Equal(t, int64(2), snap.Download.MissCount)
+	assert.Equal(t, int64(4), snap.Upload.OpCount)
 }
 
-func TestSidecarIndex_TwoMatchesMergeAdditively(t *testing.T) {
+func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
-	writeSidecar(t, dir, "a.json", sidecarFixture{
+	writeSidecar(t, dir, "small.json", sidecarFixture{
 		SchemaVersion: 1,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{Hits: 3, Misses: 1, UploadBytes: 10, DownloadBytes: 20},
+		Stats:         fixtureSts{BlobStats: blob(2, 1, 1)},
 	})
-	writeSidecar(t, dir, "b.json", sidecarFixture{
+	writeSidecar(t, dir, "large.json", sidecarFixture{
 		SchemaVersion: 1,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base.Add(6 * time.Second),
 		ClosedAt:      base.Add(10 * time.Second),
-		Stats:         fixtureSts{Hits: 4, Misses: 2, UploadBytes: 7, DownloadBytes: 11},
+		Stats:         fixtureSts{BlobStats: blob(9, 2, 3)},
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	stats, paths, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
+	snap, paths, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
 	require.True(t, ok)
-	assert.Len(t, paths, 2)
-	assert.Equal(t, int64(7), stats.Hits)
-	assert.Equal(t, int64(3), stats.Misses)
-	assert.Equal(t, int64(17), stats.UploadBytes)
-	assert.Equal(t, int64(31), stats.DownloadBytes)
+	assert.Len(t, paths, 2, "both overlapping sidecars must be unlinked")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(9), snap.Download.OpCount, "largest-op blob wins tie-break")
+	assert.Equal(t, int64(2), snap.Download.MissCount)
+	assert.Equal(t, int64(3), snap.Upload.OpCount)
 }
 
 func TestSidecarIndex_SchemaV2SkippedAndLeftOnDisk(t *testing.T) {
@@ -172,7 +166,7 @@ func TestSidecarIndex_SchemaV2SkippedAndLeftOnDisk(t *testing.T) {
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{Hits: 99},
+		Stats:         fixtureSts{BlobStats: blob(99, 0, 0)},
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -193,14 +187,15 @@ func TestSidecarIndex_CorruptJSONTolerated(t *testing.T) {
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{Hits: 1},
+		Stats:         fixtureSts{BlobStats: blob(1, 0, 0)},
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	stats, paths, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
+	snap, paths, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
 	require.True(t, ok)
 	assert.Equal(t, []string{path}, paths)
-	assert.Equal(t, int64(1), stats.Hits)
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(1), snap.Download.OpCount)
 
 	_, err := os.Stat(corrupt)
 	assert.NoError(t, err, "corrupt sidecar must stay on disk for later inspection")
