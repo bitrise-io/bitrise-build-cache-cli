@@ -26,6 +26,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy/mocks"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
 	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/cas"
 )
 
@@ -123,10 +124,10 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 		body, err := os.ReadFile(filepath.Join(dir, f.Name()))
 		require.NoError(t, err)
 
-		var sc proxy.SessionSidecar
+		var sc sessions.Sidecar
 		require.NoError(t, json.Unmarshal(body, &sc))
 
-		assert.Equal(t, proxy.SidecarSchemaVersion, sc.SchemaVersion)
+		assert.Equal(t, sessions.SidecarSchemaVersion, sc.SchemaVersion)
 		assert.Equal(t, "proxy", sc.Source)
 		assert.NotEmpty(t, sc.SidecarUUID)
 		assert.Equal(t, os.Getpid(), sc.PeerPID, "peer PID equals this test process")
