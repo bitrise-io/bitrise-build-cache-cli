@@ -51,6 +51,9 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		if merr := mirrorsconfig.MigratePrebootInitScript(logger, utils.DefaultOsProxy{}, p.GradleHome(""), gradleHome); merr != nil {
 			logger.Warnf("Could not relocate preboot Gradle mirrors init script: %s", merr)
 		}
+		if merr := mirrorsconfig.MigratePrebootBuildCacheInitScript(logger, utils.DefaultOsProxy{}, p.GradleHome(""), gradleHome); merr != nil {
+			logger.Warnf("Could not relocate preboot Gradle build-cache init script: %s", merr)
+		}
 
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
