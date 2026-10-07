@@ -17,15 +17,11 @@ import (
 )
 
 type sidecarFixture struct {
-	SchemaVersion int        `json:"schema_version"`
-	PeerAncestry  []string   `json:"peer_ancestry"`
-	AcceptedAt    time.Time  `json:"accepted_at"`
-	ClosedAt      time.Time  `json:"closed_at"`
-	Stats         fixtureSts `json:"stats"`
-}
-
-type fixtureSts struct {
-	BlobStats *blobstats.Snapshot `json:"blob_stats,omitempty"`
+	SchemaVersion int                 `json:"schema_version"`
+	PeerAncestry  []string            `json:"peer_ancestry"`
+	AcceptedAt    time.Time           `json:"accepted_at"`
+	ClosedAt      time.Time           `json:"closed_at"`
+	BlobStats     *blobstats.Snapshot `json:"blobStats,omitempty"`
 }
 
 func blob(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
@@ -81,11 +77,11 @@ func TestSidecarIndex_AncestryRejectedWhenXcodebuildAbsent(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		PeerAncestry:  []string{"swift-driver", "clang"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(7, 0, 0)},
+		BlobStats:     blob(7, 0, 0),
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -97,11 +93,11 @@ func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(7, 0, 0)},
+		BlobStats:     blob(7, 0, 0),
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -113,11 +109,11 @@ func TestSidecarIndex_SingleMatchPopulatesBlobAndPath(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	path := writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(3, 2, 4)},
+		BlobStats:     blob(3, 2, 4),
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -134,18 +130,18 @@ func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "small.json", sidecarFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(2, 1, 1)},
+		BlobStats:     blob(2, 1, 1),
 	})
 	writeSidecar(t, dir, "large.json", sidecarFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base.Add(6 * time.Second),
 		ClosedAt:      base.Add(10 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(9, 2, 3)},
+		BlobStats:     blob(9, 2, 3),
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -158,15 +154,15 @@ func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	assert.Equal(t, int64(3), snap.Upload.OpCount)
 }
 
-func TestSidecarIndex_SchemaV2SkippedAndLeftOnDisk(t *testing.T) {
+func TestSidecarIndex_FutureSchemaSkippedAndLeftOnDisk(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	futurePath := writeSidecar(t, dir, "future.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(99, 0, 0)},
+		BlobStats:     blob(99, 0, 0),
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
@@ -174,7 +170,7 @@ func TestSidecarIndex_SchemaV2SkippedAndLeftOnDisk(t *testing.T) {
 	assert.False(t, ok)
 
 	_, err := os.Stat(futurePath)
-	assert.NoError(t, err, "schema v2 sidecar must remain on disk")
+	assert.NoError(t, err, "future-schema sidecar must remain on disk")
 }
 
 func TestSidecarIndex_CorruptJSONTolerated(t *testing.T) {
@@ -183,11 +179,11 @@ func TestSidecarIndex_CorruptJSONTolerated(t *testing.T) {
 	corrupt := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(corrupt, []byte("{not-json"), 0o600))
 	path := writeSidecar(t, dir, "good.json", sidecarFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
-		Stats:         fixtureSts{BlobStats: blob(1, 0, 0)},
+		BlobStats:     blob(1, 0, 0),
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
