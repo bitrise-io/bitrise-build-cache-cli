@@ -2186,11 +2186,10 @@ workflows:
             envman add --key WRAPPER_URL --value "$WRAPPER_URL"
             echo "WRAPPER_URL=$WRAPPER_URL (wrapper exit=$WRAP_RC)"
     - script:
-        title: Reset state for orphan run
+        title: Reset DerivedData + sessions for orphan run (keep proxy alive)
         inputs:
         - content: |-
             set -exo pipefail
-            "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
             rm -rf ~/.local/state/xcelerate/sessions/*
             rm -rf ~/Library/Developer/Xcode/DerivedData/ParityApp-*
     - script:
@@ -2198,9 +2197,6 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # wrapperless xcodebuild doesn't auto-start the proxy
-            nohup "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate start-proxy -d >/tmp/proxy.log 2>&1 &
-            sleep 3
             cd "$FIXTURE_DIR"
             set +e
             /usr/bin/xcodebuild -scheme "$SCHEME" -configuration Debug build \
@@ -2214,11 +2210,13 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
+            PROXY_LOG=$(ls -t ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | head -1)
+            [ -n "$PROXY_LOG" ] || { echo "FAIL: no proxy log"; ls ~/.local/state/xcelerate/logs/ || true; exit 1; }
+            echo "proxy log: $PROXY_LOG"
             "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
-            # allow finalEnrichmentSweep + PUT to settle
             sleep 10
-            ORPHAN_ID=$(grep -oE 'Enriched invocation PUT [a-f0-9-]+' /tmp/proxy.log | tail -1 | awk '{print $NF}')
-            [ -n "$ORPHAN_ID" ] || { echo "FAIL: no orphan invocation emitted"; tail -200 /tmp/proxy.log; exit 1; }
+            ORPHAN_ID=$(grep -oE 'Enriched invocation PUT [a-f0-9-]+' "$PROXY_LOG" | tail -1 | awk '{print $NF}')
+            [ -n "$ORPHAN_ID" ] || { echo "FAIL: no orphan invocation emitted"; tail -400 "$PROXY_LOG"; exit 1; }
             ORPHAN_URL="https://app.bitrise.io/build-cache/invocations/xcode/$ORPHAN_ID"
             envman add --key ORPHAN_URL --value "$ORPHAN_URL"
             echo "ORPHAN_URL=$ORPHAN_URL"
