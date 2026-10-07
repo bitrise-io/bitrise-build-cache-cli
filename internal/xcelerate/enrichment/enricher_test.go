@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -460,16 +461,23 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 }
 
 type fakeSidecarReader struct {
-	stats enrichment.SidecarStats
+	blob  *blobstats.Snapshot
 	paths []string
 	found bool
 }
 
-func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (enrichment.SidecarStats, []string, bool) {
-	return f.stats, f.paths, f.found
+func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.Snapshot, []string, bool) {
+	return f.blob, f.paths, f.found
 }
 
-func TestEnricher_SidecarPopulatesCacheStats(t *testing.T) {
+func blobSnapshotWith(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
+	return &blobstats.Snapshot{
+		Download: blobstats.DirectionSnapshot{OpCount: downloadOps, MissCount: downloadMiss},
+		Upload:   blobstats.DirectionSnapshot{OpCount: uploadOps},
+	}
+}
+
+func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -481,16 +489,11 @@ func TestEnricher_SidecarPopulatesCacheStats(t *testing.T) {
 		},
 	}
 
+	snap := blobSnapshotWith(7, 3, 4)
 	e := &enrichment.Enricher{
-		Store:  store,
-		Client: mock,
-		SidecarReader: &fakeSidecarReader{
-			found: true,
-			stats: enrichment.SidecarStats{
-				Hits: 7, Misses: 3, KVHits: 5, KVMisses: 2,
-				Uploads: 4, UploadBytes: 1024, DownloadBytes: 2048, KVUploadBytes: 256,
-			},
-		},
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: snap},
 	}
 
 	now := time.Now()
@@ -500,17 +503,13 @@ func TestEnricher_SidecarPopulatesCacheStats(t *testing.T) {
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Equal(t, int64(7), captured.CacheHits)
-	assert.Equal(t, int64(3), captured.CacheMisses)
-	assert.Equal(t, int64(5), captured.KVCacheHits)
-	assert.Equal(t, int64(2), captured.KVCacheMisses)
-	assert.Equal(t, int64(4), captured.CacheUploads)
-	assert.Equal(t, int64(1024), captured.CacheUploadBytes)
-	assert.Equal(t, int64(2048), captured.CacheDownloadBytes)
-	assert.Equal(t, int64(256), captured.KVUploadBytes)
+	require.NotNil(t, captured.CacheBlobStats)
+	assert.Equal(t, int64(7), captured.CacheBlobStats.Download.OpCount)
+	assert.Equal(t, int64(3), captured.CacheBlobStats.Download.MissCount)
+	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
 }
 
-func TestEnricher_NoSidecarReaderLeavesCacheStatsZero(t *testing.T) {
+func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -531,9 +530,7 @@ func TestEnricher_NoSidecarReaderLeavesCacheStatsZero(t *testing.T) {
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Zero(t, captured.CacheHits)
-	assert.Zero(t, captured.CacheMisses)
-	assert.Zero(t, captured.KVUploadBytes)
+	assert.Nil(t, captured.CacheBlobStats)
 }
 
 func TestEnricher_SidecarDerivesHitRateWhenLogMissing(t *testing.T) {
@@ -549,12 +546,9 @@ func TestEnricher_SidecarDerivesHitRateWhenLogMissing(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{
-		Store:  store,
-		Client: mock,
-		SidecarReader: &fakeSidecarReader{
-			found: true,
-			stats: enrichment.SidecarStats{Hits: 3, Misses: 1},
-		},
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(3, 1, 0)},
 	}
 
 	now := time.Now()
@@ -641,25 +635,16 @@ func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
 	s := newEnrichSetup(t)
 	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 10 cacheable tasks (10%)\n"))
 
-	s.enricher.SidecarReader = &fakeSidecarReader{
-		found: true,
-		stats: enrichment.SidecarStats{
-			Hits: 7, Misses: 3, KVHits: 5, KVMisses: 2,
-			Uploads: 4, UploadBytes: 1024, DownloadBytes: 2048, KVUploadBytes: 256,
-		},
-	}
+	snap := blobSnapshotWith(7, 3, 4)
+	s.enricher.SidecarReader = &fakeSidecarReader{found: true, blob: snap}
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
 	assert.InDelta(t, float32(0.1), s.captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
-	assert.Equal(t, int64(7), s.captured.CacheHits)
-	assert.Equal(t, int64(3), s.captured.CacheMisses)
-	assert.Equal(t, int64(5), s.captured.KVCacheHits)
-	assert.Equal(t, int64(2), s.captured.KVCacheMisses)
-	assert.Equal(t, int64(4), s.captured.CacheUploads)
-	assert.Equal(t, int64(1024), s.captured.CacheUploadBytes)
-	assert.Equal(t, int64(2048), s.captured.CacheDownloadBytes)
-	assert.Equal(t, int64(256), s.captured.KVUploadBytes)
+	require.NotNil(t, s.captured.CacheBlobStats)
+	assert.Equal(t, int64(7), s.captured.CacheBlobStats.Download.OpCount)
+	assert.Equal(t, int64(3), s.captured.CacheBlobStats.Download.MissCount)
+	assert.Equal(t, int64(4), s.captured.CacheBlobStats.Upload.OpCount)
 }
 
 func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
