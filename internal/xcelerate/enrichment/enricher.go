@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
@@ -92,17 +93,17 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	hitRate, hitRateOutcome := e.readLogHitRate(manifestPath, group)
 
 	var (
-		sidecarStats  SidecarStats
+		sidecarBlob   *blobstats.Snapshot
 		consumedPaths []string
 		sidecarFound  bool
 	)
 	if e.SidecarReader != nil {
-		sidecarStats, consumedPaths, sidecarFound = e.SidecarReader.Lookup(group)
+		sidecarBlob, consumedPaths, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK {
-		if total := sidecarStats.Hits + sidecarStats.Misses; total > 0 {
-			hitRate = float32(sidecarStats.Hits) / float32(total)
+	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
+		if total := sidecarBlob.Download.OpCount + sidecarBlob.Download.MissCount; total > 0 {
+			hitRate = float32(sidecarBlob.Download.OpCount) / float32(total)
 		}
 	}
 
@@ -122,17 +123,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
-	}
-	if sidecarFound {
-		runStats.CacheHits = sidecarStats.Hits
-		runStats.CacheMisses = sidecarStats.Misses
-		runStats.KVCacheHits = sidecarStats.KVHits
-		runStats.KVCacheMisses = sidecarStats.KVMisses
-		runStats.CacheUploads = sidecarStats.Uploads
-		runStats.CacheUploadBytes = sidecarStats.UploadBytes
-		runStats.CacheDownloadBytes = sidecarStats.DownloadBytes
-		runStats.KVUploadBytes = sidecarStats.KVUploadBytes
-		runStats.CacheBlobStats = sidecarStats.BlobStats
+		CacheBlobStats:   sidecarBlob,
 	}
 
 	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
