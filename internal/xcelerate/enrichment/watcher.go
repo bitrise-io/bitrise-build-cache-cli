@@ -106,6 +106,18 @@ func (w *Watcher) Run(ctx context.Context) {
 	}
 }
 
+// ScanOnce runs a single synchronous pass; safe to call on a Watcher that was never Run.
+func (w *Watcher) ScanOnce() {
+	if w.seen == nil {
+		w.seen = make(map[string]struct{})
+	}
+	if w.retries == nil {
+		w.retries = make(map[string]int)
+	}
+
+	w.scan(false)
+}
+
 // seedSeenFromStore returns true when HandledStore contributed at least one
 // UUID; false lets Run fall back to a silent filesystem seed.
 func (w *Watcher) seedSeenFromStore() bool {
