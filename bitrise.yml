@@ -2210,13 +2210,23 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            PROXY_LOG=$(ls -t ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | head -1)
-            [ -n "$PROXY_LOG" ] || { echo "FAIL: no proxy log"; ls ~/.local/state/xcelerate/logs/ || true; exit 1; }
-            echo "proxy log: $PROXY_LOG"
             "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
             sleep 10
-            ORPHAN_ID=$(grep -oE 'Enriched invocation PUT [a-f0-9-]+' "$PROXY_LOG" | tail -1 | awk '{print $NF}')
-            [ -n "$ORPHAN_ID" ] || { echo "FAIL: no orphan invocation emitted"; tail -400 "$PROXY_LOG"; exit 1; }
+            ls ~/.local/state/xcelerate/logs/ || true
+            ORPHAN_ID=$(cat ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | grep -oE 'Enriched invocation PUT [a-f0-9-]+' | tail -1 | awk '{print $NF}')
+            if [ -z "$ORPHAN_ID" ]; then
+              echo "FAIL: no 'Enriched invocation PUT' line found across proxy logs"
+              echo "---- all proxy logs tail: ----"
+              for L in ~/.local/state/xcelerate/logs/proxy-*-out.log; do
+                echo "=== $L ==="; tail -100 "$L"
+              done
+              echo "---- sessions dir: ----"
+              ls -la ~/.local/state/xcelerate/sessions/ || true
+              echo "---- enrichment state: ----"
+              cat ~/.local/state/xcelerate/enrichment/handled-manifests.ndjson 2>/dev/null | tail -20 || true
+              cat ~/.local/state/xcelerate/enrichment/pending-invocations.ndjson 2>/dev/null | tail -20 || true
+              exit 1
+            fi
             ORPHAN_URL="https://app.bitrise.io/build-cache/invocations/xcode/$ORPHAN_ID"
             envman add --key ORPHAN_URL --value "$ORPHAN_URL"
             echo "ORPHAN_URL=$ORPHAN_URL"
