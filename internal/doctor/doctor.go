@@ -102,6 +102,11 @@ type Doctor struct {
 	WorkspacePickPrompt func() (workspaceID string, err error)
 	Now                 func() time.Time
 	Debug               bool
+	// LazyXcelerateProxy treats a missing proxy socket as idle instead of a
+	// warning. The standalone `doctor` command sets it; the xcodebuild wrapper
+	// gate leaves it false — it starts the proxy before running the checks, so
+	// a missing socket there is a real startup failure.
+	LazyXcelerateProxy bool
 
 	// checksOverride replaces the real check set in tests.
 	checksOverride []Check

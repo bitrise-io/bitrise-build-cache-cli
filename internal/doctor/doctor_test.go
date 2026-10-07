@@ -226,14 +226,29 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 // A missing socket pre-first-build is normal: the proxy spawns on first use.
 func TestXcelerateProxyCheck_notRunningIsIdle(t *testing.T) {
 	r := &Doctor{
-		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
-		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		Envs:               map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LazyXcelerateProxy: true,
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "idle; starts on first build")
 	assert.False(t, res.Fixable)
+}
+
+// Default (wrapper-gate) sees a missing socket as a startup failure, since the
+// wrapper has already started the proxy by the time the check runs.
+func TestXcelerateProxyCheck_notRunningWarnsByDefault(t *testing.T) {
+	r := &Doctor{
+		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	assert.Equal(t, StateWarn, res.State)
+	assert.True(t, res.Fixable)
+	assert.NotNil(t, res.Fixer)
 }
 
 func TestXcelerateProxyCheck_skippedWhenNotActivated(t *testing.T) {
@@ -691,8 +706,9 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 // Pre-first-build there is no proxy, so there is nothing to fix.
 func TestXcelerateProxyCheck_noSocketHasNoFixer(t *testing.T) {
 	r := &Doctor{
-		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
-		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		Envs:               map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LazyXcelerateProxy: true,
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
