@@ -20,20 +20,11 @@ const supportedSidecarSchema = sessions.SidecarSchemaVersion
 // expectedAncestor must appear in a sidecar's PeerAncestry list to qualify.
 const expectedAncestor = "xcodebuild"
 
-// SidecarStats is the merged per-invocation cache-stat view the enricher
-// copies into analytics.InvocationRunStats.
-type SidecarStats struct {
-	Hits, Misses, KVHits, KVMisses int64
-	Uploads                        int64
-	UploadBytes, DownloadBytes     int64
-	KVUploadBytes                  int64
-	BlobStats                      *blobstats.Snapshot
-}
-
 // SidecarReader resolves sidecars left by the proxy that overlap a manifest
-// group's time window.
+// group's time window. Returns the representative blob snapshot (largest-op
+// winner across overlapping sidecars) and the sidecar paths to unlink on PUT.
 type SidecarReader interface {
-	Lookup(group ManifestEntryGroup) (SidecarStats, []string, bool)
+	Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, bool)
 }
 
 type sidecarIndex struct {
@@ -47,29 +38,29 @@ func NewSidecarIndex(dir string, logger log.Logger) SidecarReader {
 	return &sidecarIndex{dir: dir, logger: logger}
 }
 
-func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string, bool) {
+func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, bool) {
 	logger := logOr(i.logger)
 
 	if i.dir == "" {
 		logger.Debugf("Sidecar index skipped: empty dir")
 
-		return SidecarStats{}, nil, false
+		return nil, nil, false
 	}
 
 	entries, err := os.ReadDir(i.dir)
 	if err != nil {
 		logger.Debugf("Sidecar index read %s: %s", i.dir, err)
 
-		return SidecarStats{}, nil, false
+		return nil, nil, false
 	}
 
 	groupStart := group.Start()
 	groupStop := group.Stop()
 
 	var (
-		merged         SidecarStats
-		versionSkipped bool
+		best           *blobstats.Snapshot
 		bestBlobTotal  int64
+		versionSkipped bool
 	)
 	consumedPaths := make([]string, 0, len(entries))
 
@@ -115,8 +106,8 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 
 		if blob := s.BlobStats; blob != nil {
 			total := blob.Download.OpCount + blob.Download.MissCount + blob.Upload.OpCount
-			if merged.BlobStats == nil || total > bestBlobTotal {
-				merged.BlobStats = blob
+			if best == nil || total > bestBlobTotal {
+				best = blob
 				bestBlobTotal = total
 			}
 		}
@@ -125,10 +116,10 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (SidecarStats, []string,
 	}
 
 	if len(consumedPaths) == 0 {
-		return SidecarStats{}, nil, false
+		return nil, nil, false
 	}
 
-	return merged, consumedPaths, true
+	return best, consumedPaths, true
 }
 
 // ---------------------------------------------------------------------------
