@@ -73,7 +73,6 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 	go func() { _ = p.Serve(pl) }()
 	t.Cleanup(p.GracefulStop)
 
-	// Two concurrent connections, each firing one Get.
 	var wg sync.WaitGroup
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
@@ -96,7 +95,6 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Give the server a moment to see each ConnEnd and flush the sidecar.
 	assert.Eventually(t, func() bool {
 		files, _ := os.ReadDir(dir)
 		count := 0
