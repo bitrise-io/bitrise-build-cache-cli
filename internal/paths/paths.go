@@ -67,7 +67,7 @@ const (
 	xcelerateEnrichmentSubdir = "enrichment"
 
 	// xcelerateSessionsSubdir holds per-connection sidecar JSON files the
-	// proxy writes on close; the enrichment side consumes them in a later PR.
+	// proxy writes on close, consumed by the enrichment side.
 	xcelerateSessionsSubdir = "sessions"
 
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs

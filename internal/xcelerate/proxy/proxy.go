@@ -88,7 +88,7 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 }
 
 // NewProxyWithOptions is the full constructor; zero-value SidecarOptions
-// preserves prior behaviour.
+// disables sidecar writes.
 func NewProxyWithOptions(
 	kvClient Client,
 	pushEnabled bool,
@@ -155,9 +155,8 @@ func NewProxyWithOptions(
 	return proxy
 }
 
-// installSidecar wires sidecar machinery if opts.Dir is set. Listener is
-// optional (nil disables peer-PID tagging — tests may inject a bufconn
-// without one).
+// installSidecar wires sidecar machinery if opts.Dir is set. A nil Listener
+// disables peer-PID tagging.
 func (p *Proxy) installSidecar(opts SidecarOptions) {
 	if opts.Dir == "" {
 		return
@@ -173,10 +172,9 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	}
 }
 
-// stateFor returns a recorder that writes to the global sessionState and, if
-// the ctx is tied to a per-conn session, to that one too. Callers use its
-// methods in place of p.sessionState.* so sidecar accounting stays in lockstep
-// without changing the global session's semantics.
+// stateFor returns a recorder that mirrors to the global sessionState and,
+// when the ctx carries a per-conn session, to that one too. Keeps sidecar
+// accounting in lockstep without changing the global session's semantics.
 func (p *Proxy) stateFor(ctx context.Context) *recorder {
 	cs := sessionFromContext(ctx)
 	if cs == nil {

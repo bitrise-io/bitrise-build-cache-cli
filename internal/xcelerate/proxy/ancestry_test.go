@@ -12,7 +12,6 @@ import (
 func TestAncestryCache_EvictsLeastRecentlyUsedOverCapacity(t *testing.T) {
 	c := newAncestryCache()
 
-	// Insert cap+overflow entries. The first `overflow` should get evicted.
 	const overflow = 200
 	total := ancestryCacheMax + overflow
 
@@ -24,13 +23,11 @@ func TestAncestryCache_EvictsLeastRecentlyUsedOverCapacity(t *testing.T) {
 	assert.Equal(t, ancestryCacheMax, c.order.Len(), "list length is capped at ancestryCacheMax")
 	assert.Len(t, c.index, ancestryCacheMax, "index is capped at ancestryCacheMax")
 
-	// Earliest inserts fall out.
 	for i := 0; i < overflow; i++ {
 		_, ok := c.get(ancestryKey{pid: i, startTime: int64(i)})
 		assert.False(t, ok, "entry %d should have been evicted", i)
 	}
 
-	// Most recent inserts survive.
 	for i := overflow; i < total; i++ {
 		chain, ok := c.get(ancestryKey{pid: i, startTime: int64(i)})
 		assert.True(t, ok, "entry %d should still be cached", i)
@@ -41,7 +38,6 @@ func TestAncestryCache_EvictsLeastRecentlyUsedOverCapacity(t *testing.T) {
 func TestAncestryCache_GetMovesEntryToFrontAndStopsEviction(t *testing.T) {
 	c := newAncestryCache()
 
-	// Fill to capacity.
 	for i := 0; i < ancestryCacheMax; i++ {
 		c.put(ancestryKey{pid: i, startTime: int64(i)}, []string{strconv.Itoa(i)})
 	}
