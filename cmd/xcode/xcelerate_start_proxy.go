@@ -28,6 +28,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/kv_storage"
 )
@@ -289,6 +290,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
 	}
+	enricher.XcresultParser = xcresult.NewDefaultParser(logger)
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {
