@@ -74,7 +74,7 @@ type Proxy struct {
 
 // SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
 type SidecarOptions struct {
-	// Dir is where SessionSidecar JSON files are written. Empty disables.
+	// Dir is where sessions.Sidecar JSON files are written. Empty disables.
 	Dir string
 	// Listener is the *PeerListener wrapper the proxy serves on. Required
 	// when Dir is set.
