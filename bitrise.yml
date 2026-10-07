@@ -715,7 +715,7 @@ workflows:
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
-    - BRANCH: develop
+    - COMMIT: 4f7083279ce78ab2e52baff22e5fb6b0b079de12
     # activate must write the init script here, not $HOME/.gradle
     - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
@@ -2022,7 +2022,7 @@ workflows:
   e2e-mavencentral-mirror-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
-    - BRANCH: develop
+    - COMMIT: 4f7083279ce78ab2e52baff22e5fb6b0b079de12
     # both init scripts must land here, not $HOME/.gradle
     - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
