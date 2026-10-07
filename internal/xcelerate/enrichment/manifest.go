@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -63,6 +64,30 @@ func (m ManifestEntry) Command() Command {
 // Deliberately a blacklist: the full highLevelStatus set is undocumented, and
 // requiring "S" mislabelled every warning-carrying build as failed.
 const manifestStatusError = "E"
+
+//nolint:gochecknoglobals
+var (
+	configurationFromSignature = regexp.MustCompile(`(?i)configuration\s+(\S+)`)
+	projectFromSignature       = regexp.MustCompile(`(?i)project\s+(\S+)`)
+)
+
+// Configuration parses the configuration name out of Xcode's Signature string.
+func (m ManifestEntry) Configuration() string {
+	if match := configurationFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
+		return match[1]
+	}
+
+	return ""
+}
+
+// Project parses the project name out of Xcode's Signature string.
+func (m ManifestEntry) Project() string {
+	if match := projectFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
+		return match[1]
+	}
+
+	return ""
+}
 
 func (m ManifestEntry) Success() bool {
 	return m.Status != manifestStatusError
@@ -258,15 +283,45 @@ func (g ManifestEntryGroup) Command() string {
 		return ""
 	}
 
-	if p.SchemeName == "" {
+	parts := make([]string, 0, 2)
+	if p.SchemeName != "" {
+		parts = append(parts, p.SchemeName)
+	}
+
+	if cfg := p.Configuration(); cfg != "" {
+		parts = append(parts, cfg)
+	}
+
+	if len(parts) == 0 {
 		return string(p.Command())
 	}
 
-	return string(p.Command()) + " " + p.SchemeName
+	return string(p.Command()) + " [" + strings.Join(parts, " / ") + "]"
 }
 
 func (g ManifestEntryGroup) FullCommand() string {
-	return g.Primary().Signature
+	p := g.Primary()
+	proj := p.Project()
+	cfg := p.Configuration()
+
+	if proj == "" && cfg == "" {
+		return p.Signature
+	}
+
+	parts := make([]string, 0, 3)
+	if proj != "" {
+		parts = append(parts, "-project "+proj)
+	}
+
+	if p.SchemeName != "" {
+		parts = append(parts, "-scheme "+p.SchemeName)
+	}
+
+	if cfg != "" {
+		parts = append(parts, "-configuration "+cfg)
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // GroupManifestEntries expects entries from a single manifest — see the
