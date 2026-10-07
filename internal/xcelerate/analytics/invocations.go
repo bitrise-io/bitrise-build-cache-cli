@@ -14,25 +14,17 @@ import (
 )
 
 type InvocationRunStats struct {
-	InvocationDate     time.Time
-	InvocationID       string
-	Duration           int64
-	HitRate            float32
-	Command            string
-	FullCommand        string
-	Success            bool
-	Error              error
-	XcodeVersion       string
-	XcodeBuildNumber   string
-	CacheBlobStats     *blobstats.Snapshot
-	CacheHits          int64
-	CacheMisses        int64
-	KVCacheHits        int64
-	KVCacheMisses      int64
-	CacheUploads       int64
-	CacheUploadBytes   int64
-	CacheDownloadBytes int64
-	KVUploadBytes      int64
+	InvocationDate   time.Time
+	InvocationID     string
+	Duration         int64
+	HitRate          float32
+	Command          string
+	FullCommand      string
+	Success          bool
+	Error            error
+	XcodeVersion     string
+	XcodeBuildNumber string
+	CacheBlobStats   *blobstats.Snapshot
 }
 
 func NewInvocation(runStats InvocationRunStats, authMetadata auth.Credential, commonMetadata common.CacheConfigMetadata) *Invocation {
@@ -77,14 +69,6 @@ func NewInvocation(runStats InvocationRunStats, authMetadata auth.Credential, co
 		ExternalWorkflowName: commonMetadata.ExternalWorkflowName,
 		BenchmarkPhase:       commonMetadata.BenchmarkPhase,
 		CacheBlobStats:       runStats.CacheBlobStats,
-		CacheHits:            runStats.CacheHits,
-		CacheMisses:          runStats.CacheMisses,
-		KVCacheHits:          runStats.KVCacheHits,
-		KVCacheMisses:        runStats.KVCacheMisses,
-		CacheUploads:         runStats.CacheUploads,
-		CacheUploadBytes:     runStats.CacheUploadBytes,
-		CacheDownloadBytes:   runStats.CacheDownloadBytes,
-		KVUploadBytes:        runStats.KVUploadBytes,
 	}
 }
 
