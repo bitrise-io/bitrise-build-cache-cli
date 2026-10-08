@@ -295,6 +295,10 @@ func (c *countingSessionClient) EndSession(_ context.Context, _ *session.EndSess
 	return &emptypb.Empty{}, nil
 }
 
+func (c *countingSessionClient) FlushSession(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*session.FlushSessionResponse, error) {
+	return &session.FlushSessionResponse{}, nil
+}
+
 type countingInvocationSaver struct {
 	putCalls  atomic.Int32
 	lastInv   analytics.Invocation
