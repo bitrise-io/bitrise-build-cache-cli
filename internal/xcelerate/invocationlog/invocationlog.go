@@ -37,4 +37,3 @@ func Default(logger log.Logger) Appender {
 
 	return w
 }
-
