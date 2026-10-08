@@ -1,6 +1,7 @@
 package xcode_app
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -90,7 +92,7 @@ func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error
 // When trampolinePath is non-empty and executable, {swiftc, clang, swift} are
 // copies of that binary (ad-hoc code-signed) instead of anchor-rooted symlinks;
 // every other usr/bin entry stays as a symlink.
-func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath, trampolinePath string) error {
+func InstallToolchain(ctx context.Context, installPath, defaultToolchainPath, proxySocketPath, pluginPath, trampolinePath string) error {
 	if installPath == "" {
 		return errors.New("install path is empty")
 	}
@@ -116,7 +118,7 @@ func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, plugin
 
 	anchorToolchainPath := paths.XcodeSelectLinkDefaultToolchainPath()
 
-	if err := installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath); err != nil {
+	if err := installUsrBinEntries(ctx, installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath); err != nil {
 		return err
 	}
 	if err := symlinkTopLevelUsrDirs(installPath, defaultToolchainPath, anchorToolchainPath); err != nil {
@@ -207,7 +209,7 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 // trampolinePath is non-empty and executable; symlinks everything else to the
 // xcode-select anchor. Empty / non-executable trampolinePath = pure-symlink
 // layout (graceful fallback when the trampoline download failed).
-func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath string) error {
+func installUsrBinEntries(ctx context.Context, installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath string) error {
 	srcBin := filepath.Join(defaultToolchainPath, "usr", "bin")
 	anchorBin := filepath.Join(anchorToolchainPath, "usr", "bin")
 	dstBin := filepath.Join(installPath, "usr", "bin")
@@ -228,7 +230,7 @@ func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath
 		dst := filepath.Join(dstBin, e.Name())
 
 		if _, ok := trampolinedBins[e.Name()]; ok && trampolineReady {
-			if err := installTrampolineCopy(trampolinePath, dst); err != nil {
+			if err := installTrampolineCopy(ctx, trampolinePath, dst); err != nil {
 				return err
 			}
 
@@ -243,7 +245,7 @@ func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath
 	return nil
 }
 
-func installTrampolineCopy(trampolinePath, dst string) error {
+func installTrampolineCopy(ctx context.Context, trampolinePath, dst string) error {
 	src, err := os.Open(trampolinePath) //nolint:gosec // trampolinePath comes from paths.TrampolineBinary
 	if err != nil {
 		return fmt.Errorf("open trampoline %s: %w", trampolinePath, err)
@@ -265,7 +267,7 @@ func installTrampolineCopy(trampolinePath, dst string) error {
 		return fmt.Errorf("close trampoline dst %s: %w", dst, err)
 	}
 
-	codesignTrampoline(dst)
+	codesignTrampoline(ctx, dst)
 
 	return nil
 }
@@ -274,9 +276,11 @@ func installTrampolineCopy(trampolinePath, dst string) error {
 // refuses to launch an unsigned binary from the toolchain bundle, so this is
 // not optional. Failures are swallowed because codesign is absent on non-mac
 // test runs where the install still needs to succeed structurally.
-func codesignTrampoline(path string) {
+func codesignTrampoline(ctx context.Context, path string) {
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second) //nolint:mnd // ample for a local codesign
+	defer cancel()
 	//nolint:gosec // fixed binary + path from our own install
-	cmd := exec.Command("/usr/bin/codesign", "--sign", "-", "--force", "--timestamp=none", path)
+	cmd := exec.CommandContext(cctx, "/usr/bin/codesign", "--sign", "-", "--force", "--timestamp=none", path)
 	_ = cmd.Run()
 }
 
