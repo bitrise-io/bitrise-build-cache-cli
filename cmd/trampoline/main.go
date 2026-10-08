@@ -15,7 +15,7 @@ import (
 func main() {
 	name := filepath.Base(os.Args[0])
 
-	trampoline.EnsureProxy(name)
+	trampoline.EnsureProxy()
 
 	realPath, err := trampoline.ResolveReal(name)
 	if err != nil {
