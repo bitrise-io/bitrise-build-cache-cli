@@ -26,6 +26,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -309,6 +310,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		enricher.SidecarReader = enrichment.NewSidecarIndex(b.sessionsDir, logger)
 	}
 	enricher.XcresultParser = xcresult.NewDefaultParser(logger)
+	enricher.LocalLogAppender = invocationlog.Default(logger)
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -38,6 +39,16 @@ type Enricher struct {
 	Now              func() time.Time
 	SidecarReader    SidecarReader
 	XcresultParser   xcresult.Parser
+	// LocalLogAppender appends a Record on each successful orphan PUT so
+	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
+	LocalLogAppender LocalLogAppender
+}
+
+// LocalLogAppender is the subset of invocations.Writer used by the orphan
+// path. Defined here (instead of imported) to keep enricher's test harness
+// free of the invocations package when callers inject fakes.
+type LocalLogAppender interface {
+	Append(rec invocations.Record) error
 }
 
 func (e *Enricher) now() time.Time {
@@ -149,6 +160,49 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
+	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
+
+	e.appendLocalLog(invocationID, command, group, runStats, inv)
+}
+
+// VisitURL is the invocation-detail URL rendered in the Visit line + the
+// stop-proxy stdout summary.
+func VisitURL(invocationID string) string {
+	return "https://app.bitrise.io/build-cache/invocations/xcode/" + invocationID
+}
+
+// appendLocalLog surfaces the wrapperless row in `bitrise-build-cache invocations
+// list`. Failures are warn-only — the analytics PUT is already durable.
+func (e *Enricher) appendLocalLog(invocationID, command string, group ManifestEntryGroup, runStats analytics.InvocationRunStats, inv *analytics.Invocation) {
+	if e.LocalLogAppender == nil {
+		return
+	}
+
+	rec := invocations.Record{
+		InvocationID: invocationID,
+		Command:      command,
+		Tool:         invocations.ToolXcode,
+		ToolVersion:  e.XcodeVersion,
+		CLIVersion:   inv.CLIVersion,
+		StartedAt:    group.Start().UTC(),
+		FinishedAt:   group.Stop().UTC(),
+		ExitCode:     exitCodeFromRun(runStats),
+		CIProvider:   e.Metadata.CIProvider,
+		Username:     inv.Username,
+		HitRate:      runStats.HitRate,
+	}
+
+	if err := e.LocalLogAppender.Append(rec); err != nil {
+		logOr(e.Logger).Warnf("Failed to append wrapperless invocation to local log: %s", err)
+	}
+}
+
+func exitCodeFromRun(runStats analytics.InvocationRunStats) int {
+	if runStats.Success {
+		return 0
+	}
+
+	return 1
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
