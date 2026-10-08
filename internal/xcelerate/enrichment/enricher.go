@@ -42,6 +42,9 @@ type Enricher struct {
 	// LocalLogAppender appends a Record on each successful orphan PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
 	LocalLogAppender LocalLogAppender
+	// EmittedURLSink receives the invocation ID of every successful orphan PUT
+	// so stop-proxy can print a Visit URL per orphan. nil disables.
+	EmittedURLSink EmittedURLSink
 }
 
 // LocalLogAppender is the subset of invocations.Writer used by the orphan
@@ -49,6 +52,12 @@ type Enricher struct {
 // free of the invocations package when callers inject fakes.
 type LocalLogAppender interface {
 	Append(rec invocations.Record) error
+}
+
+// EmittedURLSink receives each enriched invocation ID so stop-proxy can
+// enumerate the orphan Visit URLs the current proxy emitted.
+type EmittedURLSink interface {
+	AppendEmittedURL(invocationID string) error
 }
 
 func (e *Enricher) now() time.Time {
@@ -164,6 +173,17 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
 
 	e.appendLocalLog(invocationID, command, group, runStats, inv)
+	e.appendEmittedURL(invocationID)
+}
+
+func (e *Enricher) appendEmittedURL(invocationID string) {
+	if e.EmittedURLSink == nil {
+		return
+	}
+
+	if err := e.EmittedURLSink.AppendEmittedURL(invocationID); err != nil {
+		logOr(e.Logger).Warnf("Failed to append emitted URL for %s: %s", invocationID, err)
+	}
 }
 
 // VisitURL is the invocation-detail URL rendered in the Visit line + the

@@ -28,6 +28,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/urllog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
@@ -311,6 +312,11 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	}
 	enricher.XcresultParser = xcresult.NewDefaultParser(logger)
 	enricher.LocalLogAppender = invocationlog.Default(logger)
+	if p, err := paths.Default(); err == nil {
+		enricher.EmittedURLSink = &urllog.Writer{Path: p.InvocationURLsForPID(os.Getpid())}
+	} else {
+		logger.Debugf("Emitted URL sink disabled, cannot resolve paths: %v", err)
+	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {
