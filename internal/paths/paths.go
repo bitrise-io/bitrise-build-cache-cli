@@ -119,6 +119,16 @@ const (
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
 
+// TrampolineRealpathCachePrefix prefixes xcrun fallback cache files written
+// by the trampoline. Referenced by the trampoline package via string literal
+// (keeps the trampoline binary free of internal/paths imports).
+const TrampolineRealpathCachePrefix = "bitrise-tc-realpath-"
+
+// TrampolineStartLockFilename names the exclusive flock the trampoline grabs
+// before firing an autostart. Referenced by the trampoline package via string
+// literal (keeps the trampoline binary free of internal/paths imports).
+const TrampolineStartLockFilename = "bitrise-xcelerate-starting.lock"
+
 // CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
 
