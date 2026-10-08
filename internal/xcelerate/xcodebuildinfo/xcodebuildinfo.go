@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 // Client runs xcodebuild from WorkDir (or the current directory when empty).
@@ -217,7 +219,7 @@ func canonicalDestination(fields map[string]string) string {
 // DefaultDestination returns the entry the picker should pre-select. The
 // ranked winner is the newest iPhone simulator on the highest-numbered iOS;
 // absent any iOS Simulator entries we fall back to the first row Xcode
-// printed. Safe to call on an already-ranked slice — ranking is idempotent.
+// printed.
 func DefaultDestination(dests []Destination) (Destination, bool) {
 	if len(dests) == 0 {
 		return Destination{}, false
@@ -232,107 +234,57 @@ func DefaultDestination(dests []Destination) (Destination, bool) {
 // OS > newest iPhone) and collapses rows that share a canonical form, keeping
 // the ranked winner.
 func rankAndDedup(dests []Destination) []Destination {
-	if len(dests) == 0 {
-		return dests
-	}
-
-	// Decorate with original index so stable-sort fallback preserves Xcode's order
-	// for everything the ranking doesn't care about.
-	type indexed struct {
-		idx  int
-		dest Destination
-	}
-
-	indexed_ := make([]indexed, len(dests))
-	for i, d := range dests {
-		indexed_[i] = indexed{idx: i, dest: d}
-	}
-
-	sort.SliceStable(indexed_, func(i, j int) bool {
-		return lessDestination(indexed_[i].dest, indexed_[j].dest, indexed_[i].idx, indexed_[j].idx)
-	})
+	out := append([]Destination(nil), dests...)
+	sort.SliceStable(out, func(i, j int) bool { return lessDestination(out[i], out[j]) })
 
 	seen := map[string]struct{}{}
-	out := make([]Destination, 0, len(indexed_))
+	kept := out[:0]
 
-	for _, it := range indexed_ {
-		if _, dup := seen[it.dest.Canonical]; dup {
+	for _, d := range out {
+		if _, dup := seen[d.Canonical]; dup {
 			continue
 		}
 
-		seen[it.dest.Canonical] = struct{}{}
-		out = append(out, it.dest)
+		seen[d.Canonical] = struct{}{}
+		kept = append(kept, d)
 	}
 
-	return out
+	return kept
 }
 
-func lessDestination(a, b Destination, aIdx, bIdx int) bool {
-	// Prefer iOS Simulator rows; everything else keeps Xcode's declared order.
-	aSim := a.Platform == "iOS Simulator"
-	bSim := b.Platform == "iOS Simulator"
-
+func lessDestination(a, b Destination) bool {
+	aSim, bSim := a.Platform == "iOS Simulator", b.Platform == "iOS Simulator"
 	if aSim != bSim {
 		return aSim
 	}
 
 	if !aSim {
-		return aIdx < bIdx
+		return false
 	}
 
-	if cmp := compareOS(a.OS, b.OS); cmp != 0 {
-		return cmp > 0
+	if c := compareOS(a.OS, b.OS); c != 0 {
+		return c > 0
 	}
 
-	if cmp := compareIPhoneName(a.Name, b.Name); cmp != 0 {
-		return cmp > 0
-	}
-
-	return aIdx < bIdx
+	return compareIPhoneName(a.Name, b.Name) > 0
 }
 
-// compareOS returns >0 when a is newer than b; parses `17.4` → (17,4) and
-// falls back to lexical compare for anything non-numeric.
+// compareOS returns >0 when a is newer than b; delegates to semver (which
+// handles partial versions like `17.4`) and falls back to lexical compare
+// for anything semver can't parse.
 func compareOS(a, b string) int {
-	ap, aok := parseOS(a)
-	bp, bok := parseOS(b)
+	av, bv := "v"+a, "v"+b
 
 	switch {
-	case aok && bok:
-		for i := 0; i < len(ap) && i < len(bp); i++ {
-			if ap[i] != bp[i] {
-				return ap[i] - bp[i]
-			}
-		}
-
-		return len(ap) - len(bp)
-	case aok:
+	case semver.IsValid(av) && semver.IsValid(bv):
+		return semver.Compare(av, bv)
+	case semver.IsValid(av):
 		return 1
-	case bok:
+	case semver.IsValid(bv):
 		return -1
 	}
 
 	return strings.Compare(a, b)
-}
-
-func parseOS(s string) ([]int, bool) {
-	if s == "" {
-		return nil, false
-	}
-
-	parts := strings.Split(s, ".")
-	out := make([]int, 0, len(parts))
-
-	for _, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil {
-			return nil, false
-		}
-
-		out = append(out, n)
-	}
-
-	return out, true
 }
 
 var iPhoneNameRe = regexp.MustCompile(`^iPhone\s+(\d+)(?:\s+(.*))?$`)
