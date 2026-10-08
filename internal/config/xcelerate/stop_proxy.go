@@ -51,8 +51,8 @@ func ProxyOwner(osProxy utils.OsProxy) (int, bool) {
 }
 
 // StopProxy stops the xcelerate proxy: it discovers the pid from the lock file,
-// sends SIGTERM to the process group, and escalates to SIGKILL after a grace
-// period. Returns nil (and logs) when no proxy is running.
+// sends SIGTERM to the proxy pid directly, waits for exit, then escalates to
+// SIGKILL. Returns nil (and logs) when no proxy is running.
 func StopProxy(logger log.Logger, osProxy utils.OsProxy) error {
 	return stopProxy(stopProxyDeps{
 		logger:   logger,
@@ -69,16 +69,19 @@ type stopProxyDeps struct {
 	signaler proxySignaler
 }
 
-// proxySignaler sends SIGTERM to the proxy's process group, waits up to graceful
-// for it to exit, then escalates to SIGKILL. Debug-logs failures; no return value.
+// proxySignaler sends SIGTERM to the proxy pid, waits up to graceful for it to
+// exit, then escalates to SIGKILL. Debug-logs failures; no return value.
 type proxySignaler interface {
 	SignalAndWait(pid int, graceful time.Duration, logger log.Logger)
 }
 
 type realSignaler struct{}
 
+// Trampoline-spawned proxies inherit the trampoline's pgid, so a `-pid` signal
+// misses the proxy entirely. Target the pid directly; after the grace window,
+// escalate to SIGKILL and warn if the proxy is still alive.
 func (realSignaler) SignalAndWait(pid int, graceful time.Duration, logger log.Logger) {
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
 		logger.Debugf("kill (TERM) failed: %s", err)
 	}
 
@@ -87,11 +90,14 @@ func (realSignaler) SignalAndWait(pid int, graceful time.Duration, logger log.Lo
 	for {
 		select {
 		case <-timeout:
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			if err := syscall.Kill(pid, 0); err == nil {
+				logger.Warnf("xcelerate-proxy pid %d still alive after SIGKILL", pid)
+			}
 
 			return
 		case <-tick:
-			if err := syscall.Kill(-pid, 0); err != nil {
+			if err := syscall.Kill(pid, 0); err != nil {
 				return
 			}
 		}

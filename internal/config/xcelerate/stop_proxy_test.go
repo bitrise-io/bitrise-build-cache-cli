@@ -11,6 +11,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/gofrs/flock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -28,6 +29,14 @@ func (s stubOsProxy) UserHomeDir() (string, error) { return s.home, nil }
 type noopSignaler struct{}
 
 func (noopSignaler) SignalAndWait(_ int, _ time.Duration, _ log.Logger) {}
+
+type capturingSignaler struct {
+	pids []int
+}
+
+func (c *capturingSignaler) SignalAndWait(pid int, _ time.Duration, _ log.Logger) {
+	c.pids = append(c.pids, pid)
+}
 
 // setupProxyPidFile writes a pid file and holds the flock for the test's
 // lifetime so ProxyOwner returns (pid, true).
@@ -53,6 +62,22 @@ func TestStopProxy_RunningProxyInvokesSignaler(t *testing.T) {
 		osProxy:  stubOsProxy{home: home},
 		signaler: noopSignaler{},
 	}))
+}
+
+func TestStopProxy_SignalsPositivePID(t *testing.T) {
+	home := t.TempDir()
+	setupProxyPidFile(t, home, 54321)
+
+	sig := &capturingSignaler{}
+	require.NoError(t, stopProxy(stopProxyDeps{
+		logger:   nullLogger{},
+		osProxy:  stubOsProxy{home: home},
+		signaler: sig,
+	}))
+
+	require.Len(t, sig.pids, 1)
+	assert.Positive(t, sig.pids[0], "signaler must receive the positive proxy pid, not a process-group id")
+	assert.Equal(t, 54321, sig.pids[0])
 }
 
 func TestStopProxy_NoProxyRunningIsSilent(t *testing.T) {
