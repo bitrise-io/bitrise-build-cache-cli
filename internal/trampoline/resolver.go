@@ -25,7 +25,7 @@ const (
 )
 
 // cacheDirEnv overrides the directory where xcrun fallback results get cached.
-// Honoured only in tests; defaults to /tmp.
+// Honoured only in tests; defaults to os.TempDir().
 const cacheDirEnv = "BITRISE_TRAMPOLINE_CACHE_DIR"
 
 // resolveDeps is the set of OS seams the resolver depends on; swapped by tests.
@@ -80,7 +80,7 @@ var defaultDeps = resolveDeps{
 			return v
 		}
 
-		return "/tmp"
+		return os.TempDir()
 	},
 	now: time.Now,
 }
@@ -187,6 +187,7 @@ func parseCache(body []byte) (cacheRecord, bool) {
 }
 
 func cachePath(name string, d resolveDeps) string {
+	// Must match internal/paths.TrampolineRealpathCachePrefix.
 	return filepath.Join(d.cacheDir(), "bitrise-tc-realpath-"+name)
 }
 
