@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -120,10 +121,20 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 		return err
 	}
 
+	logResolvedDestination(os.Stderr, spec)
+
 	argv := invoke.BuildArgv(spec, command, codesign)
 	argv = append(argv, positional...)
 
 	return runXcodebuildWrapperFn(ctx, argv, cobraCmd)
+}
+
+func logResolvedDestination(w io.Writer, spec invoke.InvocationSpec) {
+	if spec.Destination == "" {
+		return
+	}
+
+	fmt.Fprintf(w, "Using destination: xcodebuild -destination '%s'\n", spec.Destination)
 }
 
 func promptUnavailableError(command invoke.Command, cause error) error {

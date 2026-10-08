@@ -154,7 +154,7 @@ func (p Prompter) fillDestination(
 	runForm func(*huh.Group) error,
 	spec *invoke.InvocationSpec,
 ) error {
-	var dests []string
+	var dests []xcodebuildinfo.Destination
 
 	if spec.Scheme != "" {
 		d, err := provider.ShowDestinations(ctx, spec.Workspace, spec.Project, spec.Scheme)
@@ -218,7 +218,7 @@ func configurationField(spec *invoke.InvocationSpec, candidates []string) huh.Fi
 		Value(&spec.Configuration)
 }
 
-func destinationField(spec *invoke.InvocationSpec, candidates []string) huh.Field {
+func destinationField(spec *invoke.InvocationSpec, candidates []xcodebuildinfo.Destination) huh.Field {
 	if len(candidates) == 0 {
 		return huh.NewInput().
 			Title("Destination").
@@ -227,11 +227,48 @@ func destinationField(spec *invoke.InvocationSpec, candidates []string) huh.Fiel
 			Value(&spec.Destination)
 	}
 
+	defaultDest, _ := xcodebuildinfo.DefaultDestination(candidates)
+
+	options := make([]huh.Option[string], 0, len(candidates))
+	for _, d := range candidates {
+		opt := huh.NewOption(destinationLabel(d), d.Canonical)
+		if d.Canonical == defaultDest.Canonical {
+			opt = opt.Selected(true)
+		}
+
+		options = append(options, opt)
+	}
+
 	return huh.NewSelect[string]().
 		Title("Destination").
-		Options(huh.NewOptions(candidates...)...).
+		Options(options...).
 		Height(tui.SelectHeight).
 		Value(&spec.Destination)
+}
+
+func destinationLabel(d xcodebuildinfo.Destination) string {
+	name := d.Name
+	if name == "" {
+		name = d.Canonical
+	}
+
+	parts := []string{}
+
+	if d.Platform != "" {
+		parts = append(parts, d.Platform)
+	}
+
+	if d.OS != "" {
+		parts = append(parts, d.OS)
+	} else if d.Arch != "" {
+		parts = append(parts, d.Arch)
+	}
+
+	if len(parts) == 0 {
+		return name
+	}
+
+	return name + " — " + strings.Join(parts, " ")
 }
 
 func normalizeContainer(spec *invoke.InvocationSpec) {
