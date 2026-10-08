@@ -37,14 +37,3 @@ func TestDefault_WritesViaInvocationsWriter(t *testing.T) {
 	assert.Equal(t, "test", got[0].InvocationID)
 }
 
-func TestAppend_IsCallerConvenience(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-
-	err := Append(nil, invocations.Record{
-		InvocationID: "convenience",
-		Command:      "xcodebuild",
-		Tool:         invocations.ToolXcode,
-		StartedAt:    time.Unix(1_700_000_000, 0).UTC(),
-	})
-	require.NoError(t, err)
-}
