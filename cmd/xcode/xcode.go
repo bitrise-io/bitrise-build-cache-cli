@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
@@ -82,7 +83,7 @@ var resolveXcodeInvocation = func(ctx context.Context, command invoke.Command, r
 	}
 
 	if !spec.IsComplete() {
-		spec, err = interactive.Prompter{}.Fill(ctx, spec, meta.ProjectDir)
+		spec, err = interactive.Prompter{Logger: log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))}.Fill(ctx, spec, meta.ProjectDir)
 		if err != nil {
 			return invoke.InvocationSpec{}, err //nolint:wrapcheck // prompter errors are already contextual
 		}

@@ -6,6 +6,8 @@ package interactive
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"charm.land/huh/v2"
@@ -156,11 +158,19 @@ func (p Prompter) fillDestination(
 ) error {
 	var dests []xcodebuildinfo.Destination
 
-	if spec.Scheme != "" {
+	switch {
+	case spec.Scheme == "":
+		p.warnPickerFallback("scheme is empty")
+	case spec.Workspace == "" && spec.Project == "":
+		p.warnPickerFallback("workspace/project is empty")
+	default:
 		d, err := provider.ShowDestinations(ctx, spec.Workspace, spec.Project, spec.Scheme)
-		if err != nil {
-			p.debug("xcodebuild -showdestinations: %s; falling back to free-text input", err)
-		} else {
+		switch {
+		case err != nil:
+			p.warnPickerFallback(fmt.Sprintf("xcodebuild -showdestinations: %s", err))
+		case len(d) == 0:
+			p.warnPickerFallback("xcodebuild -showdestinations returned no destinations")
+		default:
 			dests = d
 		}
 	}
@@ -178,6 +188,10 @@ func (p Prompter) debug(format string, args ...any) {
 	}
 
 	p.Logger.Debugf(format, args...)
+}
+
+func (p Prompter) warnPickerFallback(reason string) {
+	fmt.Fprintf(os.Stderr, "Warning: destination picker fell back to free-text input: %s\n", reason)
 }
 
 func containerField(spec *invoke.InvocationSpec) huh.Field {
