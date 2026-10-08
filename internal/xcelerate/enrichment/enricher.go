@@ -183,6 +183,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		e.OnEmit(invocationID, group)
 	}
 
+	// Format consumed by internal/config/xcelerate/stop_proxy.go:enrichedPutRe; keep in sync.
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
 
