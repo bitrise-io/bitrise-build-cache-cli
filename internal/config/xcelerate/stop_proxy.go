@@ -51,43 +51,76 @@ func ProxyOwner(osProxy utils.OsProxy) (int, bool) {
 }
 
 // StopProxy stops the xcelerate proxy: it discovers the pid from the lock file,
-// sends SIGTERM to the process group, and escalates to SIGKILL after a grace
-// period. Returns nil (and logs) when no proxy is running.
+// sends SIGTERM to the proxy pid directly, waits for exit, then escalates to
+// SIGKILL. Returns nil (and logs) when no proxy is running.
 func StopProxy(logger log.Logger, osProxy utils.OsProxy) error {
-	pid, running := ProxyOwner(osProxy)
+	return stopProxy(stopProxyDeps{
+		logger:   logger,
+		osProxy:  osProxy,
+		signaler: realSignaler{},
+	})
+}
+
+// stopProxyDeps bundles the external calls stopProxy makes. Tests swap signaler
+// for a fake that neither sends real signals nor waits on process exit.
+type stopProxyDeps struct {
+	logger   log.Logger
+	osProxy  utils.OsProxy
+	signaler proxySignaler
+}
+
+// proxySignaler sends SIGTERM to the proxy pid, waits up to graceful for it to
+// exit, then escalates to SIGKILL. Debug-logs failures; no return value.
+type proxySignaler interface {
+	SignalAndWait(pid int, graceful time.Duration, logger log.Logger)
+}
+
+type realSignaler struct{}
+
+// Trampoline-spawned proxies inherit the trampoline's pgid, so a `-pid` signal
+// misses the proxy entirely. Target the pid directly; after the grace window,
+// escalate to SIGKILL and warn if the proxy is still alive.
+func (realSignaler) SignalAndWait(pid int, graceful time.Duration, logger log.Logger) {
+	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		logger.Debugf("kill (TERM) failed: %s", err)
+	}
+
+	timeout := time.After(graceful)
+	tick := time.Tick(200 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			if err := syscall.Kill(pid, 0); err == nil {
+				logger.Warnf("xcelerate-proxy pid %d still alive after SIGKILL", pid)
+			}
+
+			return
+		case <-tick:
+			if err := syscall.Kill(pid, 0); err != nil {
+				return
+			}
+		}
+	}
+}
+
+func stopProxy(d stopProxyDeps) error {
+	pid, running := ProxyOwner(d.osProxy)
 	if !running {
-		logger.TDonef("No xcelerate-proxy is running")
+		d.logger.TDonef("No xcelerate-proxy is running")
 
 		return nil
 	}
 
-	logger.TInfof("Stopping xcelerate-proxy...")
+	d.logger.TInfof("Stopping xcelerate-proxy...")
 
 	if pid <= 0 {
-		return fmt.Errorf("a proxy holds %s but advertised no usable pid", ProxyPidFile(osProxy))
+		return fmt.Errorf("a proxy holds %s but advertised no usable pid", ProxyPidFile(d.osProxy))
 	}
 
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
-		logger.Debugf("kill (TERM) failed: %s", err)
-	}
+	d.signaler.SignalAndWait(pid, 5*time.Second, d.logger)
 
-	timeout := time.After(5 * time.Second)
-	tick := time.Tick(200 * time.Millisecond)
-loop:
-	for {
-		select {
-		case <-timeout:
-			break loop
-		case <-tick:
-			if innerErr := syscall.Kill(-pid, 0); innerErr != nil {
-				break loop
-			}
-		}
-	}
+	d.logger.TDonef("Stopped xcelerate-proxy")
 
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
-
-	logger.TDonef("Stopped xcelerate-proxy")
-
-	return nil //nolint:nilerr // innerErr in the loop is the process-exit probe, not an operation failure
+	return nil
 }
