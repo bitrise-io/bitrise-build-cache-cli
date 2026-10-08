@@ -53,7 +53,7 @@ func installXcodeToolchain(
 		trampolinePath = ""
 	}
 
-	if err := xcode_app.InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath, trampolinePath); err != nil {
+	if err := xcode_app.InstallToolchain(ctx, installPath, defaultToolchainPath, proxySocketPath, pluginPath, trampolinePath); err != nil {
 		logger.Warnf("Could not install Xcode toolchain bundle: %s", err)
 
 		return

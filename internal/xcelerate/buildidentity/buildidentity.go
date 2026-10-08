@@ -33,8 +33,8 @@ type AncestryEntry struct {
 //
 //nolint:gochecknoglobals // immutable table
 var anchorableNames = map[string]struct{}{
-	"xcodebuild":     {},
-	"Xcode":          {},
+	"xcodebuild":      {},
+	"Xcode":           {},
 	"SWBBuildService": {},
 }
 
