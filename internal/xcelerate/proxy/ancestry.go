@@ -83,6 +83,67 @@ func (c *ancestryCache) put(k ancestryKey, chain []string) {
 	}
 }
 
+// AncestryEntry mirrors buildidentity.AncestryEntry: one hop up the chain.
+// Defined here to avoid pulling buildidentity into the sidecar writer path.
+type AncestryEntry struct {
+	PID         int
+	Name        string
+	StartTimeMS int64
+}
+
+// resolveAncestryEntries is the rich variant of resolveAncestry; walks parent
+// PIDs returning (pid, name, start-ms) triples deepest-first. Separate from
+// resolveAncestry so the sidecar writer's []string signature stays stable.
+func (c *ancestryCache) resolveAncestryEntries(pid int) []AncestryEntry {
+	if pid <= 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), ancestryLookupLimit)
+	defer cancel()
+
+	return walkAncestryEntries(ctx, pid)
+}
+
+func walkAncestryEntries(ctx context.Context, pid int) []AncestryEntry {
+	chain := make([]AncestryEntry, 0, 8) //nolint:mnd // typical compile chain depth
+
+	//nolint:gosec // PIDs fit in int32.
+	current := int32(pid)
+
+	for range ancestryMaxHops {
+		if ctx.Err() != nil {
+			return chain
+		}
+
+		proc, err := process.NewProcessWithContext(ctx, current)
+		if err != nil {
+			return chain
+		}
+
+		name, err := proc.NameWithContext(ctx)
+		if err != nil || name == "" {
+			return chain
+		}
+
+		ct, err := proc.CreateTimeWithContext(ctx)
+		if err != nil {
+			ct = 0
+		}
+
+		chain = append(chain, AncestryEntry{PID: int(current), Name: name, StartTimeMS: ct})
+
+		ppid, err := proc.PpidWithContext(ctx)
+		if err != nil || ppid <= 1 || ppid == current {
+			return chain
+		}
+
+		current = ppid
+	}
+
+	return chain
+}
+
 // resolveAncestry walks parent PIDs up to ancestryMaxHops and returns executable
 // basenames deepest-first (caller process → ancestors). Hard-capped on hops and
 // wall-clock. Zero pid returns nil.
