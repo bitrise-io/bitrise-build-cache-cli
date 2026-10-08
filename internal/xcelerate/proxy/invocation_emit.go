@@ -35,7 +35,6 @@ type SessionStats struct {
 }
 
 // InvocationEmitter emits a slim analytics invocation for a closed proxy session.
-// The enrichment watcher may re-PUT to the same InvocationID for wrapper-less builds; wrapper builds skip via the handled-invocation marker.
 type InvocationEmitter interface {
 	EmitSlim(ctx context.Context, meta SessionMeta, stats SessionStats)
 }
