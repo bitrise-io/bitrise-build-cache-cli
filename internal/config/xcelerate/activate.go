@@ -123,31 +123,13 @@ func Activate(
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
 	logger.TInfof(ActivateXcodeSuccessful)
-	printNextSteps(logger)
+	configcommon.PrintNextSteps(logger, []string{
+		"Open a new terminal (or run `source ~/.zshrc`) so this shell picks up the wrapper on PATH.",
+		"Build from the terminal, not Xcode.app. The Xcode.app GUI invokes xcodebuild by absolute path and will bypass the cache.",
+		"Quickest way to run a cached build: `bitrise-build-cache xcode build` or `bitrise-build-cache xcode test`. These resolve workspace/scheme/destination for you.",
+	}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-xcode/configuring-the-build-cache-for-xcode-in-local-builds.html")
 
 	return nil
-}
-
-// Plain Println/Printf — TInfof would prefix each line with a timestamp and fragment the banner.
-func printNextSteps(logger log.Logger) {
-	logger.Println()
-	logger.Printf("────────────────────────────────────────────────────────────")
-	logger.Printf("Next steps")
-	logger.Printf("────────────────────────────────────────────────────────────")
-	logger.Printf(" 1. Open a new terminal (or run `source ~/.zshrc`) so this shell")
-	logger.Printf("    picks up the wrapper on PATH.")
-	logger.Printf(" 2. Build from the terminal, not Xcode.app. The Xcode.app GUI")
-	logger.Printf("    invokes xcodebuild by absolute path and will bypass the cache.")
-	logger.Printf(" 3. Quickest way to run a cached build:")
-	logger.Printf("        bitrise-build-cache xcode build")
-	logger.Printf("        bitrise-build-cache xcode test")
-	logger.Printf("    These resolve workspace/scheme/destination for you.")
-	logger.Println()
-	logger.Printf(" See docs/xcode-terminal-run.md for config & flags.")
-	logger.Printf(" For Xcode.app users: see docs/xcode-scheme-self-check.md for a")
-	logger.Printf(" scheme pre-action that keeps the proxy running.")
-	logger.Printf("────────────────────────────────────────────────────────────")
-	logger.Println()
 }
 
 // ensureLogDir creates the dir the proxy would otherwise create on its first run,

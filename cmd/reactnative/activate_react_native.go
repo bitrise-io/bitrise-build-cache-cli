@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
@@ -64,6 +65,12 @@ Note: This is a convenience activation method, if your activation requires fine-
 		if err := a.Activate(cmd.Context()); err != nil {
 			return fmt.Errorf("activate react-native: %w", err)
 		}
+
+		configcommon.PrintNextSteps(logger, []string{
+			"Open a new terminal (or run `source ~/.zshrc`) so the xcode wrapper lands on PATH.",
+			"Build iOS with `bitrise-build-cache xcode build` and Android with `./gradlew assembleDebug`.",
+			"ccache is active for native modules — verify with `ccache -s`.",
+		}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-react-native/configuring-the-build-cache-for-react-native-in-local-builds.html")
 
 		return nil
 	},

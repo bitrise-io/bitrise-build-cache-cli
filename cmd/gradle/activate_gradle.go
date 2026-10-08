@@ -109,6 +109,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		logger.TInfof("✅ Bitrise plugins activated")
+		configcommon.PrintNextSteps(logger, []string{
+			"Run a build from this shell, e.g. `./gradlew assembleDebug`.",
+			"The first build populates the cache; subsequent builds hit it. Look for `Build cache (...)` lines in the Gradle output.",
+		}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/configuring-the-build-cache-for-gradle-in-local-builds.html")
 
 		return nil
 	},
