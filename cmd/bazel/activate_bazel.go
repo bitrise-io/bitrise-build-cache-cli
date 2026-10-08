@@ -132,6 +132,10 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")
+	configcommon.PrintNextSteps(logger, []string{
+		"Run `bazel build //...` (or your target).",
+		"The first build populates the cache; subsequent builds hit it. Look for cache stats at the end of a build.",
+	}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-bazel/configuring-the-build-cache-for-bazel-in-local-builds.html")
 
 	return nil
 }
