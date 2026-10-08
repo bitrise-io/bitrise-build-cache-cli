@@ -21,12 +21,8 @@ import (
 
 const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
-	AddXcelerateToPath      = "ℹ️ To start building, run `export PATH=~/.bitrise-xcelerate/bin:$PATH` or restart your terminal."
+	AddXcelerateToPath      = "ℹ️ Open a new terminal (or run `source ~/.zshrc`) so this shell picks up the wrapper on PATH."
 
-	ProxyLifecycleNotice = "ℹ️ The cache proxy starts automatically with your first `xcodebuild` and keeps serving later builds."
-	ProxyRestartNotice   = "ℹ️ It does not survive a reboot or logout. Terminal builds restart it on their own; " +
-		"for builds started from Xcode.app, run `bitrise-build-cache xcelerate start-proxy` first — " +
-		"see docs/xcode-scheme-self-check.md for a scheme pre-action that does it for you."
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
 	xcodebuildWrapperScriptContent = `#!/bin/bash
@@ -128,11 +124,35 @@ func Activate(
 	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 
 	logger.TInfof(ActivateXcodeSuccessful)
-	logger.TInfof(AddXcelerateToPath)
-	logger.TInfof(ProxyLifecycleNotice)
-	logger.TInfof(ProxyRestartNotice)
+	printNextSteps(logger)
 
 	return nil
+}
+
+// printNextSteps renders a divider-wrapped block the user cannot miss, so they
+// run cached builds from the terminal instead of switching back to Xcode.app
+// (which invokes xcodebuild by absolute path and bypasses the wrapper).
+// Plain Println/Printf — TInfof would prefix each line with a timestamp and
+// fragment the banner.
+func printNextSteps(logger log.Logger) {
+	logger.Println()
+	logger.Printf("────────────────────────────────────────────────────────────")
+	logger.Printf("Next steps")
+	logger.Printf("────────────────────────────────────────────────────────────")
+	logger.Printf(" 1. Open a new terminal (or run `source ~/.zshrc`) so this shell")
+	logger.Printf("    picks up the wrapper on PATH.")
+	logger.Printf(" 2. Build from the terminal, not Xcode.app. The Xcode.app GUI")
+	logger.Printf("    invokes xcodebuild by absolute path and will bypass the cache.")
+	logger.Printf(" 3. Quickest way to run a cached build:")
+	logger.Printf("        bitrise-build-cache xcode build")
+	logger.Printf("        bitrise-build-cache xcode test")
+	logger.Printf("    These resolve workspace/scheme/destination for you.")
+	logger.Println()
+	logger.Printf(" See docs/xcode-terminal-run.md for config & flags.")
+	logger.Printf(" For Xcode.app users: see docs/xcode-scheme-self-check.md for a")
+	logger.Printf(" scheme pre-action that keeps the proxy running.")
+	logger.Printf("────────────────────────────────────────────────────────────")
+	logger.Println()
 }
 
 // ensureLogDir creates the dir the proxy would otherwise create on its first run,
