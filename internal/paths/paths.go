@@ -256,18 +256,6 @@ func (p Paths) TrampolineBinary(cliVersion string) string {
 	return filepath.Join(p.XcelerateRoot(), xcelerateToolchainSubdir, "trampoline-"+cliVersion+"-universal")
 }
 
-// SessionFilePath returns ~/.bitrise-xcelerate/sessions/<pid>-<startMs>.json;
-// consumed by the proxy for peer-side slug lookup when the wrapper is absent.
-func (p Paths) SessionFilePath(pid int, startMs int64) string {
-	return filepath.Join(p.XcelerateRoot(), xcelerateSessionsSubdir, fmt.Sprintf("%d-%d.json", pid, startMs))
-}
-
-// XcelerateSessionsAnchorsDir returns ~/.bitrise-xcelerate/sessions, the
-// directory where SessionFilePath entries live.
-func (p Paths) XcelerateSessionsAnchorsDir() string {
-	return filepath.Join(p.XcelerateRoot(), xcelerateSessionsSubdir)
-}
-
 // XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
 func (p Paths) XcodeAppOverrideXCConfigFile() string {
 	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
