@@ -238,6 +238,21 @@ func TestXcodeDoctor_ReportAtEndSilentOnColdCacheWithoutErrors(t *testing.T) {
 	assert.Empty(t, out.String())
 }
 
+// Pre-first-build the proxy socket is intentionally absent — reporting that as
+// an issue would warn on every green build.
+func TestXcodeDoctor_IdleProxyIsSilent(t *testing.T) {
+	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
+		return doctorpkg.Report{Items: []doctorpkg.ReportItem{
+			{Name: "xcelerate-proxy", Result: doctorpkg.Result{State: doctorpkg.StateOK, Detail: "idle; starts on first build"}},
+		}}
+	})
+
+	d.CheckAtStart(context.Background())
+	d.ReportAtEnd(context.Background(), buildOutcome{})
+
+	assert.Empty(t, out.String())
+}
+
 func TestXcodeDoctor_SaveFailureWithHealthyAuth(t *testing.T) {
 	d, out, _ := newTestDoctor(t, func(doctorpkg.Options) doctorpkg.Report {
 		return okReport("auth-backend")
