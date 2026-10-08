@@ -162,6 +162,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
+	// Format consumed by internal/config/xcelerate/stop_proxy.go:enrichedPutRe; keep in sync.
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
 
