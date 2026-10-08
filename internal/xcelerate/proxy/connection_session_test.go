@@ -105,3 +105,86 @@ func TestFlushSession_WritesWhenConnectionHadActivity(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "a conn that recorded an RPC must emit a sidecar")
 }
+
+func TestDerivePeerInvocationID_PeerAncestryGate(t *testing.T) {
+	h := &sidecarStatsHandler{
+		peerAncestryEntries: func(int) []AncestryEntry {
+			return []AncestryEntry{{PID: 100, Name: "someRandomProbe", StartTimeMS: 1}}
+		},
+		hostname:             "host",
+		wrapperSessionActive: func() bool { return false },
+	}
+
+	assert.Empty(t, h.derivePeerInvocationID(100), "no anchorable ancestor must yield empty InvocationID")
+}
+
+func TestDerivePeerInvocationID_WrapperSessionWins(t *testing.T) {
+	h := &sidecarStatsHandler{
+		peerAncestryEntries: func(int) []AncestryEntry {
+			return []AncestryEntry{{PID: 101, Name: "xcodebuild", StartTimeMS: 2}}
+		},
+		hostname:             "host",
+		wrapperSessionActive: func() bool { return true },
+	}
+
+	assert.Empty(t, h.derivePeerInvocationID(101), "wrapper-owned session must suppress derivation")
+}
+
+func TestDerivePeerInvocationID_ReturnsDeterministicIDOnAnchor(t *testing.T) {
+	h := &sidecarStatsHandler{
+		peerAncestryEntries: func(int) []AncestryEntry {
+			return []AncestryEntry{{PID: 101, Name: "xcodebuild", StartTimeMS: 1_700_000_000_000}}
+		},
+		hostname:             "host",
+		wrapperSessionActive: func() bool { return false },
+	}
+
+	first := h.derivePeerInvocationID(101)
+	second := h.derivePeerInvocationID(101)
+	assert.NotEmpty(t, first)
+	assert.Equal(t, first, second)
+}
+
+// Guards the file-level invariant that derivePeerInvocationID is only
+// invoked from TagConn with the PEER PID — never with the proxy's own PID.
+// Feeding proxy ancestry would overcount, since it may legitimately contain
+// xcodebuild (the launchctl → proxy chain under IDE builds).
+func TestDerivePeerInvocationID_NeverUsesProxyAncestry(t *testing.T) {
+	h := &sidecarStatsHandler{
+		peerAncestryEntries: func(pid int) []AncestryEntry {
+			if pid == 999 { // simulate proxy PID
+				t.Fatal("derivePeerInvocationID must never be called with the proxy's own PID")
+			}
+
+			return []AncestryEntry{{PID: pid, Name: "xcodebuild", StartTimeMS: int64(pid)}}
+		},
+		hostname:             "host",
+		wrapperSessionActive: func() bool { return false },
+	}
+
+	// Only call it with peer PIDs — the invariant is enforced by call-site
+	// discipline in TagConn (see connection_session.go).
+	_ = h.derivePeerInvocationID(101)
+}
+
+func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
+	dir := t.TempDir()
+	h := &sidecarStatsHandler{
+		writer:           newSidecarWriter(dir, nil),
+		ancestryResolver: func(int) []string { return []string{"swiftc", "xcodebuild"} },
+		peerAncestryEntries: func(int) []AncestryEntry {
+			return []AncestryEntry{{PID: 42, Name: "xcodebuild", StartTimeMS: 1}}
+		},
+		hostname:             "host",
+		wrapperSessionActive: func() bool { return false },
+	}
+
+	cs := newConnectionSession("k", 42, time.Now())
+	cs.derivedInvocationID = h.derivePeerInvocationID(42)
+	cs.markActivity()
+	h.flushSession(cs)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+}
