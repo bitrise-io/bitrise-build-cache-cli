@@ -19,7 +19,7 @@ func baseAutostartDeps() autostartDeps {
 		lockPath:      func() string { return "/tmp/trampoline-lock" },
 		dial:          func(string, time.Duration) error { return errors.New("no proxy") },
 		tryLock:       func(string) (func(), bool, error) { return func() {}, true, nil },
-		startAutostep: func(string) {},
+		startAutostep: func() {},
 		sleep:         func(time.Duration) {},
 		now:           func() time.Time { return now },
 	}
@@ -34,9 +34,9 @@ func TestEnsureProxy_SocketHitReturnsImmediately(t *testing.T) {
 
 		return func() {}, true, nil
 	}
-	d.startAutostep = func(string) { atomic.AddInt32(&startCalls, 1) }
+	d.startAutostep = func() { atomic.AddInt32(&startCalls, 1) }
 
-	ensureProxy("swiftc", d)
+	ensureProxy(d)
 
 	assert.Zero(t, atomic.LoadInt32(&lockCalls))
 	assert.Zero(t, atomic.LoadInt32(&startCalls))
@@ -45,9 +45,9 @@ func TestEnsureProxy_SocketHitReturnsImmediately(t *testing.T) {
 func TestEnsureProxy_StartsWhenSocketMissing(t *testing.T) {
 	var startCalls int32
 	d := baseAutostartDeps()
-	d.startAutostep = func(string) { atomic.AddInt32(&startCalls, 1) }
+	d.startAutostep = func() { atomic.AddInt32(&startCalls, 1) }
 
-	ensureProxy("swiftc", d)
+	ensureProxy(d)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&startCalls))
 }
 
@@ -62,9 +62,9 @@ func TestEnsureProxy_LockBusySleepsAndReprobes(t *testing.T) {
 		atomic.AddInt32(&sleepCalls, 1)
 		tick = tick.Add(startLockRetry)
 	}
-	d.startAutostep = func(string) { atomic.AddInt32(&startCalls, 1) }
+	d.startAutostep = func() { atomic.AddInt32(&startCalls, 1) }
 
-	ensureProxy("swiftc", d)
+	ensureProxy(d)
 	assert.Zero(t, atomic.LoadInt32(&startCalls), "lock-busy must not fire autostart")
 	assert.Positive(t, atomic.LoadInt32(&sleepCalls), "lock-busy must sleep-and-reprobe at least once")
 }
@@ -81,8 +81,8 @@ func TestEnsureProxy_LockBusyThenSocketReturns(t *testing.T) {
 		tick = tick.Add(startLockRetry)
 		dialErr = nil // simulate the other process got the socket up
 	}
-	d.startAutostep = func(string) { atomic.AddInt32(&startCalls, 1) }
+	d.startAutostep = func() { atomic.AddInt32(&startCalls, 1) }
 
-	ensureProxy("swiftc", d)
+	ensureProxy(d)
 	assert.Zero(t, atomic.LoadInt32(&startCalls), "a successful re-probe must not fire autostart")
 }
