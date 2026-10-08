@@ -4,6 +4,7 @@ package xcode_app
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -76,7 +77,7 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib", ""))
 
 	plist := filepath.Join(installPath, ToolchainInfoPlistFile)
 	plistBody, err := os.ReadFile(plist) //nolint:gosec // test-controlled path
@@ -112,8 +113,8 @@ func TestInstallToolchain_isIdempotent(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p1.sock", "/dev/null", ""))
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p2.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p1.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p2.sock", "/dev/null", ""))
 
 	body, err := os.ReadFile(filepath.Join(installPath, ToolchainInfoPlistFile)) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
@@ -151,7 +152,7 @@ func TestUninstallToolchain_removesLinkAndBundle(t *testing.T) {
 	linkPath := filepath.Join(tmp, "linkdir", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p.sock", "/dev/null", ""))
 	require.NoError(t, LinkToolchain(installPath, linkPath))
 
 	require.NoError(t, UninstallToolchain(installPath, linkPath))
@@ -195,7 +196,7 @@ func TestInstallToolchain_TrampolinedBinsAreCopiesOtherEntriesStaySymlinks(t *te
 	trampoline := filepath.Join(tmp, "trampoline")
 	require.NoError(t, os.WriteFile(trampoline, []byte("TRAMPOLINE"), 0o755)) //nolint:gosec // test fixture
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", trampoline))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", trampoline))
 
 	for _, name := range []string{"swiftc", "clang", "swift"} {
 		p := filepath.Join(installPath, "usr", "bin", name)
@@ -223,7 +224,7 @@ func TestInstallToolchain_EmptyTrampolinePathPureSymlinkLayout(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
 
 	for _, name := range []string{"swiftc", "clang"} {
 		p := filepath.Join(installPath, "usr", "bin", name)
