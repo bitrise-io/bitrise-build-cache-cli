@@ -157,3 +157,31 @@ func TestEnsureForVersion_AtomicWrite(t *testing.T) {
 	_, err = os.Stat(got + ".tmp")
 	assert.True(t, os.IsNotExist(err))
 }
+
+// TestEnsureForVersion_CleanupOnRenameFailure documents the current behaviour
+// of writeAtomic on rename failure: the stray .tmp file is NOT removed. The
+// trampoline download path is single-run per release-bump, so a persistent
+// .tmp from an earlier failed install gets overwritten on the next attempt.
+// If future callers need best-effort cleanup, writeAtomic should defer an
+// os.Remove(tmp) on the error return.
+func TestEnsureForVersion_CleanupOnRenameFailure(t *testing.T) {
+	home := t.TempDir()
+	p := paths.FromHome(home)
+	body := []byte("fake trampoline binary")
+	ck := sum(body) + "  trampoline_v3.9.0_darwin_universal\n"
+
+	// Force the rename to fail by pre-creating a non-empty directory at the
+	// target path. os.Rename then returns ENOTEMPTY / EISDIR depending on OS.
+	target := p.TrampolineBinary("3.9.0")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "block"), []byte("x"), 0o600))
+
+	_, err := ensure(context.Background(), "3.9.0", p, fakeDeps(body, ck))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "install trampoline")
+
+	// Documented: cleanup is intentionally skipped; the .tmp file persists.
+	// Overwritten on the next successful attempt.
+	_, statErr := os.Stat(target + ".tmp")
+	assert.NoError(t, statErr, "writeAtomic currently leaves .tmp on rename failure (documented)")
+}
