@@ -41,7 +41,7 @@ var anchorableNames = map[string]struct{}{
 // Derive returns a UUIDv4-shaped InvocationID from the anchor. sha256 is
 // hashed over hostname||pid||start-ms; the first 16 bytes are formatted into
 // 8-4-4-4-12 hex with the version/variant nibbles stamped so it round-trips
-// through parsers that insist on v4.
+// through parsers that insist on v4. v4+variant nibbles cost 6 bits of input, leaving 122 effective bits of entropy.
 func Derive(a Anchor) string {
 	h := sha256.New()
 	h.Write([]byte(a.Hostname))
