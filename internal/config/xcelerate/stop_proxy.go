@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -17,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/urllog"
 )
 
 // ProxyPidFile returns the path of the xcelerate proxy pid/lock file. The file
@@ -57,114 +56,129 @@ func ProxyOwner(osProxy utils.OsProxy) (int, bool) {
 
 // StopProxy stops the xcelerate proxy: it discovers the pid from the lock file,
 // sends SIGTERM to the process group, and escalates to SIGKILL after a grace
-// period. Returns nil (and logs) when no proxy is running. After stop, scans
-// the proxy's log for `Enriched invocation PUT` lines emitted since the
-// SIGTERM and surfaces a Visit URL per orphan to stdout.
+// period. Returns nil (and logs) when no proxy is running. Reads the per-proxy
+// URL log before and after SIGTERM to print a Visit URL per orphan the proxy
+// emitted (both pre-shutdown and during the final sweep), then truncates it.
 func StopProxy(logger log.Logger, osProxy utils.OsProxy) error {
-	return stopProxy(logger, osProxy, os.Stdout)
+	return stopProxy(stopProxyDeps{
+		logger:   logger,
+		osProxy:  osProxy,
+		stdout:   os.Stdout,
+		signaler: realSignaler{},
+	})
 }
 
-func stopProxy(logger log.Logger, osProxy utils.OsProxy, stdout io.Writer) error {
-	pid, running := ProxyOwner(osProxy)
-	if !running {
-		logger.TDonef("No xcelerate-proxy is running")
+// stopProxyDeps bundles the external calls stopProxy makes. Tests swap
+// signaler for a fake that neither sends real signals nor waits on process
+// exit, and may use afterSignalHook to simulate an orphan URL arriving during
+// the shutdown window.
+type stopProxyDeps struct {
+	logger          log.Logger
+	osProxy         utils.OsProxy
+	stdout          io.Writer
+	signaler        proxySignaler
+	afterSignalHook func()
+}
 
-		return nil
-	}
+// proxySignaler sends SIGTERM to -pid, waits up to graceful for the group to
+// exit, then sends SIGKILL. Debug-logs failures; no return value.
+type proxySignaler interface {
+	SignalAndWait(pid int, graceful time.Duration, logger log.Logger)
+}
 
-	logger.TInfof("Stopping xcelerate-proxy...")
+type realSignaler struct{}
 
-	if pid <= 0 {
-		return fmt.Errorf("a proxy holds %s but advertised no usable pid", ProxyPidFile(osProxy))
-	}
-
-	stopSignalAt := time.Now()
-
+func (realSignaler) SignalAndWait(pid int, graceful time.Duration, logger log.Logger) {
 	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
 		logger.Debugf("kill (TERM) failed: %s", err)
 	}
 
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(graceful)
 	tick := time.Tick(200 * time.Millisecond)
-loop:
 	for {
 		select {
 		case <-timeout:
-			break loop
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+
+			return
 		case <-tick:
-			if innerErr := syscall.Kill(-pid, 0); innerErr != nil {
-				break loop
+			if err := syscall.Kill(-pid, 0); err != nil {
+				return
 			}
 		}
 	}
-
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
-
-	logger.TDonef("Stopped xcelerate-proxy")
-
-	announceOrphanInvocations(osProxy, stopSignalAt, stdout, logger)
-
-	return nil //nolint:nilerr // innerErr in the loop is the process-exit probe, not an operation failure
 }
 
-// enrichedPutRe matches the enricher's Infof line; must stay in sync with
-// enrichment/enricher.go.
-var enrichedPutRe = regexp.MustCompile(`Enriched invocation PUT ([a-f0-9-]+)`) //nolint:gochecknoglobals // compiled once
+func stopProxy(d stopProxyDeps) error {
+	pid, running := ProxyOwner(d.osProxy)
+	if !running {
+		d.logger.TDonef("No xcelerate-proxy is running")
 
-// announceOrphanInvocations best-effort scans the proxy's own log for orphan
-// Enriched invocation PUT lines produced after stopSignalAt. For each unique
-// ID, prints a Visit URL to stdout so operators get click-through from the
-// stop-proxy command's output.
-func announceOrphanInvocations(osProxy utils.OsProxy, stopSignalAt time.Time, stdout io.Writer, logger log.Logger) {
-	home, err := osProxy.UserHomeDir()
-	if err != nil {
-		logger.Debugf("Could not resolve home dir for orphan announcement: %s", err)
-
-		return
+		return nil
 	}
 
-	p := paths.FromHome(home)
-	logDir := p.XcelerateLogDir()
+	d.logger.TInfof("Stopping xcelerate-proxy...")
 
-	entries, err := os.ReadDir(logDir)
-	if err != nil {
-		logger.Debugf("Could not read proxy log dir %s: %s", logDir, err)
-
-		return
+	if pid <= 0 {
+		return fmt.Errorf("a proxy holds %s but advertised no usable pid", ProxyPidFile(d.osProxy))
 	}
+
+	urlLogPath := invocationURLsPath(d.osProxy, pid, d.logger)
 
 	seen := make(map[string]struct{})
-	cutoff := stopSignalAt.Add(-time.Second) // allow modest clock skew
+	printNewURLs(urlLogPath, seen, d.stdout, d.logger)
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), "-out.log") {
-			continue
-		}
+	d.signaler.SignalAndWait(pid, 5*time.Second, d.logger)
 
-		path := filepath.Join(logDir, entry.Name())
-		info, err := entry.Info()
-		if err != nil || info.ModTime().Before(cutoff) {
-			continue
-		}
-
-		scanLogForOrphanIDs(path, seen)
+	if d.afterSignalHook != nil {
+		d.afterSignalHook()
 	}
 
-	for id := range seen {
-		fmt.Fprintf(stdout, "Invocation saved. Visit 👉 %s\n", enrichment.VisitURL(id))
+	d.logger.TDonef("Stopped xcelerate-proxy")
+
+	printNewURLs(urlLogPath, seen, d.stdout, d.logger)
+
+	if urlLogPath != "" {
+		if err := urllog.Delete(urlLogPath); err != nil {
+			d.logger.Debugf("Failed to delete urllog %s: %s", urlLogPath, err)
+		}
 	}
+
+	return nil
 }
 
-func scanLogForOrphanIDs(path string, seen map[string]struct{}) {
-	body, err := os.ReadFile(path) //nolint:gosec // log file path under the user's own state dir
+// invocationURLsPath resolves the per-proxy urllog file via internal/paths.
+// Returns "" when the home dir cannot be resolved — the caller skips URL output.
+func invocationURLsPath(osProxy utils.OsProxy, pid int, logger log.Logger) string {
+	home, err := osProxy.UserHomeDir()
 	if err != nil {
+		logger.Debugf("Could not resolve home dir for emitted-URL log: %s", err)
+
+		return ""
+	}
+
+	return paths.FromHome(home).InvocationURLsForPID(pid)
+}
+
+// printNewURLs reads the urllog and prints a Visit URL for any ID not already
+// in seen, which it then updates. Missing file / read errors are debug-logged.
+func printNewURLs(path string, seen map[string]struct{}, stdout io.Writer, logger log.Logger) {
+	if path == "" {
 		return
 	}
 
-	for _, match := range enrichedPutRe.FindAllSubmatch(body, -1) {
-		if len(match) < 2 { //nolint:mnd // group index
+	recs, err := urllog.Read(path)
+	if err != nil {
+		logger.Debugf("Failed to read emitted-URL log %s: %s", path, err)
+
+		return
+	}
+
+	for _, rec := range recs {
+		if _, dup := seen[rec.InvocationID]; dup {
 			continue
 		}
-		seen[string(match[1])] = struct{}{}
+		seen[rec.InvocationID] = struct{}{}
+		fmt.Fprintf(stdout, "Invocation saved. Visit 👉 %s\n", enrichment.VisitURL(rec.InvocationID))
 	}
 }
