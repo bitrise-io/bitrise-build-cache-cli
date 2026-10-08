@@ -108,7 +108,7 @@ func Activate(
 			// probes install state and omits `TOOLCHAINS = <id>` when the bundle is
 			// missing, which otherwise would make Xcode fail to resolve the toolchain
 			// for SPM package targets.
-			installXcodeToolchain(logger, osProxy, config.ProxySocketPath, developerDir, pluginPath)
+			installXcodeToolchain(ctx, logger, osProxy, config.ProxySocketPath, developerDir, pluginPath)
 		}
 
 		// Failure is non-fatal: the override is only consumed by the IDE flow.
