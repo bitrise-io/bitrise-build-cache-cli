@@ -21,6 +21,9 @@ func TestPrintNextSteps_containsLoadBearingPhrases(t *testing.T) {
 	assert.Contains(t, out, "source ~/.zshrc")
 	assert.Contains(t, out, "not Xcode.app")
 	assert.Contains(t, out, "bitrise-build-cache xcode build")
+	assert.Contains(t, out, "bitrise-build-cache xcode test")
 	assert.Contains(t, out, "docs/xcode-terminal-run.md")
-	assert.Contains(t, out, "─")
+	assert.Contains(t, out, " 1.")
+	assert.Contains(t, out, " 2.")
+	assert.Contains(t, out, " 3.")
 }

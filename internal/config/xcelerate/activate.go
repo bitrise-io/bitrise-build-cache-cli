@@ -21,7 +21,6 @@ import (
 
 const (
 	ActivateXcodeSuccessful = "✅ Bitrise Build Cache for Xcode activated"
-	AddXcelerateToPath      = "ℹ️ Open a new terminal (or run `source ~/.zshrc`) so this shell picks up the wrapper on PATH."
 
 	ErrFmtCreateXcodeConfig = "failed to create Xcode config: %w"
 
@@ -129,11 +128,7 @@ func Activate(
 	return nil
 }
 
-// printNextSteps renders a divider-wrapped block the user cannot miss, so they
-// run cached builds from the terminal instead of switching back to Xcode.app
-// (which invokes xcodebuild by absolute path and bypasses the wrapper).
-// Plain Println/Printf — TInfof would prefix each line with a timestamp and
-// fragment the banner.
+// Plain Println/Printf — TInfof would prefix each line with a timestamp and fragment the banner.
 func printNextSteps(logger log.Logger) {
 	logger.Println()
 	logger.Printf("────────────────────────────────────────────────────────────")
