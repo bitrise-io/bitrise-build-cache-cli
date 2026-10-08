@@ -59,6 +59,7 @@ var defaultAutostartDeps = autostartDeps{
 
 		return filepath.Join(os.TempDir(), defaultSocketName)
 	},
+	// Must match internal/paths.TrampolineStartLockFilename.
 	lockPath: func() string { return filepath.Join(os.TempDir(), startLockFilename) },
 	dial: func(path string, timeout time.Duration) error {
 		conn, err := net.DialTimeout("unix", path, timeout)
