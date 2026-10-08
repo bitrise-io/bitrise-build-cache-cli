@@ -5,6 +5,7 @@ package proxy
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -187,4 +188,41 @@ func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
+}
+
+// TestTagConn_WrapperSessionGate_SetAfterAccept guards the gate's capture-at-TagConn
+// semantics: a wrapper SetSession that fires AFTER derivation runs must not retroactively
+// clear the derived InvocationID. The sidecar still carries the derivation; the
+// wrapper's own PUT at emit time is what wins for correlation (owned elsewhere by
+// p.sessionState/flushSession in the invocation_emit path).
+func TestTagConn_WrapperSessionGate_SetAfterAccept(t *testing.T) {
+	dir := t.TempDir()
+	var active atomic.Bool
+	h := &sidecarStatsHandler{
+		writer:           newSidecarWriter(dir, nil),
+		ancestryResolver: func(int) []string { return []string{"swiftc", "xcodebuild"} },
+		peerAncestryEntries: func(int) []AncestryEntry {
+			return []AncestryEntry{{PID: 42, Name: "xcodebuild", StartTimeMS: 1_700_000_000_000}}
+		},
+		hostname:             "host",
+		wrapperSessionActive: func() bool { return active.Load() },
+	}
+
+	// Phase 1: TagConn-equivalent — wrapper not yet active, derivation runs.
+	cs := newConnectionSession("k", 42, time.Now())
+	cs.derivedInvocationID = h.derivePeerInvocationID(42)
+	require.NotEmpty(t, cs.derivedInvocationID, "derivation must run when wrapper not yet active")
+	derived := cs.derivedInvocationID
+
+	// Phase 2: wrapper fires SetSession AFTER TagConn. Gate flips, but the
+	// per-conn state was captured at Phase 1 and must not change.
+	active.Store(true)
+	assert.Equal(t, derived, cs.derivedInvocationID, "late SetSession must not retroactively clear derivation")
+
+	cs.markActivity()
+	h.flushSession(cs)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "sidecar still emitted; wrapper's own PUT wins separately via SessionState")
 }
