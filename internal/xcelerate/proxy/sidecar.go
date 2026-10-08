@@ -109,6 +109,11 @@ func sidecarFilename(s SessionSidecar) string {
 func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAncestry func(pid int) []string) SessionSidecar {
 	stats := conn.state.getStats().toPublic()
 
+	var link *WrapperSessionLink
+	if conn.derivedInvocationID != "" {
+		link = &WrapperSessionLink{InvocationID: conn.derivedInvocationID}
+	}
+
 	return SessionSidecar{
 		SchemaVersion:  SidecarSchemaVersion,
 		Source:         "proxy",
@@ -118,6 +123,6 @@ func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAnces
 		AcceptedAt:     conn.acceptedAt.UTC(),
 		ClosedAt:       closedAt.UTC(),
 		BlobStats:      stats.BlobStats,
-		WrapperSession: nil,
+		WrapperSession: link,
 	}
 }
