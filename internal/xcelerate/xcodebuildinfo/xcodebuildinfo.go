@@ -139,10 +139,11 @@ func parseXcodebuildList(raw []byte) (xcodebuildListOutput, error) {
 var destinationKeyValueRe = regexp.MustCompile(`([A-Za-z]+):([^,}]+)`)
 
 func parseShowDestinations(output string) []Destination {
-	// Xcode emits two blocks: "Available destinations" (usable) and
-	// "Ineligible destinations" (unavailable — e.g. uninstalled simulators).
-	// Only the former belongs in the picker.
-	inAvailable := false
+	// Xcode may emit an "Ineligible destinations" block (uninstalled sims,
+	// incompatible platforms). Everything else — whether prefaced by
+	// "Available destinations" (older Xcode) or "Destinations compatible with
+	// the "<scheme>" scheme:" (Xcode 15+) — is usable.
+	inAvailable := true
 
 	parsed := []Destination{}
 
@@ -150,12 +151,13 @@ func parseShowDestinations(output string) []Destination {
 		line = strings.TrimSpace(line)
 
 		switch {
-		case strings.HasPrefix(line, "Available destinations"):
-			inAvailable = true
-
-			continue
 		case strings.HasPrefix(line, "Ineligible destinations"):
 			inAvailable = false
+
+			continue
+		case strings.HasPrefix(line, "Available destinations"),
+			strings.HasPrefix(line, "Destinations compatible with"):
+			inAvailable = true
 
 			continue
 		}

@@ -82,6 +82,26 @@ Available destinations for the "App" scheme:
 	}, canonicals(got))
 }
 
+func Test_parseShowDestinations_modernXcodeHeader(t *testing.T) {
+	output := `
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -showdestinations -scheme Account
+
+	Destinations compatible with the "Account" scheme:
+		{ platform:iOS Simulator, arch:arm64, id:AAA, OS:27.0, name:iPhone 17 Pro }
+		{ platform:iOS Simulator, arch:arm64, id:BBB, OS:27.0, name:iPhone 17 }
+
+	Ineligible destinations for the "Account" scheme:
+		{ platform:macOS, variant:Mac Catalyst, error:... }
+`
+
+	got := parseShowDestinations(output)
+	assert.Equal(t, []string{
+		"platform=iOS Simulator,name=iPhone 17 Pro",
+		"platform=iOS Simulator,name=iPhone 17",
+	}, canonicals(got))
+}
+
 func Test_parseShowDestinations_dedupesIdenticalCanonicalForms(t *testing.T) {
 	// Two entries that differ only by fields not carried into the canonical
 	// string (id / OS / arch) collapse to a single destination.
