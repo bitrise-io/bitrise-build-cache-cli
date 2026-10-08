@@ -29,14 +29,10 @@ const startLockRetry = 10 * time.Millisecond
 // internal/xcelerate/* imports.
 const socketPathEnv = "BITRISE_XCELERATE_SOCKET_PATH"
 
-// defaultSocketName matches paths.ProxySocketName.
 const defaultSocketName = "xcelerate-proxy.sock"
 
-// startLockFilename is the exclusive flock the trampoline grabs before firing
-// an autostart. One file per host.
 const startLockFilename = "bitrise-xcelerate-starting.lock"
 
-// cliBinaryName matches paths.CLIBinaryName.
 const cliBinaryName = "bitrise-build-cache"
 
 // autostartDeps is the dependency bundle for EnsureProxy; tests swap atoms.
