@@ -38,14 +38,3 @@ func Default(logger log.Logger) Appender {
 	return w
 }
 
-// Append is a convenience: resolves the Default appender and calls Append.
-// Returns nil when the default appender was nil (home-dir failure) — the
-// caller's warn log is enough.
-func Append(logger log.Logger, rec invocations.Record) error {
-	a := Default(logger)
-	if a == nil {
-		return nil
-	}
-
-	return a.Append(rec) //nolint:wrapcheck // transparent passthrough
-}
