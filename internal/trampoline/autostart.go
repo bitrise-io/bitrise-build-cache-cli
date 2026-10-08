@@ -103,6 +103,8 @@ func EnsureProxy() {
 
 func ensureProxy(d autostartDeps) {
 	if d.dial(d.socketPath(), socketProbeTimeout) == nil {
+		EmitEngagedRemark()
+
 		return
 	}
 
@@ -116,6 +118,8 @@ func ensureProxy(d autostartDeps) {
 		deadline := d.now().Add(startLockMaxWait)
 		for d.now().Before(deadline) {
 			if d.dial(d.socketPath(), socketProbeTimeout) == nil {
+				EmitEngagedRemark()
+
 				return
 			}
 			d.sleep(startLockRetry)
