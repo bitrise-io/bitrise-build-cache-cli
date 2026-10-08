@@ -23,6 +23,7 @@ const (
 	Session_SetSession_FullMethodName      = "/session.Session/SetSession"
 	Session_EndSession_FullMethodName      = "/session.Session/EndSession"
 	Session_GetSessionStats_FullMethodName = "/session.Session/GetSessionStats"
+	Session_FlushSession_FullMethodName    = "/session.Session/FlushSession"
 )
 
 // SessionClient is the client API for Session service.
@@ -32,6 +33,7 @@ type SessionClient interface {
 	SetSession(ctx context.Context, in *SetSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EndSession(ctx context.Context, in *EndSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetSessionStats(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetSessionStatsResponse, error)
+	FlushSession(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*FlushSessionResponse, error)
 }
 
 type sessionClient struct {
@@ -72,6 +74,16 @@ func (c *sessionClient) GetSessionStats(ctx context.Context, in *emptypb.Empty, 
 	return out, nil
 }
 
+func (c *sessionClient) FlushSession(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*FlushSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FlushSessionResponse)
+	err := c.cc.Invoke(ctx, Session_FlushSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SessionServer is the server API for Session service.
 // All implementations must embed UnimplementedSessionServer
 // for forward compatibility.
@@ -79,6 +91,7 @@ type SessionServer interface {
 	SetSession(context.Context, *SetSessionRequest) (*emptypb.Empty, error)
 	EndSession(context.Context, *EndSessionRequest) (*emptypb.Empty, error)
 	GetSessionStats(context.Context, *emptypb.Empty) (*GetSessionStatsResponse, error)
+	FlushSession(context.Context, *emptypb.Empty) (*FlushSessionResponse, error)
 	mustEmbedUnimplementedSessionServer()
 }
 
@@ -97,6 +110,9 @@ func (UnimplementedSessionServer) EndSession(context.Context, *EndSessionRequest
 }
 func (UnimplementedSessionServer) GetSessionStats(context.Context, *emptypb.Empty) (*GetSessionStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSessionStats not implemented")
+}
+func (UnimplementedSessionServer) FlushSession(context.Context, *emptypb.Empty) (*FlushSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FlushSession not implemented")
 }
 func (UnimplementedSessionServer) mustEmbedUnimplementedSessionServer() {}
 func (UnimplementedSessionServer) testEmbeddedByValue()                 {}
@@ -173,6 +189,24 @@ func _Session_GetSessionStats_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Session_FlushSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SessionServer).FlushSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Session_FlushSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SessionServer).FlushSession(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Session_ServiceDesc is the grpc.ServiceDesc for Session service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -191,6 +225,10 @@ var Session_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSessionStats",
 			Handler:    _Session_GetSessionStats_Handler,
+		},
+		{
+			MethodName: "FlushSession",
+			Handler:    _Session_FlushSession_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

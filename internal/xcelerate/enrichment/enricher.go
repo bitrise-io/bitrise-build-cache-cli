@@ -42,6 +42,9 @@ type Enricher struct {
 	// LocalLogAppender appends a Record on each successful orphan PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
 	LocalLogAppender LocalLogAppender
+	// OnEmitted fires with the invocation ID on each successful orphan PUT.
+	// nil disables. Used by flush-session to collect IDs emitted during a sweep.
+	OnEmitted func(invocationID string)
 }
 
 // LocalLogAppender is the subset of invocations.Writer used by the orphan
@@ -164,6 +167,9 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
 
 	e.appendLocalLog(invocationID, command, group, runStats, inv)
+	if e.OnEmitted != nil {
+		e.OnEmitted(invocationID)
+	}
 }
 
 // VisitURL is the invocation-detail URL rendered in the Visit line.
