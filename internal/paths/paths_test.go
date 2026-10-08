@@ -83,12 +83,6 @@ func TestPaths_xcelerateState(t *testing.T) {
 	assert.Equal(t, "/h/.local/state/xcelerate/sessions", p.XcelerateSessionsDir())
 }
 
-func TestPaths_invocationURLsForPID(t *testing.T) {
-	p := FromHome("/h")
-
-	assert.Equal(t, "/h/.local/state/xcelerate/invocation-urls-4242.ndjson", p.InvocationURLsForPID(4242))
-}
-
 func TestPaths_xcelerateEnrichment(t *testing.T) {
 	p := FromHome("/h")
 

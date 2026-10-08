@@ -312,12 +312,6 @@ func (p Paths) XcelerateSessionsDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateSessionsSubdir)
 }
 
-// InvocationURLsForPID returns the per-proxy NDJSON log the enricher appends
-// invocation IDs to on each successful orphan PUT, consumed by stop-proxy.
-func (p Paths) InvocationURLsForPID(pid int) string {
-	return filepath.Join(p.XcelerateStateDir(), fmt.Sprintf("invocation-urls-%d.ndjson", pid))
-}
-
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to
 // persist which xcactivitylog UUIDs have already been emitted across restarts.
 func (p Paths) HandledManifestsFile() string {

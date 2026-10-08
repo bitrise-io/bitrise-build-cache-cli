@@ -3,7 +3,6 @@
 package enrichment_test
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,16 +14,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
-
-type recordingSink struct {
-	ids []string
-}
-
-func (r *recordingSink) AppendEmittedURL(invocationID string) error {
-	r.ids = append(r.ids, invocationID)
-
-	return nil
-}
 
 type recordingAppender struct {
 	records []invocations.Record
@@ -72,59 +61,4 @@ func TestEnricher_AppendsOrphanToLocalLog(t *testing.T) {
 	assert.Equal(t, invocations.ToolXcode, rec.Tool)
 	assert.NotEmpty(t, rec.Command, "command must be derived from manifest Signature")
 	assert.Equal(t, 0, rec.ExitCode)
-}
-
-func TestEnricher_SuccessfulPutAppendsEmittedURL(t *testing.T) {
-	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
-	mock := &InvocationPutterMock{
-		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
-	}
-	sink := &recordingSink{}
-
-	e := &enrichment.Enricher{Store: store, Client: mock, EmittedURLSink: sink}
-
-	entry := enrichment.ManifestEntry{
-		UUID: "orphan", Signature: "Build S", Status: "S",
-		Start: time.Now(), Stop: time.Now().Add(time.Second),
-	}
-	e.Enrich("", singleEntryGroup(entry))
-
-	require.Len(t, sink.ids, 1)
-	assert.NotEmpty(t, sink.ids[0])
-}
-
-func TestEnricher_FailedPutDoesNotAppendEmittedURL(t *testing.T) {
-	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
-	mock := &InvocationPutterMock{
-		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("boom") },
-	}
-	sink := &recordingSink{}
-
-	e := &enrichment.Enricher{Store: store, Client: mock, EmittedURLSink: sink}
-
-	entry := enrichment.ManifestEntry{
-		UUID: "orphan", Signature: "Build S", Status: "S",
-		Start: time.Now(), Stop: time.Now().Add(time.Second),
-	}
-	e.Enrich("", singleEntryGroup(entry))
-
-	assert.Empty(t, sink.ids, "no URL must be appended when the PUT failed")
-}
-
-func TestEnricher_NilSinkIsSafe(t *testing.T) {
-	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
-	mock := &InvocationPutterMock{
-		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
-	}
-
-	e := &enrichment.Enricher{Store: store, Client: mock}
-
-	entry := enrichment.ManifestEntry{
-		UUID: "orphan", Signature: "Build S", Status: "S",
-		Start: time.Now(), Stop: time.Now().Add(time.Second),
-	}
-
-	assert.NotPanics(t, func() {
-		e.Enrich("", singleEntryGroup(entry))
-	})
 }
