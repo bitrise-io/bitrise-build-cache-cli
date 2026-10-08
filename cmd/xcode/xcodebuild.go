@@ -40,6 +40,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
@@ -559,17 +560,12 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 		return c.localLogger
 	}
 
-	p, err := paths.Default()
-	if err != nil {
-		c.Logger.Warnf("Skipping local invocation log: %v", err)
-
+	appender := invocationlog.Default(c.Logger)
+	if appender == nil {
 		return nil
 	}
 
-	w := invocations.NewWriter(p)
-	w.Logger = c.Logger
-
-	return w
+	return appender
 }
 
 // The build can outlive a brokered JWT resolved when the config was read.
