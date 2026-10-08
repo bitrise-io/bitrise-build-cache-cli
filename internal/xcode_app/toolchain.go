@@ -4,8 +4,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,6 +26,16 @@ const (
 )
 
 var toolchainSymlinkedUsrDirs = []string{"lib", "libexec", "include", "share"} //nolint:gochecknoglobals // immutable layout data
+
+// trampolinedBins is the set of usr/bin entries that get a trampoline copy
+// instead of a symlink. SwiftBuild only invokes these three with the toolchain
+// prefix; every other entry stays as a real-toolchain symlink so SwiftBuild's
+// clang-stat-cache / ld / llvm-cas / bitcode_strip lookups keep resolving.
+var trampolinedBins = map[string]struct{}{ //nolint:gochecknoglobals // immutable layout data
+	"swiftc": {},
+	"clang":  {},
+	"swift":  {},
+}
 
 // ToolchainOverrideBuildSettingsKeys mirrors the doctor check; see
 // toolchainOverrideBuildSettings for the source map.
@@ -74,7 +86,11 @@ func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error
 // anchor (`/var/db/xcode_select_link/Toolchains/XcodeDefault.xctoolchain`), so
 // `xcode-select -s` to a different Xcode after activate retargets our
 // toolchain automatically.
-func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath string) error {
+//
+// When trampolinePath is non-empty and executable, {swiftc, clang, swift} are
+// copies of that binary (ad-hoc code-signed) instead of anchor-rooted symlinks;
+// every other usr/bin entry stays as a symlink.
+func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath, trampolinePath string) error {
 	if installPath == "" {
 		return errors.New("install path is empty")
 	}
@@ -100,7 +116,7 @@ func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, plugin
 
 	anchorToolchainPath := paths.XcodeSelectLinkDefaultToolchainPath()
 
-	if err := installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath); err != nil {
+	if err := installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath); err != nil {
 		return err
 	}
 	if err := symlinkTopLevelUsrDirs(installPath, defaultToolchainPath, anchorToolchainPath); err != nil {
@@ -187,7 +203,11 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 	return nil
 }
 
-func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath string) error {
+// installUsrBinEntries copies trampolinePath over {swiftc, clang, swift} when
+// trampolinePath is non-empty and executable; symlinks everything else to the
+// xcode-select anchor. Empty / non-executable trampolinePath = pure-symlink
+// layout (graceful fallback when the trampoline download failed).
+func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath string) error {
 	srcBin := filepath.Join(defaultToolchainPath, "usr", "bin")
 	anchorBin := filepath.Join(anchorToolchainPath, "usr", "bin")
 	dstBin := filepath.Join(installPath, "usr", "bin")
@@ -201,15 +221,72 @@ func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath
 		return fmt.Errorf("read default toolchain usr/bin %s: %w", srcBin, err)
 	}
 
+	trampolineReady := trampolinePath != "" && isExecutable(trampolinePath)
+
 	for _, e := range entries {
 		src := filepath.Join(anchorBin, e.Name())
 		dst := filepath.Join(dstBin, e.Name())
+
+		if _, ok := trampolinedBins[e.Name()]; ok && trampolineReady {
+			if err := installTrampolineCopy(trampolinePath, dst); err != nil {
+				return err
+			}
+
+			continue
+		}
+
 		if err := os.Symlink(src, dst); err != nil {
 			return fmt.Errorf("symlink %s -> %s: %w", dst, src, err)
 		}
 	}
 
 	return nil
+}
+
+func installTrampolineCopy(trampolinePath, dst string) error {
+	src, err := os.Open(trampolinePath) //nolint:gosec // trampolinePath comes from paths.TrampolineBinary
+	if err != nil {
+		return fmt.Errorf("open trampoline %s: %w", trampolinePath, err)
+	}
+	defer func() { _ = src.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return fmt.Errorf("open trampoline dst %s: %w", dst, err)
+	}
+
+	if _, err := io.Copy(out, src); err != nil {
+		_ = out.Close()
+
+		return fmt.Errorf("copy trampoline to %s: %w", dst, err)
+	}
+
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("close trampoline dst %s: %w", dst, err)
+	}
+
+	codesignTrampoline(dst)
+
+	return nil
+}
+
+// codesignTrampoline runs an ad-hoc code-sign on the installed shim. macOS
+// refuses to launch an unsigned binary from the toolchain bundle, so this is
+// not optional. Failures are swallowed because codesign is absent on non-mac
+// test runs where the install still needs to succeed structurally.
+func codesignTrampoline(path string) {
+	//nolint:gosec // fixed binary + path from our own install
+	cmd := exec.Command("/usr/bin/codesign", "--sign", "-", "--force", "--timestamp=none", path)
+	_ = cmd.Run()
+}
+
+func isExecutable(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+
+	return fi.Mode().IsRegular() && (fi.Mode().Perm()&0o111) != 0
 }
 
 func symlinkTopLevelUsrDirs(installPath, defaultToolchainPath, anchorToolchainPath string) error {
