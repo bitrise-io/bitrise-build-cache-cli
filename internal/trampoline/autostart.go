@@ -41,7 +41,7 @@ type autostartDeps struct {
 	lockPath      func() string
 	dial          func(path string, timeout time.Duration) error
 	tryLock       func(path string) (release func(), ok bool, err error)
-	startAutostep func(name string)
+	startAutostep func()
 	sleep         func(d time.Duration)
 	now           func() time.Time
 }
@@ -78,7 +78,7 @@ var defaultAutostartDeps = autostartDeps{
 
 		return func() { _ = fl.Unlock() }, true, nil
 	},
-	startAutostep: func(name string) {
+	startAutostep: func() {
 		// Fire-and-forget: the autostart is best-effort, the compiler must proceed
 		// regardless and the proxy will be up on the next compile.
 		cmd := exec.CommandContext(context.Background(), cliBinaryName, "xcelerate", "start-proxy") //nolint:noctx // intentionally detached: must outlive trampoline exec
@@ -86,11 +86,9 @@ var defaultAutostartDeps = autostartDeps{
 		cmd.Stdout = nil
 		cmd.Stderr = nil
 		_ = cmd.Start()
-		// Reap on exit — we fired and we leave; the parent-less child goes to launchd.
 		if cmd.Process != nil {
 			_ = cmd.Process.Release()
 		}
-		_ = name // kept in signature for parity with tests
 	},
 	sleep: time.Sleep,
 	now:   time.Now,
@@ -99,11 +97,11 @@ var defaultAutostartDeps = autostartDeps{
 // EnsureProxy probes the proxy socket; if absent, grabs the start lock and
 // fires `bitrise-build-cache xcelerate start-proxy` detached. Returns quickly
 // whether the probe succeeded or not — the compiler proceeds regardless.
-func EnsureProxy(name string) {
-	ensureProxy(name, defaultAutostartDeps)
+func EnsureProxy() {
+	ensureProxy(defaultAutostartDeps)
 }
 
-func ensureProxy(name string, d autostartDeps) {
+func ensureProxy(d autostartDeps) {
 	if d.dial(d.socketPath(), socketProbeTimeout) == nil {
 		return
 	}
@@ -128,5 +126,5 @@ func ensureProxy(name string, d autostartDeps) {
 
 	defer release()
 
-	d.startAutostep(name)
+	d.startAutostep()
 }
