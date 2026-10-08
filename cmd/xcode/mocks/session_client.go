@@ -24,6 +24,9 @@ var _ session.SessionClient = &SessionClientMock{}
 //			EndSessionFunc: func(ctx context.Context, in *session.EndSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 //				panic("mock out the EndSession method")
 //			},
+//			FlushSessionFunc: func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.FlushSessionResponse, error) {
+//				panic("mock out the FlushSession method")
+//			},
 //			GetSessionStatsFunc: func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.GetSessionStatsResponse, error) {
 //				panic("mock out the GetSessionStats method")
 //			},
@@ -40,6 +43,9 @@ type SessionClientMock struct {
 	// EndSessionFunc mocks the EndSession method.
 	EndSessionFunc func(ctx context.Context, in *session.EndSessionRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 
+	// FlushSessionFunc mocks the FlushSession method.
+	FlushSessionFunc func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.FlushSessionResponse, error)
+
 	// GetSessionStatsFunc mocks the GetSessionStats method.
 	GetSessionStatsFunc func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.GetSessionStatsResponse, error)
 
@@ -54,6 +60,15 @@ type SessionClientMock struct {
 			Ctx context.Context
 			// In is the in argument value.
 			In *session.EndSessionRequest
+			// Opts is the opts argument value.
+			Opts []grpc.CallOption
+		}
+		// FlushSession holds details about calls to the FlushSession method.
+		FlushSession []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// In is the in argument value.
+			In *emptypb.Empty
 			// Opts is the opts argument value.
 			Opts []grpc.CallOption
 		}
@@ -77,6 +92,7 @@ type SessionClientMock struct {
 		}
 	}
 	lockEndSession      sync.RWMutex
+	lockFlushSession    sync.RWMutex
 	lockGetSessionStats sync.RWMutex
 	lockSetSession      sync.RWMutex
 }
@@ -122,6 +138,50 @@ func (mock *SessionClientMock) EndSessionCalls() []struct {
 	mock.lockEndSession.RLock()
 	calls = mock.calls.EndSession
 	mock.lockEndSession.RUnlock()
+	return calls
+}
+
+// FlushSession calls FlushSessionFunc.
+func (mock *SessionClientMock) FlushSession(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.FlushSessionResponse, error) {
+	callInfo := struct {
+		Ctx  context.Context
+		In   *emptypb.Empty
+		Opts []grpc.CallOption
+	}{
+		Ctx:  ctx,
+		In:   in,
+		Opts: opts,
+	}
+	mock.lockFlushSession.Lock()
+	mock.calls.FlushSession = append(mock.calls.FlushSession, callInfo)
+	mock.lockFlushSession.Unlock()
+	if mock.FlushSessionFunc == nil {
+		var (
+			flushSessionResponseOut *session.FlushSessionResponse
+			errOut                  error
+		)
+		return flushSessionResponseOut, errOut
+	}
+	return mock.FlushSessionFunc(ctx, in, opts...)
+}
+
+// FlushSessionCalls gets all the calls that were made to FlushSession.
+// Check the length with:
+//
+//	len(mockedSessionClient.FlushSessionCalls())
+func (mock *SessionClientMock) FlushSessionCalls() []struct {
+	Ctx  context.Context
+	In   *emptypb.Empty
+	Opts []grpc.CallOption
+} {
+	var calls []struct {
+		Ctx  context.Context
+		In   *emptypb.Empty
+		Opts []grpc.CallOption
+	}
+	mock.lockFlushSession.RLock()
+	calls = mock.calls.FlushSession
+	mock.lockFlushSession.RUnlock()
 	return calls
 }
 

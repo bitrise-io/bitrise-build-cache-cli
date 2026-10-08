@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -193,6 +194,9 @@ func StartXcodeCacheProxy(
 
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
+	p.FlushHook = func(hookCtx context.Context) []string {
+		return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
+	}
 
 	// Cancelled only after the final sweep so sidecars written during GracefulStop still get drained.
 	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
@@ -294,6 +298,10 @@ func (b *analyticsBundle) enrichmentEnabled() bool {
 }
 
 func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enrichment.Watcher {
+	return b.watcherWithEmit(ctx, logger, nil)
+}
+
+func (b *analyticsBundle) watcherWithEmit(ctx context.Context, logger log.Logger, onEmitted func(string)) *enrichment.Watcher {
 	enricher := &enrichment.Enricher{
 		Store:            b.pending,
 		Client:           b.client,
@@ -302,6 +310,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		XcodeVersion:     b.xcodeVersion,
 		XcodeBuildNumber: b.xcodeBuildNumber,
 		Logger:           logger,
+		OnEmitted:        onEmitted,
 	}
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
@@ -367,6 +376,33 @@ func (b *analyticsBundle) finalEnrichmentSweep(ctx context.Context, logger log.L
 
 	b.watcher(ctx, logger).ScanOnce()
 	b.retrier(logger).Sweep()
+}
+
+// flushEnrichmentSweep runs a synchronous one-shot scan and retry, returning
+// the invocation IDs emitted during this sweep. Thread-safe collector so a
+// background watcher goroutine stays untouched.
+func (b *analyticsBundle) flushEnrichmentSweep(ctx context.Context, logger log.Logger) []string {
+	if !b.enrichmentEnabled() {
+		return nil
+	}
+
+	var (
+		mu  sync.Mutex
+		ids []string
+	)
+	collect := func(id string) {
+		mu.Lock()
+		ids = append(ids, id)
+		mu.Unlock()
+	}
+
+	b.watcherWithEmit(ctx, logger, collect).ScanOnce()
+	b.retrier(logger).Sweep()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	return append([]string(nil), ids...)
 }
 
 type slimInvocationEmitter struct {
