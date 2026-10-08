@@ -2265,9 +2265,10 @@ workflows:
       enricher emits a derived InvocationID for the orphan, and stop-proxy
       surfaces the Visit URL on stdout.
 
-      Also guards two-shim coexistence by running xcodebuild archive — our
-      trampoline over swiftc/clang/swift must not collide with the dsymutil
-      CAS shim toolchain the archive path installs.
+      Two-shim coexistence (compiler trampoline + dsymutil CAS shim toolchain)
+      is NOT guarded here — this bundle does not install the dsymutil shim.
+      Follow-up to add a dedicated workflow that installs com.bitrise.cas-shim
+      and greps the archive log for its signature.
     meta:
       bitrise.io:
         stack: osx-xcode-edge
@@ -2359,7 +2360,7 @@ workflows:
             SIDECARS=$(ls ~/.local/state/xcelerate/sessions/*.json 2>/dev/null | wc -l | awk '{print $1}')
             [ "$SIDECARS" -ge 1 ] || { echo "FAIL: no sidecar JSON written"; exit 1; }
     - script:
-        title: xcodebuild archive (two-shim coexistence)
+        title: xcodebuild archive (compiler trampoline only; dsymutil shim NOT installed)
         inputs:
         - content: |-
             set -exo pipefail
