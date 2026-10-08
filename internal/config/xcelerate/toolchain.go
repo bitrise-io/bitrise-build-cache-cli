@@ -9,7 +9,9 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/trampoline/download"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
@@ -44,7 +46,14 @@ func installXcodeToolchain(
 	defaultToolchainPath := filepath.Join(developerDir, "Toolchains", "XcodeDefault.xctoolchain")
 	pluginPath := filepath.Join(developerDir, "usr", "lib", "libToolchainCASPlugin.dylib")
 
-	if err := xcode_app.InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath); err != nil {
+	trampolinePath, err := download.EnsureForVersion(ctx, configcommon.GetCLIVersion(logger), p)
+	if err != nil {
+		// Graceful fallback: pure-symlink layout preserves SPM reach; autostart is off.
+		logger.Warnf("Trampoline unavailable, installing pure-symlink toolchain: %s", err)
+		trampolinePath = ""
+	}
+
+	if err := xcode_app.InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath, trampolinePath); err != nil {
 		logger.Warnf("Could not install Xcode toolchain bundle: %s", err)
 
 		return
