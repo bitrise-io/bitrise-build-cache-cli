@@ -27,7 +27,8 @@ before:
     - go mod tidy
 
 builds:
-  - binary: bitrise-build-cache
+  - id: bitrise-build-cache
+    binary: bitrise-build-cache
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -37,9 +38,29 @@ builds:
       - linux
       # - windows
       - darwin
+  - id: trampoline
+    binary: trampoline
+    main: ./cmd/trampoline
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
 
 archives:
-  - name_template: 'bitrise-build-cache_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - id: bitrise-build-cache
+    ids:
+      - bitrise-build-cache
+    name_template: 'bitrise-build-cache_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - id: trampoline
+    ids:
+      - trampoline
+    format: binary
+    name_template: 'trampoline_v{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 # Homebrew formula generation is intentionally NOT handled by goreleaser.
 # It is published by a separate, idempotent shell step in bitrise.yml

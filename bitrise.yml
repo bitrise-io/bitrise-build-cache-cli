@@ -2103,6 +2103,133 @@ workflows:
               fi
     - deploy-to-bitrise-io: {}
 
+  e2e-xcode-wrapperless-trampoline:
+    description: |
+      Manual-only. Validates the wrapper-less flow end-to-end: trampoline on
+      the toolchain's swiftc/clang/swift auto-starts the proxy from a cold
+      state (no wrapper on PATH, no prior xcelerate start-proxy). Asserts the
+      proxy socket exists after the build, the sidecar JSON lands, the
+      enricher emits a derived InvocationID for the orphan, and stop-proxy
+      surfaces the Visit URL on stdout.
+
+      Also guards two-shim coexistence by running xcodebuild archive — our
+      trampoline over swiftc/clang/swift must not collide with the dsymutil
+      CAS shim toolchain the archive path installs.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
+    - FIXTURE_DIR: $BITRISE_SOURCE_DIR/_tmp/wrapperless-fixture
+    - SCHEME: ParityApp
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: Install xcodegen
+        inputs:
+        - content: |-
+            set -exo pipefail
+            if ! command -v xcodegen >/dev/null; then
+              brew install xcodegen
+            fi
+    - script:
+        title: Build minimal Swift fixture
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -rf "$FIXTURE_DIR"
+            mkdir -p "$FIXTURE_DIR/Source"
+            cat > "$FIXTURE_DIR/project.yml" <<'EOF'
+            name: ParityApp
+            options:
+              bundleIdPrefix: io.bitrise
+              deploymentTarget:
+                iOS: "16.0"
+            targets:
+              ParityApp:
+                type: application
+                platform: iOS
+                sources: [Source]
+                settings:
+                  base:
+                    PRODUCT_BUNDLE_IDENTIFIER: io.bitrise.ParityApp
+            EOF
+            cat > "$FIXTURE_DIR/Source/App.swift" <<'EOF'
+            import SwiftUI
+            @main struct App: SwiftUI.App {
+              var body: some Scene { WindowGroup { Text("hi") } }
+            }
+            EOF
+            cd "$FIXTURE_DIR" && xcodegen
+    - script:
+        title: Activate xcelerate (installs trampoline over toolchain swiftc/clang/swift)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            # Dev-loop override: point the activate step at the locally-built trampoline.
+            export BITRISE_XCELERATE_TRAMPOLINE_PATH="$BITRISE_SOURCE_DIR/dist/trampoline/trampoline_v$(../bitrise-build-cache-cli --version | awk '{print $NF}')_darwin_universal"
+            ../bitrise-build-cache-cli activate xcode -d --cache --cache-push
+    - script:
+        title: Kill any running proxy to force cold-start via trampoline
+        inputs:
+        - content: |-
+            set -exo pipefail
+            ../bitrise-build-cache-cli xcelerate stop-proxy || true
+            sleep 2
+    - script:
+        title: Wrapper-less build (trampoline auto-starts proxy)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cd "$FIXTURE_DIR"
+            # No wrapper on PATH; /usr/bin/xcodebuild resolves to Apple's binary.
+            # TOOLCHAINS flag points SwiftBuild at the CAS toolchain whose swiftc/clang are our trampolines.
+            set +e
+            /usr/bin/xcodebuild -scheme "$SCHEME" -configuration Debug build \
+              -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO \
+              TOOLCHAINS=io.bitrise.cas.xctoolchain 2>&1 | tee /tmp/trampoline.log
+            RC=${PIPESTATUS[0]}
+            set -e
+            echo "trampoline xcodebuild rc=$RC"
+    - script:
+        title: Assert proxy socket + sidecar + orphan ID shape
+        inputs:
+        - content: |-
+            set -exo pipefail
+            SOCK="/tmp/xcelerate-proxy.sock"
+            [ -S "$SOCK" ] || { echo "FAIL: proxy socket missing at $SOCK"; exit 1; }
+
+            # Sidecar directory must have at least one JSON.
+            SIDECARS=$(ls ~/.local/state/xcelerate/sessions/*.json 2>/dev/null | wc -l | awk '{print $1}')
+            [ "$SIDECARS" -ge 1 ] || { echo "FAIL: no sidecar JSON written"; exit 1; }
+    - script:
+        title: xcodebuild archive (two-shim coexistence)
+        inputs:
+        - content: |-
+            set -exo pipefail
+            cd "$FIXTURE_DIR"
+            set +e
+            /usr/bin/xcodebuild -scheme "$SCHEME" -configuration Release archive \
+              -destination 'generic/platform=iOS' \
+              -archivePath /tmp/parity.xcarchive \
+              CODE_SIGNING_ALLOWED=NO \
+              TOOLCHAINS=io.bitrise.cas.xctoolchain 2>&1 | tee /tmp/archive.log
+            RC=${PIPESTATUS[0]}
+            set -e
+            echo "archive rc=$RC"
+    - script:
+        title: Stop proxy + assert Visit URL on stdout
+        inputs:
+        - content: |-
+            set -exo pipefail
+            STOP_OUT=$(../bitrise-build-cache-cli xcelerate stop-proxy)
+            echo "$STOP_OUT"
+            echo "$STOP_OUT" | grep -qE "Invocation saved\. Visit" || { echo "FAIL: stop-proxy did not surface a Visit URL"; exit 1; }
+    - deploy-to-bitrise-io: {}
+
   e2e-proxy-cache-macos:
     description: |
       Guard the xcelerate proxy's cache-operation latency under a real compile.

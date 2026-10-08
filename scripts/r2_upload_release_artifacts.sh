@@ -78,4 +78,38 @@ for filename in "${filenames[@]}"; do
     --body "$DIST_DIR/$filename"
 done
 
+# Trampoline binaries (goreleaser emits per-arch binaries + we lipo a universal
+# then compute checksums). Consumed by internal/trampoline/download for the
+# wrapper-less auto-start flow.
+TRAMPOLINE_DIR="$DIST_DIR/trampoline"
+if [[ -d "$TRAMPOLINE_DIR" ]]; then
+  for suffix in darwin_amd64 darwin_arm64 darwin_universal; do
+    src="$TRAMPOLINE_DIR/trampoline_v${tag}_${suffix}"
+    if [[ ! -f "$src" ]]; then
+      echo "Trampoline file $src missing; skipping."
+      continue
+    fi
+
+    key="trampoline_v${tag}_${suffix}"
+    if aws s3api head-object --endpoint-url "$ENDPOINT" --bucket "$BUCKET" --key "$key" >/dev/null 2>&1; then
+      echo "Already uploaded, skipping: $key"
+      continue
+    fi
+
+    echo "Uploading $key to R2..."
+    aws s3api put-object --endpoint-url "$ENDPOINT" --bucket "$BUCKET" --key "$key" --body "$src"
+  done
+
+  checksums="$TRAMPOLINE_DIR/trampoline_v${tag}_checksums.txt"
+  if [[ -f "$checksums" ]]; then
+    key="trampoline_v${tag}_checksums.txt"
+    if aws s3api head-object --endpoint-url "$ENDPOINT" --bucket "$BUCKET" --key "$key" >/dev/null 2>&1; then
+      echo "Already uploaded, skipping: $key"
+    else
+      echo "Uploading $key to R2..."
+      aws s3api put-object --endpoint-url "$ENDPOINT" --bucket "$BUCKET" --key "$key" --body "$checksums"
+    fi
+  fi
+fi
+
 echo "Uploaded ${tag} artifacts to R2."
