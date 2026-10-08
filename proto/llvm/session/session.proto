@@ -10,6 +10,11 @@ service Session {
   rpc SetSession (SetSessionRequest) returns (google.protobuf.Empty) {}
   rpc EndSession (EndSessionRequest) returns (google.protobuf.Empty) {}
   rpc GetSessionStats (google.protobuf.Empty) returns (GetSessionStatsResponse) {}
+  rpc FlushSession (google.protobuf.Empty) returns (FlushSessionResponse) {}
+}
+
+message FlushSessionResponse {
+  repeated string emitted_invocation_ids = 1;
 }
 
 message SetSessionRequest {
