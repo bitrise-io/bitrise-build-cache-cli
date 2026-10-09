@@ -1971,6 +1971,138 @@ workflows:
             assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
+  e2e-xcode-activitylog-parse:
+    description: |
+      Guard against Xcode renaming / reshaping the `CompilationCacheMetrics`
+      line in `.xcactivitylog`. The enricher and the `doctor` xcode-recent-build
+      check both parse that line via a single regex (xcactivitylog.ReadCompilationCacheMetrics);
+      a format shift silently zeros HitRate on every IDE build. This workflow runs
+      a real Xcode build on the current stack, then invokes the doctor check against
+      the produced .xcactivitylog and asserts the hits/total count parsed non-zero.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
+    # Keep cache on so the build actually populates CompilationCacheMetrics.
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: activate xcode + build
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -eo pipefail
+
+              ../bitrise-build-cache-cli -d activate xcode --cache
+
+              # activate xcode writes PATH export via envman for subsequent steps;
+              # current step's shell needs the override to resolve the wrapper that
+              # auto-spawns the proxy socket the CAS plugin connects to.
+              export PATH="$HOME/.bitrise-xcelerate/bin:$PATH"
+
+              xcodebuild build \
+                -workspace ComposableArchitecture.xcworkspace \
+                -scheme ComposableArchitecture \
+                -destination "generic/platform=iOS" \
+                -skipMacroValidation \
+                TOOLCHAINS=io.bitrise.cas.xctoolchain 2> wrapper.log | tee xcodebuild.log | xcpretty
+
+              cp xcodebuild.log wrapper.log "$BITRISE_DEPLOY_DIR"/
+    - script:
+        title: Assert doctor xcode-recent-build parsed hits from the fresh activity log
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -exo pipefail
+
+              # --no-update-check / --no-backend-probe avoid unrelated network calls;
+              # --json makes the detail line grep-stable across future wording tweaks.
+              report=$(../bitrise-build-cache-cli doctor --json --no-update-check --no-backend-probe)
+              echo "$report" > "$BITRISE_DEPLOY_DIR/doctor-report.json"
+
+              detail=$(jq -r '.items[] | select(.name=="xcode-recent-build") | .result.detail' <<<"$report")
+              echo "doctor xcode-recent-build detail: $detail"
+
+              if ! grep -Eq 'recent xcode build: [0-9]+/[1-9][0-9]* hits' <<<"$detail"; then
+                echo "FAIL: xcactivitylog regex did not parse hits/total from the fresh build log"
+                echo "  detail was: $detail"
+                echo "  if Xcode changed the CompilationCacheMetrics line format, update internal/xcactivitylog/reader.go"
+                exit 1
+              fi
+    - deploy-to-bitrise-io: {}
+
+  e2e-xcode-activitylog-parse-native:
+    description: |
+      Same regex-drift guard as e2e-xcode-activitylog-parse but exercises the
+      native xcodebuild path (no wrapper). Starts the proxy explicitly, invokes
+      /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild with
+      TOOLCHAINS=io.bitrise.cas.xctoolchain, and asserts the toolchain's
+      OverrideBuildSettings alone wire the CAS plugin + remote socket for every
+      target including SPM package deps. If a future Xcode change drops the
+      toolchain settings or the native path diverges, this fails independently
+      of the wrapper-path workflow.
+    meta:
+      bitrise.io:
+        stack: osx-xcode-edge
+        machine_type_id: g2.mac.large
+    envs:
+    - TEST_APP_URL: git@github.com:bitrise-io/swift-composable-architecture.git
+    - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
+    - BITRISE_BUILD_CACHE_BENCHMARK_PHASE_XCODE: established
+    steps:
+    - bundle::feature-e2e-setup: {}
+    - script:
+        title: activate xcode + start proxy + native build
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -eo pipefail
+
+              ../bitrise-build-cache-cli -d activate xcode --cache
+
+              # Native path: no wrapper on PATH, no wrapper auto-starts the proxy.
+              # Start proxy explicitly so the CAS plugin can connect once compiles fire.
+              nohup ../bitrise-build-cache-cli xcelerate start-proxy > proxy.log 2>&1 &
+              SOCKET="$(jq -r '.proxySocketPath' "$HOME/.bitrise-xcelerate/config.json")"
+              for i in $(seq 1 50); do
+                [ -S "$SOCKET" ] && break
+                sleep 0.1
+              done
+              [ -S "$SOCKET" ] || { echo "proxy socket $SOCKET not up"; cat proxy.log; exit 1; }
+
+              /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build \
+                -workspace ComposableArchitecture.xcworkspace \
+                -scheme ComposableArchitecture \
+                -destination "generic/platform=iOS" \
+                -skipMacroValidation \
+                TOOLCHAINS=io.bitrise.cas.xctoolchain 2> xcodebuild.err.log | tee xcodebuild.log | xcpretty
+
+              cp xcodebuild.log xcodebuild.err.log proxy.log "$BITRISE_DEPLOY_DIR"/
+    - script:
+        title: Assert doctor xcode-recent-build parsed hits from the fresh activity log (native)
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -exo pipefail
+
+              report=$(../bitrise-build-cache-cli doctor --json --no-update-check --no-backend-probe)
+              echo "$report" > "$BITRISE_DEPLOY_DIR/doctor-report.json"
+
+              detail=$(jq -r '.items[] | select(.name=="xcode-recent-build") | .result.detail' <<<"$report")
+              echo "doctor xcode-recent-build detail: $detail"
+
+              if ! grep -Eq 'recent xcode build: [0-9]+/[1-9][0-9]* hits' <<<"$detail"; then
+                echo "FAIL: xcactivitylog regex did not parse hits/total from the fresh build log (native path)"
+                echo "  detail was: $detail"
+                echo "  if the toolchain OverrideBuildSettings no longer reach SwiftBuild CLI, update docs/xcode-caching.md + internal/xcode_app/toolchain.go"
+                exit 1
+              fi
+    - deploy-to-bitrise-io: {}
+
   e2e-proxy-cache-macos:
     description: |
       Guard the xcelerate proxy's cache-operation latency under a real compile.
@@ -2795,6 +2927,8 @@ pipelines:
       e2e-xcode-comp-cache: {}
       e2e-xcode-cas-key-stable: {}
       e2e-xcode-wrapper-watcher-race: {}
+      e2e-xcode-activitylog-parse: {}
+      e2e-xcode-activitylog-parse-native: {}
       e2e-proxy-cache-macos: {}
       e2e-scenarios-linux: {}
       e2e-scenarios-macos: {}
