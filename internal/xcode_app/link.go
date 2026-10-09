@@ -28,18 +28,24 @@ const SiblingXCConfigName = paths.XcodeAppSiblingXCConfigFileName
 type LinkParams struct {
 	ProjectPath          string
 	OverrideXCConfigPath string
+	// PostBuildScript opt-in: inject a scheme PostActions ExecutionAction that
+	// invokes CLIBinaryPath (resolved by caller) with `xcelerate flush-session`.
+	PostBuildScript bool
+	CLIBinaryPath   string
 }
 
 type LinkResult struct {
 	ModifiedXCConfigs []string
 	CreatedSiblings   []string
 	SkippedProjects   []string
+	ModifiedSchemes   []string
 }
 
 type UnlinkResult struct {
 	ModifiedXCConfigs []string
 	RemovedSiblings   []string
 	WarnBaseRefs      []string
+	ModifiedSchemes   []string
 }
 
 func Link(osProxy utils.OsProxy, p LinkParams) (LinkResult, error) {
@@ -57,6 +63,11 @@ func Link(osProxy utils.OsProxy, p LinkParams) (LinkResult, error) {
 		if err := linkOneProject(osProxy, proj, p.OverrideXCConfigPath, &result); err != nil {
 			return result, err
 		}
+		if p.PostBuildScript {
+			if err := injectSchemePostActions(osProxy, proj, p.CLIBinaryPath, &result); err != nil {
+				return result, err
+			}
+		}
 	}
 
 	return result, nil
@@ -73,9 +84,51 @@ func Unlink(osProxy utils.OsProxy, p LinkParams) (UnlinkResult, error) {
 		if err := unlinkOneProject(osProxy, proj, &result); err != nil {
 			return result, err
 		}
+		if err := removeSchemePostActions(osProxy, proj, &result); err != nil {
+			return result, err
+		}
 	}
 
 	return result, nil
+}
+
+func injectSchemePostActions(osProxy utils.OsProxy, projectPath, cliBinary string, result *LinkResult) error {
+	if strings.TrimSpace(cliBinary) == "" {
+		return errors.New("--post-build-script requested but CLI binary path is empty")
+	}
+	schemes, err := DiscoverSchemes(osProxy, projectPath)
+	if err != nil {
+		return err
+	}
+	for _, s := range schemes {
+		changed, err := InjectFlushSessionPostAction(osProxy, s, cliBinary)
+		if err != nil {
+			return err
+		}
+		if changed {
+			result.ModifiedSchemes = appendUnique(result.ModifiedSchemes, s)
+		}
+	}
+
+	return nil
+}
+
+func removeSchemePostActions(osProxy utils.OsProxy, projectPath string, result *UnlinkResult) error {
+	schemes, err := DiscoverSchemes(osProxy, projectPath)
+	if err != nil {
+		return err
+	}
+	for _, s := range schemes {
+		changed, err := RemoveFlushSessionPostAction(osProxy, s)
+		if err != nil {
+			return err
+		}
+		if changed {
+			result.ModifiedSchemes = appendUnique(result.ModifiedSchemes, s)
+		}
+	}
+
+	return nil
 }
 
 func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, result *LinkResult) error {
