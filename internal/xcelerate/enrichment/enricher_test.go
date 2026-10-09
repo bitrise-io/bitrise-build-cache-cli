@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -457,6 +458,193 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 	e.Enrich("", group)
 
 	assert.False(t, captured.Success, "any failed entry fails the aggregate")
+}
+
+type fakeSidecarReader struct {
+	blob  *blobstats.Snapshot
+	paths []string
+	found bool
+}
+
+func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.Snapshot, []string, bool) {
+	return f.blob, f.paths, f.found
+}
+
+func blobSnapshotWith(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
+	return &blobstats.Snapshot{
+		Download: blobstats.DirectionSnapshot{OpCount: downloadOps, MissCount: downloadMiss},
+		Upload:   blobstats.DirectionSnapshot{OpCount: uploadOps},
+	}
+}
+
+func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	snap := blobSnapshotWith(7, 3, 4)
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: snap},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	require.NotNil(t, captured.CacheBlobStats)
+	assert.Equal(t, int64(7), captured.CacheBlobStats.Download.OpCount)
+	assert.Equal(t, int64(3), captured.CacheBlobStats.Download.MissCount)
+	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
+}
+
+func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.Nil(t, captured.CacheBlobStats)
+}
+
+func TestEnricher_SidecarDerivesHitRateWhenLogMissing(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(3, 1, 0)},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.InDelta(t, 0.75, captured.HitRate, 0.0001)
+}
+
+func TestEnricher_SidecarPathsUnlinkedOnSuccessfulPut(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	p1 := filepath.Join(dir, "sidecar-a.json")
+	p2 := filepath.Join(dir, "sidecar-b.json")
+	require.NoError(t, os.WriteFile(p1, []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(p2, []byte("{}"), 0o600))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		SidecarReader: &fakeSidecarReader{
+			found: true,
+			paths: []string{p1, p2},
+		},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	_, err := os.Stat(p1)
+	assert.True(t, os.IsNotExist(err), "p1 must be unlinked after a successful PUT")
+	_, err = os.Stat(p2)
+	assert.True(t, os.IsNotExist(err), "p2 must be unlinked after a successful PUT")
+}
+
+func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
+	dir := t.TempDir()
+	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
+
+	p1 := filepath.Join(dir, "sidecar-a.json")
+	require.NoError(t, os.WriteFile(p1, []byte("{}"), 0o600))
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("boom") },
+	}
+
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		SidecarReader: &fakeSidecarReader{
+			found: true,
+			paths: []string{p1},
+		},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	_, err := os.Stat(p1)
+	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked when the wrapperless record is persisted")
+
+	loaded, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1, "pending retry record must be persisted")
+}
+
+func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
+	s := newEnrichSetup(t)
+	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 10 cacheable tasks (10%)\n"))
+
+	snap := blobSnapshotWith(7, 3, 4)
+	s.enricher.SidecarReader = &fakeSidecarReader{found: true, blob: snap}
+
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.InDelta(t, float32(0.1), s.captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
+	require.NotNil(t, s.captured.CacheBlobStats)
+	assert.Equal(t, int64(7), s.captured.CacheBlobStats.Download.OpCount)
+	assert.Equal(t, int64(3), s.captured.CacheBlobStats.Download.MissCount)
+	assert.Equal(t, int64(4), s.captured.CacheBlobStats.Upload.OpCount)
 }
 
 func TestEnricher_EmptyGroup_NoOp(t *testing.T) {

@@ -67,11 +67,36 @@ type Proxy struct {
 	InactivityTimeout time.Duration
 	inactivityTimer   *time.Timer
 	lastActivity      time.Time
+
+	sidecarStats    *sidecarStatsHandler
+	sidecarRegistry *sessionRegistry
+}
+
+// SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
+type SidecarOptions struct {
+	// Dir is where sessions.Sidecar JSON files are written. Empty disables.
+	Dir string
+	// Listener is the *PeerListener wrapper the proxy serves on. Required
+	// when Dir is set.
+	Listener *PeerListener
 }
 
 const defaultInactivityTimeout = 5 * time.Minute
 
 func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
+	return NewProxyWithOptions(kvClient, pushEnabled, logger, loggerFactory, emitter, SidecarOptions{})
+}
+
+// NewProxyWithOptions is the full constructor; zero-value SidecarOptions
+// disables sidecar writes.
+func NewProxyWithOptions(
+	kvClient Client,
+	pushEnabled bool,
+	logger log.Logger,
+	loggerFactory LoggerFactory,
+	emitter InvocationEmitter,
+	sidecar SidecarOptions,
+) *Proxy {
 	//nolint:exhaustruct
 	proxy := &Proxy{
 		kvClient:      kvClient,
@@ -85,7 +110,9 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 		},
 	}
 
-	grpcServer := grpc.NewServer(
+	proxy.installSidecar(sidecar)
+
+	serverOpts := []grpc.ServerOption{
 		// Unbounded by default: gRPC spawns a goroutine per stream, and the
 		// compilation plugin opens hundreds at once. A CPU-starved proxy holds
 		// each one far longer, so threads and fds grow with service time. See
@@ -111,7 +138,13 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 
 			return resp, err
 		}),
-	)
+	}
+
+	if proxy.sidecarStats != nil {
+		serverOpts = append(serverOpts, grpc.StatsHandler(proxy.sidecarStats))
+	}
+
+	grpcServer := grpc.NewServer(serverOpts...)
 
 	llvmcas.RegisterCASDBServiceServer(grpcServer, proxy)
 	llvmkv.RegisterKeyValueDBServer(grpcServer, proxy)
@@ -120,6 +153,37 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	proxy.grpcServer = grpcServer
 
 	return proxy
+}
+
+// installSidecar wires sidecar machinery if opts.Dir is set. A nil Listener
+// disables peer-PID tagging.
+func (p *Proxy) installSidecar(opts SidecarOptions) {
+	if opts.Dir == "" {
+		return
+	}
+
+	p.sidecarRegistry = newSessionRegistry()
+	ancestry := newAncestryCache()
+	p.sidecarStats = &sidecarStatsHandler{
+		listener:         opts.Listener,
+		registry:         p.sidecarRegistry,
+		writer:           newSidecarWriter(opts.Dir, p.logger),
+		ancestryResolver: ancestry.resolveAncestry,
+	}
+}
+
+// stateFor returns a recorder that mirrors to the global sessionState and,
+// when the ctx carries a per-conn session, to that one too. Keeps sidecar
+// accounting in lockstep without changing the global session's semantics.
+func (p *Proxy) stateFor(ctx context.Context) *recorder {
+	cs := sessionFromContext(ctx)
+	if cs == nil {
+		return &recorder{global: p.sessionState}
+	}
+
+	cs.markActivity()
+
+	return &recorder{global: p.sessionState, conn: cs.state}
 }
 
 // Sized off the machine, not the client: the plugin will open as many streams
@@ -138,8 +202,19 @@ func (p *Proxy) Serve(l net.Listener) error {
 }
 
 // GracefulStop stops the underlying gRPC server after in-flight RPCs finish.
+// After the server returns, any outstanding per-connection sidecars are
+// flushed — otherwise a shutdown mid-build loses the still-open sessions.
 func (p *Proxy) GracefulStop() {
 	p.grpcServer.GracefulStop()
+	p.flushOutstandingSidecars()
+}
+
+func (p *Proxy) flushOutstandingSidecars() {
+	if p.sidecarRegistry == nil || p.sidecarStats == nil {
+		return
+	}
+
+	p.sidecarRegistry.flushAll(p.sidecarStats.flushSession)
 }
 
 // FlushCurrentSession emits the currently-open session (if any) via the configured emitter.
@@ -328,9 +403,11 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		p.logReadCallStats("Get", key, start, hit)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.recordMiss(opGet)
+			rec.recordMiss(opGet)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -338,7 +415,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			}
 		}
 
-		p.sessionState.recordError(opGet, err)
+		rec.recordError(opGet, err)
 		p.logger.TErrorf("Get error: %s", err)
 
 		return &llvmcas.CASGetResponse{
@@ -359,7 +436,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		return errorHandler(fmt.Errorf("%s: failed to download data: %w", key, err)), nil
 	}
 
-	p.sessionState.saveKeyOnce(key)
+	rec.saveKeyOnce(key)
 	size := int64(buffer.Len())
 
 	data := blob{} //nolint:exhaustruct
@@ -374,7 +451,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	hit = true
-	p.sessionState.recordDownload(opGet, size, transferElapsed)
+	rec.recordDownload(opGet, size, transferElapsed)
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -396,10 +473,12 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	var key string
 
-	errorHandler := func(err error) *llvmcas.CASPutResponse {
-		p.sessionState.markKeyUnsaved(key)
+	rec := p.stateFor(ctx)
 
-		p.sessionState.recordError(opPut, err)
+	errorHandler := func(err error) *llvmcas.CASPutResponse {
+		rec.markKeyUnsaved(key)
+
+		rec.recordError(opPut, err)
 		p.logger.TErrorf("Put error: %s", err)
 
 		return &llvmcas.CASPutResponse{
@@ -450,9 +529,9 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	p.logger.TDebugf("Put: CAS ID: %s", key)
 
-	if p.sessionState.saveKeyOnce(key) {
+	if rec.saveKeyOnce(key) {
 		p.logger.TDebugf("Put: CAS ID already saved in this session: %s", key)
-		p.sessionState.recordSkippedAlreadySaved(opPut)
+		rec.recordSkippedAlreadySaved(opPut)
 
 		return &llvmcas.CASPutResponse{
 			Contents: &llvmcas.CASPutResponse_CasId{
@@ -480,7 +559,7 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
 
-	p.sessionState.recordUpload(opPut, size, transferElapsed)
+	rec.recordUpload(opPut, size, transferElapsed)
 
 	return &llvmcas.CASPutResponse{
 		Contents: &llvmcas.CASPutResponse_CasId{
@@ -501,9 +580,11 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		p.logReadCallStats("Load", key, start, hit)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.recordMiss(opLoad)
+			rec.recordMiss(opLoad)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -511,7 +592,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 			}
 		}
 
-		p.sessionState.recordError(opLoad, err)
+		rec.recordError(opLoad, err)
 		p.logger.TErrorf("Load error: %s", err)
 
 		return &llvmcas.CASLoadResponse{
@@ -532,7 +613,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("%s: failed to download data: %w", key, err)), nil
 	}
 
-	p.sessionState.saveKeyOnce(key)
+	rec.saveKeyOnce(key)
 	size := int64(buffer.Len())
 
 	data, err := io.ReadAll(buffer)
@@ -541,7 +622,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	hit = true
-	p.sessionState.recordDownload(opLoad, size, transferElapsed)
+	rec.recordDownload(opLoad, size, transferElapsed)
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -560,10 +641,12 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llvmcas.CASSaveResponse, error) {
 	var key string
 
-	errorHandler := func(err error) *llvmcas.CASSaveResponse {
-		p.sessionState.markKeyUnsaved(key)
+	rec := p.stateFor(ctx)
 
-		p.sessionState.recordError(opSave, err)
+	errorHandler := func(err error) *llvmcas.CASSaveResponse {
+		rec.markKeyUnsaved(key)
+
+		rec.recordError(opSave, err)
 		p.logger.TErrorf("Save error: %s", err)
 
 		return &llvmcas.CASSaveResponse{
@@ -617,9 +700,9 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 
 	p.logger.TDebugf("Save: CAS ID: %s", key)
 
-	if p.sessionState.saveKeyOnce(key) {
+	if rec.saveKeyOnce(key) {
 		p.logger.TDebugf("Save: CAS ID already saved in this session: %s", key)
-		p.sessionState.recordSkippedAlreadySaved(opSave)
+		rec.recordSkippedAlreadySaved(opSave)
 
 		return &llvmcas.CASSaveResponse{
 			Contents: &llvmcas.CASSaveResponse_CasId{
@@ -655,7 +738,7 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		return errorHandler(fmt.Errorf("%s: failed to upload data: %w", key, err)), nil
 	}
 
-	p.sessionState.recordUpload(opSave, size, transferElapsed)
+	rec.recordUpload(opSave, size, transferElapsed)
 
 	return &llvmcas.CASSaveResponse{
 		Contents: &llvmcas.CASSaveResponse_CasId{
@@ -676,9 +759,11 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		p.logReadCallStats("GetValue", key, start, hit)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.recordMiss(opGetValue)
+			rec.recordMiss(opGetValue)
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -686,7 +771,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 			}
 		}
 
-		p.sessionState.recordError(opGetValue, err)
+		rec.recordError(opGetValue, err)
 		p.logger.TErrorf("GetValue error: %s", err)
 
 		return &llvmkv.GetValueResponse{
@@ -715,7 +800,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	hit = true
-	p.sessionState.recordDownload(opGetValue, size, transferElapsed)
+	rec.recordDownload(opGetValue, size, transferElapsed)
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -737,8 +822,10 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 		p.logWriteCallStats("PutValue", key, start)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmkv.PutValueResponse {
-		p.sessionState.recordError(opPutValue, err)
+		rec.recordError(opPutValue, err)
 		p.logger.TErrorf("PutValue error: %s", err)
 
 		return &llvmkv.PutValueResponse{
@@ -768,7 +855,7 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 		return errorHandler(fmt.Errorf("%s: failed to upload value: %w", key, err)), nil
 	}
 
-	p.sessionState.recordUpload(opPutValue, size, transferElapsed)
+	rec.recordUpload(opPutValue, size, transferElapsed)
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil

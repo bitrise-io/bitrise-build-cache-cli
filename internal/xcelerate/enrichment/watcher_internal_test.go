@@ -533,3 +533,45 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 	assert.Zero(t, handles, "entries older than HandledManifestMaxAge must be skipped, not resurrected as orphans")
 	assert.Empty(t, w.seen, "stale entries must not be marked seen either")
 }
+
+func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	var handled []string
+	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
+		HomeDir: home,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			handled = append(handled, g.UUIDs()...)
+		},
+	}
+
+	w.ScanOnce()
+
+	assert.Contains(t, handled, uuid, "ScanOnce must emit without a prior Run")
+	assert.Contains(t, w.seen, uuid, "ScanOnce must lazy-init seen and mark emitted uuids")
+}
+
+func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+
+	var handled []string
+	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
+		HomeDir: home,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			handled = append(handled, g.UUIDs()...)
+		},
+	}
+
+	w.ScanOnce()
+	require.NotEmpty(t, handled, "first ScanOnce emits the fixture entries")
+
+	before := append([]string(nil), handled...)
+	w.ScanOnce()
+
+	assert.Equal(t, before, handled, "subsequent ScanOnce must not re-emit already-seen uuids")
+}
