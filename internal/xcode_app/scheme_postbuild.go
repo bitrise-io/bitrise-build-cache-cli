@@ -15,8 +15,9 @@ import (
 const FlushPostActionIdentifier = "io.bitrise.cas.flush"
 
 const (
-	flushPostActionTitle   = "Bitrise Build Cache: flush session"
-	flushPostActionCommand = "xcelerate flush-session"
+	flushPostActionTitle = "Bitrise Build Cache: flush + list recent invocations"
+	// `;` keeps `invocations list` running even if flush-session errored, so the build log always shows something.
+	flushPostActionCommand = "xcelerate flush-session; %s invocations list --limit 5"
 )
 
 // DiscoverSchemes returns every .xcscheme file reachable from an .xcodeproj,
@@ -241,7 +242,8 @@ func leadingLineIndent(content string, idx int) string {
 }
 
 func renderExecutionAction(indent, cliBinaryPath string) string {
-	script := fmt.Sprintf("%s %s", shellEscape(cliBinaryPath), flushPostActionCommand)
+	cli := shellEscape(cliBinaryPath)
+	script := fmt.Sprintf("%s "+flushPostActionCommand, cli, cli)
 	escaped := xmlAttrEscape(script)
 
 	return indent + `<ExecutionAction` + "\n" +

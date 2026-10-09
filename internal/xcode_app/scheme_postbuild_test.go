@@ -46,8 +46,8 @@ const schemeWithOurAction = `<?xml version="1.0" encoding="UTF-8"?>
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction"
             ActionID = "io.bitrise.cas.flush">
             <ActionContent
-               title = "Bitrise Build Cache: flush session"
-               scriptText = "/usr/local/bin/bitrise-build-cache xcelerate flush-session">
+               title = "Bitrise Build Cache: flush + list recent invocations"
+               scriptText = "/usr/local/bin/bitrise-build-cache xcelerate flush-session; /usr/local/bin/bitrise-build-cache invocations list --limit 5">
             </ActionContent>
          </ExecutionAction>
       </PostActions>
@@ -97,6 +97,8 @@ func TestInjectFlushSessionPostAction_addsBlockWhenMissing(t *testing.T) {
 	s := string(body)
 	assert.Contains(t, s, `ActionID = "io.bitrise.cas.flush"`)
 	assert.Contains(t, s, "xcelerate flush-session")
+	assert.Contains(t, s, "invocations list --limit 5")
+	assert.Contains(t, s, "flush + list recent invocations")
 	assert.Contains(t, s, "<PostActions>")
 	assert.Contains(t, s, "</PostActions>")
 	assert.Contains(t, s, "</BuildAction>", "closing tag preserved")

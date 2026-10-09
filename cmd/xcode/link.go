@@ -33,7 +33,8 @@ For each XCBuildConfiguration:
 
 With --post-build-script, also inject a scheme PostActions ExecutionAction into
 every shared and user scheme, invoking "bitrise-build-cache xcelerate flush-session"
-after each build. Idempotent — identified by its ActionID.
+followed by "bitrise-build-cache invocations list --limit 5" after each build so the
+latest invocations show up in Xcode's build log. Idempotent — identified by its ActionID.
 
 Idempotent — re-running replaces the marker block cleanly. SPM package targets are
 NOT reached by this command (architectural limitation).`,
@@ -78,5 +79,5 @@ NOT reached by this command (architectural limitation).`,
 func init() {
 	xcodeCommand.AddCommand(linkCmd)
 	linkCmd.Flags().BoolVar(&linkPostBuildScript, "post-build-script", false,
-		"Inject a scheme PostActions ExecutionAction that runs `bitrise-build-cache xcelerate flush-session` after each build.")
+		"Inject a scheme PostActions ExecutionAction that runs `bitrise-build-cache xcelerate flush-session` after each build. Also prints the latest invocations via `invocations list` so the current build is visible in Xcode's build log.")
 }
