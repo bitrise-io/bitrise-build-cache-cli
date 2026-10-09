@@ -11,11 +11,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// AppleCASPluginPath is the stock LLVM CAS plugin dylib that ships with Xcode;
-// it speaks the same gRPC protocol as our proxy. Hardcoded for the common
-// install location; when the toolchain bundle is installed, its OverrideBuildSettings
-// supplies a dynamically-resolved path (via xcode-select) which wins at build time
-// for Xcode-beta or sidecar installs.
+// AppleCASPluginPath is a hardcoded fallback for the stock plugin dylib. The
+// installed toolchain bundle's OverrideBuildSettings supplies a path resolved
+// against the active developer dir and takes precedence at build time.
 const AppleCASPluginPath = "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"
 
 // Render omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES on purpose:
@@ -36,9 +34,7 @@ func Render(proxySocketPath string) (string, error) {
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
 		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
-		// TOOLCHAINS selects the Bitrise toolchain bundle installed under
-		// ~/Library/Developer/Toolchains/. The bundle's OverrideBuildSettings is
-		// the only reach we have into SPM package targets.
+		// Bundle's OverrideBuildSettings is the only reach we have into SPM package targets.
 		"TOOLCHAINS": ToolchainID,
 	}
 
@@ -63,8 +59,7 @@ func Render(proxySocketPath string) (string, error) {
 const EnvOverrideXCConfigPath = "BITRISE_XCODE_APP_OVERRIDE_XCCONFIG_PATH"
 
 // ResolveOverrideXCConfigPath resolves in order: explicit override, env var,
-// then default under ~/.bitrise-xcelerate. Fails only when the default is in
-// play and the home dir cannot be resolved.
+// default under ~/.bitrise-xcelerate.
 func ResolveOverrideXCConfigPath(override string, envs map[string]string, osProxy utils.OsProxy) (string, error) {
 	if override != "" {
 		return override, nil
