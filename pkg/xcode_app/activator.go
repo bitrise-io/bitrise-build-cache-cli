@@ -24,6 +24,13 @@ type Activator struct {
 	OsProxy utils.OsProxy
 }
 
+// LinkOptions carries opt-in link toggles beyond the project path.
+type LinkOptions struct {
+	// PostBuildScript injects a scheme PostActions ExecutionAction that invokes
+	// `bitrise-build-cache xcelerate flush-session` when a build completes.
+	PostBuildScript bool
+}
+
 type (
 	LinkResult   = xa.LinkResult
 	UnlinkResult = xa.UnlinkResult
@@ -34,7 +41,12 @@ type (
 // builds — Xcode no longer propagates the `XCODE_XCCONFIG_FILE` user-env
 // override to SwiftBuild, so the project is the only route into the IDE's
 // compilation tasks.
-func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, error) {
+func (a *Activator) Link(ctx context.Context, projectPath string) (LinkResult, error) {
+	return a.LinkWithOptions(ctx, projectPath, LinkOptions{})
+}
+
+// LinkWithOptions is Link plus opt-in extras (post-build script, future knobs).
+func (a *Activator) LinkWithOptions(_ context.Context, projectPath string, opts LinkOptions) (LinkResult, error) {
 	if runtime.GOOS != darwinGOOS {
 		return LinkResult{}, ErrUnsupportedPlatform
 	}
@@ -50,7 +62,18 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 	}
 	logger.Debugf("Override xcconfig: %s", overridePath)
 
-	result, err := xa.Link(osProxy, xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath})
+	params := xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath}
+	if opts.PostBuildScript {
+		cli, err := osProxy.Executable()
+		if err != nil {
+			return LinkResult{}, fmt.Errorf("resolve CLI binary path: %w", err)
+		}
+		params.PostBuildScript = true
+		params.CLIBinaryPath = cli
+		logger.Debugf("Post-build-script CLI binary: %s", cli)
+	}
+
+	result, err := xa.Link(osProxy, params)
 	if err != nil {
 		return LinkResult{}, fmt.Errorf("link %s: %w", projectPath, err)
 	}
@@ -60,6 +83,9 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 	}
 	for _, f := range result.CreatedSiblings {
 		logger.Debugf("Created sibling xcconfig: %s", f)
+	}
+	for _, f := range result.ModifiedSchemes {
+		logger.Debugf("Injected scheme post-build action: %s", f)
 	}
 
 	return result, nil
@@ -88,6 +114,9 @@ func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult,
 	}
 	for _, f := range result.RemovedSiblings {
 		logger.Debugf("Removed sibling xcconfig: %s", f)
+	}
+	for _, f := range result.ModifiedSchemes {
+		logger.Debugf("Removed scheme post-build action: %s", f)
 	}
 
 	return result, nil
