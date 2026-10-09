@@ -29,7 +29,7 @@ func TestVisitURL_Shape(t *testing.T) {
 	assert.Equal(t, "https://app.bitrise.io/build-cache/invocations/xcode/abc", enrichment.VisitURL("abc"))
 }
 
-func TestEnricher_AppendsOrphanToLocalLog(t *testing.T) {
+func TestEnricher_AppendsWrapperlessToLocalLog(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
@@ -46,7 +46,7 @@ func TestEnricher_AppendsOrphanToLocalLog(t *testing.T) {
 	}
 
 	entry := enrichment.ManifestEntry{
-		UUID:      "orphan",
+		UUID:      "wrapperless",
 		Signature: "Build MyScheme",
 		Status:    "S",
 		Start:     time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC),
@@ -55,7 +55,7 @@ func TestEnricher_AppendsOrphanToLocalLog(t *testing.T) {
 
 	e.Enrich("", singleEntryGroup(entry))
 
-	require.Len(t, appender.records, 1, "successful orphan PUT must append exactly one local-log record")
+	require.Len(t, appender.records, 1, "successful wrapperless PUT must append exactly one local-log record")
 	rec := appender.records[0]
 	assert.NotEmpty(t, rec.InvocationID)
 	assert.Equal(t, invocations.ToolXcode, rec.Tool)
