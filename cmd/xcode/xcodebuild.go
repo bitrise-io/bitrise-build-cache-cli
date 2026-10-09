@@ -905,7 +905,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		userOtherCFlagsToSplice = c.XcodeArgs.UserOtherCFlags()
 		mergedOtherCFlags = xcodeargs.MergeOtherCFlagsValue(userOtherCFlagsToSplice, suffix)
 
-		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" {
+		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" && c.XcodeArgs.AcceptsDerivedDataPath() {
 			extraArgv = append(extraArgv, xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath)
 		}
 	}
