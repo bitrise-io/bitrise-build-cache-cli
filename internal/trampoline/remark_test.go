@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,10 +18,11 @@ func baseRemarkDeps(t *testing.T, pid int) (*bytes.Buffer, remarkDeps) {
 	tmp := t.TempDir()
 
 	return buf, remarkDeps{
-		readProxyPid: func() (int, bool) { return pid, pid > 0 },
-		tryLock:      func(string) (bool, error) { return true, nil },
-		stderr:       buf,
-		tmpDir:       func() string { return tmp },
+		readProxyPid:   func() (int, bool) { return pid, pid > 0 },
+		proxyStartTime: func(int) (int64, bool) { return 0, false },
+		createSentinel: defaultRemarkDeps.createSentinel,
+		stderr:         buf,
+		tmpDir:         func() string { return tmp },
 	}
 }
 
@@ -31,16 +31,17 @@ func TestEmitEngagedRemark_WritesRemarkOnFirstCall(t *testing.T) {
 
 	emitEngagedRemark(d)
 
-	assert.Contains(t, buf.String(), "remark: Bitrise remote build cache engaged")
+	assert.Contains(t, buf.String(), remarkText)
 }
 
-func TestEmitEngagedRemark_SkipsWhenLockBusy(t *testing.T) {
+func TestEmitEngagedRemark_SkipsOnSecondCall(t *testing.T) {
 	buf, d := baseRemarkDeps(t, 1234)
-	d.tryLock = func(string) (bool, error) { return false, nil }
 
 	emitEngagedRemark(d)
+	buf.Reset()
+	emitEngagedRemark(d)
 
-	assert.Empty(t, buf.String(), "lock-busy means another trampoline already emitted")
+	assert.Empty(t, buf.String(), "sentinel exists after first call; second must skip")
 }
 
 func TestEmitEngagedRemark_SkipsWhenProxyPidMissing(t *testing.T) {
@@ -51,10 +52,11 @@ func TestEmitEngagedRemark_SkipsWhenProxyPidMissing(t *testing.T) {
 	assert.Empty(t, buf.String(), "no proxy pid means no proxy up yet; shim must not emit")
 }
 
-func TestEmitEngagedRemark_SentinelPathIsPIDScoped(t *testing.T) {
+func TestEmitEngagedRemark_SentinelPathIsPIDAndStartTimeScoped(t *testing.T) {
 	buf, d := baseRemarkDeps(t, 42)
+	d.proxyStartTime = func(int) (int64, bool) { return 1700000000000, true }
 	var observed string
-	d.tryLock = func(path string) (bool, error) {
+	d.createSentinel = func(path string) (bool, error) {
 		observed = path
 
 		return true, nil
@@ -62,28 +64,23 @@ func TestEmitEngagedRemark_SentinelPathIsPIDScoped(t *testing.T) {
 
 	emitEngagedRemark(d)
 
-	assert.Contains(t, observed, "bitrise-xcelerate-remark-42")
+	assert.Contains(t, observed, "bitrise-xcelerate-remark-42-1700000000000")
 	assert.NotEmpty(t, buf.String())
 }
 
-func TestEmitEngagedRemark_RealFlockDedup(t *testing.T) {
-	tmp := t.TempDir()
-	pid := 7777
-	sentinel := filepath.Join(tmp, remarkSentinelPrefix+strconv.Itoa(pid))
+func TestEmitEngagedRemark_SentinelFallsBackToPIDOnlyWhenStartTimeUnresolved(t *testing.T) {
+	buf, d := baseRemarkDeps(t, 99)
+	var observed string
+	d.createSentinel = func(path string) (bool, error) {
+		observed = path
 
-	// First call acquires the real flock and emits.
-	buf1 := &bytes.Buffer{}
-	emitEngagedRemark(remarkDeps{
-		readProxyPid: func() (int, bool) { return pid, true },
-		tryLock:      defaultRemarkDeps.tryLock,
-		stderr:       buf1,
-		tmpDir:       func() string { return tmp },
-	})
-	assert.Contains(t, buf1.String(), remarkText)
+		return true, nil
+	}
 
-	// Sentinel must now exist and still be locked by the earlier flock handle.
-	_, err := os.Stat(sentinel)
-	require.NoError(t, err)
+	emitEngagedRemark(d)
+
+	assert.Equal(t, filepath.Join(filepath.Dir(observed), "bitrise-xcelerate-remark-99"), observed)
+	assert.NotEmpty(t, buf.String())
 }
 
 func TestReadPidFile_RejectsNonPositive(t *testing.T) {

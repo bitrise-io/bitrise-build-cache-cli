@@ -129,6 +129,12 @@ const TrampolineRealpathCachePrefix = "bitrise-tc-realpath-"
 // literal (keeps the trampoline binary free of internal/paths imports).
 const TrampolineStartLockFilename = "bitrise-xcelerate-starting.lock"
 
+// TrampolineRemarkSentinelPrefix prefixes per-proxy-session sentinel files the
+// trampoline atomically creates to dedup the engagement remark across shim
+// processes. Referenced by the trampoline package via string literal (keeps
+// the trampoline binary free of internal/paths imports).
+const TrampolineRemarkSentinelPrefix = "bitrise-xcelerate-remark-"
+
 // CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
 
