@@ -17,8 +17,7 @@ var flushSessionCmd = &cobra.Command{
 	Short:        "Force the running proxy to enrich any pending orphan invocations and print their Visit URLs",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
-		logger.EnableDebugLog(common.IsDebugLogMode)
+		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode), log.WithOutput(os.Stderr))
 
 		return xcelerate.FlushSession(cmd.Context(), logger, utils.DefaultOsProxy{}, os.Stdout) //nolint:wrapcheck
 	},
