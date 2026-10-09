@@ -86,7 +86,8 @@ func (realSignaler) SignalAndWait(pid int, graceful time.Duration, logger log.Lo
 	}
 
 	timeout := time.After(graceful)
-	tick := time.Tick(200 * time.Millisecond)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-timeout:
@@ -96,7 +97,7 @@ func (realSignaler) SignalAndWait(pid int, graceful time.Duration, logger log.Lo
 			}
 
 			return
-		case <-tick:
+		case <-ticker.C:
 			if err := syscall.Kill(pid, 0); err != nil {
 				return
 			}
