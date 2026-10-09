@@ -48,11 +48,14 @@ Idempotent — nothing to revert reports a no-op.`,
 		for _, f := range result.RemovedSiblings {
 			logger.Donef("Removed sibling xcconfig: %s", f)
 		}
+		for _, f := range result.ModifiedSchemes {
+			logger.Donef("Removed flush-session post-build action: %s", f)
+		}
 		if len(result.WarnBaseRefs) > 0 {
 			logger.Warnf("baseConfigurationReference entries left in place (pbxproj offers no way to tell apart user-set vs. link-set): %s",
 				strings.Join(result.WarnBaseRefs, ", "))
 		}
-		if len(result.ModifiedXCConfigs) == 0 && len(result.RemovedSiblings) == 0 {
+		if len(result.ModifiedXCConfigs) == 0 && len(result.RemovedSiblings) == 0 && len(result.ModifiedSchemes) == 0 {
 			logger.Infof("Nothing to revert.")
 		}
 
