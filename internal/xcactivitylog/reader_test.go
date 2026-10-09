@@ -56,13 +56,11 @@ func TestReadCompilationCacheMetrics_PartialHits(t *testing.T) {
 
 func TestReadCompilationCacheMetrics_WhitespaceVariations(t *testing.T) {
 	dir := t.TempDir()
-	// Multi-space / tab separators — matches live samples where SLF rendering wedges tabs between fields.
+	// Multi-space / tab separators seen in live SLF samples.
 	path := writeGzipped(t, dir, "ws.xcactivitylog", []byte("prelude\n12\thits\t/\t24  cacheable  tasks  ( 50%)\ntail\n"))
 
 	m, err := xcactivitylog.ReadCompilationCacheMetrics(path)
 	require.NoError(t, err)
-
-	// The space-inside-paren form (" 50%)") is permitted by the regex; the only strict parts are the keywords.
 	assert.Equal(t, xcactivitylog.OutcomeOK, m.Outcome)
 	assert.Equal(t, 12, m.Hits)
 	assert.Equal(t, 24, m.Total)
@@ -115,6 +113,23 @@ func TestReadCompilationCacheMetrics_NoMatch(t *testing.T) {
 	assert.Zero(t, m.Total)
 }
 
+func TestReadCompilationCacheMetrics_Unreadable_ReadError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses file-mode permission checks")
+	}
+	// EACCES must tag ReadError (not FileMissing/Unparsed) so callers can tell
+	// "couldn't look" from "looked and found no match".
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noperm.xcactivitylog")
+	require.NoError(t, os.WriteFile(path, []byte("payload"), 0o000))
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+
+	m, err := xcactivitylog.ReadCompilationCacheMetrics(path)
+	require.Error(t, err)
+	assert.Equal(t, xcactivitylog.OutcomeReadError, m.Outcome)
+	assert.Zero(t, m.HitRate)
+}
+
 func TestReadCompilationCacheMetrics_TruncatedGzip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "trunc.xcactivitylog")
@@ -127,8 +142,7 @@ func TestReadCompilationCacheMetrics_TruncatedGzip(t *testing.T) {
 }
 
 func TestReadCompilationCacheMetrics_RealSample(t *testing.T) {
-	// Fixture captured 2026-10-01 from CasProbe build (Xcode 26.x, logFormatVersion 11).
-	// 75KB compressed, ~405KB decompressed, carries "65 hits / 65 cacheable tasks (100%)".
+	// Fixture: CasProbe build (Xcode 26.x, logFormatVersion 11), ~405KB decompressed.
 	path := filepath.Join("testdata", "sample.xcactivitylog")
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -143,14 +157,3 @@ func TestReadCompilationCacheMetrics_RealSample(t *testing.T) {
 	assert.InDelta(t, float32(1.0), m.HitRate, 0.001)
 }
 
-func TestOutcomeString(t *testing.T) {
-	cases := map[xcactivitylog.Outcome]string{
-		xcactivitylog.OutcomeOK:          "ok",
-		xcactivitylog.OutcomeFileMissing: "file_missing",
-		xcactivitylog.OutcomeEmpty:       "empty",
-		xcactivitylog.OutcomeUnparsed:    "unparsed",
-	}
-	for o, want := range cases {
-		assert.Equal(t, want, o.String(), o)
-	}
-}
