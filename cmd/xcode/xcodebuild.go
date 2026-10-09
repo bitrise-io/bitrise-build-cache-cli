@@ -894,6 +894,13 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	if !c.Config.DisablePrefixMapping && !c.NoPrefixMap {
 		ps, sources := c.resolvePrefixMapPaths()
 		c.logPrefixMapSources(ps, sources)
+
+		wantsDD := ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == ""
+		acceptsDD := c.XcodeArgs.AcceptsDerivedDataPath()
+		if wantsDD && !acceptsDD {
+			c.Logger.Debugf("Not injecting -derivedDataPath: argv lacks -scheme/-testProductsPath/-xctestrun")
+		}
+
 		suffix := xcodeargs.BuildOtherCFlagsValue(ps)
 
 		additional[xcodeargs.ClangEnablePrefixMappingKey] = "YES"
@@ -905,7 +912,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		userOtherCFlagsToSplice = c.XcodeArgs.UserOtherCFlags()
 		mergedOtherCFlags = xcodeargs.MergeOtherCFlagsValue(userOtherCFlagsToSplice, suffix)
 
-		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" {
+		if wantsDD && acceptsDD {
 			extraArgv = append(extraArgv, xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath)
 		}
 	}
@@ -1015,7 +1022,7 @@ func (c *XcodebuildRunner) sourcePackagesArgvForQueryAction() []string {
 	dd := c.XcodeArgs.DerivedDataPath()
 	if dd == "" {
 		projectDir := c.XcodeArgs.ProjectDir()
-		if c.NoManagedDD || projectDir == "" {
+		if c.NoManagedDD || projectDir == "" || !c.XcodeArgs.AcceptsDerivedDataPath() {
 			return nil
 		}
 		p := c.resolvePaths()

@@ -290,12 +290,13 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 
 				return []string{"xcodebuild"}
 			},
-			ProjectDirFunc:      func() string { return "/work/app" },
-			DerivedDataPathFunc: func() string { return "" },
-			ProjectTempDirFunc:  func() string { return "" },
-			UserOtherCFlagsFunc: func() string { return "" },
-			CommandFunc:         func() string { return "xcodebuild" },
-			ShortCommandFunc:    func() string { return "xcodebuild" },
+			ProjectDirFunc:             func() string { return "/work/app" },
+			DerivedDataPathFunc:        func() string { return "" },
+			AcceptsDerivedDataPathFunc: func() bool { return true },
+			ProjectTempDirFunc:         func() string { return "" },
+			UserOtherCFlagsFunc:        func() string { return "" },
+			CommandFunc:                func() string { return "xcodebuild" },
+			ShortCommandFunc:           func() string { return "xcodebuild" },
 		}
 		var captured []string
 		r := newRunnerWithArgs(xcelerate.Config{
@@ -322,6 +323,32 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 		assert.Contains(t, other, "-fdepscan-prefix-map=/work/app=/^src")
 		assert.Contains(t, other, "/^dd")
 		assert.Contains(t, other, "/^obj")
+	})
+
+	t.Run("skips -derivedDataPath on target-only builds xcodebuild would reject it on", func(t *testing.T) {
+		argsMock := &xcodeargsMocks.XcodeArgsMock{
+			HasBuildActionFunc: func() bool { return true },
+			ArgsFunc: func(_ map[string]string) []string {
+				return []string{"xcodebuild", "-project", "Foo.xcodeproj", "-target", "Foo"}
+			},
+			ProjectDirFunc:             func() string { return "/work/app" },
+			DerivedDataPathFunc:        func() string { return "" },
+			AcceptsDerivedDataPathFunc: func() bool { return false },
+			ProjectTempDirFunc:         func() string { return "" },
+			UserOtherCFlagsFunc:        func() string { return "" },
+			CommandFunc:                func() string { return "xcodebuild" },
+			ShortCommandFunc:           func() string { return "xcodebuild" },
+		}
+		var captured []string
+		r := newRunnerWithArgs(xcelerate.Config{
+			BuildCacheEnabled: true,
+			ProxySocketPath:   "/tmp/proxy.sock",
+		}, argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.DerivedDataPathFlag)
+		assert.NotEmpty(t, findBuildSetting(captured, xcodeargs.OtherCFlagsKey), "prefix mapping must still apply")
 	})
 
 	t.Run("respects user-supplied DerivedDataPath (no injection)", func(t *testing.T) {
@@ -377,11 +404,12 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 
 	t.Run("--no-prefix-map opt-out disables the entire mechanism", func(t *testing.T) {
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
-			HasBuildActionFunc: func() bool { return true },
-			ArgsFunc:           func(_ map[string]string) []string { return []string{"xcodebuild"} },
-			ProjectDirFunc:     func() string { return "/work/app" },
-			CommandFunc:        func() string { return "xcodebuild" },
-			ShortCommandFunc:   func() string { return "xcodebuild" },
+			HasBuildActionFunc:         func() bool { return true },
+			AcceptsDerivedDataPathFunc: func() bool { return true },
+			ArgsFunc:                   func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			ProjectDirFunc:             func() string { return "/work/app" },
+			CommandFunc:                func() string { return "xcodebuild" },
+			ShortCommandFunc:           func() string { return "xcodebuild" },
 		}
 		var captured []string
 		r := newRunnerWithArgs(xcelerate.Config{
@@ -398,7 +426,8 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 	t.Run("--no-managed-derived-data leaves prefix mapping on but skips the wrapper-owned dirs", func(t *testing.T) {
 		var receivedAdditional map[string]string
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
-			HasBuildActionFunc: func() bool { return true },
+			HasBuildActionFunc:         func() bool { return true },
+			AcceptsDerivedDataPathFunc: func() bool { return true },
 			ArgsFunc: func(additional map[string]string) []string {
 				receivedAdditional = additional
 
@@ -530,6 +559,7 @@ func Test_queryActionSourcePackages(t *testing.T) {
 			ResolvesPackagesFunc:            func() bool { return resolves },
 			ClonedSourcePackagesDirPathFunc: func() string { return userSPM },
 			DerivedDataPathFunc:             func() string { return userDD },
+			AcceptsDerivedDataPathFunc:      func() bool { return true },
 			ProjectDirFunc:                  func() string { return "/work/app" },
 			ProjectTempDirFunc:              func() string { return "" },
 			UserOtherCFlagsFunc:             func() string { return "" },
@@ -550,6 +580,30 @@ func Test_queryActionSourcePackages(t *testing.T) {
 		require.Less(t, idx+1, len(captured))
 		assert.Contains(t, captured[idx+1], "/h/.bitrise/cache/xcode-dd/")
 		assert.True(t, strings.HasSuffix(captured[idx+1], "/SourcePackages"), captured[idx+1])
+	})
+
+	t.Run("leaves default DerivedData alone when the build would not be redirected", func(t *testing.T) {
+		var captured []string
+		argsMock := newArgs(true, "", "")
+		argsMock.AcceptsDerivedDataPathFunc = func() bool { return false }
+		r := newRunner(argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+	})
+
+	t.Run("follows a user-supplied derivedDataPath even when the flag would not be injected", func(t *testing.T) {
+		var captured []string
+		argsMock := newArgs(true, "", "/user/dd")
+		argsMock.AcceptsDerivedDataPathFunc = func() bool { return false }
+		r := newRunner(argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		idx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		require.GreaterOrEqual(t, idx, 0)
+		assert.Equal(t, "/user/dd/SourcePackages", captured[idx+1])
 	})
 
 	t.Run("follows a user-supplied derivedDataPath", func(t *testing.T) {
