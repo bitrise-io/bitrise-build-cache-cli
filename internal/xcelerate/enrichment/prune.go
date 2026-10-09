@@ -17,7 +17,7 @@ import (
 const SessionSidecarMaxAge = 7 * 24 * time.Hour
 
 // PruneAll runs every enrichment-side startup sweep in one shot: handled
-// manifest UUIDs, orphan pending records, and stale proxy session sidecars.
+// manifest UUIDs, wrapperless pending records, and stale proxy session sidecars.
 func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	l := logOr(logger)
 
