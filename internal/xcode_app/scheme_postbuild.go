@@ -151,6 +151,7 @@ func hasFlushPostAction(content string) bool {
 	return strings.Contains(content, `ActionID = "`+FlushPostActionIdentifier+`"`)
 }
 
+// Assumes non-self-closing <BuildAction>, which is Xcode's authored shape.
 var buildActionOpenRe = regexp.MustCompile(`(?s)<BuildAction\b[^>]*>`)
 
 func injectIntoScheme(content, cliBinaryPath string) (string, error) {
