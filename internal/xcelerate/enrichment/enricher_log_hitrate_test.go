@@ -72,7 +72,7 @@ func newEnrichSetup(t *testing.T) *enrichSetup {
 	}
 
 	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
-		UUID:      "orphan",
+		UUID:      "wrapperless",
 		Signature: "Build MyScheme",
 		FileName:  logName,
 		Status:    "S",
@@ -161,7 +161,7 @@ func TestEnricher_LogHitRate_MissingFileName_FastReturn(t *testing.T) {
 	s := newEnrichSetup(t)
 	// Malformed manifest: primary entry has no FileName.
 	s.group = enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
-		UUID:      "orphan",
+		UUID:      "wrapperless",
 		Signature: "Build MyScheme",
 		Status:    "S",
 		Start:     time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
