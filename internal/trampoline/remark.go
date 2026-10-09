@@ -120,11 +120,7 @@ func readPidFile(path string) (int, bool) {
 	if err != nil {
 		return 0, false
 	}
-
 	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-	if err != nil || pid <= 0 {
-		return 0, false
-	}
 
-	return pid, true
+	return pid, err == nil && pid > 0
 }
