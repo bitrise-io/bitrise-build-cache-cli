@@ -69,6 +69,7 @@ with --no-update-check / --no-backend-probe.`,
 
 		d := doctorpkg.NewDoctor()
 		d.Debug = common.IsDebugLogMode
+		d.LazyXcelerateProxy = true
 		doctorLogger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 		d.AuthFixPrompt = interactive.FixAuthPrompt(cmd.Context(), doctorLogger)
 		d.WorkspacePickPrompt = interactive.PickWorkspacePrompt(cmd.Context(), doctorLogger)

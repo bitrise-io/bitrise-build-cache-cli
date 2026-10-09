@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/activateall"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/auth"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/bazel"
 	_ "github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/browse"

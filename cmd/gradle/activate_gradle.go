@@ -51,6 +51,9 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		if merr := mirrorsconfig.MigratePrebootInitScript(logger, utils.DefaultOsProxy{}, p.GradleHome(""), gradleHome); merr != nil {
 			logger.Warnf("Could not relocate preboot Gradle mirrors init script: %s", merr)
 		}
+		if merr := mirrorsconfig.MigratePrebootBuildCacheInitScript(logger, utils.DefaultOsProxy{}, p.GradleHome(""), gradleHome); merr != nil {
+			logger.Warnf("Could not relocate preboot Gradle build-cache init script: %s", merr)
+		}
 
 		activateGradleParams.CLIPath = clibin.Resolve(logger)
 
@@ -107,6 +110,10 @@ If the "# [start/end] generated-by-bitrise-build-cache" block is already present
 		}
 
 		logger.TInfof("✅ Bitrise plugins activated")
+		configcommon.PrintNextSteps(logger, []string{
+			"Run a build from this shell, e.g. `./gradlew assembleDebug`.",
+			"The first build populates the cache; subsequent builds hit it. Look for `Build cache (...)` lines in the Gradle output.",
+		}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-gradle/configuring-the-build-cache-for-gradle-in-local-builds.html")
 
 		return nil
 	},

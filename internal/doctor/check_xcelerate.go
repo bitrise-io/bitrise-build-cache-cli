@@ -15,6 +15,7 @@ func (d *Doctor) xcelerateProxyCheck() Check {
 		ToolLabel:  "xcode",
 		SocketPath: d.xcelerateSocketPath(),
 		Fixer:      StartProxyFixer(),
+		LazySpawn:  d.LazyXcelerateProxy,
 	})
 }
 

@@ -21,7 +21,6 @@ const (
 // Re-exported constants for backward compatibility with existing tests.
 var ( //nolint:gochecknoglobals // re-exports from internal
 	ActivateXcodeSuccessful = xcelerate.ActivateXcodeSuccessful //nolint:gochecknoglobals
-	AddXcelerateToPath      = xcelerate.AddXcelerateToPath      //nolint:gochecknoglobals
 	ErrFmtCreateXcodeConfig = xcelerate.ErrFmtCreateXcodeConfig //nolint:gochecknoglobals
 )
 

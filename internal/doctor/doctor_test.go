@@ -223,8 +223,23 @@ func TestKeychainSmokeCheck_deleteFailIsWarn(t *testing.T) {
 
 // ──────────────────────────── xcelerate proxy ────────────────────────────
 
-// The socket is the only signal that the cache is not serving.
-func TestXcelerateProxyCheck_warnsWhenNotRunning(t *testing.T) {
+// A missing socket pre-first-build is normal: the proxy spawns on first use.
+func TestXcelerateProxyCheck_notRunningIsIdle(t *testing.T) {
+	r := &Doctor{
+		Envs:               map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LazyXcelerateProxy: true,
+	}
+
+	res := r.xcelerateProxyCheck().Diagnose(context.Background())
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "idle; starts on first build")
+	assert.False(t, res.Fixable)
+}
+
+// Default (wrapper-gate) sees a missing socket as a startup failure, since the
+// wrapper has already started the proxy by the time the check runs.
+func TestXcelerateProxyCheck_notRunningWarnsByDefault(t *testing.T) {
 	r := &Doctor{
 		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
 		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
@@ -232,8 +247,8 @@ func TestXcelerateProxyCheck_warnsWhenNotRunning(t *testing.T) {
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
 	assert.Equal(t, StateWarn, res.State)
-	assert.Contains(t, res.Detail, "no socket file")
 	assert.True(t, res.Fixable)
+	assert.NotNil(t, res.Fixer)
 }
 
 func TestXcelerateProxyCheck_skippedWhenNotActivated(t *testing.T) {
@@ -688,16 +703,17 @@ func TestProbeKey_lengthAndPrefix(t *testing.T) {
 
 // ──────────────────────────── start-service + update fixes ────────────────────────────
 
-// The remedy must spawn a proxy, not poke a service manager.
-func TestXcelerateProxyCheck_fixerStartsAProxyWhenNoSocket(t *testing.T) {
+// Pre-first-build there is no proxy, so there is nothing to fix.
+func TestXcelerateProxyCheck_noSocketHasNoFixer(t *testing.T) {
 	r := &Doctor{
-		Envs:           map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
-		ActivatedTools: func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		Envs:               map[string]string{"BITRISE_XCELERATE_PROXY_SOCKET_PATH": filepath.Join(t.TempDir(), "missing.sock")},
+		ActivatedTools:     func() map[toolconfig.Tool]bool { return map[toolconfig.Tool]bool{toolconfig.Xcelerate: true} },
+		LazyXcelerateProxy: true,
 	}
 
 	res := r.xcelerateProxyCheck().Diagnose(context.Background())
-	assert.Equal(t, StateWarn, res.State, "a missing proxy must still warn")
-	require.IsType(t, StartServiceFixer{}, res.Fixer)
+	assert.Equal(t, StateOK, res.State)
+	assert.Nil(t, res.Fixer)
 }
 
 func TestCcacheHelperCheck_noSocketIsFixable(t *testing.T) {
