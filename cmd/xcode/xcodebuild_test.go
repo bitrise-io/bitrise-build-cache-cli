@@ -557,6 +557,7 @@ func Test_queryActionSourcePackages(t *testing.T) {
 			ResolvesPackagesFunc:            func() bool { return resolves },
 			ClonedSourcePackagesDirPathFunc: func() string { return userSPM },
 			DerivedDataPathFunc:             func() string { return userDD },
+			AcceptsDerivedDataPathFunc:      func() bool { return true },
 			ProjectDirFunc:                  func() string { return "/work/app" },
 			ProjectTempDirFunc:              func() string { return "" },
 			UserOtherCFlagsFunc:             func() string { return "" },
@@ -577,6 +578,17 @@ func Test_queryActionSourcePackages(t *testing.T) {
 		require.Less(t, idx+1, len(captured))
 		assert.Contains(t, captured[idx+1], "/h/.bitrise/cache/xcode-dd/")
 		assert.True(t, strings.HasSuffix(captured[idx+1], "/SourcePackages"), captured[idx+1])
+	})
+
+	t.Run("leaves default DerivedData alone when the build would not be redirected", func(t *testing.T) {
+		var captured []string
+		argsMock := newArgs(true, "", "")
+		argsMock.AcceptsDerivedDataPathFunc = func() bool { return false }
+		r := newRunner(argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
 	})
 
 	t.Run("follows a user-supplied derivedDataPath", func(t *testing.T) {
