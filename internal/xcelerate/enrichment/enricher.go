@@ -39,15 +39,15 @@ type Enricher struct {
 	Now              func() time.Time
 	SidecarReader    SidecarReader
 	XcresultParser   xcresult.Parser
-	// LocalLogAppender appends a Record on each successful orphan PUT so
+	// LocalLogAppender appends a Record on each successful wrapperless PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
 	LocalLogAppender LocalLogAppender
-	// OnEmitted fires with the invocation ID on each successful orphan PUT.
+	// OnEmitted fires with the invocation ID on each successful wrapperless PUT.
 	// nil disables. Used by flush-session to collect IDs emitted during a sweep.
 	OnEmitted func(invocationID string)
 }
 
-// LocalLogAppender is the subset of invocations.Writer used by the orphan
+// LocalLogAppender is the subset of invocations.Writer used by the wrapperless
 // path. Defined here (instead of imported) to keep enricher's test harness
 // free of the invocations package when callers inject fakes.
 type LocalLogAppender interface {

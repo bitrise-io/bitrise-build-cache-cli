@@ -180,7 +180,7 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 }
 
 // wrapperSessionActive reports whether the SetSession path currently owns the
-// InvocationID. Trampoline/orphan derivation defers to the wrapper when true.
+// InvocationID. Trampoline/wrapperless derivation defers to the wrapper when true.
 func (p *Proxy) wrapperSessionActive() bool {
 	p.sessionMutex.Lock()
 	defer p.sessionMutex.Unlock()

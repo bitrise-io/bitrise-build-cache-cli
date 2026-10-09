@@ -2262,7 +2262,7 @@ workflows:
       the toolchain's swiftc/clang/swift auto-starts the proxy from a cold
       state (no wrapper on PATH, no prior xcelerate start-proxy). Asserts the
       proxy socket exists after the build, the sidecar JSON lands, the
-      enricher emits a derived InvocationID for the orphan, and stop-proxy
+      enricher emits a derived InvocationID for the wrapperless invocation, and stop-proxy
       surfaces the Visit URL on stdout.
 
       Two-shim coexistence (compiler trampoline + dsymutil CAS shim toolchain)
@@ -2349,7 +2349,7 @@ workflows:
             set -e
             echo "trampoline xcodebuild rc=$RC"
     - script:
-        title: Assert proxy socket + sidecar + orphan ID shape
+        title: Assert proxy socket + sidecar + wrapperless ID shape
         inputs:
         - content: |-
             set -exo pipefail
