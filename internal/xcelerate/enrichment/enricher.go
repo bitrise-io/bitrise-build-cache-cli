@@ -47,7 +47,7 @@ func (e *Enricher) now() time.Time {
 }
 
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
-// xcactivitylog read used to populate the orphan hit rate.
+// xcactivitylog read used to populate the wrapperless hit rate.
 func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
 
