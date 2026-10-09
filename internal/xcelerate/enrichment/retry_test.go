@@ -174,11 +174,11 @@ func TestRetrier_StartupSweep_DropsRecordPastMaxAge(t *testing.T) {
 
 	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
 	require.NoError(t, store.Append(enrichment.PendingRecord{
-		InvocationID:    "old-orphan",
+		InvocationID:    "old-wrapperless",
 		StartTime:       now.Add(-48 * time.Hour),
 		FirstAttempt:    now.Add(-48 * time.Hour),
 		Attempts:        1,
-		EnrichedPayload: mustPayload(t, "old-orphan"),
+		EnrichedPayload: mustPayload(t, "old-wrapperless"),
 	}))
 	require.NoError(t, store.Append(enrichment.PendingRecord{
 		InvocationID:    "fresh",
@@ -229,7 +229,7 @@ func TestRetrier_StartupSweep_DropsRecordPastMaxAge(t *testing.T) {
 	t.Fatal("startup sweep did not drop the past-MaxAge record within 2s")
 }
 
-func TestRetrier_Sweep_DrainsStrandedOrphans(t *testing.T) {
+func TestRetrier_Sweep_DrainsStrandedWrapperless(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
@@ -254,7 +254,7 @@ func TestRetrier_Sweep_DrainsStrandedOrphans(t *testing.T) {
 	assert.Empty(t, loaded, "sweep must drain Attempts==0 records older than MaxAge")
 }
 
-func TestRetrier_Sweep_KeepsFreshOrphan(t *testing.T) {
+func TestRetrier_Sweep_KeepsFreshWrapperless(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
@@ -316,7 +316,7 @@ func TestRetrier_ConcurrentAppendAndSweep(t *testing.T) {
 
 	r := &enrichment.Retrier{Store: store, Client: mock, MaxAge: 24 * time.Hour, Now: func() time.Time { return now }}
 
-	// Kick off Sweep + 10 concurrent Appends (Attempts=0 records — orphan-slim path).
+	// Kick off Sweep + 10 concurrent Appends (Attempts=0 records — wrapperless-slim path).
 	var wg sync.WaitGroup
 	wg.Add(11)
 	go func() {

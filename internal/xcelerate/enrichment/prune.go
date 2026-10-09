@@ -17,7 +17,7 @@ import (
 const SessionSidecarMaxAge = 7 * 24 * time.Hour
 
 // PruneAll runs every enrichment-side startup sweep in one shot: handled
-// manifest UUIDs, orphan pending records, and stale proxy session sidecars.
+// manifest UUIDs, wrapperless pending records, and stale proxy session sidecars.
 func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	l := logOr(logger)
 
@@ -27,8 +27,8 @@ func PruneAll(p paths.Paths, now time.Time, logger log.Logger) {
 	}
 
 	pending := &Store{Path: p.PendingInvocationsFile()}
-	if _, err := pending.PruneOrphansOlderThan(now, DefaultRetryMaxAge); err != nil {
-		l.Debugf("PruneAll: pending orphan prune failed: %s", err)
+	if _, err := pending.PruneWrapperlessOlderThan(now, DefaultRetryMaxAge); err != nil {
+		l.Debugf("PruneAll: pending wrapperless prune failed: %s", err)
 	}
 
 	if _, err := pruneSessionSidecars(p.XcelerateSessionsDir(), now, SessionSidecarMaxAge); err != nil {

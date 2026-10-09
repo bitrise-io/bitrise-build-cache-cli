@@ -49,7 +49,7 @@ func (e *Enricher) now() time.Time {
 }
 
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
-// xcactivitylog read used to populate the orphan hit rate.
+// xcactivitylog read used to populate the wrapperless hit rate.
 func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
 
@@ -135,7 +135,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		if persisted := e.recordOrphanFailure(invocationID, inv, err); persisted {
+		if persisted := e.recordWrapperlessFailure(invocationID, inv, err); persisted {
 			unlinkSidecars(consumedPaths, logger)
 		}
 
@@ -148,7 +148,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
-	logger.Infof("Enriched invocation PUT %s (orphan scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
+	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
@@ -162,10 +162,10 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
-// recordOrphanFailure returns true when the enriched payload was persisted to
+// recordWrapperlessFailure returns true when the enriched payload was persisted to
 // the retry store, so sidecar unlink can proceed; false when the record was
 // dropped and sidecars must be left for a later invocation to re-consume.
-func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
+func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
 		return false
 	}
@@ -189,7 +189,7 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 		EnrichedPayload: payload,
 	}
 	if err := e.Store.Append(rec); err != nil {
-		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
+		logger.Warnf("Failed to append wrapperless retry record %s: %s", invocationID, err)
 
 		return false
 	}

@@ -190,14 +190,14 @@ func TestStore_Mutate_HoldsLockAcrossLoadAndSave(t *testing.T) {
 	assert.Equal(t, "b", loaded[0].InvocationID)
 }
 
-func TestStore_PruneOrphansOlderThan(t *testing.T) {
+func TestStore_PruneWrapperlessOlderThan(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
 	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
-	// Old untouched orphan → prune.
+	// Old untouched wrapperless → prune.
 	require.NoError(t, s.Append(enrichment.PendingRecord{
-		InvocationID: "old-orphan",
+		InvocationID: "old-wrapperless",
 		StartTime:    now.Add(-48 * time.Hour),
 	}))
 	// Retried record older than cutoff → keep (Retrier owns retry aging).
@@ -213,9 +213,9 @@ func TestStore_PruneOrphansOlderThan(t *testing.T) {
 		StartTime:    now.Add(-time.Hour),
 	}))
 
-	pruned, err := s.PruneOrphansOlderThan(now, 24*time.Hour)
+	pruned, err := s.PruneWrapperlessOlderThan(now, 24*time.Hour)
 	require.NoError(t, err)
-	assert.Equal(t, 1, pruned, "only the old untouched orphan must count")
+	assert.Equal(t, 1, pruned, "only the old untouched wrapperless record must count")
 
 	loaded, err := s.Load()
 	require.NoError(t, err)
@@ -223,10 +223,10 @@ func TestStore_PruneOrphansOlderThan(t *testing.T) {
 	ids := []string{loaded[0].InvocationID, loaded[1].InvocationID}
 	assert.Contains(t, ids, "old-retried")
 	assert.Contains(t, ids, "fresh")
-	assert.NotContains(t, ids, "old-orphan")
+	assert.NotContains(t, ids, "old-wrapperless")
 }
 
-func TestStore_PruneOrphansOlderThan_ReportsZeroWhenNothingRemoved(t *testing.T) {
+func TestStore_PruneWrapperlessOlderThan_ReportsZeroWhenNothingRemoved(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
 	s := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
@@ -236,7 +236,7 @@ func TestStore_PruneOrphansOlderThan_ReportsZeroWhenNothingRemoved(t *testing.T)
 		StartTime:    now.Add(-time.Hour),
 	}))
 
-	pruned, err := s.PruneOrphansOlderThan(now, 24*time.Hour)
+	pruned, err := s.PruneWrapperlessOlderThan(now, 24*time.Hour)
 	require.NoError(t, err)
 	assert.Zero(t, pruned)
 

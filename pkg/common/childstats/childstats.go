@@ -45,7 +45,7 @@ const (
 
 	// DefaultSweepTTL is how long a parent ledger directory is kept before
 	// Sweep considers it stale. Long enough to outlast any real build;
-	// short enough that orphaned dirs (crashed wrappers, aborted steps)
+	// short enough that abandoned dirs (crashed wrappers, aborted steps)
 	// do not accumulate forever.
 	DefaultSweepTTL = 7 * 24 * time.Hour
 )

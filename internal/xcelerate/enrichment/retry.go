@@ -46,7 +46,7 @@ func (r *Retrier) Run(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Sweep once before waiting out the first tick: a restart is exactly when
-	// orphans from the previous process are sitting in the store, and holding
+	// wrapperless records from the previous process are sitting in the store, and holding
 	// them for a full interval leaves them visible to the doctor's pending check.
 	r.Sweep()
 
@@ -157,20 +157,20 @@ func (r *Retrier) Sweep() {
 		}
 	}
 
-	r.pruneStrandedOrphans(logger, now)
+	r.pruneStrandedWrapperless(logger, now)
 }
 
-// pruneStrandedOrphans drains slim-emitted (Attempts==0) records the watcher
+// pruneStrandedWrapperless drains slim-emitted (Attempts==0) records the watcher
 // path never touches so the pending queue is bounded by DefaultRetryMaxAge
 // instead of "until the next proxy restart".
-func (r *Retrier) pruneStrandedOrphans(logger log.Logger, now time.Time) {
-	pruned, err := r.Store.PruneOrphansOlderThan(now, DefaultRetryMaxAge)
+func (r *Retrier) pruneStrandedWrapperless(logger log.Logger, now time.Time) {
+	pruned, err := r.Store.PruneWrapperlessOlderThan(now, DefaultRetryMaxAge)
 	switch {
 	case err != nil:
-		logger.Warnf("Retrier: prune orphans failed: %s", err)
+		logger.Warnf("Retrier: prune wrapperless failed: %s", err)
 	case pruned > 0:
-		logger.Infof("Retrier: pruned %d stranded orphan record(s)", pruned)
+		logger.Infof("Retrier: pruned %d stranded wrapperless record(s)", pruned)
 	default:
-		logger.Debugf("Retrier: no stranded orphans to prune")
+		logger.Debugf("Retrier: no stranded wrapperless records to prune")
 	}
 }

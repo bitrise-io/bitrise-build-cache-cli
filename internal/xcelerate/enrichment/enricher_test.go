@@ -85,7 +85,7 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	entry := enrichment.ManifestEntry{
-		UUID:      "orphan",
+		UUID:      "wrapperless",
 		Signature: "Archive MyScheme",
 		Status:    "E",
 		Start:     time.Now(),
@@ -233,7 +233,7 @@ func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
 	assert.Contains(t, snap.LastError, "network down")
 }
 
-func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
+func TestEnricher_PutFailure_WrapperlessCreatesFreshRecord(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
@@ -249,7 +249,7 @@ func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
 	}
 
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
-		UUID:      "orphan",
+		UUID:      "wrapperless",
 		Signature: "Archive S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -283,7 +283,7 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 		Stop:      time.Now().Add(time.Second),
 	}))
 
-	assert.NotEmpty(t, captured.InvocationID, "orphan path must mint an ID and PUT")
+	assert.NotEmpty(t, captured.InvocationID, "wrapperless path must mint an ID and PUT")
 }
 
 func TestEnricher_MatchedSkip_DoesNotTickHealth(t *testing.T) {
@@ -353,10 +353,10 @@ func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, now, snap.LastSuccess.UTC(), "unmatched success still ticks LastSuccess")
 	assert.True(t, snap.LastMatched.IsZero(),
-		"unmatched (orphan) success must NOT bump LastMatched — that field is reserved for the correlated path")
+		"unmatched (wrapperless) success must NOT bump LastMatched — that field is reserved for the correlated path")
 }
 
-func TestEnricher_OrphanDurationIsFromManifest(t *testing.T) {
+func TestEnricher_WrapperlessDurationIsFromManifest(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	base := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
@@ -378,7 +378,7 @@ func TestEnricher_OrphanDurationIsFromManifest(t *testing.T) {
 		Stop:      base.Add(43 * time.Second),
 	}))
 
-	assert.Equal(t, int64(42_000), captured.DurationMs, "orphan-path duration comes from Stop-Start of the manifest entry")
+	assert.Equal(t, int64(42_000), captured.DurationMs, "wrapperless-path duration comes from Stop-Start of the manifest entry")
 }
 
 func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
@@ -411,7 +411,7 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")
 }
 
-func TestEnricher_OrphanFailurePopulatesSyntheticError(t *testing.T) {
+func TestEnricher_WrapperlessFailurePopulatesSyntheticError(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -425,7 +425,7 @@ func TestEnricher_OrphanFailurePopulatesSyntheticError(t *testing.T) {
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
-		UUID:      "orphan-failed",
+		UUID:      "wrapperless-failed",
 		Signature: "Build S",
 		Status:    "E",
 		Start:     time.Now(),
@@ -434,7 +434,7 @@ func TestEnricher_OrphanFailurePopulatesSyntheticError(t *testing.T) {
 
 	assert.False(t, captured.Success)
 	assert.Equal(t, "xcodebuild failed (status=E)", captured.Error,
-		"orphan PUT must carry a synthetic Error so BE rows surface failure signal")
+		"wrapperless PUT must carry a synthetic Error so BE rows surface failure signal")
 }
 
 func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
@@ -627,7 +627,7 @@ func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
 	}))
 
 	_, err := os.Stat(p1)
-	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked when the orphan record is persisted")
+	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked when the wrapperless record is persisted")
 
 	loaded, err := store.Load()
 	require.NoError(t, err)
@@ -661,7 +661,7 @@ func (p *fakeXcresultParser) Parse(_ context.Context, _ string) xcresult.Summary
 	return p.summary
 }
 
-func TestEnricher_OrphanAttachesXcresultSummary(t *testing.T) {
+func TestEnricher_WrapperlessAttachesXcresultSummary(t *testing.T) {
 	s := newEnrichSetup(t)
 
 	bundlePath := filepath.Join(s.manifestDir, "AAAA-BBBB.xcresult")
@@ -690,7 +690,7 @@ func TestEnricher_OrphanAttachesXcresultSummary(t *testing.T) {
 	assert.Equal(t, "compile error", s.captured.Failures[0].Message)
 }
 
-func TestEnricher_OrphanSkipsXcresultWhenBundleMissing(t *testing.T) {
+func TestEnricher_WrapperlessSkipsXcresultWhenBundleMissing(t *testing.T) {
 	s := newEnrichSetup(t)
 
 	parser := &fakeXcresultParser{summary: xcresult.Summary{
@@ -705,7 +705,7 @@ func TestEnricher_OrphanSkipsXcresultWhenBundleMissing(t *testing.T) {
 	assert.Empty(t, s.captured.Failures)
 }
 
-func TestEnricher_OrphanSkipsXcresultWhenParserNil(t *testing.T) {
+func TestEnricher_WrapperlessSkipsXcresultWhenParserNil(t *testing.T) {
 	s := newEnrichSetup(t)
 
 	bundlePath := filepath.Join(s.manifestDir, "AAAA-BBBB.xcresult")

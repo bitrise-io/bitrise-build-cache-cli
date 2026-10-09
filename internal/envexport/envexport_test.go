@@ -137,7 +137,7 @@ func TestRemoveFromShellRC_KeepsFileWhenBlockIsOnlyContent(t *testing.T) {
 }
 
 // Round-trip test: ExportToShellRC then RemoveFromShellRC must leave the RC file
-// byte-identical to its pre-write state — no phantom whitespace, no orphan block,
+// byte-identical to its pre-write state — no phantom whitespace, no wrapperless block,
 // no leaked state. Mirrors TestChangeAndRemoveBlock_RoundTrip in stringmerge.
 func TestExportAndRemoveFromShellRC_RoundTrip(t *testing.T) {
 	t.Parallel()

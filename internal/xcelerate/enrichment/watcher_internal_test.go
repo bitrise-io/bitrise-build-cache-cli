@@ -122,7 +122,7 @@ func groupContainsUUID(g ManifestEntryGroup, uuid string) bool {
 	return false
 }
 
-func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T) {
+func TestWatcher_scan_UnmatchedEntry_MintedAsWrapperlessAfterMaxRetries(t *testing.T) {
 	home := t.TempDir()
 	writeFixtureManifest(t, home)
 	uuid := pickUUID(t, home)
@@ -145,7 +145,7 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 	w.retries = map[string]int{}
 
 	// MaxCorrelationRetries=2 gives 2 retry scans held after the fresh sight,
-	// and orphan-fires on the next (4th total) scan.
+	// and wrapperless-fires on the next (4th total) scan.
 	w.scan(false)
 	assert.Empty(t, handled, "first sight: buckets the group for retry")
 	assert.NotEmpty(t, w.retries, "retry bucket must contain the held group")
@@ -158,7 +158,7 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 	assert.Empty(t, handled, "retry scan 2: decrements 1->0, still held")
 
 	w.scan(false)
-	assert.Equal(t, []string{uuid}, handled, "retries exhausted: mints as orphan")
+	assert.Equal(t, []string{uuid}, handled, "retries exhausted: mints as wrapperless")
 	assert.Contains(t, w.seen, uuid)
 }
 
@@ -530,7 +530,7 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 
 	w.scan(false)
 
-	assert.Zero(t, handles, "entries older than HandledManifestMaxAge must be skipped, not resurrected as orphans")
+	assert.Zero(t, handles, "entries older than HandledManifestMaxAge must be skipped, not resurrected as wrapperless invocations")
 	assert.Empty(t, w.seen, "stale entries must not be marked seen either")
 }
 

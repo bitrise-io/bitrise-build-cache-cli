@@ -181,7 +181,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 	logger := logOr(w.Logger)
 
 	stop := group.Stop()
-	// Age gate: HandledStore prunes seen-UUIDs after HandledManifestMaxAge, so a group older than that on-disk would otherwise be replayed as a fresh orphan on restart.
+	// Age gate: HandledStore prunes seen-UUIDs after HandledManifestMaxAge, so a group older than that on-disk would otherwise be replayed as a fresh wrapperless invocation on restart.
 	if !stop.IsZero() && stop.Before(w.now().Add(-HandledManifestMaxAge)) {
 		logger.Debugf("Watcher: skip stale group scheme=%s stop=%s uuids=%v", group.SchemeName(), stop.Format(time.RFC3339), group.UUIDs())
 
@@ -226,7 +226,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 			w.retries[key]--
 			logger.Debugf("Watcher: pending still unmatched, decrement scheme=%s attempts_left=%d", group.SchemeName(), w.retries[key])
 		default:
-			logger.Debugf("Watcher: pending retries exhausted, minting orphan scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+			logger.Debugf("Watcher: pending retries exhausted, minting wrapperless scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
 			w.Handle(manifestPath, group)
 			w.markGroupHandled(group)
 			delete(w.retries, key)

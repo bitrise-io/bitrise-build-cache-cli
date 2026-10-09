@@ -1884,7 +1884,7 @@ workflows:
     description: |
       Proves the slim-emit vs xcactivitylog-watcher timing race is
       handled by the retry bucket in the enrichment watcher: the watcher must not
-      mint an orphan invocation when it sees the manifest before the wrapper's slim
+      mint a wrapperless invocation when it sees the manifest before the wrapper's slim
       record lands. We force slim-emit slow (30s inactivity window) so the watcher's 5s
       poll definitely observes the manifest first; the retry bucket must
       then defer, wait for the slim record, and enrich the wrapper's own
@@ -1951,7 +1951,7 @@ workflows:
             echo "Sleeping 60s to let slim-emit and enrichment watcher converge…"
             sleep 60
     - script:
-        title: Assert wrapper invocation was enriched (no orphan)
+        title: Assert wrapper invocation was enriched (no wrapperless)
         inputs:
         - content: |-
             set -exo pipefail
@@ -1962,13 +1962,13 @@ workflows:
             assert_bitrise_invocation_in_list "$INVOCATION_ID" "xcode"
 
             # Enriched fields present on OUR id proves the watcher correlated
-            # against the slim record instead of minting an orphan under a new UUID.
+            # against the slim record instead of minting a wrapperless invocation under a new UUID.
             assert_xcode_invocation_enriched "$INVOCATION_ID"
 
             # Belt-and-braces: list all xcode invocations for this build; must be
             # exactly one, and it must be the wrapper's InvocationID. Two would
-            # mean the watcher gave up and minted an orphan.
-            assert_xcode_no_orphan_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
+            # mean the watcher gave up and minted a wrapperless invocation.
+            assert_xcode_no_wrapperless_invocations_for_build "$BITRISE_BUILD_SLUG" "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-activitylog-parse:
@@ -2106,10 +2106,10 @@ workflows:
   e2e-xcode-parity-compare:
     description: |
       Produces two BE invocation records on the same minimal Swift fixture — one
-      via the wrapper path, one via the orphan (toolchain-only, enricher
+      via the wrapper path, one via the wrapperless (toolchain-only, enricher
       post-shutdown sweep) path — and prints both URLs so reviewers can diff
       the two UIs side by side without local reproduction. Guards the ingest
-      path exercised by PR-B2 (enricher orphan-path ingest).
+      path exercised by PR-B2 (enricher wrapperless-path ingest).
     meta:
       bitrise.io:
         stack: osx-xcode-edge
@@ -2186,7 +2186,7 @@ workflows:
             envman add --key WRAPPER_URL --value "$WRAPPER_URL"
             echo "WRAPPER_URL=$WRAPPER_URL (wrapper exit=$WRAP_RC)"
     - script:
-        title: Reset DerivedData + sessions for orphan run (keep proxy alive)
+        title: Reset DerivedData + sessions for wrapperless run (keep proxy alive)
         inputs:
         - content: |-
             set -exo pipefail
@@ -2201,20 +2201,20 @@ workflows:
             set +e
             /usr/bin/xcodebuild -scheme "$SCHEME" -configuration Debug build \
               -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO \
-              TOOLCHAINS=io.bitrise.cas.xctoolchain 2>&1 | tee /tmp/orphan.log
-            ORPHAN_RC=${PIPESTATUS[0]}
+              TOOLCHAINS=io.bitrise.cas.xctoolchain 2>&1 | tee /tmp/wrapperless.log
+            WRAPPERLESS_RC=${PIPESTATUS[0]}
             set -e
-            echo "orphan xcodebuild rc=$ORPHAN_RC"
+            echo "wrapperless xcodebuild rc=$WRAPPERLESS_RC"
     - script:
-        title: Stop proxy and capture orphan invocation URL
+        title: Stop proxy and capture wrapperless invocation URL
         inputs:
         - content: |-
             set -exo pipefail
             "$HOME/.bitrise-xcelerate/bin/bitrise-build-cache-cli" xcelerate stop-proxy
             sleep 10
             ls ~/.local/state/xcelerate/logs/ || true
-            ORPHAN_ID=$({ cat ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | grep -oE 'Enriched invocation PUT [a-f0-9-]+' || true; } | tail -1 | awk '{print $NF}')
-            if [ -z "$ORPHAN_ID" ]; then
+            WRAPPERLESS_ID=$({ cat ~/.local/state/xcelerate/logs/proxy-*-out.log 2>/dev/null | grep -oE 'Enriched invocation PUT [a-f0-9-]+' || true; } | tail -1 | awk '{print $NF}')
+            if [ -z "$WRAPPERLESS_ID" ]; then
               echo "FAIL: no 'Enriched invocation PUT' line found across proxy logs"
               echo "---- all proxy logs tail: ----"
               for L in ~/.local/state/xcelerate/logs/proxy-*-out.log; do
@@ -2227,33 +2227,33 @@ workflows:
               cat ~/.local/state/xcelerate/enrichment/pending-invocations.ndjson 2>/dev/null | tail -20 || true
               exit 1
             fi
-            ORPHAN_URL="https://app.bitrise.io/build-cache/invocations/xcode/$ORPHAN_ID"
-            envman add --key ORPHAN_URL --value "$ORPHAN_URL"
-            echo "ORPHAN_URL=$ORPHAN_URL"
+            WRAPPERLESS_URL="https://app.bitrise.io/build-cache/invocations/xcode/$WRAPPERLESS_ID"
+            envman add --key WRAPPERLESS_URL --value "$WRAPPERLESS_URL"
+            echo "WRAPPERLESS_URL=$WRAPPERLESS_URL"
     - script:
         title: Emit side-by-side comparison summary
         is_always_run: true
         inputs:
         - content: |-
             set -exo pipefail
-            if [ -z "$WRAPPER_URL" ] || [ -z "$ORPHAN_URL" ]; then
-              echo "FAIL: missing WRAPPER_URL=$WRAPPER_URL or ORPHAN_URL=$ORPHAN_URL"
+            if [ -z "$WRAPPER_URL" ] || [ -z "$WRAPPERLESS_URL" ]; then
+              echo "FAIL: missing WRAPPER_URL=$WRAPPER_URL or WRAPPERLESS_URL=$WRAPPERLESS_URL"
               exit 1
             fi
             cat >>"$BITRISE_STEP_FORMATTED_OUTPUT_FILE_PATH" <<EOF
-            ## Xcode wrapper vs orphan parity comparison
+            ## Xcode wrapper vs wrapperless parity comparison
 
             | Flow | Invocation URL |
             |---|---|
             | Wrapper (full \`xcodebuild\` through the shim) | $WRAPPER_URL |
-            | Orphan (\`/usr/bin/xcodebuild\` + \`TOOLCHAINS=io.bitrise.cas.xctoolchain\`, enricher post-shutdown sweep) | $ORPHAN_URL |
+            | Wrapperless (\`/usr/bin/xcodebuild\` + \`TOOLCHAINS=io.bitrise.cas.xctoolchain\`, enricher post-shutdown sweep) | $WRAPPERLESS_URL |
 
             Side-by-side the two should match on \`cacheHitRate\`, \`usesCache\`, \`status\`, \`cacheBlobStats\`, \`targets\`, \`failures\`, \`cliVersion\`, \`tool\`, \`workflowName\`, \`projectTitle\`, \`username\`, \`ciProvider\`.
 
-            Known divergences: \`command\` (argv vs manifest Signature), \`shortCommand\` (wrapper carries \`[scheme/config]\`, orphan scheme-only), \`duration\` (manifest span lag ±seconds), \`startedAt\` (different runs).
+            Known divergences: \`command\` (argv vs manifest Signature), \`shortCommand\` (wrapper carries \`[scheme/config]\`, wrapperless scheme-only), \`duration\` (manifest span lag ±seconds), \`startedAt\` (different runs).
             EOF
             echo "Wrapper: $WRAPPER_URL"
-            echo "Orphan: $ORPHAN_URL"
+            echo "Wrapperless: $WRAPPERLESS_URL"
     - deploy-to-bitrise-io: {}
 
   e2e-proxy-cache-macos:

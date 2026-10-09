@@ -59,7 +59,7 @@ _bbc_first_nonempty() {
 # Guards against the enrichment re-PUT regressing: command must include -scheme
 # and shortCommand must start with build. Slim emit sets neither, so their
 # presence proves the F2 enricher's rich payload landed and was not clobbered
-# by a subsequent last-write-wins slim/orphan emit. xcodeVersion and
+# by a subsequent last-write-wins slim/wrapperless emit. xcodeVersion and
 # toolBuildNumber are smoke checks that the wrapper's version capture is still
 # wired; they'd also be populated by non-enrichment code paths and are not
 # enrichment-regression signals by themselves.
@@ -85,7 +85,7 @@ assert_xcode_invocation_enriched() {
     echo "FAIL: BE detail for $invocation_id has empty command (enrichment re-PUT missing)" >&2
     failed=1
   elif [[ "$full_command" != *-scheme* ]]; then
-    echo "FAIL: BE detail for $invocation_id command=\"$full_command\" lacks -scheme flag (wrapper's rich payload got clobbered by slim/orphan emit)" >&2
+    echo "FAIL: BE detail for $invocation_id command=\"$full_command\" lacks -scheme flag (wrapper's rich payload got clobbered by slim/wrapperless emit)" >&2
     failed=1
   else
     echo "OK: command=$full_command"
@@ -162,17 +162,17 @@ assert_xcode_invocation_hit_rate_at_least() {
   echo "OK: hitRate=${hit_rate} (${percent}%) >= ${min_percent}%"
 }
 
-# assert_xcode_no_orphan_invocations_for_build <build_slug> <expected_invocation_id>
+# assert_xcode_no_wrapperless_invocations_for_build <build_slug> <expected_invocation_id>
 # Lists xcode invocations for the current Bitrise build_slug and asserts that
 # exactly one xcode invocation exists, and its id matches <expected_invocation_id>.
-# Used by the F1/F2 race workflow: if the enrichment watcher (F2) had minted an
-# orphan (unmatched manifest → new UUID) instead of waiting for the slim-record
+# Used by the F1/F2 race workflow: if the enrichment watcher (F2) had minted a
+# wrapperless (unmatched manifest → new UUID) instead of waiting for the slim-record
 # retry bucket, the BE would show TWO xcode invocations under the same build.
-assert_xcode_no_orphan_invocations_for_build() {
+assert_xcode_no_wrapperless_invocations_for_build() {
   local build_slug="$1"
   local expected_id="$2"
   if [[ -z "$build_slug" || -z "$expected_id" ]]; then
-    echo "FAIL: assert_xcode_no_orphan_invocations_for_build <build_slug> <expected_invocation_id>" >&2
+    echo "FAIL: assert_xcode_no_wrapperless_invocations_for_build <build_slug> <expected_invocation_id>" >&2
 
     return 1
   fi
@@ -189,7 +189,7 @@ assert_xcode_no_orphan_invocations_for_build() {
     return 1
   fi
 
-  # Only count invocations that share the wrapper's build command — F2 legitimately enriches Xcode side-events (SPM "Resolve Packages", tooling probes) into separate invocation rows that must not be misread as wrapper orphans.
+  # Only count invocations that share the wrapper's build command — F2 legitimately enriches Xcode side-events (SPM "Resolve Packages", tooling probes) into separate invocation rows that must not be misread as wrapper duplicates.
   local wrapper_shape
   wrapper_shape=$(printf '%s' "$response" | jq -r --arg id "$expected_id" '.items[]? | select((.invocationId // .invocation_id) == $id) | .shortCommand // .command // ""')
   if [[ -z "$wrapper_shape" ]]; then

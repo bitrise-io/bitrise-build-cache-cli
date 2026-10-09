@@ -105,7 +105,7 @@ rde_session_cleanup() {
   curl_rde POST   "${WS_PATH}/sessions:delete-terminated" -d '{}' >/dev/null 2>&1 || true
 }
 
-# ---------- reap orphans ----------
+# ---------- reap stale sessions ----------
 # Best-effort: bulk-delete any lingering TERMINATED sessions from prior
 # runs whose /sessions/{id} DELETE raced with backend TERMINATING state.
 # The backend appears to count TERMINATED sessions toward the CPU quota,

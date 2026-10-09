@@ -59,12 +59,12 @@ func (s *Store) Mutate(fn func([]PendingRecord) []PendingRecord) error {
 	return s.writeAtomic(fn(existing))
 }
 
-// PruneOrphansOlderThan drops records with Attempts == 0 whose StartTime is
+// PruneWrapperlessOlderThan drops records with Attempts == 0 whose StartTime is
 // older than maxAge. A wrapper crash between slim emit (appends untouched
 // record) and enrichment would otherwise leave the queue growing indefinitely.
 // Records with Attempts > 0 are the Retrier's concern (aged out by
 // FirstAttempt) and left alone.
-func (s *Store) PruneOrphansOlderThan(now time.Time, maxAge time.Duration) (int, error) {
+func (s *Store) PruneWrapperlessOlderThan(now time.Time, maxAge time.Duration) (int, error) {
 	var pruned int
 
 	err := s.Mutate(func(existing []PendingRecord) []PendingRecord {
