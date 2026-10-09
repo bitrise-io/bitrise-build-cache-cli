@@ -8,6 +8,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	rnpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/reactnative"
 )
 
@@ -44,6 +45,7 @@ Note: This is a convenience activation method, if your activation requires fine-
 		if err := common.PersistProjectMode(projectMode, logger); err != nil {
 			return fmt.Errorf("persist project mode: %w", err)
 		}
+		common.PrintOptInGateHintIfGated(logger, utils.DefaultOsProxy{})
 
 		push, err := common.ResolveAndPersistCachePush(cmd, pushEnabled, logger)
 		if err != nil {
