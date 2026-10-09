@@ -27,6 +27,22 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
+	// XcodeAppOverrideXCConfigFileName is the override xcconfig under XcelerateRoot
+	// written by `activate xcode` and consumed by `xcode link`.
+	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
+
+	// XcodeToolchainBundleID doubles as the TOOLCHAINS xcconfig value.
+	XcodeToolchainBundleID = "io.bitrise.cas.xctoolchain"
+
+	xcodeToolchainSubdir = "toolchain"
+
+	// XcodeToolchainsLinkDirRelative is the per-user dir Xcode scans for toolchain bundles.
+	XcodeToolchainsLinkDirRelative = "Library/Developer/Toolchains"
+
+	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next to a
+	// .xcodeproj when a build configuration has no baseConfigurationReference.
+	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
+
 	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
 	// tree, holding files such as the persisted xcode-{build,test}.json invocation specs.
 	BitriseBuildCacheDirRelative = ".bitrise-build-cache"
@@ -225,6 +241,21 @@ func (p Paths) XcelerateBinDir() string {
 // XcelerateBinFile returns a file path under XcelerateBinDir.
 func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
+func (p Paths) XcodeAppOverrideXCConfigFile() string {
+	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
+}
+
+// XcodeToolchainBundleDir is the install path (~/.bitrise-xcelerate/toolchain/<id>).
+func (p Paths) XcodeToolchainBundleDir() string {
+	return filepath.Join(p.XcelerateRoot(), xcodeToolchainSubdir, XcodeToolchainBundleID)
+}
+
+// XcodeToolchainsLinkPath is the discovery symlink (~/Library/Developer/Toolchains/<id>).
+func (p Paths) XcodeToolchainsLinkPath() string {
+	return filepath.Join(p.Home, XcodeToolchainsLinkDirRelative, XcodeToolchainBundleID)
 }
 
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.

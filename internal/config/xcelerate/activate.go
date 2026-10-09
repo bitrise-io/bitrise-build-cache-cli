@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -17,6 +18,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/envexport"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
 const (
@@ -88,6 +90,17 @@ func Activate(
 
 	if err := config.Save(logger, osProxy, encoderFactory); err != nil {
 		return fmt.Errorf(ErrFmtCreateXcodeConfig, err)
+	}
+
+	if runtime.GOOS == "darwin" {
+		// Failure is non-fatal: the override is only consumed by the IDE flow.
+		if err := xcode_app.WriteOverrideXCConfig(osProxy, envs, config.ProxySocketPath); err != nil {
+			logger.Warnf("Could not write Xcode.app override xcconfig: %s", err)
+		} else {
+			logger.Debugf("Wrote Xcode.app override xcconfig")
+		}
+
+		installXcodeToolchain(ctx, logger, osProxy, commandFunc, config.ProxySocketPath, config.OriginalXcodebuildPath)
 	}
 
 	ensureLogDir(logger, osProxy)
