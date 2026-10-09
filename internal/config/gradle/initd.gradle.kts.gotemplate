@@ -1,4 +1,4 @@
-{{- if and (eq .Analytics.Usage "enabled") (not .Common.SuppressAnalyticsPlugin) -}}import io.bitrise.gradle.analytics.AnalyticsPluginExtension
+{{- if eq .Analytics.Usage "enabled" -}}import io.bitrise.gradle.analytics.AnalyticsPluginExtension
 {{ end -}}
 {{- if eq .Cache.Usage "enabled" -}}import io.bitrise.gradle.cache.BitriseBuildCache
 import io.bitrise.gradle.cache.BitriseBuildCacheServiceFactory
@@ -126,7 +126,7 @@ settingsEvaluated {
     }
     apply<io.bitrise.gradle.cache.BitriseCCachePlugin>()
     {{- end }}
-    {{- if and (eq .Analytics.Usage "enabled") (not .Common.SuppressAnalyticsPlugin) }}
+    {{- if eq .Analytics.Usage "enabled" }}
     extensions.create("analytics", AnalyticsPluginExtension::class.java)
     extensions.configure(AnalyticsPluginExtension::class.java) {
         endpoint.set("{{ .Analytics.Endpoint }}:{{ .Analytics.Port }}")

@@ -147,16 +147,16 @@ func (params ActivateGradleParams) TemplateInventory(
 	}
 
 	projectMode := resolveProjectMode(osProxy, logger)
-	suppressAnalyticsPlugin := machineconfig.ProjectOptedOut(osProxy, logger)
+	optedOut := machineconfig.ProjectOptedOut(osProxy, logger)
 
-	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode, suppressAnalyticsPlugin)
+	commonInventory := params.commonTemplateInventory(authConfig, authOrigin, metadata, isDebug, projectMode)
 
 	cacheInventory, err := params.cacheTemplateInventory(logger, envs)
 	if err != nil {
 		return TemplateInventory{}, fmt.Errorf(errFmtCacheConfigCreation, err)
 	}
 
-	analyticsInventory := params.analyticsTemplateInventory(logger)
+	analyticsInventory := params.analyticsTemplateInventory(logger, optedOut)
 
 	testDistroInventory, err := params.testDistroTemplateInventory(logger, isDebug)
 	if err != nil {
@@ -178,7 +178,6 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	metadata common.CacheConfigMetadata,
 	isDebug bool,
 	projectMode machineconfig.Mode,
-	suppressAnalyticsPlugin bool,
 ) PluginCommonTemplateInventory {
 	cliPath := params.CLIPath
 	if cliPath == "" {
@@ -186,14 +185,13 @@ func (params ActivateGradleParams) commonTemplateInventory(
 	}
 
 	return PluginCommonTemplateInventory{
-		AuthToken:               authpkg.GradleToken(authConfig, authOrigin),
-		Debug:                   isDebug,
-		AppSlug:                 metadata.BitriseAppID,
-		CIProvider:              metadata.CIProvider,
-		Version:                 consts.GradleCommonPluginDepVersion,
-		CLIPath:                 cliPath,
-		ProjectMode:             string(projectMode),
-		SuppressAnalyticsPlugin: suppressAnalyticsPlugin,
+		AuthToken:   authpkg.GradleToken(authConfig, authOrigin),
+		Debug:       isDebug,
+		AppSlug:     metadata.BitriseAppID,
+		CIProvider:  metadata.CIProvider,
+		Version:     consts.GradleCommonPluginDepVersion,
+		CLIPath:     cliPath,
+		ProjectMode: string(projectMode),
 	}
 }
 
@@ -244,7 +242,16 @@ func (params ActivateGradleParams) cacheTemplateInventory(
 
 func (params ActivateGradleParams) analyticsTemplateInventory(
 	logger log.Logger,
+	optedOut bool,
 ) AnalyticsTemplateInventory {
+	if optedOut {
+		logger.Infof("(i) Analytics plugin usage: %+v (project opted out)", UsageLevelNone)
+
+		return AnalyticsTemplateInventory{
+			Usage: UsageLevelNone,
+		}
+	}
+
 	if !params.Analytics.JustDependency && !params.Analytics.Enabled {
 		logger.Infof("(i) Analytics plugin usage: %+v", UsageLevelNone)
 

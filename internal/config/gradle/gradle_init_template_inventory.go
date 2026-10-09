@@ -48,11 +48,6 @@ type PluginCommonTemplateInventory struct {
 	CLIPath string
 
 	ProjectMode string
-
-	// SuppressAnalyticsPlugin skips the analytics plugin application block in
-	// the generated init.gradle.kts when the project is opted out of analytics
-	// at activate time (opt-in mode + no marker up the tree from cwd).
-	SuppressAnalyticsPlugin bool
 }
 
 type TemplateInventory struct {
