@@ -16,8 +16,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 )
 
-// writeGzipLog creates <project>/Logs/Build/<name>.xcactivitylog under
-// derivedData, wrapping body in gzip and setting mtime.
 func writeGzipLog(t *testing.T, derivedData, project, name string, body []byte, mtime time.Time) string {
 	t.Helper()
 
@@ -38,14 +36,12 @@ func writeGzipLog(t *testing.T, derivedData, project, name string, body []byte, 
 }
 
 func TestXcodeRecentBuildCheck_derivedDataMissing(t *testing.T) {
-	// Fresh temp with no DerivedData subtree — reports OK (informational), not a failure.
 	res := diagnoseXcodeRecentBuild([]string{filepath.Join(t.TempDir(), "DerivedData")}, time.Now())
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "no recent Xcode build found")
 }
 
 func TestXcodeRecentBuildCheck_noRecentBuild(t *testing.T) {
-	// Log present but older than the window → no match.
 	dd := t.TempDir()
 	now := time.Now()
 	writeGzipLog(t, dd, "MyApp-abc123", "AAA.xcactivitylog",
@@ -74,11 +70,10 @@ func TestXcodeRecentBuildCheck_picksNewestAcrossProjects(t *testing.T) {
 	dd := t.TempDir()
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 
-	// Older match in project A.
 	writeGzipLog(t, dd, "AppA-aaa", "old.xcactivitylog",
 		[]byte("note: 1 hits / 2 cacheable tasks (50%)\n"),
 		now.Add(-30*time.Minute))
-	// Newer match in project B — must win.
+	// Newer entry must win.
 	writeGzipLog(t, dd, "AppB-bbb", "new.xcactivitylog",
 		[]byte("note: 9 hits / 10 cacheable tasks (90%)\n"),
 		now.Add(-1*time.Minute))
@@ -90,8 +85,7 @@ func TestXcodeRecentBuildCheck_picksNewestAcrossProjects(t *testing.T) {
 }
 
 func TestXcodeRecentBuildCheck_unparsedBuildReportsOK(t *testing.T) {
-	// Random SLF noise with no CompilationCacheMetrics line — still informational,
-	// never a doctor failure.
+	// Unparsed must stay informational, not a doctor failure.
 	dd := t.TempDir()
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	writeGzipLog(t, dd, "MyApp-xyz", "junk.xcactivitylog",
