@@ -26,7 +26,8 @@ type FlushSessionClient interface {
 }
 
 // FlushSession dials the running proxy, invokes the FlushSession RPC, and
-// prints a Visit URL per emitted invocation ID. Missing proxy is a soft no-op.
+// prints a Visit URL per emitted invocation ID. Missing proxy is a soft no-op;
+// a stdout note still fires so the Xcode build log shows a visible outcome.
 func FlushSession(ctx context.Context, logger log.Logger, osProxy utils.OsProxy, stdout io.Writer) error {
 	config, err := ReadConfig(osProxy, utils.DefaultDecoderFactory{}, utils.AllEnvs())
 	if err != nil {
@@ -35,6 +36,7 @@ func FlushSession(ctx context.Context, logger log.Logger, osProxy utils.OsProxy,
 
 	if _, running := ProxyOwner(osProxy); !running {
 		logger.TWarnf("No xcelerate-proxy is running; nothing to flush")
+		fmt.Fprintln(stdout, "No pending invocations to flush (proxy not running).")
 
 		return nil
 	}
