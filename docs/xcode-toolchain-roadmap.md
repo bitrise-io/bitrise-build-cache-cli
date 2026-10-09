@@ -30,7 +30,7 @@ No CLI code change is expected.
 
 Today's enrichment path (introduced in PR #573) parses
 `compilation-cache-hit-rate` out of each `.xcactivitylog` after a build
-completes and attaches it to the orphan invocation PUT. It works but has two
+completes and attaches it to the wrapperless invocation PUT. It works but has two
 weaknesses:
 
 - **Latency.** The log is only readable once Xcode has flushed and sealed it.

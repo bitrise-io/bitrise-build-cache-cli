@@ -4,6 +4,7 @@ package xcode_app
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -78,7 +79,7 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib", ""))
 
 	// Plist file written.
 	plist := filepath.Join(installPath, toolchainInfoPlistFile)
@@ -117,8 +118,8 @@ func TestInstallToolchain_isIdempotent(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p1.sock", "/dev/null"))
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p2.sock", "/dev/null"))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p1.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p2.sock", "/dev/null", ""))
 
 	// Second install must still produce a valid plist referencing the new socket.
 	body, err := os.ReadFile(filepath.Join(installPath, toolchainInfoPlistFile)) //nolint:gosec // test-controlled path
@@ -157,7 +158,7 @@ func TestUninstallToolchain_removesLinkAndBundle(t *testing.T) {
 	linkPath := filepath.Join(tmp, "linkdir", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/p.sock", "/dev/null"))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p.sock", "/dev/null", ""))
 	require.NoError(t, LinkToolchain(installPath, linkPath))
 
 	require.NoError(t, UninstallToolchain(installPath, linkPath))
@@ -191,8 +192,6 @@ func TestUninstallToolchain_leavesForeignLinkUntouched(t *testing.T) {
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 }
 
-// seedFakeDefaultToolchain creates a minimal Default toolchain layout under
-// `root` so InstallToolchain has something to symlink.
 func seedFakeDefaultToolchain(t *testing.T, root string) {
 	t.Helper()
 
