@@ -15,6 +15,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -45,9 +46,17 @@ func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
 }
 
 //go:generate moq -stub -out post_run_deps_local_log_mock_test.go -pkg reactnative . localInvocationLogger
+//go:generate moq -stub -out post_run_deps_invocation_client_mock_test.go -pkg reactnative . invocationClient
 
 type localInvocationLogger interface {
 	Append(rec invocations.Record) error
+}
+
+// invocationClient is the analytics-send surface used by postRunDeps. The real
+// implementation is *ccacheanalytics.Client; tests inject a stub to assert the
+// opt-out gate's observable behaviour without a live analytics backend.
+type invocationClient interface {
+	PutInvocation(inv multiplatform.Invocation) error
 }
 
 // postRunDeps handles post-run analytics: invocation reporting, ccache stats
@@ -61,6 +70,15 @@ type postRunDeps struct {
 	// invocation log. If nil, resolveLocalLogger builds paths.Default +
 	// invocations.NewWriter at call time (production default).
 	localLogger localInvocationLogger
+
+	// osProxy drives analytics opt-out gating. If nil, utils.DefaultOsProxy{}
+	// is used (production default).
+	osProxy utils.OsProxy
+
+	// client overrides the lazy-resolved analytics client. Nil in production:
+	// run() builds a client from the resolver. Tests inject a stub to assert
+	// the opt-out gate's observable behaviour without a live backend.
+	client invocationClient
 }
 
 // The credential is resolved in run: a brokered JWT resolved before the build can expire during it.
@@ -79,20 +97,6 @@ func newPostRunDeps(logger log.Logger, resolver *live.Resolver) *postRunDeps {
 // runs first so its ledger entry can contribute to the aggregated hit rate.
 func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args []string, duration time.Duration, execErr error) buildOutcome {
 	var outcome buildOutcome
-
-	cred, origin, err := d.resolver.Resolve(ctx, utils.AllEnvs())
-	if err != nil {
-		d.logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
-
-		return outcome
-	}
-
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), d.logger)
-	if err != nil {
-		d.logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
-
-		return outcome
-	}
 
 	metadata := d.getMetadata()
 
@@ -176,42 +180,108 @@ func (d *postRunDeps) run(ctx context.Context, wrapperInvocationID string, args 
 	// observability; the only signal that flips Success here is execErr.
 	wrapperSuccess := execErr == nil
 
-	inv := multiplatform.NewInvocation(multiplatform.InvocationRunStats{
-		InvocationDate: time.Now().Add(-duration),
-		InvocationID:   wrapperInvocationID,
-		Duration:       duration,
-		Command:        command,
-		FullCommand:    fullCommand,
-		Success:        wrapperSuccess,
-		Error:          execErr,
-		BuildTool:      "react-native",
-		Wrapper:        "bitrise-build-cache-cli react-native",
-		HitRate:        summary.MeanHitRate,
-	}, cred, metadata)
-
 	outcome.ChildInvocations = summary.ChildCount + summary.NoActivityCount + summary.SkippedCount
 
-	if err := client.PutInvocation(*inv); err != nil {
-		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
-		outcome.InvocationSaveFailed = true
+	if machineconfig.ProjectOptedOut(d.resolveOsProxy(), d.logger) {
+		d.logger.TInfof("[project-mode] opt-in active, no marker; skipping React Native invocation analytics")
 	} else {
-		// BE confirmed the invocation was stored — surface the details URL
-		// so users can jump to it from the build log.
-		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(cred.WorkspaceID, wrapperInvocationID))
+		stats := multiplatform.InvocationRunStats{
+			InvocationDate: time.Now().Add(-duration),
+			InvocationID:   wrapperInvocationID,
+			Duration:       duration,
+			Command:        command,
+			FullCommand:    fullCommand,
+			Success:        wrapperSuccess,
+			Error:          execErr,
+			BuildTool:      "react-native",
+			Wrapper:        "bitrise-build-cache-cli react-native",
+			HitRate:        summary.MeanHitRate,
+		}
+		if d.sendAndLogInvocation(ctx, stats, metadata, summary, duration, execErr) {
+			outcome.InvocationSaveFailed = true
+		}
 	}
 
 	if err := agg.Cleanup(); err != nil {
 		d.logger.TWarnf("Failed to clean up child stats ledger: %v", err)
 	}
 
-	d.appendLocalInvocationLog(wrapperInvocationID, command, metadata, summary, duration, execErr)
-
 	return outcome
+}
+
+// sendAndLogInvocation sends the wrapper's analytics invocation and appends
+// the local log record. Returns true when the PUT failed (so the caller can
+// mark outcome.InvocationSaveFailed); the local-log append is warn-only.
+// A resolver/client build failure is also warn-only and treated as a non-send:
+// outcome.InvocationSaveFailed stays false, matching main's pre-opt-out
+// behaviour when the resolver returned nothing.
+func (d *postRunDeps) sendAndLogInvocation(
+	ctx context.Context,
+	stats multiplatform.InvocationRunStats,
+	metadata common.CacheConfigMetadata,
+	summary childstats.Summary,
+	duration time.Duration,
+	execErr error,
+) bool {
+	cred, client, ok := d.resolveClientAndCred(ctx)
+	if !ok {
+		return false
+	}
+
+	inv := multiplatform.NewInvocation(stats, cred, metadata)
+
+	sendFailed := false
+	if err := client.PutInvocation(*inv); err != nil {
+		d.logger.TWarnf("Failed to send run invocation analytics: %v", err)
+		sendFailed = true
+	} else {
+		// BE confirmed the invocation was stored — surface the details URL
+		// so users can jump to it from the build log.
+		d.logger.TInfof(MsgRNInvocationSaved, rnInvocationDetailsURL(cred.WorkspaceID, stats.InvocationID))
+	}
+
+	d.appendLocalInvocationLog(stats.InvocationID, stats.Command, metadata, summary, duration, execErr)
+
+	return sendFailed
+}
+
+// resolveClientAndCred returns a credential + analytics client for the
+// post-run analytics emit. If d.client is set (test override), the resolver is
+// not consulted and cred is empty. On production, resolve + build-client
+// failures warn and return ok=false so the caller skips the emit.
+func (d *postRunDeps) resolveClientAndCred(ctx context.Context) (authpkg.Credential, invocationClient, bool) {
+	if d.client != nil {
+		return authpkg.Credential{}, d.client, true
+	}
+
+	cred, origin, err := d.resolver.Resolve(ctx, utils.AllEnvs())
+	if err != nil {
+		d.logger.TWarnf("Failed to resolve credentials for post-run hook: %v", err)
+
+		return authpkg.Credential{}, nil, false
+	}
+
+	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), d.logger)
+	if err != nil {
+		d.logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
+
+		return authpkg.Credential{}, nil, false
+	}
+
+	return cred, client, true
 }
 
 // ---------------------------------------------------------------------------
 // Private — postRunDeps methods
 // ---------------------------------------------------------------------------
+
+func (d *postRunDeps) resolveOsProxy() utils.OsProxy {
+	if d.osProxy != nil {
+		return d.osProxy
+	}
+
+	return utils.DefaultOsProxy{}
+}
 
 func (d *postRunDeps) getMetadata() common.CacheConfigMetadata {
 	envs := utils.AllEnvs()
