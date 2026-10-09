@@ -88,7 +88,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
-	hitRate := e.readLogHitRate(manifestPath, group)
+	hitRate, _ := e.readLogHitRate(manifestPath, group)
 
 	var runErr error
 	if !group.Success() {
@@ -115,7 +115,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		e.recordOrphanFailure(invocationID, inv, err)
+		_ = e.recordWrapperlessFailure(invocationID, inv, err)
 
 		return
 	}
@@ -124,7 +124,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
-	logger.Infof("Enriched invocation PUT %s (orphan scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
+	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
@@ -138,9 +138,9 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
-func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invocation, putErr error) {
+func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
-		return
+		return false
 	}
 
 	logger := logOr(e.Logger)
@@ -149,7 +149,7 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	if err != nil {
 		logger.Warnf("Failed to marshal enriched invocation %s for retry: %s", invocationID, err)
 
-		return
+		return false
 	}
 
 	now := e.now()
@@ -163,7 +163,11 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	}
 	if err := e.Store.Append(rec); err != nil {
 		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
+
+		return false
 	}
+
+	return true
 }
 
 // attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
@@ -224,16 +228,16 @@ func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
 // readLogHitRate returns 0 on any non-OK outcome. The log lands on disk before
 // the manifest (Xcode writes the manifest last), so no bounded wait is needed —
 // the reader's ENOENT path handles the vanishing race.
-func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) float32 {
+func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) (float32, xcactivitylog.Outcome) {
 	logger := logOr(e.Logger)
 
 	if manifestPath == "" {
-		return 0
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	primary := group.Primary()
 	if primary.FileName == "" {
-		return 0
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
@@ -245,7 +249,7 @@ func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup)
 
 	switch metrics.Outcome {
 	case xcactivitylog.OutcomeOK:
-		return metrics.HitRate
+		return metrics.HitRate, metrics.Outcome
 	case xcactivitylog.OutcomeFileMissing:
 		logger.Debugf("xcactivitylog missing at %s", logPath)
 	case xcactivitylog.OutcomeEmpty:
@@ -259,5 +263,5 @@ func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup)
 	case xcactivitylog.OutcomeReadError:
 	}
 
-	return 0
+	return 0, metrics.Outcome
 }
