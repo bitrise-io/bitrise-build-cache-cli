@@ -165,11 +165,23 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	p.sidecarRegistry = newSessionRegistry()
 	ancestry := newAncestryCache()
 	p.sidecarStats = &sidecarStatsHandler{
-		listener:         opts.Listener,
-		registry:         p.sidecarRegistry,
-		writer:           newSidecarWriter(opts.Dir, p.logger),
-		ancestryResolver: ancestry.resolveAncestry,
+		listener:             opts.Listener,
+		registry:             p.sidecarRegistry,
+		writer:               newSidecarWriter(opts.Dir, p.logger),
+		ancestryResolver:     ancestry.resolveAncestry,
+		peerAncestryEntries:  ancestry.resolveAncestryEntries,
+		hostname:             hostnameForDerivation(),
+		wrapperSessionActive: p.wrapperSessionActive,
 	}
+}
+
+// wrapperSessionActive reports whether the SetSession path currently owns the
+// InvocationID. Trampoline/wrapperless derivation defers to the wrapper when true.
+func (p *Proxy) wrapperSessionActive() bool {
+	p.sessionMutex.Lock()
+	defer p.sessionMutex.Unlock()
+
+	return p.currentSession != nil
 }
 
 // stateFor returns a recorder that mirrors to the global sessionState and,

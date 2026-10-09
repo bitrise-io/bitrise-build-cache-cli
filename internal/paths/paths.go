@@ -94,6 +94,9 @@ const (
 	// xcelerateBinSubdir holds the xcelerate wrapper scripts (xcodebuild / xcrun) and CLI copy.
 	xcelerateBinSubdir = "bin"
 
+	// xcelerateToolchainSubdir holds the per-user trampoline cache under XcelerateRoot.
+	xcelerateToolchainSubdir = "toolchain"
+
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
 
@@ -115,6 +118,22 @@ const (
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
+
+// TrampolineRealpathCachePrefix prefixes xcrun fallback cache files written
+// by the trampoline. Referenced by the trampoline package via string literal
+// (keeps the trampoline binary free of internal/paths imports).
+const TrampolineRealpathCachePrefix = "bitrise-tc-realpath-"
+
+// TrampolineStartLockFilename names the exclusive flock the trampoline grabs
+// before firing an autostart. Referenced by the trampoline package via string
+// literal (keeps the trampoline binary free of internal/paths imports).
+const TrampolineStartLockFilename = "bitrise-xcelerate-starting.lock"
+
+// TrampolineRemarkSentinelPrefix prefixes per-proxy-session sentinel files the
+// trampoline atomically creates to dedup the engagement remark across shim
+// processes. Referenced by the trampoline package via string literal (keeps
+// the trampoline binary free of internal/paths imports).
+const TrampolineRemarkSentinelPrefix = "bitrise-xcelerate-remark-"
 
 // CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
@@ -245,6 +264,24 @@ func (p Paths) XcelerateBinDir() string {
 // XcelerateBinFile returns a file path under XcelerateBinDir.
 func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// TrampolineBinary returns the cached universal trampoline path for a CLI
+// version under ~/.bitrise-xcelerate/toolchain/.
+func (p Paths) TrampolineBinary(cliVersion string) string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateToolchainSubdir, "trampoline-"+cliVersion+"-universal")
+}
+
+// SessionFilePath returns ~/.bitrise-xcelerate/sessions/<pid>-<startMs>.json;
+// consumed by the proxy for peer-side slug lookup when the wrapper is absent.
+func (p Paths) SessionFilePath(pid int, startMs int64) string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateSessionsSubdir, fmt.Sprintf("%d-%d.json", pid, startMs))
+}
+
+// XcelerateSessionsAnchorsDir returns ~/.bitrise-xcelerate/sessions, the
+// directory where SessionFilePath entries live.
+func (p Paths) XcelerateSessionsAnchorsDir() string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateSessionsSubdir)
 }
 
 // XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
