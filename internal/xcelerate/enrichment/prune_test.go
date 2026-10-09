@@ -18,7 +18,7 @@ func TestPruneSessionSidecars_DropsStaleJSONAndEveryTmp(t *testing.T) {
 
 	fresh := filepath.Join(dir, "fresh.json")
 	stale := filepath.Join(dir, "stale.json")
-	leftoverTmp := filepath.Join(dir, "orphan.json.tmp")
+	leftoverTmp := filepath.Join(dir, "leftover.json.tmp")
 
 	require.NoError(t, os.WriteFile(fresh, []byte("{}"), 0o600))
 	require.NoError(t, os.WriteFile(stale, []byte("{}"), 0o600))
@@ -29,7 +29,7 @@ func TestPruneSessionSidecars_DropsStaleJSONAndEveryTmp(t *testing.T) {
 
 	pruned, err := pruneSessionSidecars(dir, now, SessionSidecarMaxAge)
 	require.NoError(t, err)
-	assert.Equal(t, 2, pruned, "stale.json + orphan.json.tmp pruned, fresh.json kept")
+	assert.Equal(t, 2, pruned, "stale.json + leftover.json.tmp pruned, fresh.json kept")
 
 	remaining, err := os.ReadDir(dir)
 	require.NoError(t, err)

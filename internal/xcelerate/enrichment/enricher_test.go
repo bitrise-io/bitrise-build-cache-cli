@@ -624,7 +624,7 @@ func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
 	}))
 
 	_, err := os.Stat(p1)
-	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked when the orphan record is persisted")
+	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked when the wrapperless record is persisted")
 
 	loaded, err := store.Load()
 	require.NoError(t, err)
