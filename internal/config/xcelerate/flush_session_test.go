@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,6 +16,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
 )
 
@@ -54,4 +58,18 @@ func TestPrintEmittedURLs_RPCErrorExitsZero(t *testing.T) {
 	require.NoError(t, printEmittedURLs(context.Background(), nullLogger{}, buf, client))
 
 	assert.Empty(t, buf.String())
+}
+
+func TestFlushSession_NoProxyPrintsStdoutNote(t *testing.T) {
+	home := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(home, paths.XcelerateRootRelative), 0o755))
+	// Minimal valid xcelerate config so ReadConfig succeeds; no pid file → no proxy.
+	cfgPath := filepath.Join(home, paths.XcelerateRootRelative, "config.json")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`{}`), 0o644))
+
+	buf := &bytes.Buffer{}
+	err := FlushSession(context.Background(), nullLogger{}, stubOsProxy{DefaultOsProxy: utils.DefaultOsProxy{}, home: home}, buf)
+
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "No pending invocations to flush (proxy not running).")
 }

@@ -4,8 +4,10 @@ package xcelerate
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -88,6 +90,30 @@ func TestStopProxy_NoProxyRunningIsSilent(t *testing.T) {
 		osProxy:  stubOsProxy{home: home},
 		signaler: noopSignaler{},
 	}))
+}
+
+// TestRealSignaler_SIGKILLEscalation proves the fallback path works: a child
+// that ignores SIGTERM must still be killed by SIGKILL within the grace window.
+func TestRealSignaler_SIGKILLEscalation(t *testing.T) {
+	// Shell ignores TERM then loops in-process (no forked `sleep`), so the pid
+	// we signal IS the pid that must die.
+	cmd := exec.Command("sh", "-c", `trap "" TERM; while :; do read -t 30 _ </dev/null || true; done`)
+	require.NoError(t, cmd.Start())
+	// Give the shell time to install the TERM trap before signalling.
+	time.Sleep(200 * time.Millisecond)
+
+	start := time.Now()
+	realSignaler{}.SignalAndWait(cmd.Process.Pid, 100*time.Millisecond, nullLogger{})
+	// Reap the child so its pid stops reading as "alive" (zombie) in kill(pid, 0).
+	waited, werr := cmd.Process.Wait()
+	require.NoError(t, werr)
+
+	require.Less(t, time.Since(start), 500*time.Millisecond, "SignalAndWait + reap must complete within 500ms")
+
+	status, ok := waited.Sys().(syscall.WaitStatus)
+	require.True(t, ok)
+	assert.True(t, status.Signaled(), "child must have exited via signal, not normal return")
+	assert.Equal(t, syscall.SIGKILL, status.Signal(), "SIGTERM was trapped; only SIGKILL could land")
 }
 
 type nullLogger struct{}
