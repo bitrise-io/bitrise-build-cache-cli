@@ -1,7 +1,7 @@
 // Package invocationlog is the single entry point for appending to the local
 // NDJSON invocation log (~/.local/state/bitrise-build-cache/invocations/).
 // Both the xcodebuild wrapper and the react-native wrapper previously
-// duplicated the resolveLocalLogger() helper; the enricher adds orphan rows
+// duplicated the resolveLocalLogger() helper; the enricher adds wrapperless rows
 // through the same path so `bitrise-build-cache invocations list` surfaces
 // them.
 package invocationlog

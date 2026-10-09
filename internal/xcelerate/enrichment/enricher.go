@@ -42,7 +42,7 @@ type Enricher struct {
 	// LocalLogAppender appends a Record on each successful wrapperless PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
 	LocalLogAppender LocalLogAppender
-	// OnEmitted fires with the invocation ID on each successful orphan PUT.
+	// OnEmitted fires with the invocation ID on each successful wrapperless PUT.
 	// nil disables. Used by flush-session to collect IDs emitted during a sweep.
 	OnEmitted func(invocationID string)
 }
