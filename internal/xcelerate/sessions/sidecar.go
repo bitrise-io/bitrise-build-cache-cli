@@ -25,13 +25,11 @@ type Sidecar struct {
 
 	BlobStats *blobstats.Snapshot `json:"blobStats"`
 
-	// WrapperSession reserved for wrapper↔proxy invocation correlation; currently always nil.
+	// WrapperSession carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.
 	WrapperSession *WrapperLink `json:"wrapper_session"`
 }
 
-// WrapperLink is the reserved slot for a future wrapper-side correlation
-// payload. Kept as a named type so the JSON shape is stable the day it stops
-// being nil.
+// WrapperLink carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.
 type WrapperLink struct {
 	InvocationID string `json:"invocation_id"`
 }
