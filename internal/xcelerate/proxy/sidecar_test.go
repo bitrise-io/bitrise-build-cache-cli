@@ -133,7 +133,7 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 		assert.Equal(t, os.Getpid(), sc.PeerPID, "peer PID equals this test process")
 		assert.NotZero(t, sc.AcceptedAt)
 		assert.NotZero(t, sc.ClosedAt)
-		assert.Nil(t, sc.WrapperSession, "wrapper_session reserved for later PR")
+		assert.Nil(t, sc.WrapperSession, "wrapper_session must be nil when peer-ancestry anchoring has not succeeded")
 		require.NotNil(t, sc.BlobStats, "blob stats must be populated for an active connection")
 		assert.Equal(t, int64(1), sc.BlobStats.Download.OpCount, "one Get call => one download op")
 	}
