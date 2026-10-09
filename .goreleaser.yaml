@@ -59,7 +59,7 @@ archives:
   - id: trampoline
     ids:
       - trampoline
-    format: binary
+    formats: [binary]
     name_template: 'trampoline_v{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 # Homebrew formula generation is intentionally NOT handled by goreleaser.
