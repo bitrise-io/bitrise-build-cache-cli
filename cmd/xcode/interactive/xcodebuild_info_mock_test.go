@@ -5,6 +5,7 @@ package interactive
 
 import (
 	"context"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodebuildinfo"
 	"sync"
 )
 
@@ -21,7 +22,7 @@ var _ XcodebuildInfoProvider = &XcodebuildInfoProviderMock{}
 //			ListSchemesAndConfigurationsFunc: func(ctx context.Context, workspace string, project string) ([]string, []string, error) {
 //				panic("mock out the ListSchemesAndConfigurations method")
 //			},
-//			ShowDestinationsFunc: func(ctx context.Context, workspace string, project string, scheme string) ([]string, error) {
+//			ShowDestinationsFunc: func(ctx context.Context, workspace string, project string, scheme string) ([]xcodebuildinfo.Destination, error) {
 //				panic("mock out the ShowDestinations method")
 //			},
 //		}
@@ -35,7 +36,7 @@ type XcodebuildInfoProviderMock struct {
 	ListSchemesAndConfigurationsFunc func(ctx context.Context, workspace string, project string) ([]string, []string, error)
 
 	// ShowDestinationsFunc mocks the ShowDestinations method.
-	ShowDestinationsFunc func(ctx context.Context, workspace string, project string, scheme string) ([]string, error)
+	ShowDestinationsFunc func(ctx context.Context, workspace string, project string, scheme string) ([]xcodebuildinfo.Destination, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -110,7 +111,7 @@ func (mock *XcodebuildInfoProviderMock) ListSchemesAndConfigurationsCalls() []st
 }
 
 // ShowDestinations calls ShowDestinationsFunc.
-func (mock *XcodebuildInfoProviderMock) ShowDestinations(ctx context.Context, workspace string, project string, scheme string) ([]string, error) {
+func (mock *XcodebuildInfoProviderMock) ShowDestinations(ctx context.Context, workspace string, project string, scheme string) ([]xcodebuildinfo.Destination, error) {
 	callInfo := struct {
 		Ctx       context.Context
 		Workspace string
@@ -127,10 +128,10 @@ func (mock *XcodebuildInfoProviderMock) ShowDestinations(ctx context.Context, wo
 	mock.lockShowDestinations.Unlock()
 	if mock.ShowDestinationsFunc == nil {
 		var (
-			stringsOut []string
-			errOut     error
+			destinationsOut []xcodebuildinfo.Destination
+			errOut          error
 		)
-		return stringsOut, errOut
+		return destinationsOut, errOut
 	}
 	return mock.ShowDestinationsFunc(ctx, workspace, project, scheme)
 }

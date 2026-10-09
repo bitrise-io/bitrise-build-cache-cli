@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodebuildinfo"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/xcode/invoke"
 )
 
@@ -118,12 +119,17 @@ func Test_Fill_QueriesShowDestinationsAfterSchemeResolved(t *testing.T) {
 
 			return []string{"App"}, []string{"Debug"}, nil
 		},
-		ShowDestinationsFunc: func(_ context.Context, ws, proj, scheme string) ([]string, error) {
+		ShowDestinationsFunc: func(_ context.Context, ws, proj, scheme string) ([]xcodebuildinfo.Destination, error) {
 			order = append(order, "ShowDestinations:"+scheme)
 			assert.Equal(t, "App.xcworkspace", ws)
 			assert.Empty(t, proj)
 
-			return []string{"platform=iOS Simulator,name=iPhone 15"}, nil
+			return []xcodebuildinfo.Destination{{
+				Canonical: "platform=iOS Simulator,name=iPhone 15",
+				Platform:  "iOS Simulator",
+				Name:      "iPhone 15",
+				OS:        "17.4",
+			}}, nil
 		},
 	}
 
@@ -229,15 +235,53 @@ func Test_normalizeContainer_keepsWorkspaceSuffix(t *testing.T) {
 }
 
 func Test_destinationField_isSelectWhenCandidatesProvided(t *testing.T) {
-	f := destinationField(&invoke.InvocationSpec{}, []string{"platform=iOS,name=iPhone 15"})
+	candidates := []xcodebuildinfo.Destination{
+		{Canonical: "platform=iOS Simulator,name=iPhone 14", Platform: "iOS Simulator", Name: "iPhone 14", OS: "17.0"},
+		{Canonical: "platform=iOS Simulator,name=iPhone 15", Platform: "iOS Simulator", Name: "iPhone 15", OS: "17.4"},
+	}
+
+	spec := invoke.InvocationSpec{}
+	f := destinationField(&spec, candidates)
 	_, ok := f.(*huh.Select[string])
-	assert.True(t, ok)
+	require.True(t, ok)
+
+	// huh.Select writes the selected option's value into the bound pointer at
+	// construction time when the pointer is still empty — that confirms the
+	// ranked default (newest iPhone / highest OS) carried Selected(true).
+	assert.Equal(t, "platform=iOS Simulator,name=iPhone 15", spec.Destination)
 }
 
 func Test_destinationField_fallsBackToInput(t *testing.T) {
 	f := destinationField(&invoke.InvocationSpec{}, nil)
 	_, ok := f.(*huh.Input)
 	assert.True(t, ok)
+}
+
+func Test_Fill_PreSelectsRankedDefault(t *testing.T) {
+	provider := &XcodebuildInfoProviderMock{
+		ListSchemesAndConfigurationsFunc: func(context.Context, string, string) ([]string, []string, error) {
+			return []string{"App"}, []string{"Debug"}, nil
+		},
+		ShowDestinationsFunc: func(context.Context, string, string, string) ([]xcodebuildinfo.Destination, error) {
+			return []xcodebuildinfo.Destination{
+				{Canonical: "platform=macOS,name=My Mac", Platform: "macOS", Name: "My Mac", Arch: "arm64"},
+				{Canonical: "platform=iOS Simulator,name=iPhone 14", Platform: "iOS Simulator", Name: "iPhone 14", OS: "17.0"},
+				{Canonical: "platform=iOS Simulator,name=iPhone 15 Pro", Platform: "iOS Simulator", Name: "iPhone 15 Pro", OS: "18.1"},
+			}, nil
+		},
+	}
+
+	t.Setenv("TERM", "dumb")
+
+	spec := invoke.InvocationSpec{Workspace: "App.xcworkspace"}
+
+	got, err := Prompter{
+		XcodebuildInfo: provider,
+		RunForm:        func(*huh.Group) error { return nil },
+	}.Fill(context.Background(), spec, "")
+	require.NoError(t, err)
+	assert.Equal(t, "platform=iOS Simulator,name=iPhone 15 Pro", got.Destination,
+		"newest iPhone on highest iOS must be pre-selected")
 }
 
 func Test_configurationField_isSelectWhenCandidatesProvided(t *testing.T) {
