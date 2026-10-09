@@ -14,7 +14,7 @@ import (
 //nolint:gochecknoglobals
 var flushSessionCmd = &cobra.Command{
 	Use:          "flush-session",
-	Short:        "Force the running proxy to enrich any pending orphan invocations and print their Visit URLs",
+	Short:        "Flush pending orphan invocations; print Visit URLs",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode), log.WithOutput(os.Stderr))
