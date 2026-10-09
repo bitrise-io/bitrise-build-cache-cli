@@ -404,11 +404,12 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 
 	t.Run("--no-prefix-map opt-out disables the entire mechanism", func(t *testing.T) {
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
-			HasBuildActionFunc: func() bool { return true },
-			ArgsFunc:           func(_ map[string]string) []string { return []string{"xcodebuild"} },
-			ProjectDirFunc:     func() string { return "/work/app" },
-			CommandFunc:        func() string { return "xcodebuild" },
-			ShortCommandFunc:   func() string { return "xcodebuild" },
+			HasBuildActionFunc:         func() bool { return true },
+			AcceptsDerivedDataPathFunc: func() bool { return true },
+			ArgsFunc:                   func(_ map[string]string) []string { return []string{"xcodebuild"} },
+			ProjectDirFunc:             func() string { return "/work/app" },
+			CommandFunc:                func() string { return "xcodebuild" },
+			ShortCommandFunc:           func() string { return "xcodebuild" },
 		}
 		var captured []string
 		r := newRunnerWithArgs(xcelerate.Config{
@@ -425,7 +426,8 @@ func Test_assembleArgs_prefixMapInjection(t *testing.T) {
 	t.Run("--no-managed-derived-data leaves prefix mapping on but skips the wrapper-owned dirs", func(t *testing.T) {
 		var receivedAdditional map[string]string
 		argsMock := &xcodeargsMocks.XcodeArgsMock{
-			HasBuildActionFunc: func() bool { return true },
+			HasBuildActionFunc:         func() bool { return true },
+			AcceptsDerivedDataPathFunc: func() bool { return true },
 			ArgsFunc: func(additional map[string]string) []string {
 				receivedAdditional = additional
 
@@ -589,6 +591,19 @@ func Test_queryActionSourcePackages(t *testing.T) {
 		_ = r.Run(context.Background())
 
 		assert.NotContains(t, captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+	})
+
+	t.Run("follows a user-supplied derivedDataPath even when the flag would not be injected", func(t *testing.T) {
+		var captured []string
+		argsMock := newArgs(true, "", "/user/dd")
+		argsMock.AcceptsDerivedDataPathFunc = func() bool { return false }
+		r := newRunner(argsMock, &captured)
+
+		_ = r.Run(context.Background())
+
+		idx := indexOf(captured, xcodeargs.ClonedSourcePackagesDirPathFlag)
+		require.GreaterOrEqual(t, idx, 0)
+		assert.Equal(t, "/user/dd/SourcePackages", captured[idx+1])
 	})
 
 	t.Run("follows a user-supplied derivedDataPath", func(t *testing.T) {

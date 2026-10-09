@@ -895,7 +895,9 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		ps, sources := c.resolvePrefixMapPaths()
 		c.logPrefixMapSources(ps, sources)
 
-		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" && !c.XcodeArgs.AcceptsDerivedDataPath() {
+		wantsDD := ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == ""
+		acceptsDD := c.XcodeArgs.AcceptsDerivedDataPath()
+		if wantsDD && !acceptsDD {
 			c.Logger.Debugf("Not injecting -derivedDataPath: argv lacks -scheme/-testProductsPath/-xctestrun")
 		}
 
@@ -910,7 +912,7 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 		userOtherCFlagsToSplice = c.XcodeArgs.UserOtherCFlags()
 		mergedOtherCFlags = xcodeargs.MergeOtherCFlagsValue(userOtherCFlagsToSplice, suffix)
 
-		if ps.DerivedDataPath != "" && c.XcodeArgs.DerivedDataPath() == "" && c.XcodeArgs.AcceptsDerivedDataPath() {
+		if wantsDD && acceptsDD {
 			extraArgv = append(extraArgv, xcodeargs.DerivedDataPathFlag, ps.DerivedDataPath)
 		}
 	}
