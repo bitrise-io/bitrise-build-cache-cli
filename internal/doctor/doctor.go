@@ -24,6 +24,8 @@ const (
 	StateError State = "error"
 )
 
+const osDarwin = "darwin"
+
 type Fixer interface {
 	Fix() (detail string, err error)
 }
@@ -274,6 +276,9 @@ func (d *Doctor) checks(opts Options) []Check {
 	checks = append(checks,
 		d.xcelerateProxyCheck(),
 		d.xcelerateWrapperPathCheck(),
+		d.xcodeAppCheck(),
+		d.xcodeToolchainCheck(),
+		d.xcodeRecentBuildCheck(),
 		d.enrichmentCheck(),
 		d.ccacheHelperCheck(),
 		d.ccacheBinaryCheck(),
