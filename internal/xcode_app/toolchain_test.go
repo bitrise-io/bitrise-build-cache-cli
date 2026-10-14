@@ -81,12 +81,7 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 
 	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"))
 
-<<<<<<< HEAD
-	// Plist file written.
 	plist := filepath.Join(installPath, ToolchainInfoPlistFile)
-=======
-	plist := filepath.Join(installPath, toolchainInfoPlistFile)
->>>>>>> 64dc4e92ce8 (refactor: trim comments per project style)
 	plistBody, err := os.ReadFile(plist) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
 	assert.Contains(t, string(plistBody), "<key>Identifier</key>")
@@ -123,12 +118,7 @@ func TestInstallToolchain_isIdempotent(t *testing.T) {
 	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p1.sock", "/dev/null"))
 	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p2.sock", "/dev/null"))
 
-<<<<<<< HEAD
-	// Second install must still produce a valid plist referencing the new socket.
 	body, err := os.ReadFile(filepath.Join(installPath, ToolchainInfoPlistFile)) //nolint:gosec // test-controlled path
-=======
-	body, err := os.ReadFile(filepath.Join(installPath, toolchainInfoPlistFile)) //nolint:gosec // test-controlled path
->>>>>>> 64dc4e92ce8 (refactor: trim comments per project style)
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "<string>/tmp/p2.sock</string>")
 	assert.NotContains(t, string(body), "/tmp/p1.sock")
