@@ -70,6 +70,10 @@ type Proxy struct {
 
 	sidecarStats    *sidecarStatsHandler
 	sidecarRegistry *sessionRegistry
+
+	// FlushHook is invoked by the FlushSession RPC. Returns the invocation IDs
+	// emitted during the sweep. nil → FlushSession returns an empty list.
+	FlushHook func(ctx context.Context) []string
 }
 
 // SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
@@ -383,6 +387,18 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 	)
 
 	return &emptypb.Empty{}, nil
+}
+
+// FlushSession runs the registered flush hook synchronously and returns the
+// invocation IDs the hook reports as emitted. nil hook → empty list.
+func (p *Proxy) FlushSession(ctx context.Context, _ *emptypb.Empty) (*session.FlushSessionResponse, error) {
+	if p.FlushHook == nil {
+		return &session.FlushSessionResponse{}, nil
+	}
+
+	ids := p.FlushHook(ctx)
+
+	return &session.FlushSessionResponse{EmittedInvocationIds: ids}, nil
 }
 
 func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.GetSessionStatsResponse, error) {

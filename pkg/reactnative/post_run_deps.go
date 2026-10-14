@@ -17,8 +17,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 )
@@ -266,17 +266,12 @@ func (d *postRunDeps) resolveLocalLogger() localInvocationLogger {
 		return d.localLogger
 	}
 
-	p, err := paths.Default()
-	if err != nil {
-		d.logger.Warnf("Skipping local invocation log: %v", err)
-
+	appender := invocationlog.Default(d.logger)
+	if appender == nil {
 		return nil
 	}
 
-	w := invocations.NewWriter(p)
-	w.Logger = d.logger
-
-	return w
+	return appender
 }
 
 func exitCodeFromErr(err error) int {
