@@ -95,7 +95,7 @@ func TestGroupManifestEntries_SingleEntry(t *testing.T) {
 	assert.Equal(t, "S", groups[0].SchemeName())
 	assert.Equal(t, 10*time.Second, groups[0].Duration())
 	assert.True(t, groups[0].Success())
-	assert.Equal(t, "build S", groups[0].Command())
+	assert.Equal(t, "build [S]", groups[0].Command())
 	assert.Equal(t, "Build S", groups[0].FullCommand())
 }
 
@@ -113,7 +113,7 @@ func TestGroupManifestEntries_MultiEntrySameSchemeWithinGap(t *testing.T) {
 	assert.Equal(t, base, groups[0].Start())
 	assert.Equal(t, base.Add(55*time.Second), groups[0].Stop())
 	assert.Equal(t, 55*time.Second, groups[0].Duration())
-	assert.Equal(t, "test S", groups[0].Command(), "Test outranks Build as primary")
+	assert.Equal(t, "test [S]", groups[0].Command(), "Test outranks Build as primary")
 	assert.Equal(t, "Test S", groups[0].FullCommand())
 	assert.True(t, groups[0].Success())
 }
@@ -170,7 +170,7 @@ func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "archive S", groups[0].Command(), "Archive outranks Build even when Build starts first")
+	assert.Equal(t, "archive [S]", groups[0].Command(), "Archive outranks Build even when Build starts first")
 }
 
 func TestGroupManifestEntries_SameRankBreaksByEarliestStart(t *testing.T) {
@@ -194,7 +194,7 @@ func TestGroupManifestEntries_HigherRankWinsOverUnknown(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "build S", groups[0].Command())
+	assert.Equal(t, "build [S]", groups[0].Command())
 }
 
 // Pins the wide-span trade-off documented on ManifestEntryGroup so nobody
@@ -227,6 +227,28 @@ func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing
 	id, matched := enrichment.Correlate(span, pending)
 	assert.True(t, matched, "wide span overlaps the burst-only pending record")
 	assert.Equal(t, "burst-only", id, "the sole pending record wins the overlap")
+}
+
+func TestManifestEntryGroup_ErrorMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		statuses []string
+		want     string
+	}{
+		{name: "empty", statuses: nil, want: ""},
+		{name: "all success", statuses: []string{"S", "S"}, want: ""},
+		{name: "single error", statuses: []string{"E"}, want: "xcodebuild failed (status=E)"},
+		{name: "mixed picks first failing entry", statuses: []string{"S", "E", "E"}, want: "xcodebuild failed (status=E)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var entries []enrichment.ManifestEntry
+			for _, s := range tc.statuses {
+				entries = append(entries, enrichment.ManifestEntry{Status: s})
+			}
+			group := enrichment.ManifestEntryGroup{Entries: entries}
+			assert.Equal(t, tc.want, group.ErrorMessage())
+		})
+	}
 }
 
 func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {

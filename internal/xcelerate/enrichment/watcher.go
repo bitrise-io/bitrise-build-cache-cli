@@ -20,8 +20,9 @@ type Watcher struct {
 	HomeDir      string
 	Globs        []string
 	PollInterval time.Duration
-	Handle       func(ManifestEntryGroup)
-	Logger       log.Logger
+	// Handle receives manifestPath so the callback can resolve the sibling xcactivitylog.
+	Handle func(manifestPath string, group ManifestEntryGroup)
+	Logger log.Logger
 
 	// MatchProbe returns true when a pending record for the group
 	// exists and Handle would enrich under that record's InvocationID.
@@ -158,13 +159,13 @@ func (w *Watcher) scan(seedOnly bool) {
 			}
 
 			for _, group := range groups {
-				w.handleGroup(group, seedOnly)
+				w.handleGroup(path, group, seedOnly)
 			}
 		}
 	}
 }
 
-func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
+func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, seedOnly bool) {
 	logger := logOr(w.Logger)
 
 	stop := group.Stop()
@@ -195,7 +196,7 @@ func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
 	if w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
 		if w.Handle != nil {
 			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-			w.Handle(group)
+			w.Handle(manifestPath, group)
 		}
 		w.markGroupHandled(group)
 
@@ -206,7 +207,7 @@ func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
 		switch {
 		case w.MatchProbe(group):
 			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
-			w.Handle(group)
+			w.Handle(manifestPath, group)
 			w.markGroupHandled(group)
 			delete(w.retries, key)
 		case w.retries[key] > 0:
@@ -214,7 +215,7 @@ func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
 			logger.Debugf("Watcher: pending still unmatched, decrement scheme=%s attempts_left=%d", group.SchemeName(), w.retries[key])
 		default:
 			logger.Debugf("Watcher: pending retries exhausted, minting orphan scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-			w.Handle(group)
+			w.Handle(manifestPath, group)
 			w.markGroupHandled(group)
 			delete(w.retries, key)
 		}
@@ -224,7 +225,7 @@ func (w *Watcher) handleGroup(group ManifestEntryGroup, seedOnly bool) {
 
 	if w.MatchProbe(group) {
 		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-		w.Handle(group)
+		w.Handle(manifestPath, group)
 		w.markGroupHandled(group)
 
 		return

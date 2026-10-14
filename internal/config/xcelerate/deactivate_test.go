@@ -20,9 +20,8 @@ func TestDeactivate_Xcode_RemovesRootAndShellBlocks(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	// Simulate an activated state: create ~/.bitrise-xcelerate with a config file,
-	// an installed toolchain bundle + discovery symlink, and drop the
-	// "Bitrise Xcelerate" export block into both rc files.
+	// Simulate activated state: config file, toolchain bundle + symlink,
+	// and the "Bitrise Xcelerate" export block in both rc files.
 	root := paths.FromHome(tmpHome).XcelerateRoot()
 	require.NoError(t, os.MkdirAll(root, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "config.json"), []byte(`{}`), 0o644))
@@ -47,7 +46,6 @@ func TestDeactivate_Xcode_RemovesRootAndShellBlocks(t *testing.T) {
 	_, err := os.Stat(root)
 	assert.True(t, os.IsNotExist(err))
 
-	// Toolchain bundle + discovery symlink are also gone.
 	_, err = os.Lstat(tcBundle)
 	assert.True(t, os.IsNotExist(err))
 	_, err = os.Lstat(tcLink)
