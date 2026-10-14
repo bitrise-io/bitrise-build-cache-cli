@@ -15,6 +15,7 @@ type OsProxy interface {
 	FindProcess(pid int) (*os.Process, error)
 	Getwd() (string, error)
 	Hostname() (string, error)
+	Lstat(name string) (os.FileInfo, error)
 	MkdirAll(name string, mode os.FileMode) error
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	ReadDir(name string) ([]os.DirEntry, error)
@@ -84,6 +85,10 @@ func (d DefaultOsProxy) Executable() (string, error) {
 
 func (d DefaultOsProxy) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Lstat(name string) (os.FileInfo, error) {
+	return os.Lstat(name) //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) Getwd() (string, error) {

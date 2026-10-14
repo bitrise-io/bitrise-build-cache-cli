@@ -34,6 +34,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			HostnameFunc: func() (string, error) {
 //				panic("mock out the Hostname method")
 //			},
+//			LstatFunc: func(name string) (os.FileInfo, error) {
+//				panic("mock out the Lstat method")
+//			},
 //			MkdirAllFunc: func(name string, mode os.FileMode) error {
 //				panic("mock out the MkdirAll method")
 //			},
@@ -86,6 +89,9 @@ type OsProxyMock struct {
 	// HostnameFunc mocks the Hostname method.
 	HostnameFunc func() (string, error)
 
+	// LstatFunc mocks the Lstat method.
+	LstatFunc func(name string) (os.FileInfo, error)
+
 	// MkdirAllFunc mocks the MkdirAll method.
 	MkdirAllFunc func(name string, mode os.FileMode) error
 
@@ -136,6 +142,11 @@ type OsProxyMock struct {
 		}
 		// Hostname holds details about calls to the Hostname method.
 		Hostname []struct {
+		}
+		// Lstat holds details about calls to the Lstat method.
+		Lstat []struct {
+			// Name is the name argument value.
+			Name string
 		}
 		// MkdirAll holds details about calls to the MkdirAll method.
 		MkdirAll []struct {
@@ -201,6 +212,7 @@ type OsProxyMock struct {
 	lockFindProcess      sync.RWMutex
 	lockGetwd            sync.RWMutex
 	lockHostname         sync.RWMutex
+	lockLstat            sync.RWMutex
 	lockMkdirAll         sync.RWMutex
 	lockOpenFile         sync.RWMutex
 	lockReadDir          sync.RWMutex
@@ -355,6 +367,38 @@ func (mock *OsProxyMock) HostnameCalls() []struct {
 	mock.lockHostname.RLock()
 	calls = mock.calls.Hostname
 	mock.lockHostname.RUnlock()
+	return calls
+}
+
+// Lstat calls LstatFunc.
+func (mock *OsProxyMock) Lstat(name string) (os.FileInfo, error) {
+	if mock.LstatFunc == nil {
+		panic("OsProxyMock.LstatFunc: method is nil but OsProxy.Lstat was just called")
+	}
+	callInfo := struct {
+		Name string
+	}{
+		Name: name,
+	}
+	mock.lockLstat.Lock()
+	mock.calls.Lstat = append(mock.calls.Lstat, callInfo)
+	mock.lockLstat.Unlock()
+	return mock.LstatFunc(name)
+}
+
+// LstatCalls gets all the calls that were made to Lstat.
+// Check the length with:
+//
+//	len(mockedOsProxy.LstatCalls())
+func (mock *OsProxyMock) LstatCalls() []struct {
+	Name string
+} {
+	var calls []struct {
+		Name string
+	}
+	mock.lockLstat.RLock()
+	calls = mock.calls.Lstat
+	mock.lockLstat.RUnlock()
 	return calls
 }
 
