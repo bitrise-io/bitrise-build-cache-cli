@@ -2,10 +2,13 @@ package proxy
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
 	grpcstats "google.golang.org/grpc/stats"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 )
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
@@ -23,6 +26,11 @@ type connectionSession struct {
 	peerPID    int
 	acceptedAt time.Time
 	state      *sessionState
+
+	// derivedInvocationID is set by TagConn when the peer's ancestry anchors to
+	// an xcodebuild/Xcode/SWBBuildService ancestor and no wrapper session is
+	// active. Empty when the wrapper owns the session or no anchor was found.
+	derivedInvocationID string
 
 	// flushOnce guards against a GracefulStop flushAll racing ConnEnd.
 	flushOnce sync.Once
@@ -138,6 +146,21 @@ type sidecarStatsHandler struct {
 	registry         *sessionRegistry
 	writer           *sidecarWriter
 	ancestryResolver func(pid int) []string
+
+	// peerAncestryEntries resolves the PEER PID's ancestry as rich entries.
+	// INVARIANT: this helper is only ever called with a PID that originates
+	// from PeerListener.LookupConn — never from the proxy's own PID chain, or
+	// derivation would overcount every connection as the proxy's parent
+	// xcodebuild/Xcode. Covered by TestDerivePeerInvocationID_NeverUsesProxyAncestry.
+	peerAncestryEntries func(pid int) []AncestryEntry
+
+	// hostname is the once-sampled os.Hostname fed to buildidentity.Derive.
+	hostname string
+
+	// wrapperSessionActive returns true when p.currentSession != nil at
+	// TagConn time; derivation skips in that case because the wrapper already
+	// owns the InvocationID.
+	wrapperSessionActive func() bool
 }
 
 var _ grpcstats.Handler = (*sidecarStatsHandler)(nil)
@@ -164,9 +187,48 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 	}
 
 	cs := newConnectionSession(key, pc.peerPID, pc.acceptedAt)
+	cs.derivedInvocationID = h.derivePeerInvocationID(pc.peerPID)
 	h.registry.put(cs)
 
 	return contextWithSession(ctx, cs)
+}
+
+// derivePeerInvocationID returns a deterministic InvocationID derived from
+// the peer's first anchorable ancestor. Returns "" when:
+//   - the wrapper owns the current session (its ID wins),
+//   - the peer ancestry lacks an anchorable name (health probe / unrelated),
+//   - the resolver was not wired (bufconn tests).
+func (h *sidecarStatsHandler) derivePeerInvocationID(peerPID int) string {
+	if h.wrapperSessionActive != nil && h.wrapperSessionActive() {
+		return ""
+	}
+	if h.peerAncestryEntries == nil {
+		return ""
+	}
+
+	entries := h.peerAncestryEntries(peerPID)
+	bidEntries := make([]buildidentity.AncestryEntry, 0, len(entries))
+	for _, e := range entries {
+		bidEntries = append(bidEntries, buildidentity.AncestryEntry{PID: e.PID, Name: e.Name, StartTimeMS: e.StartTimeMS})
+	}
+
+	anchor, ok := buildidentity.AnchorFromAncestry(h.hostname, bidEntries)
+	if !ok {
+		return ""
+	}
+
+	return buildidentity.Derive(anchor)
+}
+
+// hostnameForDerivation samples the hostname once; proxy startup reads it
+// and hands the value to the sidecar stats handler.
+func hostnameForDerivation() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+
+	return h
 }
 
 // HandleConn flushes the per-conn sidecar on *grpcstats.ConnEnd. ConnBegin is

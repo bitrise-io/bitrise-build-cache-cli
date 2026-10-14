@@ -187,6 +187,66 @@ func TestUninstallToolchain_leavesForeignLinkUntouched(t *testing.T) {
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 }
 
+func TestInstallToolchain_TrampolinedBinsAreCopiesOtherEntriesStaySymlinks(t *testing.T) {
+	skipIfNonUnix(t)
+
+	tmp := t.TempDir()
+	defaultTC := filepath.Join(tmp, "XcodeDefault.xctoolchain")
+	installPath := filepath.Join(tmp, "install", ToolchainID)
+	seedFakeDefaultToolchainWithExtras(t, defaultTC, []string{"swiftc", "clang", "swift", "ld", "clang-stat-cache"})
+
+	trampoline := filepath.Join(tmp, "trampoline")
+	require.NoError(t, os.WriteFile(trampoline, []byte("TRAMPOLINE"), 0o755)) //nolint:gosec // test fixture
+
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", trampoline))
+
+	for _, name := range []string{"swiftc", "clang", "swift"} {
+		p := filepath.Join(installPath, "usr", "bin", name)
+		fi, err := os.Lstat(p)
+		require.NoError(t, err)
+		assert.Zero(t, fi.Mode()&os.ModeSymlink, "%s must be a trampoline copy, not a symlink", name)
+		body, err := os.ReadFile(p) //nolint:gosec // test-controlled path
+		require.NoError(t, err)
+		assert.Equal(t, []byte("TRAMPOLINE"), body)
+	}
+
+	for _, name := range []string{"ld", "clang-stat-cache"} {
+		p := filepath.Join(installPath, "usr", "bin", name)
+		fi, err := os.Lstat(p)
+		require.NoError(t, err)
+		assert.NotZero(t, fi.Mode()&os.ModeSymlink, "%s must remain a symlink", name)
+	}
+}
+
+func TestInstallToolchain_EmptyTrampolinePathPureSymlinkLayout(t *testing.T) {
+	skipIfNonUnix(t)
+
+	tmp := t.TempDir()
+	defaultTC := filepath.Join(tmp, "XcodeDefault.xctoolchain")
+	installPath := filepath.Join(tmp, "install", ToolchainID)
+	seedFakeDefaultToolchain(t, defaultTC)
+
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
+
+	for _, name := range []string{"swiftc", "clang"} {
+		p := filepath.Join(installPath, "usr", "bin", name)
+		fi, err := os.Lstat(p)
+		require.NoError(t, err)
+		assert.NotZero(t, fi.Mode()&os.ModeSymlink, "%s must be a symlink when trampoline path is empty", name)
+	}
+}
+
+func seedFakeDefaultToolchainWithExtras(t *testing.T, root string, bins []string) {
+	t.Helper()
+
+	for _, dir := range []string{"usr/bin", "usr/lib", "Developer"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o755))
+	}
+	for _, bin := range bins {
+		require.NoError(t, os.WriteFile(filepath.Join(root, "usr", "bin", bin), []byte("#!/bin/sh\nexit 0\n"), 0o755)) //nolint:gosec
+	}
+}
+
 func seedFakeDefaultToolchain(t *testing.T, root string) {
 	t.Helper()
 
