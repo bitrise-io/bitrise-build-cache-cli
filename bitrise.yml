@@ -1845,7 +1845,7 @@ workflows:
 
             cd "$CHECKOUT_B_DIR"
 
-            rm -rf "$HOME/.bitrise/cache/xcode-dd" "$HOME/.bitrise/cache/xcode-ptd"
+            rm -rf "$HOME/.bitrise/cache/xcode-dd" "$HOME/.bitrise/cache/xcode-ptd" "$HOME/.bitrise/cache/xcode-cas"
 
             xcodebuild build \
               -workspace ComposableArchitecture.xcworkspace \
