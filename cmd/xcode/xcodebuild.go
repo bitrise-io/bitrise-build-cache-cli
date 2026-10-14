@@ -880,6 +880,9 @@ func (c *XcodebuildRunner) assembleArgs() []string {
 	}
 
 	maps.Copy(additional, xcodeargs.BuildCacheArgs(c.Config.NoSwiftCache))
+	if p := c.resolvePaths(); p.Home != "" {
+		additional["COMPILATION_CACHE_CAS_PATH"] = p.BitriseCacheDir("xcode-cas")
+	}
 
 	diagnosticRemarks := "NO"
 	if c.Config.DebugLogging {

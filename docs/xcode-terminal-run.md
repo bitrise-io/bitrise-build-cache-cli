@@ -46,6 +46,20 @@ Set exactly one of `workspace` / `project`. If both are set, `workspace` wins on
 
 Anything after `--` is passed straight through to `xcodebuild`.
 
+## Compilation cache path
+
+Cached builds use `~/.bitrise/cache/xcode-cas` as `COMPILATION_CACHE_CAS_PATH`.
+Xcode appends the selected store name, such as `plugin`, to this root. The wrapper
+supplies the root even when a generated project sets it to an empty string.
+This also applies with prefix mapping disabled. An explicit
+`COMPILATION_CACHE_CAS_PATH=/path/to/cache` argument takes precedence.
+Query actions, disabled caching, and `--cache-skip-flags` do not set this path.
+
+After activating Xcode caching, run `bash scripts/xcode_cmake_smoke_test.sh` on
+macOS with Xcode and CMake installed to check CMake compiler detection and C/Swift
+target builds with an empty project-level CAS path. The test uses the activated
+wrapper and its cache configuration; it does not change activation settings.
+
 ## Examples
 
 ```bash
