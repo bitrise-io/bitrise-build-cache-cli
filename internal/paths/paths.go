@@ -39,6 +39,12 @@ const (
 	// XcodeToolchainsLinkDirRelative is the per-user dir Xcode scans for toolchain bundles.
 	XcodeToolchainsLinkDirRelative = "Library/Developer/Toolchains"
 
+	// XcodeSelectLinkPath is the active-Xcode anchor symlink `xcode-select -s` maintains.
+	XcodeSelectLinkPath = "/var/db/xcode_select_link"
+
+	// AppleCASPluginRelative is the stock CAS plugin's position inside a developer dir.
+	AppleCASPluginRelative = "usr/lib/libToolchainCASPlugin.dylib"
+
 	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next to a
 	// .xcodeproj when a build configuration has no baseConfigurationReference.
 	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
@@ -326,6 +332,13 @@ func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 // RepoLocalConfigPath returns <repoRoot>/.bitrise-build-cache/<filename>. Repo-rooted, not $HOME-rooted.
 func RepoLocalConfigPath(repoRoot, filename string) string {
 	return filepath.Join(repoRoot, BitriseBuildCacheDirRelative, filename)
+}
+
+// XcodeSelectLinkCASPluginPath returns the CAS plugin dylib rooted at the
+// xcode-select active-Xcode anchor. Independent of $HOME, so it is package-level
+// rather than a Paths method.
+func XcodeSelectLinkCASPluginPath() string {
+	return filepath.Join(XcodeSelectLinkPath, AppleCASPluginRelative)
 }
 
 // DirMaker is the subset of utils.OsProxy that EnsureDir needs.
