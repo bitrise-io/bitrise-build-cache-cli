@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
@@ -36,6 +37,7 @@ type Enricher struct {
 	Health           *HealthWriter
 	Now              func() time.Time
 	XcresultParser   xcresult.Parser
+	SidecarReader    SidecarReader
 }
 
 func (e *Enricher) now() time.Time {
@@ -88,14 +90,29 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
-	hitRate, _ := e.readLogHitRate(manifestPath, group)
+	hitRate, hitRateOutcome := e.readLogHitRate(manifestPath, group)
+
+	var (
+		sidecarBlob   *blobstats.Snapshot
+		consumedPaths []string
+		sidecarFound  bool
+	)
+	if e.SidecarReader != nil {
+		sidecarBlob, consumedPaths, sidecarFound = e.SidecarReader.Lookup(group)
+	}
+
+	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
+		if total := sidecarBlob.Download.OpCount + sidecarBlob.Download.MissCount; total > 0 {
+			hitRate = float32(sidecarBlob.Download.OpCount) / float32(total)
+		}
+	}
 
 	var runErr error
 	if !group.Success() {
 		runErr = errors.New(group.ErrorMessage())
 	}
 
-	inv := analytics.NewInvocation(analytics.InvocationRunStats{
+	runStats := analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
 		Duration:         group.Duration().Milliseconds(),
@@ -106,7 +123,10 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
-	}, e.Auth, e.Metadata)
+		CacheBlobStats:   sidecarBlob,
+	}
+
+	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
 
 	e.attachXcresultSummary(manifestPath, group, inv)
 
@@ -115,10 +135,14 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		_ = e.recordWrapperlessFailure(invocationID, inv, err)
+		if persisted := e.recordWrapperlessFailure(invocationID, inv, err); persisted {
+			unlinkSidecars(consumedPaths, logger)
+		}
 
 		return
 	}
+
+	unlinkSidecars(consumedPaths, logger)
 
 	// matched=false always: matched groups short-circuit above and LastMatched
 	// is reserved for correlated re-PUTs, which no longer happen.
@@ -138,6 +162,9 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
+// recordWrapperlessFailure returns true when the enriched payload was persisted to
+// the retry store, so sidecar unlink can proceed; false when the record was
+// dropped and sidecars must be left for a later invocation to re-consume.
 func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
 		return false
@@ -168,6 +195,14 @@ func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.
 	}
 
 	return true
+}
+
+func unlinkSidecars(paths []string, logger log.Logger) {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
+		}
+	}
 }
 
 // attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
