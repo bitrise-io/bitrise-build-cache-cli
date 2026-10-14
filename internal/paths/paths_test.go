@@ -96,6 +96,10 @@ func TestRepoLocalConfigPath(t *testing.T) {
 	assert.Equal(t, "/repo/.bitrise-build-cache/xcode-build.json", RepoLocalConfigPath("/repo", "xcode-build.json"))
 }
 
+func TestXcodeSelectLinkCASPluginPath(t *testing.T) {
+	assert.Equal(t, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib", XcodeSelectLinkCASPluginPath())
+}
+
 type osDirMaker struct{}
 
 func (osDirMaker) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
