@@ -67,3 +67,23 @@ func ResolveProxySocketPath(override string, envs map[string]string, osProxy uti
 
 	return paths.FromHome("").ProxySocketPath(osProxy.TempDir())
 }
+
+// EnvCASPluginPath overrides the CAS plugin dylib path when set.
+const EnvCASPluginPath = "BITRISE_XCODE_CAS_PLUGIN_PATH"
+
+// ResolveCASPluginPath returns the CAS plugin dylib path: explicit override →
+// BITRISE_XCODE_CAS_PLUGIN_PATH env var → anchor-rooted (follows xcode-select -s)
+// when /var/db/xcode_select_link exists → derived from developerDir.
+func ResolveCASPluginPath(override string, envs map[string]string, developerDir string, osProxy utils.OsProxy) string {
+	if override != "" {
+		return override
+	}
+	if env := envs[EnvCASPluginPath]; env != "" {
+		return env
+	}
+	if _, err := osProxy.Lstat(paths.XcodeSelectLinkPath); err == nil {
+		return paths.XcodeSelectLinkCASPluginPath()
+	}
+
+	return filepath.Join(developerDir, paths.AppleCASPluginRelative)
+}
