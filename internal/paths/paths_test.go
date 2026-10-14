@@ -66,6 +66,7 @@ func TestPaths_xcodeManagedDirs(t *testing.T) {
 	assert.Equal(t, "/h/.bitrise/cache/xcode-dd/abc123", p.XcodeManagedDerivedDataDir("abc123"))
 	assert.Equal(t, "/h/.bitrise/cache/xcode-ptd/abc123", p.XcodeManagedProjectTempDir("abc123"))
 	assert.Equal(t, "/h/.bitrise/cache/xcode-dd", p.XcodeManagedDerivedDataRoot())
+	assert.Equal(t, "/h/.bitrise/cache/xcode-cas", p.XcodeManagedCASDir())
 }
 
 func TestPaths_xcelerateState(t *testing.T) {
