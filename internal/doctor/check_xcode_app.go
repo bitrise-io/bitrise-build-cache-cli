@@ -20,7 +20,7 @@ func (d *Doctor) xcodeAppCheck() Check {
 				return Result{State: StateOK, Detail: "skipped (xcode not activated)"}
 			}
 
-			if runtime.GOOS != "darwin" {
+			if runtime.GOOS != osDarwin {
 				return Result{State: StateOK, Detail: "skipped (macOS only)"}
 			}
 
