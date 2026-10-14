@@ -21,10 +21,26 @@ const (
 	ToolchainDisplayName                 = "Bitrise Build Cache"
 	ToolchainCompatibilityVersion        = 2
 	ToolchainCompatibilityVersionDisplay = "Xcode 15.0 or later"
-	toolchainInfoPlistFile               = "ToolchainInfo.plist"
+	ToolchainInfoPlistFile               = "ToolchainInfo.plist"
 )
 
 var toolchainSymlinkedUsrDirs = []string{"lib", "libexec", "include", "share"} //nolint:gochecknoglobals // immutable layout data
+
+// ToolchainOverrideBuildSettingsKeys enumerates the OverrideBuildSettings keys
+// RenderToolchainInfoPlist writes. Exposed so the doctor check can assert the
+// installed bundle still carries them without duplicating the list.
+//
+//nolint:gochecknoglobals // immutable schema
+var ToolchainOverrideBuildSettingsKeys = []string{
+	"CLANG_ENABLE_COMPILE_CACHE",
+	"CLANG_ENABLE_MODULES",
+	"COMPILATION_CACHE_ENABLE_CACHING",
+	"COMPILATION_CACHE_ENABLE_PLUGIN",
+	"COMPILATION_CACHE_PLUGIN_PATH",
+	"COMPILATION_CACHE_REMOTE_SERVICE_PATH",
+	"OTHER_SWIFT_FLAGS",
+	"SWIFT_ENABLE_COMPILE_CACHE",
+}
 
 // RenderToolchainInfoPlist builds a ToolchainInfo.plist carrying the
 // compile-cache OverrideBuildSettings. pluginPath is derived from the active
@@ -73,7 +89,7 @@ func InstallToolchain(_ context.Context, installPath, defaultToolchainPath, prox
 	if err != nil {
 		return fmt.Errorf("render ToolchainInfo.plist: %w", err)
 	}
-	plistPath := filepath.Join(installPath, toolchainInfoPlistFile)
+	plistPath := filepath.Join(installPath, ToolchainInfoPlistFile)
 	if err := os.WriteFile(plistPath, body, 0o644); err != nil { //nolint:gosec // plist must be readable by Xcode
 		return fmt.Errorf("write %s: %w", plistPath, err)
 	}
