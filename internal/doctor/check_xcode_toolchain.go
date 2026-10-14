@@ -1,13 +1,13 @@
 package doctor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 
 	"howett.net/plist"
 
@@ -59,10 +59,13 @@ func diagnoseXcodeToolchain(bundlePath string) Result {
 		return Result{State: StateWarn, Detail: err.Error()}
 	}
 
+	sorted := append([]string(nil), toolchainUsrBinShims...)
+	sort.Strings(sorted)
+
 	return Result{
 		State: StateOK,
 		Detail: fmt.Sprintf("ok (bundle at %s, %s shims present)",
-			bundlePath, joinShims(toolchainUsrBinShims)),
+			bundlePath, strings.Join(sorted, "/")),
 	}
 }
 
@@ -114,18 +117,4 @@ func verifyToolchainUsrBin(bundlePath string) error {
 	}
 
 	return nil
-}
-
-func joinShims(shims []string) string {
-	sorted := append([]string(nil), shims...)
-	sort.Strings(sorted)
-	var b bytes.Buffer
-	for i, s := range sorted {
-		if i > 0 {
-			b.WriteByte('/')
-		}
-		b.WriteString(s)
-	}
-
-	return b.String()
 }

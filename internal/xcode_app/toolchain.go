@@ -26,20 +26,32 @@ const (
 
 var toolchainSymlinkedUsrDirs = []string{"lib", "libexec", "include", "share"} //nolint:gochecknoglobals // immutable layout data
 
-// ToolchainOverrideBuildSettingsKeys enumerates the OverrideBuildSettings keys
-// RenderToolchainInfoPlist writes. Exposed so the doctor check can assert the
-// installed bundle still carries them without duplicating the list.
+// ToolchainOverrideBuildSettingsKeys mirrors the doctor check; see
+// toolchainOverrideBuildSettings for the source map.
 //
-//nolint:gochecknoglobals // immutable schema
-var ToolchainOverrideBuildSettingsKeys = []string{
-	"CLANG_ENABLE_COMPILE_CACHE",
-	"CLANG_ENABLE_MODULES",
-	"COMPILATION_CACHE_ENABLE_CACHING",
-	"COMPILATION_CACHE_ENABLE_PLUGIN",
-	"COMPILATION_CACHE_PLUGIN_PATH",
-	"COMPILATION_CACHE_REMOTE_SERVICE_PATH",
-	"OTHER_SWIFT_FLAGS",
-	"SWIFT_ENABLE_COMPILE_CACHE",
+//nolint:gochecknoglobals // derived from toolchainOverrideBuildSettings
+var ToolchainOverrideBuildSettingsKeys = func() []string {
+	m := toolchainOverrideBuildSettings("x", "y")
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	return keys
+}()
+
+func toolchainOverrideBuildSettings(proxySocketPath, pluginPath string) map[string]string {
+	return map[string]string{
+		"CLANG_ENABLE_COMPILE_CACHE":            "YES",
+		"CLANG_ENABLE_MODULES":                  "YES",
+		"COMPILATION_CACHE_ENABLE_CACHING":      "YES",
+		"COMPILATION_CACHE_ENABLE_PLUGIN":       "YES",
+		"COMPILATION_CACHE_PLUGIN_PATH":         pluginPath,
+		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
+		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
+		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
+	}
 }
 
 // RenderToolchainInfoPlist builds a ToolchainInfo.plist carrying the
@@ -53,18 +65,7 @@ func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error
 		return nil, errors.New("CAS plugin path is empty")
 	}
 
-	settings := map[string]string{
-		"CLANG_ENABLE_COMPILE_CACHE":            "YES",
-		"CLANG_ENABLE_MODULES":                  "YES",
-		"COMPILATION_CACHE_ENABLE_CACHING":      "YES",
-		"COMPILATION_CACHE_ENABLE_PLUGIN":       "YES",
-		"COMPILATION_CACHE_PLUGIN_PATH":         pluginPath,
-		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
-		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
-		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
-	}
-
-	return []byte(marshalToolchainPlist(settings)), nil
+	return []byte(marshalToolchainPlist(toolchainOverrideBuildSettings(proxySocketPath, pluginPath))), nil
 }
 
 // InstallToolchain writes a thin toolchain bundle that shadows

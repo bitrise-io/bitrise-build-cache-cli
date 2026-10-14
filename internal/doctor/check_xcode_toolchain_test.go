@@ -72,7 +72,12 @@ func TestDiagnoseXcodeToolchain_shimNonExecutableWarns(t *testing.T) {
 }
 
 func TestDiagnoseXcodeToolchain_okAllGatesPass(t *testing.T) {
-	bundlePath := seedToolchainBundle(t, bundleOpts{})
+	bundlePath := seedToolchainBundle(t, bundleOpts{skipPlist: true})
+
+	// Exercise the real producer end-to-end: render → write → doctor-parse.
+	body, err := xa.RenderToolchainInfoPlist("/tmp/sentinel-proxy.sock", "/tmp/sentinel-plugin.dylib")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(bundlePath, xa.ToolchainInfoPlistFile), body, 0o644)) //nolint:gosec
 
 	res := diagnoseXcodeToolchain(bundlePath)
 
