@@ -278,6 +278,7 @@ func (d *Doctor) checks(opts Options) []Check {
 		d.xcelerateWrapperPathCheck(),
 		d.xcodeAppCheck(),
 		d.xcodeToolchainCheck(),
+		d.xcodeToolchainAnchorCheck(),
 		d.xcodeRecentBuildCheck(),
 		d.enrichmentCheck(),
 		d.ccacheHelperCheck(),
