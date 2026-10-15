@@ -71,7 +71,7 @@ func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error
 // InstallToolchain writes a thin toolchain bundle that shadows
 // defaultToolchainPath via symlinks and carries CAS OverrideBuildSettings.
 // Idempotent.
-func InstallToolchain(_ context.Context, installPath, defaultToolchainPath, proxySocketPath, pluginPath string, _ string) error {
+func InstallToolchain(_ context.Context, installPath, defaultToolchainPath, proxySocketPath, pluginPath string) error {
 	if installPath == "" {
 		return errors.New("install path is empty")
 	}
