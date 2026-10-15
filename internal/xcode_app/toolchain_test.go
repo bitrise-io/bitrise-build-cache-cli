@@ -79,7 +79,7 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"))
 
 	// Plist file written.
 	plist := filepath.Join(installPath, ToolchainInfoPlistFile)
@@ -118,8 +118,8 @@ func TestInstallToolchain_isIdempotent(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p1.sock", "/dev/null", ""))
-	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p2.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p1.sock", "/dev/null"))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p2.sock", "/dev/null"))
 
 	// Second install must still produce a valid plist referencing the new socket.
 	body, err := os.ReadFile(filepath.Join(installPath, ToolchainInfoPlistFile)) //nolint:gosec // test-controlled path
@@ -158,7 +158,7 @@ func TestUninstallToolchain_removesLinkAndBundle(t *testing.T) {
 	linkPath := filepath.Join(tmp, "linkdir", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/p.sock", "/dev/null"))
 	require.NoError(t, LinkToolchain(installPath, linkPath))
 
 	require.NoError(t, UninstallToolchain(installPath, linkPath))
