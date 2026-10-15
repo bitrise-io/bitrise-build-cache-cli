@@ -11,10 +11,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// AppleCASPluginPath is a hardcoded fallback for the stock plugin dylib. The
-// installed toolchain bundle's OverrideBuildSettings supplies a path resolved
-// against the active developer dir and takes precedence at build time.
-const AppleCASPluginPath = "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib"
+// AppleCASPluginPath is the xcconfig fallback for the stock plugin dylib.
+// anchored at /var/db/xcode_select_link; follows xcode-select -s auto-correct.
+const AppleCASPluginPath = "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib"
 
 // Render omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES on purpose:
 // SwiftBuild's CompilationCachingConfigFileTaskProducer bails (`return nil`)
