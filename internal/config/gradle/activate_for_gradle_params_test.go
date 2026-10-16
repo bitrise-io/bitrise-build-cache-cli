@@ -588,3 +588,36 @@ func Test_TemplateInventory_ReadsStoredOptInMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "opt-in", inv.Common.ProjectMode)
 }
+
+func Test_TemplateInventory_OptedOutDowngradesAnalyticsToNone(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+	t.Chdir(tempHome)
+
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+	osProxy := utils.DefaultOsProxy{}
+	p, err := paths.Default()
+	require.NoError(t, err)
+	require.NoError(t, machineconfig.Write(machineconfig.Config{ProjectMode: machineconfig.ModeOptIn}, osProxy, p))
+
+	params := ActivateGradleParams{
+		Cache:      CacheParams{Enabled: false},
+		Analytics:  AnalyticsParams{Enabled: true},
+		TestDistro: TestDistroParams{Enabled: false},
+	}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+	}
+
+	inv, err := params.TemplateInventory(context.Background(), mockLogger, envs, false, nil, osProxy)
+	require.NoError(t, err)
+	assert.Equal(t, UsageLevelNone, inv.Analytics.Usage)
+}
