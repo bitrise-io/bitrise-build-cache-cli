@@ -109,6 +109,74 @@ func TestRead_ReturnsStoredValue(t *testing.T) {
 	assert.Equal(t, ModeOptIn, ResolvedProjectMode(cfg))
 }
 
+func TestWriteMarkerIfMissing_FreshWriteDropsFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	wrote, ancestor, err := WriteMarkerIfMissing(dir, utils.DefaultOsProxy{})
+
+	require.NoError(t, err)
+	assert.Empty(t, ancestor)
+	assert.Equal(t, filepath.Join(dir, paths.ProjectMarkerFilename), wrote)
+
+	body, err := os.ReadFile(wrote) //nolint:gosec // test tempdir
+	require.NoError(t, err)
+	assert.Equal(t, "{}\n", string(body))
+}
+
+func TestWriteMarkerIfMissing_ExistingMarkerAtDirIsNoop(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, paths.ProjectMarkerFilename)
+	original := []byte(`{"workspace":"keep"}`)
+	require.NoError(t, os.WriteFile(target, original, 0o644))
+
+	wrote, ancestor, err := WriteMarkerIfMissing(dir, utils.DefaultOsProxy{})
+
+	require.NoError(t, err)
+	assert.Empty(t, ancestor)
+	assert.Equal(t, target, wrote, "cwd-level marker is treated as a fresh-write result")
+
+	body, err := os.ReadFile(target) //nolint:gosec // test tempdir
+	require.NoError(t, err)
+	assert.Equal(t, string(original), string(body), "existing user-authored body must be preserved")
+}
+
+func TestWriteMarkerIfMissing_AncestorMarkerReportsCoverage(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeMarker(t, root)
+	sub := filepath.Join(root, "child")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	wrote, ancestor, err := WriteMarkerIfMissing(sub, utils.DefaultOsProxy{})
+
+	require.NoError(t, err)
+	assert.Empty(t, wrote)
+	assert.Equal(t, filepath.Join(root, paths.ProjectMarkerFilename), ancestor)
+
+	_, statErr := os.Stat(filepath.Join(sub, paths.ProjectMarkerFilename))
+	assert.True(t, os.IsNotExist(statErr), "no new file should land when an ancestor already covers")
+}
+
+func TestWriteMarkerIfMissing_UnwritableDirErrors(t *testing.T) {
+	t.Parallel()
+
+	proxy := &mocks.OsProxyMock{
+		ReadFileIfExistsFunc: func(string) (string, bool, error) { return "", false, nil },
+		WriteFileFunc:        func(string, []byte, os.FileMode) error { return errors.New("permission denied") },
+	}
+
+	wrote, ancestor, err := WriteMarkerIfMissing("/doesnotmatter", proxy)
+
+	require.Error(t, err)
+	assert.Empty(t, wrote)
+	assert.Empty(t, ancestor)
+}
+
 func writeMarker(t *testing.T, dir string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, paths.ProjectMarkerFilename), []byte(`{}`), 0o644))

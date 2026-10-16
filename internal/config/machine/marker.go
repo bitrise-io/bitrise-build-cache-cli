@@ -62,3 +62,30 @@ func FindMarker(startDir string, osProxy utils.OsProxy) (bool, string, error) {
 
 	return marker != nil, path, nil
 }
+
+// WriteMarkerIfMissing drops the marker file at dir unless an ancestor already
+// covers it. On a fresh write it returns the written path; when a parent marker
+// exists it returns ("", ancestorPath, nil). When a marker already sits at dir
+// the existing file is kept intact (any user-authored body is preserved) and
+// the function returns (target, "", nil).
+func WriteMarkerIfMissing(dir string, osProxy utils.OsProxy) (wrotePath string, alreadyCoveredBy string, err error) { //nolint:nonamedreturns // three same-typed returns benefit from labels
+	ancestor, marker, err := WalkUpFindMarker(dir, osProxy)
+	if err != nil {
+		return "", "", fmt.Errorf("walk up for marker: %w", err)
+	}
+
+	target := filepath.Join(dir, paths.ProjectMarkerFilename)
+	if marker != nil {
+		if ancestor == target {
+			return target, "", nil
+		}
+
+		return "", ancestor, nil
+	}
+
+	if err := osProxy.WriteFile(target, []byte("{}\n"), 0o644); err != nil {
+		return "", "", fmt.Errorf("write marker %s: %w", target, err)
+	}
+
+	return target, "", nil
+}
