@@ -1059,7 +1059,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+    - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
     - BRANCH: master
     steps:
     - bundle::feature-e2e-setup: {}
@@ -1138,7 +1138,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+    - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
     - BRANCH: master
     steps:
     - bundle::feature-e2e-setup: {}
@@ -1269,7 +1269,7 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
+      - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
       - BRANCH: master
     steps:
       - bundle::feature-e2e-setup: { }
