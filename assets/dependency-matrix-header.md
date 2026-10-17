@@ -22,9 +22,9 @@ Two views over the same data:
 ## Contents
 
 - [CLI release table](#cli-release-table)
-- [activate-build-cache-for-gradle](#activate-build-cache-for-gradle)
-- [activate-build-cache-for-react-native](#activate-build-cache-for-react-native)
-- [activate-gradle-mirrors](#activate-gradle-mirrors)
+- [activate-build-cache-for-gradle dependency matrix](#activate-build-cache-for-gradle)
+- [activate-build-cache-for-react-native dependency matrix](#activate-build-cache-for-react-native)
+- [activate-gradle-mirrors dependency matrix](#activate-gradle-mirrors)
 
 ## Components
 
