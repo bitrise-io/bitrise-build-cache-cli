@@ -83,6 +83,8 @@ const (
 	// xcodeManagedProjectTempDirTool is the per-workspace PROJECT_TEMP_DIR root managed by the wrapper.
 	xcodeManagedProjectTempDirTool = "xcode-ptd"
 
+	xcodeManagedCASTool = "xcode-cas"
+
 	// gradleInitScriptRelative is the per-user gradle init script written by `activate gradle`.
 	gradleInitScriptRelative = ".gradle/init.d/bitrise-build-cache.init.gradle.kts"
 
@@ -277,6 +279,11 @@ func (p Paths) XcodeManagedDerivedDataDir(workspaceSHA string) string {
 // XcodeManagedDerivedDataRoot returns the parent of every per-workspace DerivedData dir.
 func (p Paths) XcodeManagedDerivedDataRoot() string {
 	return p.BitriseCacheDir(xcodeManagedDerivedDataTool)
+}
+
+// XcodeManagedCASDir returns the shared compilation cache root for cached Xcode builds.
+func (p Paths) XcodeManagedCASDir() string {
+	return p.BitriseCacheDir(xcodeManagedCASTool)
 }
 
 // XcodeManagedProjectTempDir returns the wrapper-owned PROJECT_TEMP_DIR dir for a given
