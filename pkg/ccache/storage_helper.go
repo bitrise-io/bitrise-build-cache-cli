@@ -269,6 +269,12 @@ func (h *StorageHelper) registerInvocationRelation(ctx context.Context) {
 func (h *StorageHelper) CollectAndSendStats(ctx context.Context, invocationIDOverride, parentIDOverride string) {
 	defer h.zeroCcacheStats(ctx, h.logger)
 
+	if machineconfig.ProjectOptedOut(h.osProxy, h.logger) {
+		h.logger.TInfof("[project-mode] opt-in active, no marker; skipping ccache invocation analytics")
+
+		return
+	}
+
 	_, err := h.loadSessionInfo(ctx, invocationIDOverride, parentIDOverride)
 	if err != nil {
 		h.logger.TWarnf("Failed to load session info from storage helper, stats collection will be skipped: %v", err)
