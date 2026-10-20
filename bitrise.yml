@@ -1059,8 +1059,8 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-    - BRANCH: master
+    - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
+    - COMMIT: e89755babf3e941bc1e9d8120b1cd48854ab9dfa # bazelbuild/bazel 9.3.0; master changes made builds slower at times
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -1138,8 +1138,8 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-    - BRANCH: master
+    - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
+    - COMMIT: e89755babf3e941bc1e9d8120b1cd48854ab9dfa # bazelbuild/bazel 9.3.0; master changes made builds slower at times
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -1269,8 +1269,8 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-      - BRANCH: master
+      - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
+      - COMMIT: e89755babf3e941bc1e9d8120b1cd48854ab9dfa # bazelbuild/bazel 9.3.0; master changes made builds slower at times
     steps:
       - bundle::feature-e2e-setup: { }
       - script@1:
