@@ -152,6 +152,7 @@ func TestDownloadCompressed_StalledStreamIsAbortedAndRetried(t *testing.T) {
 	assert.Equal(t, blob, got.Bytes())
 	assert.Equal(t, []getRequest{{resource: "kv/zstd/key"}, {resource: "kv/zstd/key"}}, rig.recorded(), "both attempts start from offset 0")
 	assert.GreaterOrEqual(t, time.Since(started), testIdleTimeout)
+	assert.Less(t, time.Since(started), 5*time.Second, "the idle timer, not the caller's deadline, ended the stalled attempt")
 }
 
 // The total time exceeds the idle window; only the gaps between chunks are bounded by it.
@@ -185,7 +186,8 @@ func TestDownloadCompressed_SlowButProgressingStreamCompletes(t *testing.T) {
 func TestDownloadCompressed_ZeroIdleWindowFallsBackToTheDefault(t *testing.T) {
 	blob := bytes.Repeat([]byte("blob "), 100)
 
-	rig := newIdleTestRig(t, []streamStep{{data: zstdFrame(t, blob)}, {end: io.EOF}})
+	// The pauses let an immediately firing timer (no guard) win deterministically against the stream.
+	rig := newIdleTestRig(t, []streamStep{{data: zstdFrame(t, blob), pause: testChunkGap / 2}, {end: io.EOF}})
 	rig.client.downloadIdleTimeout = 0
 
 	var got bytes.Buffer

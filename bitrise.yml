@@ -1630,7 +1630,7 @@ workflows:
               # `-d activate` makes the proxy log each compressed upload and each decoded download. The rejection check is the
               # real guard: upload lines alone are logged before the server accepts the blob, and a cold run has no downloads.
               logs=(~/.local/state/xcelerate/logs/proxy-*-out.log)
-              if ! grep -qE "ompressed .* bytes" "${logs[@]}"; then
+              if ! grep -qE "(Compressed|Decompressed) [^ ]+: [0-9]+ -> [0-9]+ bytes" "${logs[@]}"; then
                 echo "FAIL: no zstd (de)compression in the proxy logs"
                 exit 1
               fi
