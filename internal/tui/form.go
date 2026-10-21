@@ -48,6 +48,7 @@ func Chrome(description string) int {
 func KeyMap() *huh.KeyMap {
 	km := huh.NewDefaultKeyMap()
 	km.Quit = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
+	km.MultiSelect.Toggle = key.NewBinding(key.WithKeys("space", "x"), key.WithHelp("space", "toggle"))
 
 	return km
 }
@@ -55,7 +56,7 @@ func KeyMap() *huh.KeyMap {
 // RunForm runs the groups as one abortable form, translating huh's abort into
 // ErrAborted so callers don't have to know about huh.
 func RunForm(groups ...*huh.Group) error {
-	return translateFormErr(huh.NewForm(groups...).WithKeyMap(KeyMap()).Run())
+	return translateFormErr(huh.NewForm(groups...).WithKeyMap(KeyMap()).WithTheme(BitriseTheme()).Run())
 }
 
 func translateFormErr(err error) error {

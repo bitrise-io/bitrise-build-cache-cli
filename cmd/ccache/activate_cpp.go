@@ -8,6 +8,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/permhint"
 	ccachepkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/ccache"
 )
@@ -57,6 +58,11 @@ This command will:
 
 			return fmt.Errorf("activate C++ cache: %w", err)
 		}
+
+		configcommon.PrintNextSteps(logger, []string{
+			"Build normally — ccache picks up `CCACHE_REMOTE_STORAGE` from the exported env.",
+			"Verify with `ccache -s` (look for \"Remote storage read hits/misses\").",
+		}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-react-native/configuring-the-build-cache-for-react-native-in-local-builds.html")
 
 		return nil
 	},

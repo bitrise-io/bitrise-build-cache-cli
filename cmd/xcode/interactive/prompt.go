@@ -6,6 +6,8 @@ package interactive
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"charm.land/huh/v2"
@@ -154,13 +156,21 @@ func (p Prompter) fillDestination(
 	runForm func(*huh.Group) error,
 	spec *invoke.InvocationSpec,
 ) error {
-	var dests []string
+	var dests []xcodebuildinfo.Destination
 
-	if spec.Scheme != "" {
+	switch {
+	case spec.Scheme == "":
+		p.warnPickerFallback("scheme is empty")
+	case spec.Workspace == "" && spec.Project == "":
+		p.warnPickerFallback("workspace/project is empty")
+	default:
 		d, err := provider.ShowDestinations(ctx, spec.Workspace, spec.Project, spec.Scheme)
-		if err != nil {
-			p.debug("xcodebuild -showdestinations: %s; falling back to free-text input", err)
-		} else {
+		switch {
+		case err != nil:
+			p.warnPickerFallback(fmt.Sprintf("xcodebuild -showdestinations: %s", err))
+		case len(d) == 0:
+			p.warnPickerFallback("xcodebuild -showdestinations returned no destinations")
+		default:
 			dests = d
 		}
 	}
@@ -178,6 +188,10 @@ func (p Prompter) debug(format string, args ...any) {
 	}
 
 	p.Logger.Debugf(format, args...)
+}
+
+func (p Prompter) warnPickerFallback(reason string) {
+	fmt.Fprintf(os.Stderr, "Warning: destination picker fell back to free-text input: %s\n", reason)
 }
 
 func containerField(spec *invoke.InvocationSpec) huh.Field {
@@ -218,7 +232,7 @@ func configurationField(spec *invoke.InvocationSpec, candidates []string) huh.Fi
 		Value(&spec.Configuration)
 }
 
-func destinationField(spec *invoke.InvocationSpec, candidates []string) huh.Field {
+func destinationField(spec *invoke.InvocationSpec, candidates []xcodebuildinfo.Destination) huh.Field {
 	if len(candidates) == 0 {
 		return huh.NewInput().
 			Title("Destination").
@@ -227,11 +241,48 @@ func destinationField(spec *invoke.InvocationSpec, candidates []string) huh.Fiel
 			Value(&spec.Destination)
 	}
 
+	defaultDest, _ := xcodebuildinfo.DefaultDestination(candidates)
+
+	options := make([]huh.Option[string], 0, len(candidates))
+	for _, d := range candidates {
+		opt := huh.NewOption(destinationLabel(d), d.Canonical)
+		if d.Canonical == defaultDest.Canonical {
+			opt = opt.Selected(true)
+		}
+
+		options = append(options, opt)
+	}
+
 	return huh.NewSelect[string]().
 		Title("Destination").
-		Options(huh.NewOptions(candidates...)...).
+		Options(options...).
 		Height(tui.SelectHeight).
 		Value(&spec.Destination)
+}
+
+func destinationLabel(d xcodebuildinfo.Destination) string {
+	name := d.Name
+	if name == "" {
+		name = d.Canonical
+	}
+
+	parts := []string{}
+
+	if d.Platform != "" {
+		parts = append(parts, d.Platform)
+	}
+
+	if d.OS != "" {
+		parts = append(parts, d.OS)
+	} else if d.Arch != "" {
+		parts = append(parts, d.Arch)
+	}
+
+	if len(parts) == 0 {
+		return name
+	}
+
+	return name + " — " + strings.Join(parts, " ")
 }
 
 func normalizeContainer(spec *invoke.InvocationSpec) {

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
@@ -81,7 +83,7 @@ var resolveXcodeInvocation = func(ctx context.Context, command invoke.Command, r
 	}
 
 	if !spec.IsComplete() {
-		spec, err = interactive.Prompter{}.Fill(ctx, spec, meta.ProjectDir)
+		spec, err = interactive.Prompter{Logger: log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))}.Fill(ctx, spec, meta.ProjectDir)
 		if err != nil {
 			return invoke.InvocationSpec{}, err //nolint:wrapcheck // prompter errors are already contextual
 		}
@@ -120,10 +122,20 @@ func runXcodeSubcommand(ctx context.Context, cobraCmd *cobra.Command, command in
 		return err
 	}
 
+	logResolvedDestination(os.Stderr, spec)
+
 	argv := invoke.BuildArgv(spec, command, codesign)
 	argv = append(argv, positional...)
 
 	return runXcodebuildWrapperFn(ctx, argv, cobraCmd)
+}
+
+func logResolvedDestination(w io.Writer, spec invoke.InvocationSpec) {
+	if spec.Destination == "" {
+		return
+	}
+
+	fmt.Fprintf(w, "Using destination: xcodebuild -destination '%s'\n", spec.Destination)
 }
 
 func promptUnavailableError(command invoke.Command, cause error) error {

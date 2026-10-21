@@ -73,7 +73,15 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	}
 	bazelrcPath := paths.FromHome(homeDir).BazelrcFile()
 
+	if _, _, err := clibin.EnsureInstalledInUserLocalBin(cmd.Context(), logger); err != nil {
+		logger.Debugf("self-install to ~/.local/bin skipped: %s", err)
+	}
+
 	activateBazelParams.CLIPath = clibin.Resolve(logger)
+
+	if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+		bazelconfig.WarnIfHelperPinnedInRepo(cmd.Context(), logger, cwd, utils.DefaultOsProxy{}, clibin.OnPATH())
+	}
 
 	if err := common.PersistProjectMode(activateBazelProjectMode, logger); err != nil {
 		return fmt.Errorf("persist project mode: %w", err)
@@ -124,6 +132,10 @@ func activateBazel(cmd *cobra.Command, _ []string) error {
 	}
 
 	logger.TInfof("✅ Bitrise Build Cache activated for Bazel")
+	configcommon.PrintNextSteps(logger, []string{
+		"Run `bazel build //...` (or your target).",
+		"The first build populates the cache; subsequent builds hit it. Look for cache stats at the end of a build.",
+	}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-bazel/configuring-the-build-cache-for-bazel-in-local-builds.html")
 
 	return nil
 }

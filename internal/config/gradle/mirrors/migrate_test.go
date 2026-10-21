@@ -20,6 +20,7 @@ func migrateTestLogger() *utilsMocks.Logger {
 	l := &utilsMocks.Logger{}
 	l.On("Infof", mock.Anything).Return()
 	l.On("Infof", mock.Anything, mock.Anything).Return()
+	l.On("Infof", mock.Anything, mock.Anything, mock.Anything).Return()
 
 	return l
 }
@@ -86,6 +87,62 @@ func TestMigratePrebootInitScript_doesNotClobberExistingTarget(t *testing.T) {
 	dstContent, err := os.ReadFile(dst)
 	require.NoError(t, err)
 	require.Equal(t, "// fresh mirror", string(dstContent), "existing target must not be overwritten")
+
+	_, statErr := os.Stat(src)
+	require.NoError(t, statErr, "preboot script must be left in place when target already exists")
+}
+
+func writePrebootBuildCache(t *testing.T, gradleHome string) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(paths.GradleInitDir(gradleHome), 0o755))
+	src := paths.GradleInitScript(gradleHome)
+	require.NoError(t, os.WriteFile(src, []byte("// preboot build-cache"), 0o644))
+
+	return src
+}
+
+func TestMigratePrebootBuildCacheInitScript_movesToCustomHome(t *testing.T) {
+	defaultHome := filepath.Join(t.TempDir(), ".gradle")
+	customHome := t.TempDir()
+	src := writePrebootBuildCache(t, defaultHome)
+
+	err := mirrorsconfig.MigratePrebootBuildCacheInitScript(migrateTestLogger(), utils.DefaultOsProxy{}, defaultHome, customHome)
+	require.NoError(t, err)
+
+	movedContent, err := os.ReadFile(paths.GradleInitScript(customHome))
+	require.NoError(t, err)
+	require.Equal(t, "// preboot build-cache", string(movedContent))
+
+	_, statErr := os.Stat(src)
+	require.True(t, os.IsNotExist(statErr), "preboot script should be removed after move")
+}
+
+func TestMigratePrebootBuildCacheInitScript_noopWhenNoPrebootScript(t *testing.T) {
+	defaultHome := filepath.Join(t.TempDir(), ".gradle")
+	customHome := t.TempDir()
+
+	err := mirrorsconfig.MigratePrebootBuildCacheInitScript(migrateTestLogger(), utils.DefaultOsProxy{}, defaultHome, customHome)
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(paths.GradleInitScript(customHome))
+	require.True(t, os.IsNotExist(statErr))
+}
+
+func TestMigratePrebootBuildCacheInitScript_doesNotClobberExistingTarget(t *testing.T) {
+	defaultHome := filepath.Join(t.TempDir(), ".gradle")
+	customHome := t.TempDir()
+	src := writePrebootBuildCache(t, defaultHome)
+
+	require.NoError(t, os.MkdirAll(paths.GradleInitDir(customHome), 0o755))
+	dst := paths.GradleInitScript(customHome)
+	require.NoError(t, os.WriteFile(dst, []byte("// fresh build-cache"), 0o644))
+
+	err := mirrorsconfig.MigratePrebootBuildCacheInitScript(migrateTestLogger(), utils.DefaultOsProxy{}, defaultHome, customHome)
+	require.NoError(t, err)
+
+	dstContent, err := os.ReadFile(dst)
+	require.NoError(t, err)
+	require.Equal(t, "// fresh build-cache", string(dstContent), "existing target must not be overwritten")
 
 	_, statErr := os.Stat(src)
 	require.NoError(t, statErr, "preboot script must be left in place when target already exists")

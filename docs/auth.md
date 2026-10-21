@@ -18,10 +18,11 @@ L5  CONSUMERS
          │  imports: live, auth · (store/oauth only for login, logout, clear)
          ▼
 L4  internal/auth/live                  the resolver
-         │  imports: auth, store, oauth, buildhub
+         │  imports: auth, store, oauth, buildhub, githuboidc
          ▼
 L3  internal/auth/oauth                 sign-in · refresh · token exchange
     internal/auth/buildhub              Build Hub VM token → Build Cache token
+    internal/auth/githuboidc            GitHub Actions OIDC token → Workspace API token
          │  imports: auth, store
          ▼
 L2  internal/auth/store                 backend selection · persistence
@@ -245,21 +246,40 @@ The resolver. The only package a consumer needs.
 ```
 env vars (AUTH_TOKEN + WORKSPACE_ID)
   → CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)
+  → GitHub Actions OIDC exchange (OIDC_POLICY_ID + WORKSPACE_ID + GitHub's ACTIONS_ID_TOKEN_REQUEST_*)
   → brokered Build Hub token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL)
   → OS keychain
   → config file, `credentials` key
   → config file, `authConfig` (analytics) block
 ```
 
-The brokered step sits after the injected credentials and before the stores. A Build
-Hub runner can always broker one, so trying it earlier would shadow a token the user
-configured deliberately, and later would shadow it behind a stale login on the
-machine. It is the only precedence step that makes a network call, so it is passed
-into `resolveWith` rather than called from it: `ResolveNoRefresh` passes nil and
-therefore stays offline, which is what `status` and the doctor depend on. A failed
-exchange is not fatal — resolution falls through to the stores. The exchange client
-is process-wide (`buildhub.Shared`), so every resolver in one command shares a
-single cached token.
+The two exchange steps sit after the injected credentials and before the stores.
+The job can always mint a credential, so trying earlier would shadow a token the
+user configured deliberately, and later would shadow it behind a stale login on the
+machine. They are the only precedence steps that make a network call, so they are
+passed into `resolveWith` as one step rather than called from it: `ResolveNoRefresh`
+passes nil and therefore stays offline, which is what `status` and the doctor depend
+on. A failed exchange is not fatal — resolution falls through to the stores. Each
+exchange client is process-wide (`githuboidc.Shared`, `buildhub.Shared`), so every
+resolver in one command shares a single cached token.
+
+The OIDC exchange runs first because a trust policy ID is something the user set,
+while a Build Hub runner offers its token whether or not it was asked for. For the
+same reason its failures are not only logged at debug level, as a failed Build Hub
+exchange is: when another credential stands in, the failure is a warning (once per
+message), and when nothing does, it is the error `Resolve` returns instead of "no
+token set". The workspace comes from
+`BITRISE_BUILD_CACHE_WORKSPACE_ID`, not the token: what the exchange returns is a
+Workspace API token, opaque and not a JWT. That has three consequences:
+
+- It is sent workspace-prefixed like any other PAT or WAT, so its origin is
+  `BackendEnv` with `ProvenanceOIDC`. `BackendJWT` would make `GradleToken` drop
+  the prefix.
+- `ResolvePinned` mirrors it to the analytics block only, like a JWT. Anything else
+  goes to the credentials block, which is for credentials that outlive a build.
+- Each exchange spends a GitHub token (single use, replay-checked by Bitrise) and
+  mints a token server-side, so the client caches, serialises refreshes and backs
+  off after a failure.
 
 `PreferStored` moves the two file/keychain steps ahead of the env vars. That is the
 only variation, and it exists for one caller.

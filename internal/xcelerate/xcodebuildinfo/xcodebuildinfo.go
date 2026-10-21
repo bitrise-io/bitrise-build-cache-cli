@@ -10,7 +10,10 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 // Client runs xcodebuild from WorkDir (or the current directory when empty).
@@ -23,6 +26,19 @@ type Client struct {
 // New returns a Client scoped to workDir.
 func New(workDir string) *Client {
 	return &Client{WorkDir: workDir}
+}
+
+// Destination is one parsed row of `xcodebuild -showdestinations` output,
+// retaining enough metadata for the picker to render a friendly label and
+// pre-select a sensible default.
+type Destination struct {
+	// Canonical is the exact `-destination` arg form; what the picker commits.
+	Canonical string
+	Platform  string
+	Name      string
+	OS        string
+	ID        string
+	Arch      string
 }
 
 func (c *Client) ListSchemesAndConfigurations(ctx context.Context, workspace, project string) ([]string, []string, error) {
@@ -43,7 +59,7 @@ func (c *Client) ListSchemesAndConfigurations(ctx context.Context, workspace, pr
 	return nil, nil, nil
 }
 
-func (c *Client) ShowDestinations(ctx context.Context, workspace, project, scheme string) ([]string, error) {
+func (c *Client) ShowDestinations(ctx context.Context, workspace, project, scheme string) ([]Destination, error) {
 	args := []string{"-showdestinations", "-scheme", scheme}
 
 	switch {
@@ -122,25 +138,26 @@ func parseXcodebuildList(raw []byte) (xcodebuildListOutput, error) {
 // Value tokens may contain spaces; the separator is `, key:`. Regex keeps parsing permissive.
 var destinationKeyValueRe = regexp.MustCompile(`([A-Za-z]+):([^,}]+)`)
 
-func parseShowDestinations(output string) []string {
-	seen := map[string]struct{}{}
-	dests := []string{}
+func parseShowDestinations(output string) []Destination {
+	// Xcode may emit an "Ineligible destinations" block (uninstalled sims,
+	// incompatible platforms). Everything else — whether prefaced by
+	// "Available destinations" (older Xcode) or "Destinations compatible with
+	// the "<scheme>" scheme:" (Xcode 15+) — is usable.
+	inAvailable := true
 
-	// Xcode emits two blocks: "Available destinations" (usable) and
-	// "Ineligible destinations" (unavailable — e.g. uninstalled simulators).
-	// Only the former belongs in the picker.
-	inAvailable := false
+	parsed := []Destination{}
 
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 
 		switch {
-		case strings.HasPrefix(line, "Available destinations"):
-			inAvailable = true
-
-			continue
 		case strings.HasPrefix(line, "Ineligible destinations"):
 			inAvailable = false
+
+			continue
+		case strings.HasPrefix(line, "Available destinations"),
+			strings.HasPrefix(line, "Destinations compatible with"):
+			inAvailable = true
 
 			continue
 		}
@@ -163,22 +180,26 @@ func parseShowDestinations(output string) []string {
 			fields[key] = val
 		}
 
-		dest := canonicalDestination(fields)
-		if dest == "" {
+		dest := destinationFromFields(fields)
+		if dest.Canonical == "" {
 			continue
 		}
 
-		if _, dup := seen[dest]; dup {
-			continue
-		}
-
-		seen[dest] = struct{}{}
-		dests = append(dests, dest)
+		parsed = append(parsed, dest)
 	}
 
-	sort.Strings(dests)
+	return rankAndDedup(parsed)
+}
 
-	return dests
+func destinationFromFields(fields map[string]string) Destination {
+	return Destination{
+		Canonical: canonicalDestination(fields),
+		Platform:  fields["platform"],
+		Name:      fields["name"],
+		OS:        fields["OS"],
+		ID:        fields["id"],
+		Arch:      fields["arch"],
+	}
 }
 
 func canonicalDestination(fields map[string]string) string {
@@ -195,4 +216,131 @@ func canonicalDestination(fields map[string]string) string {
 	}
 
 	return "platform=" + platform + ",name=" + name
+}
+
+// DefaultDestination returns the entry the picker should pre-select. The
+// ranked winner is the newest iPhone simulator on the highest-numbered iOS;
+// absent any iOS Simulator entries we fall back to the first row Xcode
+// printed.
+func DefaultDestination(dests []Destination) (Destination, bool) {
+	if len(dests) == 0 {
+		return Destination{}, false
+	}
+
+	ranked := rankAndDedup(dests)
+
+	return ranked[0], true
+}
+
+// rankAndDedup sorts destinations by picker preference (iOS Simulator > newest
+// OS > newest iPhone) and collapses rows that share a canonical form, keeping
+// the ranked winner.
+func rankAndDedup(dests []Destination) []Destination {
+	out := append([]Destination(nil), dests...)
+	sort.SliceStable(out, func(i, j int) bool { return lessDestination(out[i], out[j]) })
+
+	seen := map[string]struct{}{}
+	kept := out[:0]
+
+	for _, d := range out {
+		if _, dup := seen[d.Canonical]; dup {
+			continue
+		}
+
+		seen[d.Canonical] = struct{}{}
+		kept = append(kept, d)
+	}
+
+	return kept
+}
+
+func lessDestination(a, b Destination) bool {
+	aSim, bSim := a.Platform == "iOS Simulator", b.Platform == "iOS Simulator"
+	if aSim != bSim {
+		return aSim
+	}
+
+	if !aSim {
+		return false
+	}
+
+	if c := compareOS(a.OS, b.OS); c != 0 {
+		return c > 0
+	}
+
+	return compareIPhoneName(a.Name, b.Name) > 0
+}
+
+// compareOS returns >0 when a is newer than b; delegates to semver (which
+// handles partial versions like `17.4`) and falls back to lexical compare
+// for anything semver can't parse.
+func compareOS(a, b string) int {
+	av, bv := "v"+a, "v"+b
+
+	switch {
+	case semver.IsValid(av) && semver.IsValid(bv):
+		return semver.Compare(av, bv)
+	case semver.IsValid(av):
+		return 1
+	case semver.IsValid(bv):
+		return -1
+	}
+
+	return strings.Compare(a, b)
+}
+
+var iPhoneNameRe = regexp.MustCompile(`^iPhone\s+(\d+)(?:\s+(.*))?$`)
+
+// compareIPhoneName returns >0 when a is a "newer" iPhone than b: higher model
+// number wins first, then suffix tier Pro Max > Pro > Plus > plain > SE. Rows
+// that don't match the iPhone shape fall through to a lexical compare.
+func compareIPhoneName(a, b string) int {
+	aNum, aSuffix, aOk := parseIPhoneName(a)
+	bNum, bSuffix, bOk := parseIPhoneName(b)
+
+	switch {
+	case aOk && bOk:
+		if aNum != bNum {
+			return aNum - bNum
+		}
+
+		return iPhoneSuffixTier(aSuffix) - iPhoneSuffixTier(bSuffix)
+	case aOk:
+		return 1
+	case bOk:
+		return -1
+	}
+
+	return strings.Compare(a, b)
+}
+
+func parseIPhoneName(name string) (int, string, bool) {
+	m := iPhoneNameRe.FindStringSubmatch(name)
+	if m == nil {
+		return 0, "", false
+	}
+
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, "", false
+	}
+
+	return n, strings.TrimSpace(m[2]), true
+}
+
+func iPhoneSuffixTier(suffix string) int {
+	switch strings.ToLower(suffix) {
+	case "pro max":
+		return 4
+	case "pro":
+		return 3
+	case "plus":
+		return 2
+	case "":
+		return 1
+	case "se":
+		return 0
+	}
+
+	return 1
 }

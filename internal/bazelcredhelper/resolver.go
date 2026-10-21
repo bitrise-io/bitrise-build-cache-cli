@@ -47,8 +47,10 @@ func newResolver(resolver *live.Resolver, envs map[string]string, warn io.Writer
 			warnStale(warn, err)
 
 			return Credential{Token: cred.Token, Expiry: time.Now().Add(staleCacheHint)}, nil
-		// Without the hint Bazel keeps a brokered JWT for its 30m default, past its expiry.
-		case origin.Provenance == authpkg.ProvenanceBrokered && !cred.Expiry.IsZero():
+		// Without the hint Bazel keeps a minted token for its 30m default, which is
+		// past the expiry of a brokered JWT or a 15-minute OIDC-exchanged one.
+		case (origin.Provenance == authpkg.ProvenanceBrokered || origin.Provenance == authpkg.ProvenanceOIDC) &&
+			!cred.Expiry.IsZero():
 			return Credential{Token: cred.Token, Expiry: cred.Expiry.Add(-expiresLead)}, nil
 		// Env vars, the CI JWT and the analytics block carry no refresh token, so
 		// there is no expiry to hint at.

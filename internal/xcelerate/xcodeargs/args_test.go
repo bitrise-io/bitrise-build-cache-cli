@@ -420,6 +420,7 @@ func Test_AcceptsDerivedDataPath(t *testing.T) {
 		{"no enabling flag", []string{"-showBuildSettings", "-workspace", "Foo.xcworkspace"}, false},
 		{"build action alone is not enough", []string{"build"}, false},
 		{"empty argv", []string{}, false},
+		{"project with target build", []string{"-project", "Foo.xcodeproj", "-target", "Foo", "build"}, false},
 		{"target is not a substitute for scheme", []string{"-target", "Foo"}, false},
 		// -create-xcframework rejects -derivedDataPath, but it rejects every enabling
 		// flag too, so no argv can reach the injection path.

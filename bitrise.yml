@@ -715,7 +715,7 @@ workflows:
   feature-e2e-gradle-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
-    - BRANCH: develop
+    - COMMIT: 4f7083279ce78ab2e52baff22e5fb6b0b079de12
     # activate must write the init script here, not $HOME/.gradle
     - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
@@ -737,6 +737,13 @@ workflows:
     - restore-gradle-cache:
         inputs:
           - verbose: 'true'
+    - script:
+        title: Strip preboot-installed bitrise init scripts from $HOME/.gradle
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" \
+                  "$HOME/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts"
     - script:
         title: Enable build cache
         inputs:
@@ -1052,8 +1059,8 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-    - BRANCH: master
+    - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
+    - COMMIT: e89755babf3e941bc1e9d8120b1cd48854ab9dfa # bazelbuild/bazel 9.3.0; master changes made builds slower at times
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -1131,8 +1138,8 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-    - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-    - BRANCH: master
+    - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
+    - COMMIT: e89755babf3e941bc1e9d8120b1cd48854ab9dfa # bazelbuild/bazel 9.3.0; master changes made builds slower at times
     steps:
     - bundle::feature-e2e-setup: {}
     - script@1:
@@ -1262,8 +1269,8 @@ workflows:
         stack: linux-docker-android-22.04
         machine_type_id: g2.linux.medium
     envs:
-      - TEST_APP_URL: git@github.com:bitrise-io/bazel.git
-      - BRANCH: master
+      - TEST_APP_URL: https://github.com/bazelbuild/bazel.git
+      - COMMIT: e89755babf3e941bc1e9d8120b1cd48854ab9dfa # bazelbuild/bazel 9.3.0; master changes made builds slower at times
     steps:
       - bundle::feature-e2e-setup: { }
       - script@1:
@@ -1293,12 +1300,11 @@ workflows:
                 #!/bin/bash
                 set -exo pipefail
 
-                mkdir -p ../_dockerroot
+                mkdir -p ../_dockerroot/local-bin
                 cp -r $HOME/.bazelrc ../_dockerroot/.bazelrc
+                cp "$(readlink -f ../bitrise-build-cache-cli)" ../_dockerroot/local-bin/bitrise-build-cache
 
                 echo ${DOCKER_SHARED_PASSWORD} | docker login --username bitrisedev --password-stdin
-
-                cli_path=$(readlink -f ../bitrise-build-cache-cli)
 
                 sudo docker run --rm \
                   -w "/workspace" \
@@ -1311,9 +1317,10 @@ workflows:
                   -e "BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN=$BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN" \
                   -e "BITRISE_BUILD_CACHE_AUTH_TOKEN=$BITRISE_BUILD_CACHE_AUTH_TOKEN" \
                   -e "BITRISE_BUILD_CACHE_WORKSPACE_ID=$BITRISE_BUILD_CACHE_WORKSPACE_ID" \
+                  -e "PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
                   --mount "type=bind,source=$PWD,target=/workspace" \
                   --mount "type=bind,source=$(readlink -f ../_dockerroot)/.bazelrc,target=/root/.bazelrc,ro" \
-                  --mount "type=bind,source=$cli_path,target=$cli_path,ro" \
+                  --mount "type=bind,source=$(readlink -f ../_dockerroot)/local-bin,target=/root/.local/bin,ro" \
                   --mount "type=bind,source=$BITRISE_DEPLOY_DIR,target=/bitrise-deploy" \
                   ubuntu:22.04 \
                   bash -c "set -o pipefail; sed -i.bak 's|http://archive.ubuntu.com/ubuntu/|http://mirror.enzu.com/ubuntu/|g' /etc/apt/sources.list && apt-get update && apt-get install -y curl build-essential xz-utils zip unzip python3 && \
@@ -1856,7 +1863,7 @@ workflows:
 
             cd "$CHECKOUT_B_DIR"
 
-            rm -rf "$HOME/.bitrise/cache/xcode-dd" "$HOME/.bitrise/cache/xcode-ptd"
+            rm -rf "$HOME/.bitrise/cache/xcode-dd" "$HOME/.bitrise/cache/xcode-ptd" "$HOME/.bitrise/cache/xcode-cas"
 
             xcodebuild build \
               -workspace ComposableArchitecture.xcworkspace \
@@ -2041,7 +2048,7 @@ workflows:
   e2e-mavencentral-mirror-duckduck:
     envs:
     - TEST_APP_URL: git@github.com:duckduckgo/Android.git
-    - BRANCH: develop
+    - COMMIT: 4f7083279ce78ab2e52baff22e5fb6b0b079de12
     # both init scripts must land here, not $HOME/.gradle
     - GRADLE_USER_HOME: $HOME/custom-gradle-home
     steps:
@@ -2060,6 +2067,13 @@ workflows:
     - set-java-version@1:
         inputs:
           - set_java_version: '21'
+    - script:
+        title: Strip preboot-installed bitrise init scripts from $HOME/.gradle
+        inputs:
+        - content: |-
+            set -exo pipefail
+            rm -f "$HOME/.gradle/init.d/bitrise-build-cache.init.gradle.kts" \
+                  "$HOME/.gradle/init.d/bitrise-gradle-mirrors.init.gradle.kts"
     - script:
         title: Enable build cache and MavenCentral mirror
         inputs:

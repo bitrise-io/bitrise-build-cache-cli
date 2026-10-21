@@ -17,12 +17,21 @@ Call the subcommands with the name of the tool you want to activate plugins for.
 		// Cobra only runs the closest ancestor PersistentPreRun — re-emit the CLI-version log here.
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
+		// The children do their own; running them here would write for a workspace the gates skip.
+		if runsChildActivations(cmd) {
+			return
+		}
+
 		_ = childstats.Sweep(childstats.DefaultSweepTTL)
 
 		if !ShouldSkipVersionCheck(cmd) {
 			RunVersionCheck(cmd)
 		}
 	},
+}
+
+func runsChildActivations(cmd *cobra.Command) bool {
+	return cmd.Name() == "all" && cmd.Parent() != nil && cmd.Parent().Name() == "activate"
 }
 
 func init() {

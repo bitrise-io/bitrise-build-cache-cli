@@ -10,10 +10,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// Skip where the credential is injected or brokered, which Resolve prefers over any stored login.
+// Skip where the credential is injected or minted by the CLI itself, which Resolve
+// prefers over any stored login. Minting one here would also cost an exchange on
+// every command, including ones that never authenticate.
 func hydrateStoredAuth(ctx context.Context) {
 	envs := utils.AllEnvs()
-	if envs[auth.EnvJWT] != "" || auth.OnBuildHub(envs) {
+	if envs[auth.EnvJWT] != "" || auth.OnBuildHub(envs) || auth.OnGitHubActionsOIDC(envs) {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))

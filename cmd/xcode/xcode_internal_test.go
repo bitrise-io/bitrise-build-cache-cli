@@ -322,6 +322,20 @@ func Test_XcodeSubcommand_ResolveError_PropagatesWrapped(t *testing.T) {
 	assert.ErrorIs(t, err, sentinel)
 }
 
+func Test_logResolvedDestination_writesLineWhenPresent(t *testing.T) {
+	var buf bytes.Buffer
+	logResolvedDestination(&buf, invoke.InvocationSpec{Destination: "platform=iOS Simulator,name=iPhone 15"})
+
+	assert.Equal(t, "Using destination: xcodebuild -destination 'platform=iOS Simulator,name=iPhone 15'\n", buf.String())
+}
+
+func Test_logResolvedDestination_silentWhenEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	logResolvedDestination(&buf, invoke.InvocationSpec{})
+
+	assert.Empty(t, buf.String())
+}
+
 func Test_XcodeCommand_RegisteredAtTopLevel(t *testing.T) {
 	child, _, err := xcodeCommand.Find([]string{"build"})
 	require.NoError(t, err)

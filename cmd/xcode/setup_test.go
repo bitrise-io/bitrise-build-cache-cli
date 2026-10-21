@@ -40,6 +40,10 @@ func init() {
 	mockLogger.On("TWarnf", mock.Anything, mock.Anything, mock.Anything).Return()
 	mockLogger.On("TWarnf", mock.Anything, mock.Anything).Return()
 	mockLogger.On("TWarnf", mock.Anything).Return()
+	mockLogger.On("Println").Return()
+	mockLogger.On("Printf", mock.Anything).Return()
+	mockLogger.On("Printf", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Printf", mock.Anything, mock.Anything, mock.Anything).Return()
 }
 
 // TestMain points HOME at a throwaway dir. Several paths under test resolve

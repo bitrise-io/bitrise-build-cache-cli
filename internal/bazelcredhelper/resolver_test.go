@@ -221,3 +221,26 @@ func oauthSaveTo(t *testing.T, s store.Store, c authpkg.TokenSet) error {
 
 	return err
 }
+
+// Bazel otherwise keeps the token for its 30m default, twice a 15-minute policy's
+// lifetime, and every RPC after expiry fails.
+func TestResolver_OIDC_HintsExpiry(t *testing.T) {
+	isolate(t)
+	expiry := time.Now().Add(15 * time.Minute)
+	r := live.Default(nil)
+	r.OIDC = func(context.Context, map[string]string) (authpkg.Credential, error) {
+		return authpkg.Credential{Token: "oidc-wat", WorkspaceID: "ws-1", Expiry: expiry}, nil
+	}
+	envs := map[string]string{
+		authpkg.EnvOIDCPolicyID:           "policy-uuid",
+		authpkg.EnvWorkspaceID:            "ws-1",
+		authpkg.EnvGitHubOIDCRequestURL:   "https://example.com/idtoken",
+		authpkg.EnvGitHubOIDCRequestToken: "request-token",
+	}
+
+	cred, err := newResolver(r, envs, nil)(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "oidc-wat", cred.Token)
+	assert.Equal(t, expiry.Add(-expiresLead), cred.Expiry)
+}

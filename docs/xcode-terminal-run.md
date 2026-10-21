@@ -46,6 +46,24 @@ Set exactly one of `workspace` / `project`. If both are set, `workspace` wins on
 
 Anything after `--` is passed straight through to `xcodebuild`.
 
+## Compilation cache path
+
+All cached builds use the shared `~/.bitrise/cache/xcode-cas` directory as
+`COMPILATION_CACHE_CAS_PATH`, including builds with prefix mapping disabled.
+Xcode appends the selected store name, such as `plugin`, to this root. The wrapper
+overrides project and xcconfig CAS paths, whether empty or nonempty. An explicit
+`COMPILATION_CACHE_CAS_PATH=/path/to/cache` command-line argument takes precedence.
+Query actions, disabled caching, and `--cache-skip-flags` do not set this path.
+
+The CAS directory is separate from DerivedData and remains after deactivation.
+To test remote-cache replay without local reuse, remove this directory as well
+as the build outputs and managed DerivedData before the replay build.
+
+After activating Xcode caching, run `bash scripts/xcode_cmake_smoke_test.sh` on
+macOS with Xcode and CMake installed to check CMake compiler detection and C/Swift
+target builds with an empty project-level CAS path. The test uses the activated
+wrapper and its cache configuration; it does not change activation settings.
+
 ## Examples
 
 ```bash
