@@ -681,9 +681,9 @@ func TestNewConfig_PersistsCompressionThresholdOnlyWhenEnabled(t *testing.T) {
 	assert.Equal(t, int64(100), xcelerate.CompressionThresholdForTest(xcelerate.Params{RemoteCacheCompression: true, RemoteCacheCompressionThreshold: 100}))
 }
 
-func TestDefaultParams_CompressionOffWithDefaultThreshold(t *testing.T) {
+func TestDefaultParams_CompressionOnWithDefaultThreshold(t *testing.T) {
 	p := xcelerate.DefaultParams()
 
-	assert.False(t, p.RemoteCacheCompression)
+	assert.True(t, p.RemoteCacheCompression)
 	assert.Equal(t, kv.DefaultCompressionThreshold, p.RemoteCacheCompressionThreshold)
 }

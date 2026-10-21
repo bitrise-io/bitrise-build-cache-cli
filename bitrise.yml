@@ -1602,8 +1602,7 @@ workflows:
 
               # Add --xcode-path /usr/bin/xcodebuild to test xcode path override (for local)
               ../bitrise-build-cache-cli -d activate xcode \
-                --cache \
-                --remote-cache-compression
+                --cache
     - script:
         title: build app
         inputs:
@@ -1823,7 +1822,7 @@ workflows:
         - content: |-
             set -eo pipefail
 
-            ../bitrise-build-cache-cli -d activate xcode --cache --remote-cache-compression
+            ../bitrise-build-cache-cli -d activate xcode --cache
     - script:
         title: Build checkout A (warm-up — expected mostly misses)
         inputs:
@@ -1917,7 +1916,8 @@ workflows:
               #!/usr/bin/env bash
               set -eo pipefail
 
-              ../bitrise-build-cache-cli -d activate xcode --cache
+              # Uncompressed control for the compression-on-by-default workflows.
+              ../bitrise-build-cache-cli -d activate xcode --cache --remote-cache-compression=false
     - script:
         title: build app
         inputs:

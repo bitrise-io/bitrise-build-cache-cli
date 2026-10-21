@@ -37,6 +37,8 @@ type ActivatorParams struct {
 	NoSwiftCache         bool
 	BuildCacheSkipFlags  bool
 	DebugLogging         bool
+	// DisableRemoteCacheCompression turns off the zstd blob compression the Xcode cache has by default.
+	DisableRemoteCacheCompression bool
 
 	// Logger overrides the default logger. If nil, a default logger is created.
 	Logger log.Logger
@@ -79,6 +81,8 @@ func NewActivator(params ActivatorParams) *Activator {
 			disablePrefixMapping: params.DisablePrefixMapping,
 			noSwiftCache:         params.NoSwiftCache,
 			buildCacheSkipFlags:  params.BuildCacheSkipFlags,
+
+			disableRemoteCacheCompression: params.DisableRemoteCacheCompression,
 		}
 	}
 
@@ -321,6 +325,8 @@ type xcodeActivator struct {
 	disablePrefixMapping bool
 	noSwiftCache         bool
 	buildCacheSkipFlags  bool
+
+	disableRemoteCacheCompression bool
 }
 
 func (x *xcodeActivator) activate(ctx context.Context) error {
@@ -330,6 +336,7 @@ func (x *xcodeActivator) activate(ctx context.Context) error {
 	xcodeParams.DisablePrefixMapping = x.disablePrefixMapping
 	xcodeParams.NoSwiftCache = x.noSwiftCache
 	xcodeParams.BuildCacheSkipFlags = x.buildCacheSkipFlags
+	xcodeParams.RemoteCacheCompression = !x.disableRemoteCacheCompression
 
 	if err := xcelerate.Activate(
 		ctx,

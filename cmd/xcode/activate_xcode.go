@@ -147,7 +147,7 @@ Swift compile caching requires explicit modules, which some projects cannot buil
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.RemoteCacheCompression,
 		"remote-cache-compression",
 		activateXcodeParams.RemoteCacheCompression,
-		"Compress cache blobs with zstd before uploading them. Off by default.")
+		"Compress cache blobs with zstd. On by default; --remote-cache-compression=false turns it off.")
 	activateXcodeCmd.Flags().Int64Var(&activateXcodeParams.RemoteCacheCompressionThreshold,
 		"remote-cache-compression-threshold",
 		activateXcodeParams.RemoteCacheCompressionThreshold,

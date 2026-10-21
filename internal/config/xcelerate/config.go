@@ -116,7 +116,7 @@ func DefaultParams() Params {
 		BuildCacheSkipFlags:             false,
 		NoSwiftCache:                    false,
 		DisablePrefixMapping:            false,
-		RemoteCacheCompression:          false,
+		RemoteCacheCompression:          true,
 		RemoteCacheCompressionThreshold: DefaultCompressionThreshold,
 		BuildCacheEndpoint:              "",
 		Silent:                          false,

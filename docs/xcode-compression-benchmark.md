@@ -4,14 +4,16 @@ Measurements behind the decision on client-side zstd compression of Xcode compil
 Machine for all numbers: Apple M4 Max (14 cores), Xcode 26.4.1. CI VMs are slower, so treat absolute
 MB/s as a best case.
 
-## Opting in
+## Enabling and opting out
 
 ```bash
-bitrise-build-cache activate xcode --remote-cache-compression [--remote-cache-compression-threshold 100]
+bitrise-build-cache activate xcode                                       # compression is on by default
+bitrise-build-cache activate xcode --remote-cache-compression=false      # opt out
+bitrise-build-cache activate xcode --remote-cache-compression-threshold 100
 ```
 
-Off by default (the interactive wizard asks, default yes). With it on, the proxy's KV client stores every blob
-as a zstd frame under `kv/zstd/<key>` and reads that form back. Blobs of at least the threshold (default 100
+On by default (the interactive wizard asks, default yes; `react-native activate` has the same flag). With it on,
+the proxy's KV client stores every blob as a zstd frame under `kv/zstd/<key>` and reads that form back. Blobs of at least the threshold (default 100
 bytes, Bazel's default) are compressed; smaller ones are wrapped in a frame uncompressed, and incompressible
 ones leave the encoder as raw blocks, so either costs only a dozen bytes of frame overhead. The stored form
 always equals the requested form, so the backend never converts for this client, and it round-trips even
@@ -23,7 +25,10 @@ this client does not depend on that. Unverified backend behaviour that sharing w
 - on-the-fly conversion is deterministic, so resumed (offset) downloads line up;
 - re-uploading an existing blob in the other form takes the AlreadyExists / delete-on-rewrite path.
 
-`react-native activate` does not expose the option yet.
+Rollout: an upgraded client reads and writes `kv/zstd/<key>`, so entries older CLIs wrote under `kv/<key>` are reused
+only if the backend converts between the two names; otherwise a user's first builds after upgrading start cold.
+A config written by an older `activate` has no `remoteCacheCompression` field and keeps compression off until
+`activate` runs again.
 
 With compression on, the proxy's blob transfer latency and throughput (`cacheBlobStats`) include compress and
 decompress time, while the byte counts are raw.
