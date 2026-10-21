@@ -115,6 +115,7 @@ type Client struct {
 	stopSampling        chan struct{}
 	stopSamplingOnce    sync.Once
 	lastContentionLog   atomic.Int64
+	compression         *compression
 }
 
 // pickChannel round-robins across channels. Callers must acquire the channel's
@@ -144,6 +145,7 @@ type NewClientParams struct {
 	UploadRetry         uint
 	UploadRetryWait     time.Duration
 	DebugLogging        bool
+	Compression         CompressionParams
 }
 
 func NewClient(p NewClientParams) (*Client, error) {
@@ -170,6 +172,11 @@ func NewClient(p NewClientParams) (*Client, error) {
 		return nil, err
 	}
 
+	comp, err := newCompression(p.Compression)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &Client{
 		channels:            channels,
 		clientName:          p.ClientName,
@@ -183,6 +190,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		uploadRetry:         p.UploadRetry,
 		uploadRetryWait:     p.UploadRetryWait,
 		authGate:            authGate{logger: p.Logger},
+		compression:         comp,
 	}
 
 	if p.DebugLogging && p.Logger != nil {
@@ -258,6 +266,10 @@ func (c *Client) Close() error {
 			close(c.stopSampling)
 		}
 	})
+
+	if c.compression != nil {
+		c.compression.close()
+	}
 
 	var firstErr error
 	for _, ch := range c.channels {

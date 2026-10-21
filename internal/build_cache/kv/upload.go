@@ -36,6 +36,17 @@ func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key strin
 }
 
 func (c *Client) UploadStreamToBuildCache(ctx context.Context, source io.ReadSeeker, key string, size int64) error {
+	if c.compression != nil {
+		compressed, ok, err := c.compression.compress(source, size)
+		if err != nil {
+			return fmt.Errorf("compress %s: %w", key, err)
+		}
+		if ok {
+			c.logger.TDebugf("Compressed %s: %d -> %d bytes", key, size, compressed.Len())
+			source, key, size = compressed, compressedNamePrefix+key, int64(compressed.Len())
+		}
+	}
+
 	// Always seek to start before checksum
 	if _, err := source.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("seek to start: %w", err)

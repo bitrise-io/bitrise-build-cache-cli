@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -38,7 +39,7 @@ func (c *Client) DownloadFileFromBuildCache(ctx context.Context, fileName, key s
 func (c *Client) DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string) error {
 	c.logger.Debugf("Downloading %s", key)
 
-	return c.DownloadStream(ctx, destination, key)
+	return c.downloadStream(ctx, destination, key)
 }
 
 // nolint: nestif
@@ -83,10 +84,23 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 	}
 	defer file.Close()
 
-	return false, c.DownloadStream(ctx, file, key)
+	return false, c.downloadStream(ctx, file, key)
 }
 
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
+	if c.compression == nil {
+		return c.downloadStream(ctx, destination, key)
+	}
+
+	var compressed bytes.Buffer
+	if err := c.downloadStream(ctx, &compressed, compressedNamePrefix+key); err != nil {
+		return err
+	}
+
+	return c.compression.decompressTo(destination, compressed.Bytes())
+}
+
+func (c *Client) downloadStream(ctx context.Context, destination io.Writer, key string) error {
 	var offset int64
 	var totalBytes int64
 	var attempts uint

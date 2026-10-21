@@ -144,6 +144,14 @@ Swift compile caching requires explicit modules, which some projects cannot buil
 		"disable-prefix-mapping",
 		activateXcodeParams.DisablePrefixMapping,
 		`Disable injecting Clang prefix-mapping flags into xcodebuild. Prefix mapping canonicalizes rotating source/DerivedData paths so compilation cache keys stay stable; disable only if it causes issues.`)
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.RemoteCacheCompression,
+		"remote-cache-compression",
+		activateXcodeParams.RemoteCacheCompression,
+		"Compress cache blobs with zstd before uploading them. Off by default.")
+	activateXcodeCmd.Flags().Int64Var(&activateXcodeParams.RemoteCacheCompressionThreshold,
+		"remote-cache-compression-threshold",
+		activateXcodeParams.RemoteCacheCompressionThreshold,
+		"Smallest blob, in bytes, that --remote-cache-compression compresses.")
 
 	activateXcodeCmd.Flags().StringVar(&activateXcodeProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }
