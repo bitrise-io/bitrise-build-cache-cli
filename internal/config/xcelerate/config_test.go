@@ -5,6 +5,7 @@ package xcelerate_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	commonmocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -235,10 +237,12 @@ func TestConfig_NewConfig(t *testing.T) {
 		}
 
 		actual, err := xcelerate.NewConfig(context.Background(), mockLogger, xcelerate.Params{
-			BuildCacheEnabled:           true,
-			BuildCacheSkipFlags:         true,
-			DebugLogging:                true,
-			XcodebuildTimestampsEnabled: true,
+			BuildCacheEnabled:               true,
+			BuildCacheSkipFlags:             true,
+			DebugLogging:                    true,
+			XcodebuildTimestampsEnabled:     true,
+			RemoteCacheCompression:          true,
+			RemoteCacheCompressionThreshold: 256,
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
@@ -251,16 +255,18 @@ func TestConfig_NewConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		expected := xcelerate.Config{
-			ProxyVersion:           "proxy-version-1.0.0",
-			ProxySocketPath:        "/tmp/xcelerate-proxy.sock",
-			WrapperVersion:         "wrapper-version-1.0.0",
-			OriginalXcodebuildPath: "/usr/bin/xcodebuild2",
-			OriginalXcrunPath:      "/usr/bin/xcodebuild2",
-			BuildCacheEndpoint:     "grpcs://bitrise-accelerate.services.bitrise.io",
-			BuildCacheEnabled:      true,
-			BuildCacheSkipFlags:    true,
-			DebugLogging:           true,
-			XcodebuildTimestamps:   true,
+			ProxyVersion:                    "proxy-version-1.0.0",
+			ProxySocketPath:                 "/tmp/xcelerate-proxy.sock",
+			WrapperVersion:                  "wrapper-version-1.0.0",
+			OriginalXcodebuildPath:          "/usr/bin/xcodebuild2",
+			OriginalXcrunPath:               "/usr/bin/xcodebuild2",
+			BuildCacheEndpoint:              "grpcs://bitrise-accelerate.services.bitrise.io",
+			BuildCacheEnabled:               true,
+			BuildCacheSkipFlags:             true,
+			DebugLogging:                    true,
+			XcodebuildTimestamps:            true,
+			RemoteCacheCompression:          true,
+			RemoteCacheCompressionThreshold: 256,
 			AuthConfig: authpkg.Credential{
 				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
@@ -649,4 +655,35 @@ func TestConfig_NewConfig(t *testing.T) {
 
 		assert.True(t, actual.BuildCacheEnabled)
 	})
+}
+
+func TestConfig_CompressionFieldsJSONRoundTrip(t *testing.T) {
+	in := xcelerate.Config{RemoteCacheCompression: true, RemoteCacheCompressionThreshold: 512}
+
+	data, err := json.Marshal(in)
+	require.NoError(t, err)
+
+	var out xcelerate.Config
+	require.NoError(t, json.Unmarshal(data, &out))
+
+	assert.True(t, out.RemoteCacheCompression)
+	assert.Equal(t, int64(512), out.RemoteCacheCompressionThreshold)
+	assert.Contains(t, string(data), `"remoteCacheCompression":true`)
+	assert.Contains(t, string(data), `"remoteCacheCompressionThreshold":512`)
+
+	off, err := json.Marshal(xcelerate.Config{})
+	require.NoError(t, err)
+	assert.NotContains(t, string(off), "remoteCacheCompression")
+}
+
+func TestNewConfig_PersistsCompressionThresholdOnlyWhenEnabled(t *testing.T) {
+	assert.Zero(t, xcelerate.CompressionThresholdForTest(xcelerate.Params{RemoteCacheCompressionThreshold: 100}))
+	assert.Equal(t, int64(100), xcelerate.CompressionThresholdForTest(xcelerate.Params{RemoteCacheCompression: true, RemoteCacheCompressionThreshold: 100}))
+}
+
+func TestDefaultParams_CompressionOnWithDefaultThreshold(t *testing.T) {
+	p := xcelerate.DefaultParams()
+
+	assert.True(t, p.RemoteCacheCompression)
+	assert.Equal(t, kv.DefaultCompressionThreshold, p.RemoteCacheCompressionThreshold)
 }

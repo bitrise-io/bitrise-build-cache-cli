@@ -11,6 +11,7 @@ import (
 
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -25,21 +26,25 @@ const (
 	ErrFmtEncodeConfigFile = `failed to encode xcelerate config file: %w`
 	ErrFmtCreateFolder     = `failed to create .xcelerate folder (%s): %w`
 	ErrNoAuthConfig        = "resolve auth config: %w"
+
+	DefaultCompressionThreshold = kv.DefaultCompressionThreshold
 )
 
 type Params struct {
-	BuildCacheEnabled           bool
-	BuildCacheEndpoint          string
-	BuildCacheSkipFlags         bool
-	NoSwiftCache                bool
-	DisablePrefixMapping        bool
-	DebugLogging                bool
-	Silent                      bool
-	XcodePathOverride           string
-	XcrunPathOverride           string
-	ProxySocketPathOverride     string
-	PushEnabled                 bool
-	XcodebuildTimestampsEnabled bool
+	BuildCacheEnabled               bool
+	BuildCacheEndpoint              string
+	BuildCacheSkipFlags             bool
+	NoSwiftCache                    bool
+	DisablePrefixMapping            bool
+	RemoteCacheCompression          bool
+	RemoteCacheCompressionThreshold int64
+	DebugLogging                    bool
+	Silent                          bool
+	XcodePathOverride               string
+	XcrunPathOverride               string
+	ProxySocketPathOverride         string
+	PushEnabled                     bool
+	XcodebuildTimestampsEnabled     bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -52,19 +57,21 @@ type Config struct {
 	// ConfigVersion is the semver of this config's schema. Refresh nudges only when this bumps.
 	ConfigVersion string `json:"configVersion,omitempty"`
 	// WrittenAt records when the config was last (re-)written by activate.
-	WrittenAt              time.Time `json:"writtenAt,omitzero"`
-	WrapperVersion         string    `json:"wrapperVersion"`
-	OriginalXcodebuildPath string    `json:"originalXcodebuildPath"`
-	OriginalXcrunPath      string    `json:"originalXcrunPath"`
-	BuildCacheEnabled      bool      `json:"buildCacheEnabled"`
-	BuildCacheSkipFlags    bool      `json:"buildCacheSkipFlags"`
-	NoSwiftCache           bool      `json:"noSwiftCache,omitempty"`
-	DisablePrefixMapping   bool      `json:"disablePrefixMapping,omitempty"`
-	BuildCacheEndpoint     string    `json:"buildCacheEndpoint"`
-	PushEnabled            bool      `json:"pushEnabled"`
-	DebugLogging           bool      `json:"debugLogging,omitempty"`
-	Silent                 bool      `json:"silent,omitempty"`
-	XcodebuildTimestamps   bool      `json:"xcodebuildTimestamps,omitempty"`
+	WrittenAt                       time.Time `json:"writtenAt,omitzero"`
+	WrapperVersion                  string    `json:"wrapperVersion"`
+	OriginalXcodebuildPath          string    `json:"originalXcodebuildPath"`
+	OriginalXcrunPath               string    `json:"originalXcrunPath"`
+	BuildCacheEnabled               bool      `json:"buildCacheEnabled"`
+	BuildCacheSkipFlags             bool      `json:"buildCacheSkipFlags"`
+	NoSwiftCache                    bool      `json:"noSwiftCache,omitempty"`
+	DisablePrefixMapping            bool      `json:"disablePrefixMapping,omitempty"`
+	RemoteCacheCompression          bool      `json:"remoteCacheCompression,omitempty"`
+	RemoteCacheCompressionThreshold int64     `json:"remoteCacheCompressionThreshold,omitempty"`
+	BuildCacheEndpoint              string    `json:"buildCacheEndpoint"`
+	PushEnabled                     bool      `json:"pushEnabled"`
+	DebugLogging                    bool      `json:"debugLogging,omitempty"`
+	Silent                          bool      `json:"silent,omitempty"`
+	XcodebuildTimestamps            bool      `json:"xcodebuildTimestamps,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
@@ -105,17 +112,19 @@ func ReadConfig(osProxy utils.OsProxy, decoderFactory utils.DecoderFactory, envs
 
 func DefaultParams() Params {
 	return Params{
-		BuildCacheEnabled:           true,
-		BuildCacheSkipFlags:         false,
-		NoSwiftCache:                false,
-		DisablePrefixMapping:        false,
-		BuildCacheEndpoint:          "",
-		Silent:                      false,
-		DebugLogging:                false,
-		XcodePathOverride:           "",
-		ProxySocketPathOverride:     "",
-		PushEnabled:                 true,
-		XcodebuildTimestampsEnabled: false,
+		BuildCacheEnabled:               true,
+		BuildCacheSkipFlags:             false,
+		NoSwiftCache:                    false,
+		DisablePrefixMapping:            false,
+		RemoteCacheCompression:          true,
+		RemoteCacheCompressionThreshold: DefaultCompressionThreshold,
+		BuildCacheEndpoint:              "",
+		Silent:                          false,
+		DebugLogging:                    false,
+		XcodePathOverride:               "",
+		ProxySocketPathOverride:         "",
+		PushEnabled:                     true,
+		XcodebuildTimestampsEnabled:     false,
 	}
 }
 
@@ -207,27 +216,29 @@ func NewConfig(ctx context.Context,
 	}
 
 	return Config{
-		ProxyVersion:           envs["BITRISE_XCELERATE_PROXY_VERSION"],
-		ProxySocketPath:        proxySocketPath,
-		WrapperVersion:         envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
-		ConfigVersion:          toolconfig.XcelerateConfigVersion,
-		WrittenAt:              time.Now().UTC(),
-		OriginalXcodebuildPath: xcodePath,
-		OriginalXcrunPath:      xcrunPath,
-		BuildCacheEnabled:      params.BuildCacheEnabled,
-		BuildCacheSkipFlags:    params.BuildCacheSkipFlags,
-		NoSwiftCache:           params.NoSwiftCache,
-		DisablePrefixMapping:   params.DisablePrefixMapping,
-		BuildCacheEndpoint:     params.BuildCacheEndpoint,
-		PushEnabled:            params.PushEnabled,
-		DebugLogging:           params.DebugLogging,
-		Silent:                 params.Silent,
-		XcodebuildTimestamps:   params.XcodebuildTimestampsEnabled,
-		AuthConfig:             authConfig,
-		AuthOrigin:             authOrigin,
-		ExternalAppID:          metadata.ExternalAppID,
-		ExternalBuildID:        metadata.ExternalBuildID,
-		ExternalWorkflowName:   metadata.ExternalWorkflowName,
+		ProxyVersion:                    envs["BITRISE_XCELERATE_PROXY_VERSION"],
+		ProxySocketPath:                 proxySocketPath,
+		WrapperVersion:                  envs["BITRISE_XCELERATE_WRAPPER_VERSION"],
+		ConfigVersion:                   toolconfig.XcelerateConfigVersion,
+		WrittenAt:                       time.Now().UTC(),
+		OriginalXcodebuildPath:          xcodePath,
+		OriginalXcrunPath:               xcrunPath,
+		BuildCacheEnabled:               params.BuildCacheEnabled,
+		BuildCacheSkipFlags:             params.BuildCacheSkipFlags,
+		NoSwiftCache:                    params.NoSwiftCache,
+		DisablePrefixMapping:            params.DisablePrefixMapping,
+		RemoteCacheCompression:          params.RemoteCacheCompression,
+		RemoteCacheCompressionThreshold: compressionThreshold(params),
+		BuildCacheEndpoint:              params.BuildCacheEndpoint,
+		PushEnabled:                     params.PushEnabled,
+		DebugLogging:                    params.DebugLogging,
+		Silent:                          params.Silent,
+		XcodebuildTimestamps:            params.XcodebuildTimestampsEnabled,
+		AuthConfig:                      authConfig,
+		AuthOrigin:                      authOrigin,
+		ExternalAppID:                   metadata.ExternalAppID,
+		ExternalBuildID:                 metadata.ExternalBuildID,
+		ExternalWorkflowName:            metadata.ExternalWorkflowName,
 	}, nil
 }
 
@@ -293,4 +304,13 @@ func (config Config) Save(logger log.Logger, os utils.OsProxy, encoderFactory ut
 	logger.TInfof("Config saved to: %s", configFilePath)
 
 	return nil
+}
+
+// compressionThreshold is persisted only when compression is on, so configs of users who never opt in stay unchanged.
+func compressionThreshold(params Params) int64 {
+	if !params.RemoteCacheCompression {
+		return 0
+	}
+
+	return params.RemoteCacheCompressionThreshold
 }

@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -38,7 +39,7 @@ func (c *Client) DownloadFileFromBuildCache(ctx context.Context, fileName, key s
 func (c *Client) DownloadStreamFromBuildCache(ctx context.Context, destination io.Writer, key string) error {
 	c.logger.Debugf("Downloading %s", key)
 
-	return c.DownloadStream(ctx, destination, key)
+	return c.downloadStream(ctx, destination, key)
 }
 
 // nolint: nestif
@@ -83,10 +84,117 @@ func (c *Client) DownloadFile(ctx context.Context, filePath, key string, fileMod
 	}
 	defer file.Close()
 
-	return false, c.DownloadStream(ctx, file, key)
+	return false, c.downloadStream(ctx, file, key)
 }
 
 func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key string) error {
+	if c.compression == nil {
+		return c.downloadStream(ctx, destination, key)
+	}
+
+	return c.downloadCompressed(ctx, destination, key)
+}
+
+// idleResetReader restarts the idle timer on every read, so only a stalled stream is cancelled, not a slow one.
+type idleResetReader struct {
+	r     io.Reader
+	timer *time.Timer
+	idle  time.Duration
+}
+
+func (i *idleResetReader) Read(p []byte) (int, error) {
+	n, err := i.r.Read(p)
+	i.timer.Reset(i.idle)
+
+	return n, err //nolint:wrapcheck
+}
+
+// downloadCompressed starts over on every retry: the server's read offsets count uncompressed bytes, so a
+// partly received zstd stream cannot be resumed. The server's hash header describes the uncompressed blob,
+// so it is checked after decoding. A fixed deadline would make blobs that stream slower than it undownloadable,
+// hence the idle timeout.
+func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, key string) error {
+	name := compressedNamePrefix + key
+
+	idleWindow := c.downloadIdleTimeout
+	if idleWindow <= 0 {
+		idleWindow = defaultDownloadIdleTimeout
+	}
+
+	var compressed bytes.Buffer
+	expectedHash := ""
+
+	downloadErr := retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
+		compressed.Reset()
+
+		if attempt == 0 {
+			c.logger.TDebugf("Downloading %s", name)
+		} else {
+			c.logger.TInfof("%d. attempt to download %s from the start", attempt+1, name)
+		}
+
+		idleCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		idle := time.AfterFunc(idleWindow, cancel)
+		defer idle.Stop()
+
+		kvReader, err := c.initiateGet(idleCtx, c.logger, name, 0)
+		if err != nil {
+			c.logger.Warnf("Failed to download stream: attempt %d: initiate get: %s", attempt+1, err)
+
+			return fmt.Errorf("create kv get client (with key %s): %w", name, err), true
+		}
+		defer kvReader.Close()
+
+		if _, copyErr := io.Copy(&compressed, &idleResetReader{r: kvReader, timer: idle, idle: idleWindow}); copyErr != nil {
+			st, ok := status.FromError(copyErr)
+			if ok && st.Code() == codes.NotFound {
+				return ErrCacheNotFound, true
+			}
+			if c.tripAuth(ctx, copyErr, kvReader.auth) {
+				return ErrCacheUnauthenticated, true
+			}
+
+			c.logger.Warnf("Failed to download stream: attempt %d: %s", attempt+1, copyErr)
+
+			return fmt.Errorf("download archive: %w", copyErr), false
+		}
+
+		expectedHash = strings.TrimPrefix(kvReader.Metadata()["x-flare-blob-validation-sha256"], "blob/")
+
+		return nil, false
+	})
+	if downloadErr != nil {
+		//nolint: wrapcheck
+		return downloadErr
+	}
+
+	raw, err := c.compression.decompress(compressed.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if expectedHash != "" {
+		sum := sha256.Sum256(raw)
+		if fileHash := hex.EncodeToString(sum[:]); expectedHash != fileHash {
+			return fmt.Errorf(
+				"downloaded file hash mismatch for key %q: expected %s, got %s (decoded %d bytes from %d, cache-operation-id=%q, invocation-id=%q)",
+				key, expectedHash, fileHash, len(raw), compressed.Len(), c.cacheOperationID, c.invocationID,
+			)
+		}
+	}
+
+	c.logger.TDebugf("Decompressed %s: %d -> %d bytes", key, compressed.Len(), len(raw))
+
+	if _, err := destination.Write(raw); err != nil {
+		return fmt.Errorf("write decoded blob: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) downloadStream(ctx context.Context, destination io.Writer, key string) error {
 	var offset int64
 	var totalBytes int64
 	var attempts uint

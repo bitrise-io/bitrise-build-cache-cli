@@ -36,7 +36,20 @@ func (c *Client) UploadFileToBuildCache(ctx context.Context, filePath, key strin
 }
 
 func (c *Client) UploadStreamToBuildCache(ctx context.Context, source io.ReadSeeker, key string, size int64) error {
-	// Always seek to start before checksum
+	var payload uploadPayload = seekPayload{source: source, size: size}
+
+	if c.compression != nil {
+		compressed, ok, err := c.compression.compress(source, size)
+		if err != nil {
+			return fmt.Errorf("compress %s: %w", key, err)
+		}
+		if ok {
+			c.logger.TDebugf("Compressed %s: %d -> %d bytes", key, size, len(compressed.full))
+			payload, key = compressed, compressedNamePrefix+key
+		}
+	}
+
+	// The server validates against the uncompressed blob, so the checksum is always over the raw bytes.
 	if _, err := source.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("seek to start: %w", err)
 	}
@@ -44,15 +57,29 @@ func (c *Client) UploadStreamToBuildCache(ctx context.Context, source io.ReadSee
 	if err != nil {
 		return fmt.Errorf("checksum: %w", err)
 	}
-	// Seek to start before upload
-	if _, err := source.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("seek to start: %w", err)
-	}
-	if err := c.uploadStream(ctx, source, key, checksum, size); err != nil {
+	if err := c.uploadStream(ctx, payload, key, checksum, size); err != nil {
 		return fmt.Errorf("upload stream: %w", err)
 	}
 
 	return nil
+}
+
+// uploadPayload is what one Put attempt sends when resuming at offset, an offset into the stored (uncompressed) blob.
+type uploadPayload interface {
+	from(offset int64) (reader io.Reader, sendLen int64, err error)
+}
+
+type seekPayload struct {
+	source io.ReadSeeker
+	size   int64
+}
+
+func (p seekPayload) from(offset int64) (io.Reader, int64, error) {
+	if _, err := p.source.Seek(offset, io.SeekStart); err != nil {
+		return nil, 0, fmt.Errorf("seek source to %d: %w", offset, err)
+	}
+
+	return p.source, p.size - offset, nil
 }
 
 func (c *Client) uploadFile(ctx context.Context, filePath, key, checksum string) (int64, error) {
@@ -66,7 +93,7 @@ func (c *Client) uploadFile(ctx context.Context, filePath, key, checksum string)
 		return 0, fmt.Errorf("stat %q: %w", filePath, err)
 	}
 
-	if err = c.uploadStream(ctx, file, key, checksum, stat.Size()); err != nil {
+	if err = c.uploadStream(ctx, seekPayload{source: file, size: stat.Size()}, key, checksum, stat.Size()); err != nil {
 		return 0, fmt.Errorf("upload %q: %w", filePath, err)
 	}
 
@@ -74,7 +101,7 @@ func (c *Client) uploadFile(ctx context.Context, filePath, key, checksum string)
 }
 
 // nolint: gocognit
-func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, checksum string, size int64) error {
+func (c *Client) uploadStream(ctx context.Context, payload uploadPayload, key, checksum string, size int64) error {
 	const divisor = 10 * 1024 * 1024 // 10 MB
 
 	// give each 10 MB a second, min 20s max 2m
@@ -131,10 +158,15 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
+		reader, sendLen, err := payload.from(lastCommittedSize)
+		if err != nil {
+			return err, true
+		}
+
 		kvWriter, err := c.initiatePut(timeoutCtx, PutParams{
 			Name:            key,
 			Sha256Sum:       checksum,
-			FileSize:        size,
+			FileSize:        lastCommittedSize + sendLen,
 			Offset:          lastCommittedSize,
 			DeleteOnRewrite: hasAlreadyExists,
 		})
@@ -148,12 +180,8 @@ func (c *Client) uploadStream(ctx context.Context, source io.ReadSeeker, key, ch
 
 		bytesSent := int64(0)
 		if size > 0 {
-			if _, err := source.Seek(lastCommittedSize, io.SeekStart); err != nil {
-				return fmt.Errorf("seek source to start: %w", err), true
-			}
-
 			// io.Copy does not write if there was no read
-			bytesSent, err = io.Copy(kvWriter, source)
+			bytesSent, err = io.Copy(kvWriter, reader)
 		} else {
 			// io.Copy does not write if there was no read
 			_, err = kvWriter.Write([]byte{})
