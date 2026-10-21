@@ -58,21 +58,32 @@ func newCompression(p CompressionParams) (*compression, error) {
 
 // compressedPayload is a blob's zstd form. Offsets refer to the uncompressed blob, as on the server.
 type compressedPayload struct {
-	enc  *zstd.Encoder
-	raw  []byte
-	full []byte
+	enc    *zstd.Encoder
+	source io.ReadSeeker
+	size   int64
+	full   []byte
 }
 
+// from re-reads and re-encodes the tail on a resumed attempt, so the raw blob is not held for the whole upload.
 func (p *compressedPayload) from(offset int64) (io.Reader, int64, error) {
 	if offset <= 0 {
 		return bytes.NewReader(p.full), int64(len(p.full)), nil
 	}
 
-	if offset >= int64(len(p.raw)) {
-		return nil, 0, fmt.Errorf("offset %d is past the blob (%d bytes)", offset, len(p.raw))
+	if offset >= p.size {
+		return nil, 0, fmt.Errorf("offset %d is past the blob (%d bytes)", offset, p.size)
 	}
 
-	tail := p.enc.EncodeAll(p.raw[offset:], nil)
+	if _, err := p.source.Seek(offset, io.SeekStart); err != nil {
+		return nil, 0, fmt.Errorf("seek source to %d: %w", offset, err)
+	}
+
+	rest := make([]byte, p.size-offset)
+	if _, err := io.ReadFull(p.source, rest); err != nil {
+		return nil, 0, fmt.Errorf("read blob tail: %w", err)
+	}
+
+	tail := p.enc.EncodeAll(rest, nil)
 
 	return bytes.NewReader(tail), int64(len(tail)), nil
 }
@@ -87,17 +98,17 @@ func (c *compression) compress(source io.ReadSeeker, size int64) (*compressedPay
 		return nil, false, fmt.Errorf("seek to start: %w", err)
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, size))
-	if _, err := io.Copy(buf, source); err != nil {
+	raw := bytes.NewBuffer(make([]byte, 0, size))
+	if _, err := io.Copy(raw, source); err != nil {
 		return nil, false, fmt.Errorf("read blob: %w", err)
 	}
 
-	full := c.enc.EncodeAll(buf.Bytes(), make([]byte, 0, size/2))
+	full := c.enc.EncodeAll(raw.Bytes(), make([]byte, 0, size/2))
 	if int64(len(full)) >= size {
 		return nil, false, nil
 	}
 
-	return &compressedPayload{enc: c.enc, raw: buf.Bytes(), full: full}, true, nil
+	return &compressedPayload{enc: c.enc, source: source, size: size, full: full}, true, nil
 }
 
 func (c *compression) decompress(compressed []byte) ([]byte, error) {

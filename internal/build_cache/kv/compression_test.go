@@ -31,11 +31,18 @@ const (
 	checksumHeader     = "x-flare-blob-validation-sha256"
 )
 
+type putMessage struct {
+	offset int64
+	finish bool
+	size   int
+}
+
 type putRecord struct {
 	resource string
 	offset   int64
 	checksum string
 	wire     []byte
+	messages []putMessage
 }
 
 type getRecord struct {
@@ -44,16 +51,17 @@ type getRecord struct {
 }
 
 // backendStore emulates the build-cache-api KV endpoints: blobs are stored uncompressed under one key whatever
-// the form requested, Put decompresses and validates the checksum on the uncompressed bytes, Get compresses on
-// the way out with a header describing the uncompressed blob, and offsets count uncompressed bytes.
+// the form requested, Put decompresses and, for a write starting at offset 0, validates the checksum on the
+// uncompressed bytes (a resumed write is not validated), Get compresses on the way out with a header describing
+// the uncompressed blob, offsets count uncompressed bytes, and WriteStatus only reports the committed size.
 type backendStore struct {
-	mu      sync.Mutex
-	blobs   map[string][]byte
-	partial map[string]bool
-	puts    []putRecord
-	gets    []getRecord
+	mu    sync.Mutex
+	blobs map[string][]byte
+	puts  []putRecord
+	gets  []getRecord
 
 	failPutPrefix []byte
+	failPutStatus error
 	failGetAfter  int
 	getOverride   map[string][]byte
 	headerValue   string
@@ -73,7 +81,6 @@ func newBackendStore(t *testing.T) *backendStore {
 
 	return &backendStore{
 		blobs:       map[string][]byte{},
-		partial:     map[string]bool{},
 		getOverride: map[string][]byte{},
 		decoder:     dec,
 		encoder:     enc,
@@ -131,6 +138,14 @@ func (s *backendStore) failNextGetAfter(n int) {
 	s.failGetAfter = n
 }
 
+// failPutWith makes every Put fail with err after the client has sent its data.
+func (s *backendStore) failPutWith(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.failPutStatus = err
+}
+
 func (s *backendStore) setHeader(value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -145,17 +160,20 @@ func (s *backendStore) overrideGet(resource string, response []byte) {
 	s.getOverride[resource] = response
 }
 
-func (s *backendStore) put(resource string, offset int64, checksum string, wire []byte) (int64, error) {
+func (s *backendStore) put(resource string, offset int64, checksum string, wire []byte, messages []putMessage) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.puts = append(s.puts, putRecord{resource: resource, offset: offset, checksum: checksum, wire: wire})
+	s.puts = append(s.puts, putRecord{resource: resource, offset: offset, checksum: checksum, wire: wire, messages: messages})
 
 	key, compressed := blobKeyOf(resource)
 
+	if s.failPutStatus != nil {
+		return 0, s.failPutStatus
+	}
+
 	if s.failPutPrefix != nil {
 		s.blobs[key] = s.failPutPrefix
-		s.partial[key] = true
 		s.failPutPrefix = nil
 
 		return 0, errors.New("connection reset")
@@ -175,12 +193,13 @@ func (s *backendStore) put(resource string, offset int64, checksum string, wire 
 	}
 
 	full := append(append([]byte(nil), existing[:offset]...), data...)
-	if got := sha256Hex(full); got != checksum {
-		return 0, status.Errorf(codes.InvalidArgument, "validation failed: expected %s, got %s", checksum, got)
+	if offset == 0 {
+		if got := sha256Hex(full); got != checksum {
+			return 0, status.Errorf(codes.InvalidArgument, "validation failed: expected %s, got %s", checksum, got)
+		}
 	}
 
 	s.blobs[key] = full
-	delete(s.partial, key)
 
 	return int64(len(wire)), nil
 }
@@ -190,9 +209,8 @@ func (s *backendStore) writeStatus(resource string) *bytestream.QueryWriteStatus
 	defer s.mu.Unlock()
 
 	key, _ := blobKeyOf(resource)
-	blob, found := s.blobs[key]
 
-	return &bytestream.QueryWriteStatusResponse{CommittedSize: int64(len(blob)), Complete: found && !s.partial[key]}
+	return &bytestream.QueryWriteStatusResponse{CommittedSize: int64(len(s.blobs[key]))}
 }
 
 func (s *backendStore) get(resource string, offset int64) grpc.ServerStreamingClient[bytestream.ReadResponse] {
@@ -269,6 +287,7 @@ type storingPutStream struct {
 	resource string
 	offset   int64
 	body     []byte
+	messages []putMessage
 	started  bool
 }
 
@@ -277,12 +296,13 @@ func (p *storingPutStream) Send(req *bytestream.WriteRequest) error {
 		p.resource, p.offset, p.started = req.GetResourceName(), req.GetWriteOffset(), true
 	}
 	p.body = append(p.body, req.GetData()...)
+	p.messages = append(p.messages, putMessage{offset: req.GetWriteOffset(), finish: req.GetFinishWrite(), size: len(req.GetData())})
 
 	return nil
 }
 
 func (p *storingPutStream) CloseAndRecv() (*bytestream.WriteResponse, error) {
-	committed, err := p.store.put(p.resource, p.offset, p.checksum, p.body)
+	committed, err := p.store.put(p.resource, p.offset, p.checksum, p.body, p.messages)
 	if err != nil {
 		return nil, err
 	}
@@ -534,6 +554,51 @@ func TestClient_Compression_UploadResumesAtUncompressedOffset(t *testing.T) {
 	assert.EqualValues(t, committed, puts[1].offset)
 	assert.Equal(t, sha256Hex(blob), puts[1].checksum)
 	assert.Equal(t, blob, store.blob("key"))
+}
+
+// FinishWrite is derived from PutParams.FileSize, which for a compressed Put is the compressed length: sizing it
+// by the raw blob would leave the stream unfinished.
+func TestClient_Compression_UploadFinishesTheStream(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	upload(t, client, "key", compressibleBlob(300_000))
+
+	messages := store.putRecords()[0].messages
+	require.NotEmpty(t, messages)
+	assert.True(t, messages[len(messages)-1].finish)
+}
+
+func TestClient_Compression_ResumedUploadFinishesTheStream(t *testing.T) {
+	const committed = 100_000
+
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	blob := compressibleBlob(300_000)
+	store.failNextPutAfterCommitting(blob[:committed])
+	upload(t, client, "key", blob)
+
+	puts := store.putRecords()
+	require.Len(t, puts, 2)
+
+	messages := puts[1].messages
+	require.NotEmpty(t, messages)
+	assert.EqualValues(t, committed, messages[0].offset)
+	assert.True(t, messages[len(messages)-1].finish)
+	assert.Equal(t, blob, store.blob("key"))
+}
+
+func TestClient_Compression_UploadAbortsOnUnauthenticated(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+	store.failPutWith(status.Error(codes.Unauthenticated, "token rejected"))
+
+	blob := compressibleBlob(64 * 1024)
+	err := client.UploadStreamToBuildCache(context.Background(), bytes.NewReader(blob), "key", int64(len(blob)))
+
+	require.ErrorIs(t, err, kv.ErrCacheUnauthenticated)
+	assert.Len(t, store.putRecords(), 1)
 }
 
 // Read offsets count uncompressed bytes, so a broken download starts over instead of resuming mid-frame.

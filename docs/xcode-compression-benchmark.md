@@ -27,8 +27,10 @@ With it on, the proxy's KV client:
   and a download retry starts over, since a partly received zstd stream cannot be resumed.
 
 Ship the backend change to every region first. A server without it reads `kv/zstd/<key>` as the key `blob/zstd`, so every
-compressed blob would share one key and a Get could return another blob's content. The capabilities response cannot tell
-old servers from new ones, so the client has no way to detect this and `--remote-cache-compression=false` is the only switch.
+compressed blob maps to that single key. From the server code (an inference, not a tested path): uploads fail checksum
+validation, and a resumed retry can bypass it, since validation is skipped for write offsets above 0. The capabilities
+response cannot tell old servers from new ones, so the client has no way to detect this and
+`--remote-cache-compression=false` is the only switch.
 
 A config written by an older `activate` has no `remoteCacheCompression` field and keeps compression off until
 `activate` runs again.
@@ -72,7 +74,7 @@ gRPC to `fakebackend`. Backend, proxy and xcodebuild are separate processes so t
 In `zstd` mode a decorator between the proxy and `kv.Client` compresses uploads and decompresses
 downloads; `off` is a pass-through that only counts bytes. This decorator models the production kv compression
 (a marker byte instead of the name prefix, no threshold) and does not exercise the real kv layer; that is covered
-by unit tests (e2e only enables the flag and does not assert that compression engaged).
+by unit tests (the first e2e workflow also asserts the proxy logged compression and decompression, unverified until CI runs).
 
 Per mode: a **cold** build fills the backend, then a **warm** build, with DerivedData and the local CAS
 wiped, reads everything back from it.
@@ -173,16 +175,16 @@ Reading it:
 
 ### RDE ABBA (off, zstd, zstd, off; 6 cores)
 
-| # | Mode | Phase | Wall | System CPU-s | Proxy CPU-s | Proxy CPU% peak / avg / med / p95 | Wire up / down MiB |
-|---|---|---|---|---|---|---|---|
-| 0 | off | cold | 557.5 s | 2653 | 25.9 | 63 / 5 / 1 / 18 | 3054 / 0 |
-| 0 | off | warm | 293.6 s | 1072 | 20.0 | 148 / 7 / 0 / 34 | 711 / 2343 |
-| 1 | zstd | cold | 451.6 s | 2201 | 33.5 | 102 / 7 / 3 / 28 | 1149 / 0 |
-| 1 | zstd | warm | 279.0 s | 1042 | 24.3 | 167 / 9 / 0 / 56 | 197 / 952 |
-| 2 | zstd | cold | 387.6 s | 1846 | 28.2 | 58 / 7 / 3 / 28 | 1149 / 0 |
-| 2 | zstd | warm | 277.4 s | 1057 | 31.2 | 175 / 11 / 0 / 82 | 197 / 952 |
-| 3 | off | cold | 464.2 s | 2214 | 22.6 | 69 / 5 / 2 / 18 | 3054 / 0 |
-| 3 | off | warm | 276.9 s | 1011 | 21.5 | 154 / 8 / 0 / 41 | 711 / 2343 |
+| # | Mode | Phase | Wall | System CPU-s | Proxy CPU-s | Proxy CPU% peak / avg / med / p95 | Wire up / down MiB | Raw up / down MiB |
+|---|---|---|---|---|---|---|---|---|
+| 0 | off | cold | 557.5 s | 2653 | 25.9 | 63 / 5 / 1 / 18 | 3054 / 0 | 3054 / 0 |
+| 0 | off | warm | 293.6 s | 1072 | 20.0 | 148 / 7 / 0 / 34 | 711 / 2343 | 711 / 2343 |
+| 1 | zstd | cold | 451.6 s | 2201 | 33.5 | 102 / 7 / 3 / 28 | 1149 / 0 | 3056 / 0 |
+| 1 | zstd | warm | 279.0 s | 1042 | 24.3 | 167 / 9 / 0 / 56 | 197 / 952 | 483 / 2573 |
+| 2 | zstd | cold | 387.6 s | 1846 | 28.2 | 58 / 7 / 3 / 28 | 1149 / 0 | 3056 / 0 |
+| 2 | zstd | warm | 277.4 s | 1057 | 31.2 | 175 / 11 / 0 / 82 | 197 / 952 | 483 / 2573 |
+| 3 | off | cold | 464.2 s | 2214 | 22.6 | 69 / 5 / 2 / 18 | 3054 / 0 | 3054 / 0 |
+| 3 | off | warm | 276.9 s | 1011 | 21.5 | 154 / 8 / 0 / 41 | 711 / 2343 | 711 / 2343 |
 
 Means of the two runs per mode:
 
@@ -197,7 +199,7 @@ Reading it:
 - The RDE is much noisier than the laptop: the two `off` cold runs differ by 17% (557 s and 464 s; the first ran on a
   freshly wiped VM) and the two `zstd` cold runs by 14%. The -18% cold wall time and -17% cold CPU-s are therefore not a
   measured speedup; against the second `off` run alone it is about -10%. Warm wall time is flat (-2.5%, inside the noise).
-- Wire bytes drop 2.7x on upload (3056 raw to 1149 MiB) and 2.7x on download (2573 to 952 MiB), as on the laptop.
+- Wire bytes drop 2.7x on upload (3056 raw to 1149 wire MiB) and 2.7x on download (2573 raw to 952 wire MiB), as on the laptop.
 - The proxy's CPU cost shows up more on the 6 cores: +27% CPU-s on cold uploads, and p95 18% to 28% of a core. On
   warm builds it was +34% here, but the one earlier A-B run on this machine showed the opposite (30.5 to 24.2 CPU-s) and
   the local runs show no change, so treat the warm proxy CPU difference as unresolved.

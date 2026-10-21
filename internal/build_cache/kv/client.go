@@ -33,6 +33,8 @@ const (
 	defaultDownloadRetryWait time.Duration = 1 * time.Second
 	defaultUploadRetryWait   time.Duration = 1 * time.Second
 
+	defaultDownloadIdleTimeout = 60 * time.Second
+
 	// keepaliveTime must exceed the gRPC server's EnforcementPolicy.MinTime
 	// (default 5min) or the server sends GOAWAY ENHANCE_YOUR_CALM.
 	keepaliveTime    = 6 * time.Minute
@@ -116,6 +118,7 @@ type Client struct {
 	stopSamplingOnce    sync.Once
 	lastContentionLog   atomic.Int64
 	compression         *compression
+	downloadIdleTimeout time.Duration
 }
 
 // pickChannel round-robins across channels. Callers must acquire the channel's
@@ -191,6 +194,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		uploadRetryWait:     p.UploadRetryWait,
 		authGate:            authGate{logger: p.Logger},
 		compression:         comp,
+		downloadIdleTimeout: defaultDownloadIdleTimeout,
 	}
 
 	if p.DebugLogging && p.Logger != nil {

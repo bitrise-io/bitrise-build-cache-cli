@@ -95,9 +95,24 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 	return c.downloadCompressed(ctx, destination, key)
 }
 
+// idleResetReader restarts the idle timer on every read, so only a stalled stream is cancelled, not a slow one.
+type idleResetReader struct {
+	r     io.Reader
+	timer *time.Timer
+	idle  time.Duration
+}
+
+func (i *idleResetReader) Read(p []byte) (int, error) {
+	n, err := i.r.Read(p)
+	i.timer.Reset(i.idle)
+
+	return n, err //nolint:wrapcheck
+}
+
 // downloadCompressed starts over on every retry: the server's read offsets count uncompressed bytes, so a
 // partly received zstd stream cannot be resumed. The server's hash header describes the uncompressed blob,
-// so it is checked after decoding.
+// so it is checked after decoding. A fixed deadline would make blobs that stream slower than it undownloadable,
+// hence the idle timeout.
 func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, key string) error {
 	name := compressedNamePrefix + key
 
@@ -113,10 +128,13 @@ func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, 
 			c.logger.TInfof("%d. attempt to download %s from the start", attempt+1, name)
 		}
 
-		timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		idleCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		kvReader, err := c.initiateGet(timeoutCtx, c.logger, name, 0)
+		idle := time.AfterFunc(c.downloadIdleTimeout, cancel)
+		defer idle.Stop()
+
+		kvReader, err := c.initiateGet(idleCtx, c.logger, name, 0)
 		if err != nil {
 			c.logger.Warnf("Failed to download stream: attempt %d: initiate get: %s", attempt+1, err)
 
@@ -124,7 +142,7 @@ func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, 
 		}
 		defer kvReader.Close()
 
-		if _, copyErr := io.Copy(&compressed, kvReader); copyErr != nil {
+		if _, copyErr := io.Copy(&compressed, &idleResetReader{r: kvReader, timer: idle, idle: c.downloadIdleTimeout}); copyErr != nil {
 			st, ok := status.FromError(copyErr)
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true
