@@ -78,7 +78,7 @@ the backend and the proxy) and the proxy process alone (100 = one core).
 Caveats:
 - Loopback has no bandwidth or latency, so this shows compression's CPU cost without any of its network
   benefit. It is the worst case for compression.
-- Modes run back to back (off, then zstd), so OS file cache and SPM cache state favour the second.
+- Modes run back to back, so OS file cache and SPM cache state can favour a later run; the first runs below were `off, zstd`, the ABBA runs (`COMPRESSION_PROBE_MODES=off,zstd,zstd,off`) control for that. Each build's result is also saved to `<out>/<position>-<mode>/<phase>-result.json`, and its build output is deleted afterwards (a full ABBA run otherwise needs ~100 GB).
 
 ### Local (M4 Max, 14 cores)
 
@@ -105,6 +105,39 @@ Reading it:
   cannot be expected to help here; the result only shows it does not hurt on a 14-core machine.
 - The two warm builds are not identical workloads (75 vs 32 misses, 712 vs 485 MiB re-uploaded): a
   fraction of keys is not stable between consecutive builds, with or without compression.
+
+### Local ABBA (off, zstd, zstd, off; M4 Max)
+
+Order-controlled rerun: the same cold+warm pair per scenario, run as `off, zstd, zstd, off`
+(`COMPRESSION_PROBE_MODES=off,zstd,zstd,off`).
+
+| # | Mode | Phase | Wall | System CPU-s | Proxy CPU-s | Proxy CPU% peak / avg / med / p95 | Wire up / down MiB |
+|---|---|---|---|---|---|---|---|
+| 0 | off | cold | 263.4 s | 2352 | 21.3 | 62 / 8 / 0 / 30 | 3280 / 0 |
+| 0 | off | warm | 184.6 s | 1244 | 15.8 | 263 / 9 / 0 / 50 | 712 / 2567 |
+| 1 | zstd | cold | 235.3 s | 2452 | 30.2 | 83 / 13 / 6 / 46 | 1153 / 0 |
+| 1 | zstd | warm | 167.4 s | 1171 | 16.7 | 377 / 10 / 0 / 49 | 197 / 956 |
+| 2 | zstd | cold | 234.6 s | 2417 | 29.4 | 73 / 13 / 5 / 41 | 1153 / 0 |
+| 2 | zstd | warm | 173.2 s | 1233 | 15.5 | 283 / 9 / 0 / 51 | 197 / 956 |
+| 3 | off | cold | 248.1 s | 2594 | 21.6 | 69 / 9 / 5 / 29 | 3280 / 0 |
+| 3 | off | warm | 184.4 s | 1187 | 15.8 | 300 / 9 / 0 / 49 | 712 / 2567 |
+
+Means of the two runs per mode:
+
+| Phase | Mode | Wall | System CPU-s | Proxy CPU-s | Proxy CPU% peak / avg / p95 |
+|---|---|---|---|---|---|
+| cold | off | 255.8 s | 2473 | 21.5 | 66 / 8.5 / 29.5 |
+| cold | zstd | 235.0 s (-8.1%) | 2435 (-1.6%) | 29.8 (+39%) | 78 / 13 / 43.5 |
+| warm | off | 184.5 s | 1216 | 15.8 | 282 / 9 / 49.5 |
+| warm | zstd | 170.3 s (-7.7%) | 1202 (-1.1%) | 16.1 (+2%) | 330 / 9.5 / 50 |
+
+Reading it:
+- The A-B-B-A order did not remove the wall-time gap: both `zstd` cold runs (235 s) beat both `off` cold runs (248, 263 s),
+  and the same holds warm (167-173 s vs 184-185 s). Ordering alone does not explain it. The cause is not
+  isolated; fewer bytes through the in-memory loopback backend and gRPC is the likely reason, and no real network
+  is involved, so this is not a measure of what compression saves on a real link.
+- System CPU-s is within run-to-run noise (the two `off` cold runs differ by 10%).
+- Proxy cost is as before: +39% CPU-s on cold uploads (p95 29.5% to 43.5% of a core), no real change on warm builds.
 
 ### RDE (6 cores, 14 GB, Xcode 26.6)
 

@@ -84,7 +84,7 @@ Or run the wizard in accessible line-based mode (answers piped on stdin):
 	}
 }
 
-func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled bool) error {
+func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, envs map[string]string, pushEnabled, compressXcode bool) error {
 	for _, t := range tools {
 		var err error
 		switch interactiveTool(t) {
@@ -93,7 +93,7 @@ func runSelectedTools(ctx context.Context, logger log.Logger, tools []string, en
 		case toolBazel:
 			err = runInteractiveBazel(ctx, logger, envs, pushEnabled)
 		case toolXcode:
-			err = runInteractiveXcode(ctx, logger, envs, pushEnabled)
+			err = runInteractiveXcode(ctx, logger, envs, pushEnabled, compressXcode)
 		case toolCcache:
 			err = runInteractiveCcache(ctx, logger, envs, pushEnabled)
 		default:
@@ -236,10 +236,17 @@ func runInteractiveCcache(ctx context.Context, logger log.Logger, envs map[strin
 	return nil
 }
 
-func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled bool) error {
+func interactiveXcodeParams(pushEnabled, compress bool) xcelerate.Params {
 	params := xcelerate.DefaultParams()
 	params.DebugLogging = common.DebugEnabled(params.DebugLogging)
 	params.PushEnabled = pushEnabled
+	params.RemoteCacheCompression = compress
+
+	return params
+}
+
+func runInteractiveXcode(ctx context.Context, logger log.Logger, envs map[string]string, pushEnabled, compress bool) error {
+	params := interactiveXcodeParams(pushEnabled, compress)
 
 	if err := xcelerate.Activate(
 		ctx,

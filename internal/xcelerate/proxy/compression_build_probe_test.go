@@ -287,6 +287,7 @@ func probeLevel(name string) zstd.EncoderLevel {
 // Driver role.
 
 type probeBuildResult struct {
+	Position  int         `json:"position"`
 	Mode      string      `json:"mode"`
 	Phase     string      `json:"phase"`
 	WallSec   float64     `json:"wallSeconds"`
@@ -329,8 +330,8 @@ func runProbeDriver(t *testing.T) {
 	modes := strings.Split(envOr(probeModesEnv, "off,zstd"), ",")
 
 	var results []probeBuildResult
-	for _, mode := range modes {
-		results = append(results, runProbeScenario(t, out, mode)...)
+	for i, mode := range modes {
+		results = append(results, runProbeScenario(t, out, i, mode)...)
 	}
 
 	data, err := json.MarshalIndent(results, "", "  ")
@@ -338,8 +339,8 @@ func runProbeDriver(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(out, "results.json"), data, 0o600))
 
 	for _, r := range results {
-		t.Logf("%-5s %-4s wall=%6.1fs sysCPU%%[peak %.0f avg %.0f med %.0f p95 %.0f] cpu-s=%.0f proxyCPU%%[peak %.0f avg %.0f med %.0f p95 %.0f] proxy-cpu-s=%.1f wire up/down MiB=%.0f/%.0f raw up/down MiB=%.0f/%.0f misses=%d",
-			r.Mode, r.Phase, r.WallSec,
+		t.Logf("#%d %-5s %-4s wall=%6.1fs sysCPU%%[peak %.0f avg %.0f med %.0f p95 %.0f] cpu-s=%.0f proxyCPU%%[peak %.0f avg %.0f med %.0f p95 %.0f] proxy-cpu-s=%.1f wire up/down MiB=%.0f/%.0f raw up/down MiB=%.0f/%.0f misses=%d",
+			r.Position, r.Mode, r.Phase, r.WallSec,
 			r.SysCPU.Peak, r.SysCPU.Avg, r.SysCPU.Median, r.SysCPU.P95, r.SysCPUSec,
 			r.ProxyCPU.Peak, r.ProxyCPU.Avg, r.ProxyCPU.Median, r.ProxyCPU.P95, r.Proxy.ProxyCPUSecond,
 			mib(r.Proxy.UploadWireB), mib(r.Proxy.DownloadWireB), mib(r.Proxy.UploadRawB), mib(r.Proxy.DownloadRawB), r.Proxy.Misses)
@@ -357,8 +358,8 @@ func envOr(key, def string) string {
 }
 
 // One backend per mode: a cold build fills it, then a build from wiped local state reads it back.
-func runProbeScenario(t *testing.T, out, mode string) []probeBuildResult {
-	dir := filepath.Join(out, mode)
+func runProbeScenario(t *testing.T, out string, index int, mode string) []probeBuildResult {
+	dir := filepath.Join(out, fmt.Sprintf("%d-%s", index, mode))
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	backendFile := filepath.Join(dir, "backend.addr")
@@ -380,13 +381,13 @@ func runProbeScenario(t *testing.T, out, mode string) []probeBuildResult {
 
 	var results []probeBuildResult
 	for _, phase := range []string{"cold", "warm"} {
-		results = append(results, runProbeBuild(t, dir, mode, phase, backendFile))
+		results = append(results, runProbeBuild(t, dir, index, mode, phase, backendFile))
 	}
 
 	return results
 }
 
-func runProbeBuild(t *testing.T, dir, mode, phase, backendFile string) probeBuildResult {
+func runProbeBuild(t *testing.T, dir string, index int, mode, phase, backendFile string) probeBuildResult {
 	t.Logf("=== %s %s", mode, phase)
 
 	derivedData := filepath.Join(dir, "dd")
@@ -493,10 +494,19 @@ func runProbeBuild(t *testing.T, dir, mode, phase, backendFile string) probeBuil
 
 	busy := func(c cpu.TimesStat) float64 { return c.User + c.System + c.Nice }
 
-	return probeBuildResult{
-		Mode: mode, Phase: phase, WallSec: wall.Seconds(),
+	result := probeBuildResult{
+		Position: index, Mode: mode, Phase: phase, WallSec: wall.Seconds(),
 		SysCPU: summarize(sysSamples), ProxyCPU: summarize(proxySamples),
 		SysCPUSec: busy(endTimes[0]) - busy(startTimes[0]),
 		Proxy:     &stats,
 	}
+
+	// Saved at once so a later failure keeps it; the build output is freed for the next build.
+	resultJSON, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, phase+"-result.json"), resultJSON, 0o600))
+	require.NoError(t, os.RemoveAll(derivedData))
+	require.NoError(t, os.RemoveAll(casPath))
+
+	return result
 }

@@ -97,7 +97,12 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		return err
 	}
 
-	return c.compression.decompressTo(destination, compressed.Bytes())
+	if err := c.compression.decompressTo(destination, compressed.Bytes()); err != nil {
+		return err
+	}
+	c.logger.TDebugf("Decompressed %s: %d bytes", key, compressed.Len())
+
+	return nil
 }
 
 func (c *Client) downloadStream(ctx context.Context, destination io.Writer, key string) error {

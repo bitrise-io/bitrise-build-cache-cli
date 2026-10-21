@@ -10,6 +10,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 )
 
 func TestDefaultSelectedTools_returnsAllFour(t *testing.T) {
@@ -61,4 +63,15 @@ func TestDefaultSelectedTools_preselectsMultiSelectOptions(t *testing.T) {
 	got, ok := field.GetValue().([]string)
 	assert.True(t, ok, "GetValue should return []string")
 	assert.ElementsMatch(t, []string{"gradle", "bazel", "xcode", "ccache"}, got)
+}
+
+func TestInteractiveXcodeParams_compression(t *testing.T) {
+	on := interactiveXcodeParams(true, true)
+	assert.True(t, on.RemoteCacheCompression)
+	assert.Equal(t, kv.DefaultCompressionThreshold, on.RemoteCacheCompressionThreshold)
+	assert.True(t, on.PushEnabled)
+
+	off := interactiveXcodeParams(false, false)
+	assert.False(t, off.RemoteCacheCompression)
+	assert.False(t, off.PushEnabled)
 }

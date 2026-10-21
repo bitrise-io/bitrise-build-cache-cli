@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"charm.land/huh/v2"
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -56,6 +57,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 		authToken     = auth.Config.Token
 		username      = storedUsername
 		pushEnabled   = storedCachePush(logger)
+		compressXcode = true
 	)
 
 	toolOptions := []huh.Option[string]{
@@ -123,6 +125,19 @@ func (*huhWizard) Run(ctx context.Context) error {
 		),
 	)
 
+	if slices.Contains(selectedTools, string(toolXcode)) {
+		groups = append(groups,
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Compress Xcode cache blobs?").
+					Description("Default on — zstd sends ~2.7x fewer bytes for a small CPU cost.").
+					Affirmative("Yes, compress").
+					Negative("No, send as is").
+					Value(&compressXcode),
+			),
+		)
+	}
+
 	if err := tui.RunForm(groups...); err != nil {
 		return err //nolint:wrapcheck // tui.ErrAborted, or an already-wrapped huh error
 	}
@@ -139,7 +154,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 	envs[authpkg.EnvWorkspaceID] = workspaceID
 	envs[authpkg.EnvAuthToken] = authToken
 
-	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled); err != nil {
+	if err := runSelectedTools(ctx, logger, selectedTools, envs, pushEnabled, compressXcode); err != nil {
 		return err
 	}
 

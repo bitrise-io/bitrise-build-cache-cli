@@ -1622,6 +1622,18 @@ workflows:
                 -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
 
     - script:
+        title: assert zstd compression engaged
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -eo pipefail
+
+              # `-d activate` makes the proxy log each (de)compression; none means the flag never reached the proxy.
+              if ! grep -qE "ompressed .* bytes" ~/.local/state/xcelerate/logs/proxy-*-out.log; then
+                echo "FAIL: no zstd (de)compression in the proxy logs"
+                exit 1
+              fi
+    - script:
         title: gather info
         inputs:
           - content: |-
