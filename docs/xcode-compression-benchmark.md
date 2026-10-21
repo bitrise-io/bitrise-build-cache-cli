@@ -167,3 +167,35 @@ Reading it:
   compression did not slow a CPU-saturated 6-core machine; a controlled A/B (ABBA order, repeated) is needed to
   quantify any gain.
 - As locally, the warm builds differ in workload (75 vs 32 misses, 711 vs 483 MiB re-uploaded).
+
+### RDE ABBA (off, zstd, zstd, off; 6 cores)
+
+| # | Mode | Phase | Wall | System CPU-s | Proxy CPU-s | Proxy CPU% peak / avg / med / p95 | Wire up / down MiB |
+|---|---|---|---|---|---|---|---|
+| 0 | off | cold | 557.5 s | 2653 | 25.9 | 63 / 5 / 1 / 18 | 3054 / 0 |
+| 0 | off | warm | 293.6 s | 1072 | 20.0 | 148 / 7 / 0 / 34 | 711 / 2343 |
+| 1 | zstd | cold | 451.6 s | 2201 | 33.5 | 102 / 7 / 3 / 28 | 1149 / 0 |
+| 1 | zstd | warm | 279.0 s | 1042 | 24.3 | 167 / 9 / 0 / 56 | 197 / 952 |
+| 2 | zstd | cold | 387.6 s | 1846 | 28.2 | 58 / 7 / 3 / 28 | 1149 / 0 |
+| 2 | zstd | warm | 277.4 s | 1057 | 31.2 | 175 / 11 / 0 / 82 | 197 / 952 |
+| 3 | off | cold | 464.2 s | 2214 | 22.6 | 69 / 5 / 2 / 18 | 3054 / 0 |
+| 3 | off | warm | 276.9 s | 1011 | 21.5 | 154 / 8 / 0 / 41 | 711 / 2343 |
+
+Means of the two runs per mode:
+
+| Phase | Mode | Wall | System CPU-s | Proxy CPU-s | Proxy CPU% peak / avg / p95 |
+|---|---|---|---|---|---|
+| cold | off | 510.9 s | 2434 | 24.2 | 66 / 4.8 / 18 |
+| cold | zstd | 419.6 s (-17.9%) | 2024 (-16.8%) | 30.9 (+27%) | 80 / 7.4 / 28 |
+| warm | off | 285.3 s | 1042 | 20.7 | 151 / 7.3 / 38 |
+| warm | zstd | 278.2 s (-2.5%) | 1050 (+0.8%) | 27.8 (+34%) | 171 / 10 / 69 |
+
+Reading it:
+- The RDE is much noisier than the laptop: the two `off` cold runs differ by 17% (557 s and 464 s; the first ran on a
+  freshly wiped VM) and the two `zstd` cold runs by 14%. The -18% cold wall time and -17% cold CPU-s are therefore not a
+  measured speedup; against the second `off` run alone it is about -10%. Warm wall time is flat (-2.5%, inside the noise).
+- Wire bytes drop 2.7x on upload (3056 raw to 1149 MiB) and 2.7x on download (2573 to 952 MiB), as on the laptop.
+- The proxy's CPU cost shows up more on the 6 cores: +27% CPU-s on cold uploads, and p95 18% to 28% of a core. On
+  warm builds it was +34% here, but the one earlier A-B run on this machine showed the opposite (30.5 to 24.2 CPU-s) and
+  the local runs show no change, so treat the warm proxy CPU difference as unresolved.
+- Across all runs, compression did not slow the build on either machine and did not raise whole-machine CPU-s beyond noise.
