@@ -24,7 +24,9 @@ With it on, the proxy's KV client:
 - computes the upload checksum over the uncompressed bytes and checks the server's hash header on the decoded bytes,
   because the server validates and reports hashes of the uncompressed blob;
 - counts offsets in uncompressed bytes like the server: an upload retry re-compresses the blob from the committed offset,
-  and a download retry starts over, since a partly received zstd stream cannot be resumed.
+  and a download retry starts over, since a partly received zstd stream cannot be resumed. Because a restart discards
+  progress, a download attempt is abandoned only after 60 s without receiving any bytes, not after 60 s in total (the
+  uncompressed path keeps its fixed 60 s per attempt).
 
 Ship the backend change to every region first. A server without it reads `kv/zstd/<key>` as the key `blob/zstd`, so every
 compressed blob maps to that single key. From the server code (an inference, not a tested path): uploads fail checksum
@@ -74,7 +76,7 @@ gRPC to `fakebackend`. Backend, proxy and xcodebuild are separate processes so t
 In `zstd` mode a decorator between the proxy and `kv.Client` compresses uploads and decompresses
 downloads; `off` is a pass-through that only counts bytes. This decorator models the production kv compression
 (a marker byte instead of the name prefix, no threshold) and does not exercise the real kv layer; that is covered
-by unit tests (the first e2e workflow also asserts the proxy logged compression and decompression, unverified until CI runs).
+by unit tests (the first e2e workflow also asserts the proxy logged compression and that no compressed upload was rejected, unverified until CI runs).
 
 Per mode: a **cold** build fills the backend, then a **warm** build, with DerivedData and the local CAS
 wiped, reads everything back from it.

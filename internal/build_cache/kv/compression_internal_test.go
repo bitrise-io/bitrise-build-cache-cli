@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,14 +20,26 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv/mocks"
 )
 
-const testIdleTimeout = 50 * time.Millisecond
+// Wide margins: the gaps below must stay well under the window even when a loaded CI runner oversleeps.
+const (
+	testIdleTimeout = 300 * time.Millisecond
+	testChunkGap    = 100 * time.Millisecond
+)
 
-// scriptedStream plays steps in order, failing like gRPC once the RPC context is done; a nil step blocks until then.
+// streamStep is one Recv of a scripted stream: wait pause (or until the RPC is cancelled), then deliver data or end.
+type streamStep struct {
+	data  []byte
+	pause time.Duration
+	block bool
+	end   error
+}
+
+// scriptedStream plays steps in order and, like a gRPC stream, returns as soon as the RPC context is done.
 type scriptedStream struct {
 	grpc.ServerStreamingClient[bytestream.ReadResponse]
 
 	ctx   context.Context //nolint:containedctx
-	steps []func() (*bytestream.ReadResponse, error)
+	steps []streamStep
 	next  int
 }
 
@@ -35,43 +47,60 @@ func (s *scriptedStream) Recv() (*bytestream.ReadResponse, error) {
 	step := s.steps[s.next]
 	s.next++
 
-	if step == nil {
+	if step.block {
 		<-s.ctx.Done()
 
 		return nil, s.ctx.Err()
 	}
 
-	resp, err := step()
-	if ctxErr := s.ctx.Err(); ctxErr != nil {
-		return nil, ctxErr
+	select {
+	case <-time.After(step.pause):
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
 	}
 
-	return resp, err
+	if step.end != nil {
+		return nil, step.end
+	}
+
+	return &bytestream.ReadResponse{Data: step.data}, nil
 }
 
 func (s *scriptedStream) Header() (metadata.MD, error) { return metadata.MD{}, nil }
 func (s *scriptedStream) Trailer() metadata.MD         { return nil }
 
-func chunk(data []byte, pause time.Duration) func() (*bytestream.ReadResponse, error) {
-	return func() (*bytestream.ReadResponse, error) {
-		time.Sleep(pause)
-
-		return &bytestream.ReadResponse{Data: data}, nil
-	}
+type getRequest struct {
+	resource string
+	offset   int64
 }
 
-func eof() (*bytestream.ReadResponse, error) { return nil, io.EOF }
+type idleTestRig struct {
+	client *Client
 
-func idleTestClient(t *testing.T, attempts ...[]func() (*bytestream.ReadResponse, error)) (*Client, *atomic.Int32) {
+	mu       sync.Mutex
+	requests []getRequest
+}
+
+func (r *idleTestRig) recorded() []getRequest {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]getRequest(nil), r.requests...)
+}
+
+func newIdleTestRig(t *testing.T, attempts ...[]streamStep) *idleTestRig {
 	t.Helper()
 
-	var calls atomic.Int32
+	rig := &idleTestRig{}
 
 	client, err := NewClient(NewClientParams{
 		Logger: log.NewLogger(),
 		BitriseKVClient: &mocks.KVStorageClientMock{
-			GetFunc: func(ctx context.Context, _ *bytestream.ReadRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
-				i := int(calls.Add(1)) - 1
+			GetFunc: func(ctx context.Context, in *bytestream.ReadRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
+				rig.mu.Lock()
+				i := len(rig.requests)
+				rig.requests = append(rig.requests, getRequest{resource: in.GetResourceName(), offset: in.GetReadOffset()})
+				rig.mu.Unlock()
 
 				return &scriptedStream{ctx: ctx, steps: attempts[i]}, nil
 			},
@@ -82,64 +111,87 @@ func idleTestClient(t *testing.T, attempts ...[]func() (*bytestream.ReadResponse
 	require.NoError(t, err)
 	client.downloadIdleTimeout = testIdleTimeout
 
-	return client, &calls
+	rig.client = client
+
+	return rig
 }
 
-func zstdFrame(t *testing.T, c *Client, blob []byte) []byte {
+func zstdFrame(t *testing.T, blob []byte) []byte {
 	t.Helper()
 
-	return c.compression.enc.EncodeAll(blob, nil)
+	c, err := newCompression(CompressionParams{Enabled: true})
+	require.NoError(t, err)
+
+	return c.enc.EncodeAll(blob, nil)
+}
+
+// A caller-side deadline turns a regression (timer never fires) into a quick failure instead of a hung test run.
+func failFastContext(t *testing.T) context.Context {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	return ctx
 }
 
 func TestDownloadCompressed_StalledStreamIsAbortedAndRetried(t *testing.T) {
 	blob := bytes.Repeat([]byte("blob "), 1000)
+	frame := zstdFrame(t, blob)
 
-	probe, _ := idleTestClient(t)
-	frame := zstdFrame(t, probe, blob)
-	client, calls := idleTestClient(t,
-		[]func() (*bytestream.ReadResponse, error){nil},
-		[]func() (*bytestream.ReadResponse, error){chunk(frame, 0), eof},
+	rig := newIdleTestRig(t,
+		[]streamStep{{block: true}},
+		[]streamStep{{data: frame}, {end: io.EOF}},
 	)
 
 	started := time.Now()
 
 	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "key"))
+	require.NoError(t, rig.client.DownloadStream(failFastContext(t), &got, "key"))
 
 	assert.Equal(t, blob, got.Bytes())
-	assert.EqualValues(t, 2, calls.Load())
+	assert.Equal(t, []getRequest{{resource: "kv/zstd/key"}, {resource: "kv/zstd/key"}}, rig.recorded(), "both attempts start from offset 0")
 	assert.GreaterOrEqual(t, time.Since(started), testIdleTimeout)
 }
 
 // The total time exceeds the idle window; only the gaps between chunks are bounded by it.
 func TestDownloadCompressed_SlowButProgressingStreamCompletes(t *testing.T) {
 	blob := bytes.Repeat([]byte("blob "), 1000)
+	frame := zstdFrame(t, blob)
 
-	probe, _ := idleTestClient(t)
-	frame := zstdFrame(t, probe, blob)
+	const parts = 5
 
-	const parts = 6
-
-	gap := testIdleTimeout * 2 / 3
 	step := (len(frame) + parts - 1) / parts
 
-	var steps []func() (*bytestream.ReadResponse, error)
+	var steps []streamStep
 	for off := 0; off < len(frame); off += step {
-		steps = append(steps, chunk(frame[off:min(off+step, len(frame))], gap))
+		steps = append(steps, streamStep{data: frame[off:min(off+step, len(frame))], pause: testChunkGap})
 	}
 
-	steps = append(steps, eof)
+	steps = append(steps, streamStep{end: io.EOF})
 
-	client, calls := idleTestClient(t, steps)
+	rig := newIdleTestRig(t, steps)
 
 	started := time.Now()
 
 	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "key"))
+	require.NoError(t, rig.client.DownloadStream(failFastContext(t), &got, "key"))
 
 	assert.Equal(t, blob, got.Bytes())
-	assert.EqualValues(t, 1, calls.Load())
+	assert.Equal(t, []getRequest{{resource: "kv/zstd/key"}}, rig.recorded())
 	assert.Greater(t, time.Since(started), testIdleTimeout)
+}
+
+func TestDownloadCompressed_ZeroIdleWindowFallsBackToTheDefault(t *testing.T) {
+	blob := bytes.Repeat([]byte("blob "), 100)
+
+	rig := newIdleTestRig(t, []streamStep{{data: zstdFrame(t, blob)}, {end: io.EOF}})
+	rig.client.downloadIdleTimeout = 0
+
+	var got bytes.Buffer
+	require.NoError(t, rig.client.DownloadStream(failFastContext(t), &got, "key"))
+
+	assert.Equal(t, blob, got.Bytes())
 }
 
 func TestCompressedPayload_FromPastTheBlobFails(t *testing.T) {

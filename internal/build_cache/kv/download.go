@@ -116,6 +116,11 @@ func (i *idleResetReader) Read(p []byte) (int, error) {
 func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, key string) error {
 	name := compressedNamePrefix + key
 
+	idleWindow := c.downloadIdleTimeout
+	if idleWindow <= 0 {
+		idleWindow = defaultDownloadIdleTimeout
+	}
+
 	var compressed bytes.Buffer
 	expectedHash := ""
 
@@ -131,7 +136,7 @@ func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, 
 		idleCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		idle := time.AfterFunc(c.downloadIdleTimeout, cancel)
+		idle := time.AfterFunc(idleWindow, cancel)
 		defer idle.Stop()
 
 		kvReader, err := c.initiateGet(idleCtx, c.logger, name, 0)
@@ -142,7 +147,7 @@ func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, 
 		}
 		defer kvReader.Close()
 
-		if _, copyErr := io.Copy(&compressed, &idleResetReader{r: kvReader, timer: idle, idle: c.downloadIdleTimeout}); copyErr != nil {
+		if _, copyErr := io.Copy(&compressed, &idleResetReader{r: kvReader, timer: idle, idle: idleWindow}); copyErr != nil {
 			st, ok := status.FromError(copyErr)
 			if ok && st.Code() == codes.NotFound {
 				return ErrCacheNotFound, true

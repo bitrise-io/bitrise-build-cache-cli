@@ -1627,11 +1627,11 @@ workflows:
               #!/usr/bin/env bash
               set -eo pipefail
 
-              # `-d activate` makes the proxy log each compressed upload and each decoded download. Upload lines alone
-              # prove nothing (they are logged before the server accepts the blob), so require a decoded download and no rejected upload.
+              # `-d activate` makes the proxy log each compressed upload and each decoded download. The rejection check is the
+              # real guard: upload lines alone are logged before the server accepts the blob, and a cold run has no downloads.
               logs=(~/.local/state/xcelerate/logs/proxy-*-out.log)
-              if ! grep -qE "Decompressed .* bytes" "${logs[@]}"; then
-                echo "FAIL: no zstd-compressed download decoded in the proxy logs"
+              if ! grep -qE "ompressed .* bytes" "${logs[@]}"; then
+                echo "FAIL: no zstd (de)compression in the proxy logs"
                 exit 1
               fi
               if grep -qE "Failed to upload stream zstd/.*InvalidArgument" "${logs[@]}"; then
