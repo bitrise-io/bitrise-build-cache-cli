@@ -92,15 +92,81 @@ func (c *Client) DownloadStream(ctx context.Context, destination io.Writer, key 
 		return c.downloadStream(ctx, destination, key)
 	}
 
+	return c.downloadCompressed(ctx, destination, key)
+}
+
+// downloadCompressed starts over on every retry: the server's read offsets count uncompressed bytes, so a
+// partly received zstd stream cannot be resumed. The server's hash header describes the uncompressed blob,
+// so it is checked after decoding.
+func (c *Client) downloadCompressed(ctx context.Context, destination io.Writer, key string) error {
+	name := compressedNamePrefix + key
+
 	var compressed bytes.Buffer
-	if err := c.downloadStream(ctx, &compressed, compressedNamePrefix+key); err != nil {
+	expectedHash := ""
+
+	downloadErr := retry.Times(c.downloadRetry).Wait(c.downloadRetryWait).TryWithAbort(func(attempt uint) (error, bool) {
+		compressed.Reset()
+
+		if attempt == 0 {
+			c.logger.TDebugf("Downloading %s", name)
+		} else {
+			c.logger.TInfof("%d. attempt to download %s from the start", attempt+1, name)
+		}
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+
+		kvReader, err := c.initiateGet(timeoutCtx, c.logger, name, 0)
+		if err != nil {
+			c.logger.Warnf("Failed to download stream: attempt %d: initiate get: %s", attempt+1, err)
+
+			return fmt.Errorf("create kv get client (with key %s): %w", name, err), true
+		}
+		defer kvReader.Close()
+
+		if _, copyErr := io.Copy(&compressed, kvReader); copyErr != nil {
+			st, ok := status.FromError(copyErr)
+			if ok && st.Code() == codes.NotFound {
+				return ErrCacheNotFound, true
+			}
+			if c.tripAuth(ctx, copyErr, kvReader.auth) {
+				return ErrCacheUnauthenticated, true
+			}
+
+			c.logger.Warnf("Failed to download stream: attempt %d: %s", attempt+1, copyErr)
+
+			return fmt.Errorf("download archive: %w", copyErr), false
+		}
+
+		expectedHash = strings.TrimPrefix(kvReader.Metadata()["x-flare-blob-validation-sha256"], "blob/")
+
+		return nil, false
+	})
+	if downloadErr != nil {
+		//nolint: wrapcheck
+		return downloadErr
+	}
+
+	raw, err := c.compression.decompress(compressed.Bytes())
+	if err != nil {
 		return err
 	}
 
-	if err := c.compression.decompressTo(destination, compressed.Bytes()); err != nil {
-		return err
+	if expectedHash != "" {
+		sum := sha256.Sum256(raw)
+		if fileHash := hex.EncodeToString(sum[:]); expectedHash != fileHash {
+			return fmt.Errorf(
+				"downloaded file hash mismatch for key %q: expected %s, got %s (decoded %d bytes from %d, cache-operation-id=%q, invocation-id=%q)",
+				key, expectedHash, fileHash, len(raw), compressed.Len(), c.cacheOperationID, c.invocationID,
+			)
+		}
 	}
-	c.logger.TDebugf("Decompressed %s: %d bytes", key, compressed.Len())
+
+	c.logger.TDebugf("Decompressed %s: %d -> %d bytes", key, compressed.Len(), len(raw))
+
+	if _, err := destination.Write(raw); err != nil {
+		return fmt.Errorf("write decoded blob: %w", err)
+	}
 
 	return nil
 }

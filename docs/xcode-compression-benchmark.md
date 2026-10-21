@@ -12,21 +12,24 @@ bitrise-build-cache activate xcode --remote-cache-compression=false      # opt o
 bitrise-build-cache activate xcode --remote-cache-compression-threshold 100
 ```
 
-On by default (the interactive wizard asks, default yes; `react-native activate` has the same flag). With it on,
-the proxy's KV client stores every blob as a zstd frame under `kv/zstd/<key>` and reads that form back. Blobs of at least the threshold (default 100
-bytes, Bazel's default) are compressed; smaller ones are wrapped in a frame uncompressed, and incompressible
-ones leave the encoder as raw blocks, so either costs only a dozen bytes of frame overhead. The stored form
-always equals the requested form, so the backend never converts for this client, and it round-trips even
-against a backend without `kv/zstd/` handling.
+On by default (the interactive wizard asks, default yes; `react-native activate` has the same flag).
+Compression is a wire-level optimisation: the backend (build-cache-api#819) stores every blob uncompressed under one
+key, so compressed and uncompressed clients share entries and nothing goes cold on upgrade. It saves network bytes,
+not storage quota.
 
-Entries are shared with uncompressed clients only if the backend converts between `kv/<key>` and `kv/zstd/<key>`;
-this client does not depend on that. Unverified backend behaviour that sharing would need:
-- the download hash header covers the bytes served, not the stored form;
-- on-the-fly conversion is deterministic, so resumed (offset) downloads line up;
-- re-uploading an existing blob in the other form takes the AlreadyExists / delete-on-rewrite path.
+With it on, the proxy's KV client:
+- sends blobs of at least the threshold (default 100 bytes, Bazel's default) as zstd under `kv/zstd/<key>`; smaller
+  blobs and ones that do not shrink go as is under `kv/<key>`;
+- always requests `kv/zstd/<key>` on download, so the server compresses on the way out;
+- computes the upload checksum over the uncompressed bytes and checks the server's hash header on the decoded bytes,
+  because the server validates and reports hashes of the uncompressed blob;
+- counts offsets in uncompressed bytes like the server: an upload retry re-compresses the blob from the committed offset,
+  and a download retry starts over, since a partly received zstd stream cannot be resumed.
 
-Rollout: an upgraded client reads and writes `kv/zstd/<key>`, so entries older CLIs wrote under `kv/<key>` are reused
-only if the backend converts between the two names; otherwise a user's first builds after upgrading start cold.
+Ship the backend change to every region first. A server without it reads `kv/zstd/<key>` as the key `blob/zstd`, so every
+compressed blob would share one key and a Get could return another blob's content. The capabilities response cannot tell
+old servers from new ones, so the client has no way to detect this and `--remote-cache-compression=false` is the only switch.
+
 A config written by an older `activate` has no `remoteCacheCompression` field and keeps compression off until
 `activate` runs again.
 

@@ -6,12 +6,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -24,81 +26,237 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv/mocks"
 )
 
-// memoryStore keeps blobs by resource name, so a test sees exactly what was sent and can read it back.
-type memoryStore struct {
-	mu        sync.Mutex
-	blobs     map[string][]byte
-	checksums map[string]string
-	requested []string
+const (
+	zstdResourcePrefix = "kv/zstd/"
+	checksumHeader     = "x-flare-blob-validation-sha256"
+)
+
+type putRecord struct {
+	resource string
+	offset   int64
+	checksum string
+	wire     []byte
 }
 
-func newMemoryStore() *memoryStore {
-	return &memoryStore{blobs: map[string][]byte{}, checksums: map[string]string{}}
+type getRecord struct {
+	resource string
+	offset   int64
 }
 
-func (s *memoryStore) names() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// backendStore emulates the build-cache-api KV endpoints: blobs are stored uncompressed under one key whatever
+// the form requested, Put decompresses and validates the checksum on the uncompressed bytes, Get compresses on
+// the way out with a header describing the uncompressed blob, and offsets count uncompressed bytes.
+type backendStore struct {
+	mu      sync.Mutex
+	blobs   map[string][]byte
+	partial map[string]bool
+	puts    []putRecord
+	gets    []getRecord
 
-	names := make([]string, 0, len(s.blobs))
-	for name := range s.blobs {
-		names = append(names, name)
+	failPutPrefix []byte
+	failGetAfter  int
+	getOverride   map[string][]byte
+	headerValue   string
+
+	decoder *zstd.Decoder
+	encoder *zstd.Encoder
+}
+
+func newBackendStore(t *testing.T) *backendStore {
+	t.Helper()
+
+	dec, err := zstd.NewReader(nil)
+	require.NoError(t, err)
+	enc, err := zstd.NewWriter(nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { dec.Close(); _ = enc.Close() })
+
+	return &backendStore{
+		blobs:       map[string][]byte{},
+		partial:     map[string]bool{},
+		getOverride: map[string][]byte{},
+		decoder:     dec,
+		encoder:     enc,
+	}
+}
+
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+
+	return hex.EncodeToString(sum[:])
+}
+
+func blobKeyOf(resource string) (string, bool) {
+	if name, ok := strings.CutPrefix(resource, zstdResourcePrefix); ok {
+		return name, true
 	}
 
-	return names
+	return strings.TrimPrefix(resource, "kv/"), false
 }
 
-func (s *memoryStore) requestedNames() []string {
+func (s *backendStore) blob(key string) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return append([]string(nil), s.requested...)
+	return s.blobs[key]
 }
 
-func (s *memoryStore) blob(name string) []byte {
+func (s *backendStore) putRecords() []putRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.blobs[name]
+	return append([]putRecord(nil), s.puts...)
 }
 
-func (s *memoryStore) put(name, checksum string, body []byte) {
+func (s *backendStore) getRecords() []getRecord {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.checksums[name] = checksum
-	s.blobs[name] = body
+	return append([]getRecord(nil), s.gets...)
 }
 
-func (s *memoryStore) get(name string) ([]byte, bool) {
+// failNextPutAfterCommitting makes the next Put keep prefix (the first bytes of the blob) and then fail.
+func (s *backendStore) failNextPutAfterCommitting(prefix []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.requested = append(s.requested, name)
-	data, found := s.blobs[name]
-
-	return data, found
+	s.failPutPrefix = prefix
 }
 
-func (s *memoryStore) kvMock() *mocks.KVStorageClientMock {
+// failNextGetAfter makes the next Get stream n bytes of its response and then break.
+func (s *backendStore) failNextGetAfter(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.failGetAfter = n
+}
+
+func (s *backendStore) setHeader(value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.headerValue = value
+}
+
+func (s *backendStore) overrideGet(resource string, response []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.getOverride[resource] = response
+}
+
+func (s *backendStore) put(resource string, offset int64, checksum string, wire []byte) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.puts = append(s.puts, putRecord{resource: resource, offset: offset, checksum: checksum, wire: wire})
+
+	key, compressed := blobKeyOf(resource)
+
+	if s.failPutPrefix != nil {
+		s.blobs[key] = s.failPutPrefix
+		s.partial[key] = true
+		s.failPutPrefix = nil
+
+		return 0, errors.New("connection reset")
+	}
+
+	data := wire
+	if compressed {
+		var err error
+		if data, err = s.decoder.DecodeAll(wire, nil); err != nil {
+			return 0, status.Errorf(codes.InvalidArgument, "decompress: %v", err)
+		}
+	}
+
+	existing := s.blobs[key]
+	if offset > int64(len(existing)) {
+		return 0, status.Errorf(codes.OutOfRange, "offset %d is past the stored %d bytes", offset, len(existing))
+	}
+
+	full := append(append([]byte(nil), existing[:offset]...), data...)
+	if got := sha256Hex(full); got != checksum {
+		return 0, status.Errorf(codes.InvalidArgument, "validation failed: expected %s, got %s", checksum, got)
+	}
+
+	s.blobs[key] = full
+	delete(s.partial, key)
+
+	return int64(len(wire)), nil
+}
+
+func (s *backendStore) writeStatus(resource string) *bytestream.QueryWriteStatusResponse {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key, _ := blobKeyOf(resource)
+	blob, found := s.blobs[key]
+
+	return &bytestream.QueryWriteStatusResponse{CommittedSize: int64(len(blob)), Complete: found && !s.partial[key]}
+}
+
+func (s *backendStore) get(resource string, offset int64) grpc.ServerStreamingClient[bytestream.ReadResponse] {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.gets = append(s.gets, getRecord{resource: resource, offset: offset})
+
+	key, compressed := blobKeyOf(resource)
+
+	if override, ok := s.getOverride[resource]; ok {
+		return responseStream(override, sha256Hex(override), nil)
+	}
+
+	blob, found := s.blobs[key]
+	if !found {
+		return mocks.NewServerStreamingClientMock[bytestream.ReadResponse]([]mocks.RecvResult[bytestream.ReadResponse]{
+			{Error: status.Error(codes.NotFound, "not found")},
+		})
+	}
+
+	header := sha256Hex(blob)
+	if s.headerValue != "" {
+		header = s.headerValue
+	}
+
+	data := blob[offset:]
+	if compressed {
+		data = s.encoder.EncodeAll(data, nil)
+	}
+
+	var breakWith error
+	if s.failGetAfter > 0 {
+		data, breakWith = data[:s.failGetAfter], errors.New("connection reset")
+		s.failGetAfter = 0
+	}
+
+	return responseStream(data, header, breakWith)
+}
+
+func responseStream(data []byte, header string, breakWith error) grpc.ServerStreamingClient[bytestream.ReadResponse] {
+	end := io.EOF
+	if breakWith != nil {
+		end = breakWith
+	}
+
+	return mocks.NewServerStreamingClientMock[bytestream.ReadResponse]([]mocks.RecvResult[bytestream.ReadResponse]{
+		{Response: &bytestream.ReadResponse{Data: data}, Metadata: map[string]string{checksumHeader: header}},
+		{Error: end},
+	})
+}
+
+func (s *backendStore) kvMock() *mocks.KVStorageClientMock {
 	return &mocks.KVStorageClientMock{
 		PutFunc: func(ctx context.Context, _ ...grpc.CallOption) (grpc.ClientStreamingClient[bytestream.WriteRequest, bytestream.WriteResponse], error) {
 			md, _ := metadata.FromOutgoingContext(ctx)
 
-			return &storingPutStream{store: s, checksum: strings.Join(md.Get("x-flare-blob-validation-sha256"), ",")}, nil
+			return &storingPutStream{store: s, checksum: strings.Join(md.Get(checksumHeader), ",")}, nil
 		},
 		GetFunc: func(_ context.Context, in *bytestream.ReadRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[bytestream.ReadResponse], error) {
-			data, found := s.get(in.GetResourceName())
-			if !found {
-				return mocks.NewServerStreamingClientMock[bytestream.ReadResponse]([]mocks.RecvResult[bytestream.ReadResponse]{
-					{Error: status.Error(codes.NotFound, "not found")},
-				}), nil
-			}
-
-			return mocks.NewServerStreamingClientMock[bytestream.ReadResponse]([]mocks.RecvResult[bytestream.ReadResponse]{
-				{Response: &bytestream.ReadResponse{Data: data}},
-				{Error: io.EOF},
-			}), nil
+			return s.get(in.GetResourceName(), in.GetReadOffset()), nil
+		},
+		WriteStatusFunc: func(_ context.Context, in *bytestream.QueryWriteStatusRequest, _ ...grpc.CallOption) (*bytestream.QueryWriteStatusResponse, error) {
+			return s.writeStatus(in.GetResourceName()), nil
 		},
 	}
 }
@@ -106,23 +264,30 @@ func (s *memoryStore) kvMock() *mocks.KVStorageClientMock {
 type storingPutStream struct {
 	grpc.ClientStream
 
-	store    *memoryStore
+	store    *backendStore
 	checksum string
-	name     string
+	resource string
+	offset   int64
 	body     []byte
+	started  bool
 }
 
 func (p *storingPutStream) Send(req *bytestream.WriteRequest) error {
-	p.name = req.GetResourceName()
+	if !p.started {
+		p.resource, p.offset, p.started = req.GetResourceName(), req.GetWriteOffset(), true
+	}
 	p.body = append(p.body, req.GetData()...)
 
 	return nil
 }
 
 func (p *storingPutStream) CloseAndRecv() (*bytestream.WriteResponse, error) {
-	p.store.put(p.name, p.checksum, p.body)
+	committed, err := p.store.put(p.resource, p.offset, p.checksum, p.body)
+	if err != nil {
+		return nil, err
+	}
 
-	return &bytestream.WriteResponse{CommittedSize: int64(len(p.body))}, nil
+	return &bytestream.WriteResponse{CommittedSize: committed}, nil
 }
 
 func (p *storingPutStream) CloseSend() error             { return nil }
@@ -130,13 +295,15 @@ func (p *storingPutStream) Header() (metadata.MD, error) { return nil, nil } //n
 func (p *storingPutStream) Trailer() metadata.MD         { return nil }
 func (p *storingPutStream) Context() context.Context     { return context.Background() }
 
-func newCompressionTestClient(t *testing.T, store *memoryStore, params kv.CompressionParams) *kv.Client {
+func newTestClient(t *testing.T, store *backendStore, params kv.CompressionParams) *kv.Client {
 	t.Helper()
 
 	client, err := kv.NewClient(kv.NewClientParams{
-		Logger:          mockLogger,
-		BitriseKVClient: store.kvMock(),
-		Compression:     params,
+		Logger:            mockLogger,
+		BitriseKVClient:   store.kvMock(),
+		Compression:       params,
+		UploadRetryWait:   1,
+		DownloadRetryWait: 1,
 	})
 	require.NoError(t, err)
 
@@ -147,106 +314,110 @@ func compressibleBlob(size int) []byte {
 	return bytes.Repeat([]byte("compilation cache blob "), size/23+1)[:size]
 }
 
+func randomBlob(t *testing.T, size int) []byte {
+	t.Helper()
+
+	blob := make([]byte, size)
+	_, err := rand.Read(blob)
+	require.NoError(t, err)
+
+	return blob
+}
+
 func upload(t *testing.T, client *kv.Client, key string, blob []byte) {
 	t.Helper()
 
 	require.NoError(t, client.UploadStreamToBuildCache(context.Background(), bytes.NewReader(blob), key, int64(len(blob))))
 }
 
+func download(t *testing.T, client *kv.Client, key string) []byte {
+	t.Helper()
+
+	var got bytes.Buffer
+	require.NoError(t, client.DownloadStream(context.Background(), &got, key))
+
+	return got.Bytes()
+}
+
 func TestClient_Compression_RoundTrip(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 100})
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 100})
 
 	blob := compressibleBlob(64 * 1024)
 	upload(t, client, "key", blob)
 
-	assert.Equal(t, []string{"kv/zstd/key"}, store.names())
-	assert.Less(t, len(store.blob("kv/zstd/key")), len(blob)/4)
+	puts := store.putRecords()
+	require.Len(t, puts, 1)
+	assert.Equal(t, "kv/zstd/key", puts[0].resource)
+	assert.Less(t, len(puts[0].wire), len(blob)/4)
+	assert.Equal(t, blob, store.blob("key"))
 
-	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "key"))
-
-	assert.Equal(t, blob, got.Bytes())
-	assert.Equal(t, []string{"kv/zstd/key"}, store.requestedNames())
+	assert.Equal(t, blob, download(t, client, "key"))
+	assert.Equal(t, []getRecord{{resource: "kv/zstd/key"}}, store.getRecords())
 }
 
-func TestClient_Compression_BelowThresholdIsFramedUncompressed(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 1024})
+func TestClient_Compression_SharedWithUncompressedClients(t *testing.T) {
+	store := newBackendStore(t)
+	compressing := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+	plain := newTestClient(t, store, kv.CompressionParams{})
+
+	fromCompressing := compressibleBlob(8 * 1024)
+	upload(t, compressing, "a", fromCompressing)
+	assert.Equal(t, fromCompressing, download(t, plain, "a"))
+
+	fromPlain := compressibleBlob(9 * 1024)
+	upload(t, plain, "b", fromPlain)
+	assert.Equal(t, fromPlain, download(t, compressing, "b"))
+}
+
+func TestClient_Compression_BelowThresholdIsSentAsIs(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 1024})
 
 	blob := compressibleBlob(512)
 	upload(t, client, "small", blob)
 
-	assert.Equal(t, []string{"kv/zstd/small"}, store.names())
-	assert.Greater(t, len(store.blob("kv/zstd/small")), len(blob), "carries the data uncompressed, plus frame overhead")
-	assert.Contains(t, string(store.blob("kv/zstd/small")), string(blob))
+	puts := store.putRecords()
+	require.Len(t, puts, 1)
+	assert.Equal(t, "kv/small", puts[0].resource)
+	assert.Equal(t, blob, puts[0].wire)
 
-	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "small"))
-
-	assert.Equal(t, blob, got.Bytes())
-	assert.Equal(t, []string{"kv/zstd/small"}, store.requestedNames())
+	assert.Equal(t, blob, download(t, client, "small"))
 }
 
-func TestClient_Compression_IncompressibleStaysDecodable(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 100})
+func TestClient_Compression_IncompressibleIsSentAsIs(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 100})
 
-	blob := make([]byte, 4096)
-	_, err := rand.Read(blob)
-	require.NoError(t, err)
+	blob := randomBlob(t, 4096)
 	upload(t, client, "random", blob)
 
-	assert.Equal(t, []string{"kv/zstd/random"}, store.names())
-	assert.LessOrEqual(t, len(store.blob("kv/zstd/random")), len(blob)+32, "frame overhead only")
-
-	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "random"))
-
-	assert.Equal(t, blob, got.Bytes())
+	puts := store.putRecords()
+	require.Len(t, puts, 1)
+	assert.Equal(t, "kv/random", puts[0].resource)
+	assert.Equal(t, blob, download(t, client, "random"))
 }
 
-// Uncompressed, size 0 counts as already committed and nothing is written; framed, the blob is a few bytes and stored.
-func TestClient_Compression_EmptyBlobRoundTrips(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
+// uploadStream treats size 0 as already committed, so an empty blob is never written, compressed or not.
+func TestClient_Compression_EmptyBlobStoresNothing(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
 
 	require.NoError(t, client.UploadStreamToBuildCache(context.Background(), bytes.NewReader(nil), "empty", 0))
-	assert.Equal(t, []string{"kv/zstd/empty"}, store.names())
 
-	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "empty"))
-	assert.Empty(t, got.Bytes())
+	assert.Empty(t, store.putRecords())
 }
 
 func TestClient_Compression_DisabledKeepsPlainNames(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{})
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{})
 
 	blob := compressibleBlob(64 * 1024)
 	upload(t, client, "key", blob)
 
-	assert.Equal(t, []string{"kv/key"}, store.names())
-	assert.Equal(t, blob, store.blob("kv/key"))
-
-	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "key"))
-
-	assert.Equal(t, blob, got.Bytes())
-	assert.Equal(t, []string{"kv/key"}, store.requestedNames())
-}
-
-func TestClient_Compression_DownloadRejectsCorruptFrame(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
-
-	store.put("kv/zstd/key", "", []byte("not a zstd frame"))
-
-	var got bytes.Buffer
-	err := client.DownloadStream(context.Background(), &got, "key")
-
-	require.ErrorContains(t, err, "zstd decode")
-	assert.Empty(t, got.Bytes())
+	assert.Equal(t, blob, download(t, client, "key"))
+	assert.Equal(t, "kv/key", store.putRecords()[0].resource)
+	assert.Equal(t, []getRecord{{resource: "kv/key"}}, store.getRecords())
 }
 
 func TestClient_Compression_Gate(t *testing.T) {
@@ -261,78 +432,127 @@ func TestClient_Compression_Gate(t *testing.T) {
 		{"disabled below", false, threshold - 1, "kv/key"},
 		{"disabled at", false, threshold, "kv/key"},
 		{"disabled above", false, threshold + 1, "kv/key"},
-		{"enabled below", true, threshold - 1, "kv/zstd/key"},
+		{"enabled below", true, threshold - 1, "kv/key"},
 		{"enabled at", true, threshold, "kv/zstd/key"},
 		{"enabled above", true, threshold + 1, "kv/zstd/key"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := newMemoryStore()
-			client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: tt.enabled, Threshold: threshold})
+			store := newBackendStore(t)
+			client := newTestClient(t, store, kv.CompressionParams{Enabled: tt.enabled, Threshold: threshold})
 			blob := compressibleBlob(tt.size)
 
 			upload(t, client, "key", blob)
 
-			assert.Equal(t, []string{tt.want}, store.names())
-
-			var got bytes.Buffer
-			require.NoError(t, client.DownloadStream(context.Background(), &got, "key"))
-			assert.Equal(t, blob, got.Bytes())
+			require.Len(t, store.putRecords(), 1)
+			assert.Equal(t, tt.want, store.putRecords()[0].resource)
+			assert.Equal(t, blob, download(t, client, "key"))
 		})
 	}
 }
 
-// The threshold only decides whether the encoder runs: at or above it the blob shrinks, below it the blob stays full size.
-func TestClient_Compression_ThresholdDecidesWhetherTheEncoderRuns(t *testing.T) {
-	const threshold = 1024
-
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: threshold})
-
-	upload(t, client, "below", compressibleBlob(threshold-1))
-	upload(t, client, "at", compressibleBlob(threshold))
-
-	assert.Greater(t, len(store.blob("kv/zstd/below")), threshold-1)
-	assert.Less(t, len(store.blob("kv/zstd/at")), threshold/2)
-}
-
 func TestClient_Compression_ZeroThresholdMeansDefault(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
 
 	upload(t, client, "below", compressibleBlob(int(kv.DefaultCompressionThreshold)-1))
 	upload(t, client, "at", compressibleBlob(int(kv.DefaultCompressionThreshold)))
 
-	assert.Greater(t, len(store.blob("kv/zstd/below")), int(kv.DefaultCompressionThreshold)-1)
-	assert.Less(t, len(store.blob("kv/zstd/at")), int(kv.DefaultCompressionThreshold))
+	puts := store.putRecords()
+	require.Len(t, puts, 2)
+	assert.Equal(t, "kv/below", puts[0].resource)
+	assert.Equal(t, "kv/zstd/at", puts[1].resource)
+}
+
+// The server validates the checksum on the uncompressed blob, so the header must hash the raw bytes.
+func TestClient_Compression_UploadChecksumIsOverRawBytes(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	blob := compressibleBlob(64 * 1024)
+	upload(t, client, "key", blob)
+
+	put := store.putRecords()[0]
+	assert.Equal(t, sha256Hex(blob), put.checksum)
+	assert.NotEqual(t, sha256Hex(put.wire), put.checksum)
+}
+
+// The server's hash header describes the uncompressed blob, so a wrong header must fail the download.
+func TestClient_Compression_DownloadChecksIntegrityAfterDecoding(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	upload(t, client, "key", compressibleBlob(64*1024))
+	store.setHeader(strings.Repeat("0", 64))
+
+	var got bytes.Buffer
+	err := client.DownloadStream(context.Background(), &got, "key")
+
+	require.ErrorContains(t, err, "hash mismatch")
+	assert.Empty(t, got.Bytes())
+}
+
+func TestClient_Compression_DownloadRejectsCorruptFrame(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	store.overrideGet("kv/zstd/key", []byte("not a zstd frame"))
+
+	var got bytes.Buffer
+	err := client.DownloadStream(context.Background(), &got, "key")
+
+	require.ErrorContains(t, err, "zstd decode")
+	assert.Empty(t, got.Bytes())
 }
 
 func TestClient_Compression_DownloadMissIsErrCacheNotFound(t *testing.T) {
-	client := newCompressionTestClient(t, newMemoryStore(), kv.CompressionParams{Enabled: true})
+	client := newTestClient(t, newBackendStore(t), kv.CompressionParams{Enabled: true})
 
 	err := client.DownloadStream(context.Background(), io.Discard, "absent")
 
 	require.ErrorIs(t, err, kv.ErrCacheNotFound)
 }
 
-// The backend validates the upload against the stored bytes, so the header must hash the zstd form.
-func TestClient_Compression_UploadChecksumCoversStoredBytes(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
+// Write offsets count uncompressed bytes: a retry resumes the blob at the committed offset, not the compressed one.
+func TestClient_Compression_UploadResumesAtUncompressedOffset(t *testing.T) {
+	const committed = 100_000
 
-	blob := compressibleBlob(64 * 1024)
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	// Compresses to far fewer bytes than are already committed, which a compressed-offset client would take for "done".
+	blob := compressibleBlob(300_000)
+	store.failNextPutAfterCommitting(blob[:committed])
+
 	upload(t, client, "key", blob)
 
-	stored := sha256.Sum256(store.blob("kv/zstd/key"))
-	raw := sha256.Sum256(blob)
+	puts := store.putRecords()
+	require.Len(t, puts, 2)
+	assert.Equal(t, "kv/zstd/key", puts[0].resource)
+	assert.EqualValues(t, 0, puts[0].offset)
+	assert.Equal(t, "kv/zstd/key", puts[1].resource)
+	assert.EqualValues(t, committed, puts[1].offset)
+	assert.Equal(t, sha256Hex(blob), puts[1].checksum)
+	assert.Equal(t, blob, store.blob("key"))
+}
 
-	assert.Equal(t, hex.EncodeToString(stored[:]), store.checksums["kv/zstd/key"])
-	assert.NotEqual(t, hex.EncodeToString(raw[:]), store.checksums["kv/zstd/key"])
+// Read offsets count uncompressed bytes, so a broken download starts over instead of resuming mid-frame.
+func TestClient_Compression_DownloadRestartsFromTheStart(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	blob := compressibleBlob(100_000)
+	upload(t, client, "key", blob)
+	store.failNextGetAfter(10)
+
+	assert.Equal(t, blob, download(t, client, "key"))
+
+	assert.Equal(t, []getRecord{{resource: "kv/zstd/key"}, {resource: "kv/zstd/key"}}, store.getRecords())
 }
 
 func TestClient_Compression_Concurrent(t *testing.T) {
-	store := newMemoryStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
 
 	const workers = 16
 
@@ -346,23 +566,23 @@ func TestClient_Compression_Concurrent(t *testing.T) {
 			defer wg.Done()
 
 			key := fmt.Sprintf("key-%d", i)
-			blob := bytes.Repeat([]byte(key), 4096)
+			blob := compressibleBlob(2000 + i*500)
 
 			if err := client.UploadStreamToBuildCache(context.Background(), bytes.NewReader(blob), key, int64(len(blob))); err != nil {
-				errs <- err
+				errs <- fmt.Errorf("upload %s: %w", key, err)
 
 				return
 			}
 
 			var got bytes.Buffer
 			if err := client.DownloadStream(context.Background(), &got, key); err != nil {
-				errs <- err
+				errs <- fmt.Errorf("download %s: %w", key, err)
 
 				return
 			}
 
 			if !bytes.Equal(blob, got.Bytes()) {
-				errs <- fmt.Errorf("%s: round trip mismatch", key)
+				errs <- fmt.Errorf("%s: round trip differs", key)
 			}
 		}()
 	}
@@ -371,12 +591,12 @@ func TestClient_Compression_Concurrent(t *testing.T) {
 	close(errs)
 
 	for err := range errs {
-		assert.NoError(t, err)
+		t.Error(err)
 	}
 }
 
 func TestClient_Compression_CloseIsIdempotent(t *testing.T) {
-	client := newCompressionTestClient(t, newMemoryStore(), kv.CompressionParams{Enabled: true})
+	client := newTestClient(t, newBackendStore(t), kv.CompressionParams{Enabled: true})
 
 	require.NoError(t, client.Close())
 	require.NoError(t, client.Close())

@@ -2,7 +2,6 @@ package kv
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"runtime"
@@ -10,7 +9,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// compressedNamePrefix selects the zstd form; every upload and download of a compressing client uses it.
+// compressedNamePrefix selects the zstd wire form; the backend stores the blob uncompressed either way.
 const compressedNamePrefix = "zstd/"
 
 // DefaultCompressionThreshold matches Bazel's --experimental_remote_cache_compression_threshold.
@@ -21,7 +20,7 @@ const maxDecodedBytes = 4 << 30
 
 type CompressionParams struct {
 	Enabled bool
-	// Threshold is the smallest blob, in bytes, that is compressed; smaller ones are framed as is. <= 0 means DefaultCompressionThreshold.
+	// Threshold is the smallest blob, in bytes, that is sent compressed; smaller ones go as is. <= 0 means DefaultCompressionThreshold.
 	Threshold int64
 }
 
@@ -57,63 +56,57 @@ func newCompression(p CompressionParams) (*compression, error) {
 	return &compression{threshold: p.Threshold, enc: enc, dec: dec}, nil
 }
 
-// compress returns the blob as a zstd frame; below the threshold the frame carries the data uncompressed.
-func (c *compression) compress(source io.ReadSeeker, size int64) (*bytes.Reader, error) {
+// compressedPayload is a blob's zstd form. Offsets refer to the uncompressed blob, as on the server.
+type compressedPayload struct {
+	enc  *zstd.Encoder
+	raw  []byte
+	full []byte
+}
+
+func (p *compressedPayload) from(offset int64) (io.Reader, int64, error) {
+	if offset <= 0 {
+		return bytes.NewReader(p.full), int64(len(p.full)), nil
+	}
+
+	if offset >= int64(len(p.raw)) {
+		return nil, 0, fmt.Errorf("offset %d is past the blob (%d bytes)", offset, len(p.raw))
+	}
+
+	tail := p.enc.EncodeAll(p.raw[offset:], nil)
+
+	return bytes.NewReader(tail), int64(len(tail)), nil
+}
+
+// compress returns the zstd form of source, or ok=false for blobs below the threshold or that do not shrink.
+func (c *compression) compress(source io.ReadSeeker, size int64) (*compressedPayload, bool, error) {
+	if size <= 0 || size < c.threshold {
+		return nil, false, nil
+	}
+
 	if _, err := source.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("seek to start: %w", err)
+		return nil, false, fmt.Errorf("seek to start: %w", err)
 	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, size))
 	if _, err := io.Copy(buf, source); err != nil {
-		return nil, fmt.Errorf("read blob: %w", err)
+		return nil, false, fmt.Errorf("read blob: %w", err)
 	}
 
-	if size < c.threshold {
-		return bytes.NewReader(rawFrame(buf.Bytes())), nil
+	full := c.enc.EncodeAll(buf.Bytes(), make([]byte, 0, size/2))
+	if int64(len(full)) >= size {
+		return nil, false, nil
 	}
 
-	return bytes.NewReader(c.enc.EncodeAll(buf.Bytes(), make([]byte, 0, size/2))), nil
+	return &compressedPayload{enc: c.enc, raw: buf.Bytes(), full: full}, true, nil
 }
 
-const (
-	zstdMagic         = 0xFD2FB528
-	maxRawBlockSize   = 128 << 10
-	rawFrameWindowLog = 0x38 // window descriptor: 128 KiB, the largest block a frame may carry
-)
-
-// rawFrame wraps data in a valid zstd frame of raw blocks (RFC 8878), without running the encoder.
-func rawFrame(data []byte) []byte {
-	frame := binary.LittleEndian.AppendUint32(make([]byte, 0, len(data)+16), zstdMagic)
-	frame = append(frame, 0x00, rawFrameWindowLog) // no content size, no checksum, no dictionary
-
-	for {
-		chunk := data[:min(len(data), maxRawBlockSize)]
-		data = data[len(chunk):]
-
-		header := uint32(len(chunk)) << 3 //nolint:gosec // bounded by maxRawBlockSize
-		if len(data) == 0 {
-			header |= 1 // last block; block type 0 is raw
-		}
-		frame = append(frame, byte(header), byte(header>>8), byte(header>>16))
-		frame = append(frame, chunk...)
-
-		if len(data) == 0 {
-			return frame
-		}
-	}
-}
-
-func (c *compression) decompressTo(destination io.Writer, compressed []byte) error {
+func (c *compression) decompress(compressed []byte) ([]byte, error) {
 	raw, err := c.dec.DecodeAll(compressed, nil)
 	if err != nil {
-		return fmt.Errorf("zstd decode: %w", err)
+		return nil, fmt.Errorf("zstd decode: %w", err)
 	}
 
-	if _, err := destination.Write(raw); err != nil {
-		return fmt.Errorf("write decoded blob: %w", err)
-	}
-
-	return nil
+	return raw, nil
 }
 
 func (c *compression) close() {
