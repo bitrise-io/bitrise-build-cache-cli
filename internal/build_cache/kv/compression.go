@@ -2,6 +2,7 @@ package kv
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"runtime"
@@ -9,7 +10,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// compressedNamePrefix selects the zstd form; the backend converts between forms on read.
+// compressedNamePrefix selects the zstd form; every upload and download of a compressing client uses it.
 const compressedNamePrefix = "zstd/"
 
 // DefaultCompressionThreshold matches Bazel's --experimental_remote_cache_compression_threshold.
@@ -20,7 +21,7 @@ const maxDecodedBytes = 4 << 30
 
 type CompressionParams struct {
 	Enabled bool
-	// Threshold is the smallest blob, in bytes, that is compressed on upload; <= 0 means DefaultCompressionThreshold.
+	// Threshold is the smallest blob, in bytes, that is compressed; smaller ones are framed as is. <= 0 means DefaultCompressionThreshold.
 	Threshold int64
 }
 
@@ -56,26 +57,50 @@ func newCompression(p CompressionParams) (*compression, error) {
 	return &compression{threshold: p.Threshold, enc: enc, dec: dec}, nil
 }
 
-func (c *compression) compress(source io.ReadSeeker, size int64) (*bytes.Reader, bool, error) {
-	if size < c.threshold {
-		return nil, false, nil
-	}
-
+// compress returns the blob as a zstd frame; below the threshold the frame carries the data uncompressed.
+func (c *compression) compress(source io.ReadSeeker, size int64) (*bytes.Reader, error) {
 	if _, err := source.Seek(0, io.SeekStart); err != nil {
-		return nil, false, fmt.Errorf("seek to start: %w", err)
+		return nil, fmt.Errorf("seek to start: %w", err)
 	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, size))
 	if _, err := io.Copy(buf, source); err != nil {
-		return nil, false, fmt.Errorf("read blob: %w", err)
+		return nil, fmt.Errorf("read blob: %w", err)
 	}
 
-	encoded := c.enc.EncodeAll(buf.Bytes(), make([]byte, 0, size/2))
-	if int64(len(encoded)) >= size {
-		return nil, false, nil
+	if size < c.threshold {
+		return bytes.NewReader(rawFrame(buf.Bytes())), nil
 	}
 
-	return bytes.NewReader(encoded), true, nil
+	return bytes.NewReader(c.enc.EncodeAll(buf.Bytes(), make([]byte, 0, size/2))), nil
+}
+
+const (
+	zstdMagic         = 0xFD2FB528
+	maxRawBlockSize   = 128 << 10
+	rawFrameWindowLog = 0x38 // window descriptor: 128 KiB, the largest block a frame may carry
+)
+
+// rawFrame wraps data in a valid zstd frame of raw blocks (RFC 8878), without running the encoder.
+func rawFrame(data []byte) []byte {
+	frame := binary.LittleEndian.AppendUint32(make([]byte, 0, len(data)+16), zstdMagic)
+	frame = append(frame, 0x00, rawFrameWindowLog) // no content size, no checksum, no dictionary
+
+	for {
+		chunk := data[:min(len(data), maxRawBlockSize)]
+		data = data[len(chunk):]
+
+		header := uint32(len(chunk)) << 3 //nolint:gosec // bounded by maxRawBlockSize
+		if len(data) == 0 {
+			header |= 1 // last block; block type 0 is raw
+		}
+		frame = append(frame, byte(header), byte(header>>8), byte(header>>16))
+		frame = append(frame, chunk...)
+
+		if len(data) == 0 {
+			return frame
+		}
+	}
 }
 
 func (c *compression) decompressTo(destination io.Writer, compressed []byte) error {

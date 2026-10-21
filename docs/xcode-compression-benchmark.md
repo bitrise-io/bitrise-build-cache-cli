@@ -10,17 +10,20 @@ MB/s as a best case.
 bitrise-build-cache activate xcode --remote-cache-compression [--remote-cache-compression-threshold 100]
 ```
 
-Off by default. With it on, the proxy's KV client sends blobs of at least the threshold (default 100 bytes,
-Bazel's default) as zstd under `kv/zstd/<key>`, keeps smaller or incompressible blobs under `kv/<key>`,
-and always reads `kv/zstd/<key>`, relying on the backend to convert blobs stored in the other form.
-It needs the backend's `kv/zstd/` prefix handling: without it, small and incompressible blobs (stored under
-`kv/<key>`) silently miss forever, and compressed and uncompressed clients do not share entries.
-`react-native activate` and the wizard do not expose the option yet.
+Off by default (the interactive wizard asks, default yes). With it on, the proxy's KV client stores every blob
+as a zstd frame under `kv/zstd/<key>` and reads that form back. Blobs of at least the threshold (default 100
+bytes, Bazel's default) are compressed; smaller ones are wrapped in a frame uncompressed, and incompressible
+ones leave the encoder as raw blocks, so either costs only a dozen bytes of frame overhead. The stored form
+always equals the requested form, so the backend never converts for this client, and it round-trips even
+against a backend without `kv/zstd/` handling.
 
-Backend assumptions not yet verified:
-- the download hash header covers the converted bytes, not the stored form;
+Entries are shared with uncompressed clients only if the backend converts between `kv/<key>` and `kv/zstd/<key>`;
+this client does not depend on that. Unverified backend behaviour that sharing would need:
+- the download hash header covers the bytes served, not the stored form;
 - on-the-fly conversion is deterministic, so resumed (offset) downloads line up;
 - re-uploading an existing blob in the other form takes the AlreadyExists / delete-on-rewrite path.
+
+`react-native activate` does not expose the option yet.
 
 With compression on, the proxy's blob transfer latency and throughput (`cacheBlobStats`) include compress and
 decompress time, while the byte counts are raw.

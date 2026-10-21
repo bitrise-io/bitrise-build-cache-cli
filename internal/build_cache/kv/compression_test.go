@@ -12,7 +12,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/bytestream"
@@ -26,30 +25,15 @@ import (
 )
 
 // memoryStore keeps blobs by resource name, so a test sees exactly what was sent and can read it back.
-// With converting set it behaves like the backend: it keeps raw bytes per logical key and
-// serves or accepts either form, so kv/zstd/<k> and kv/<k> address the same blob.
 type memoryStore struct {
-	mu         sync.Mutex
-	blobs      map[string][]byte
-	checksums  map[string]string
-	requested  []string
-	converting bool
+	mu        sync.Mutex
+	blobs     map[string][]byte
+	checksums map[string]string
+	requested []string
 }
-
-var (
-	testZstdEncoder, _ = zstd.NewWriter(nil) //nolint:gochecknoglobals
-	testZstdDecoder, _ = zstd.NewReader(nil) //nolint:gochecknoglobals
-)
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{blobs: map[string][]byte{}, checksums: map[string]string{}}
-}
-
-func newConvertingStore() *memoryStore {
-	s := newMemoryStore()
-	s.converting = true
-
-	return s
 }
 
 func (s *memoryStore) names() []string {
@@ -78,27 +62,12 @@ func (s *memoryStore) blob(name string) []byte {
 	return s.blobs[name]
 }
 
-func (s *memoryStore) put(name, checksum string, body []byte) error {
+func (s *memoryStore) put(name, checksum string, body []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.checksums[name] = checksum
-
-	logical, compressed := strings.CutPrefix(name, "kv/zstd/")
-	if !s.converting || !compressed {
-		s.blobs[name] = body
-
-		return nil
-	}
-
-	raw, err := testZstdDecoder.DecodeAll(body, nil)
-	if err != nil {
-		return fmt.Errorf("decode: %w", err)
-	}
-
-	s.blobs["kv/"+logical] = raw
-
-	return nil
+	s.blobs[name] = body
 }
 
 func (s *memoryStore) get(name string) ([]byte, bool) {
@@ -106,20 +75,9 @@ func (s *memoryStore) get(name string) ([]byte, bool) {
 	defer s.mu.Unlock()
 
 	s.requested = append(s.requested, name)
+	data, found := s.blobs[name]
 
-	logical, compressed := strings.CutPrefix(name, "kv/zstd/")
-	if !s.converting || !compressed {
-		data, found := s.blobs[name]
-
-		return data, found
-	}
-
-	raw, found := s.blobs["kv/"+logical]
-	if !found {
-		return nil, false
-	}
-
-	return testZstdEncoder.EncodeAll(raw, nil), true
+	return data, found
 }
 
 func (s *memoryStore) kvMock() *mocks.KVStorageClientMock {
@@ -162,9 +120,7 @@ func (p *storingPutStream) Send(req *bytestream.WriteRequest) error {
 }
 
 func (p *storingPutStream) CloseAndRecv() (*bytestream.WriteResponse, error) {
-	if err := p.store.put(p.name, p.checksum, p.body); err != nil {
-		return nil, err
-	}
+	p.store.put(p.name, p.checksum, p.body)
 
 	return &bytestream.WriteResponse{CommittedSize: int64(len(p.body))}, nil
 }
@@ -214,18 +170,25 @@ func TestClient_Compression_RoundTrip(t *testing.T) {
 	assert.Equal(t, []string{"kv/zstd/key"}, store.requestedNames())
 }
 
-func TestClient_Compression_BelowThresholdUploadsRaw(t *testing.T) {
+func TestClient_Compression_BelowThresholdIsFramedUncompressed(t *testing.T) {
 	store := newMemoryStore()
 	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 1024})
 
 	blob := compressibleBlob(512)
 	upload(t, client, "small", blob)
 
-	assert.Equal(t, []string{"kv/small"}, store.names())
-	assert.Equal(t, blob, store.blob("kv/small"))
+	assert.Equal(t, []string{"kv/zstd/small"}, store.names())
+	assert.Greater(t, len(store.blob("kv/zstd/small")), len(blob), "carries the data uncompressed, plus frame overhead")
+	assert.Contains(t, string(store.blob("kv/zstd/small")), string(blob))
+
+	var got bytes.Buffer
+	require.NoError(t, client.DownloadStream(context.Background(), &got, "small"))
+
+	assert.Equal(t, blob, got.Bytes())
+	assert.Equal(t, []string{"kv/zstd/small"}, store.requestedNames())
 }
 
-func TestClient_Compression_IncompressibleUploadsRaw(t *testing.T) {
+func TestClient_Compression_IncompressibleStaysDecodable(t *testing.T) {
 	store := newMemoryStore()
 	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 100})
 
@@ -234,18 +197,26 @@ func TestClient_Compression_IncompressibleUploadsRaw(t *testing.T) {
 	require.NoError(t, err)
 	upload(t, client, "random", blob)
 
-	assert.Equal(t, []string{"kv/random"}, store.names())
-	assert.Equal(t, blob, store.blob("kv/random"))
+	assert.Equal(t, []string{"kv/zstd/random"}, store.names())
+	assert.LessOrEqual(t, len(store.blob("kv/zstd/random")), len(blob)+32, "frame overhead only")
+
+	var got bytes.Buffer
+	require.NoError(t, client.DownloadStream(context.Background(), &got, "random"))
+
+	assert.Equal(t, blob, got.Bytes())
 }
 
-// An empty blob is never written (uploadStream treats size 0 as already committed), compression or not.
-func TestClient_Compression_EmptyBlobStoresNothing(t *testing.T) {
+// Uncompressed, size 0 counts as already committed and nothing is written; framed, the blob is a few bytes and stored.
+func TestClient_Compression_EmptyBlobRoundTrips(t *testing.T) {
 	store := newMemoryStore()
 	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
 
 	require.NoError(t, client.UploadStreamToBuildCache(context.Background(), bytes.NewReader(nil), "empty", 0))
+	assert.Equal(t, []string{"kv/zstd/empty"}, store.names())
 
-	assert.Empty(t, store.names())
+	var got bytes.Buffer
+	require.NoError(t, client.DownloadStream(context.Background(), &got, "empty"))
+	assert.Empty(t, got.Bytes())
 }
 
 func TestClient_Compression_DisabledKeepsPlainNames(t *testing.T) {
@@ -269,7 +240,7 @@ func TestClient_Compression_DownloadRejectsCorruptFrame(t *testing.T) {
 	store := newMemoryStore()
 	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true})
 
-	require.NoError(t, store.put("kv/zstd/key", "", []byte("not a zstd frame")))
+	store.put("kv/zstd/key", "", []byte("not a zstd frame"))
 
 	var got bytes.Buffer
 	err := client.DownloadStream(context.Background(), &got, "key")
@@ -290,7 +261,7 @@ func TestClient_Compression_Gate(t *testing.T) {
 		{"disabled below", false, threshold - 1, "kv/key"},
 		{"disabled at", false, threshold, "kv/key"},
 		{"disabled above", false, threshold + 1, "kv/key"},
-		{"enabled below", true, threshold - 1, "kv/key"},
+		{"enabled below", true, threshold - 1, "kv/zstd/key"},
 		{"enabled at", true, threshold, "kv/zstd/key"},
 		{"enabled above", true, threshold + 1, "kv/zstd/key"},
 	}
@@ -298,12 +269,31 @@ func TestClient_Compression_Gate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newMemoryStore()
 			client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: tt.enabled, Threshold: threshold})
+			blob := compressibleBlob(tt.size)
 
-			upload(t, client, "key", compressibleBlob(tt.size))
+			upload(t, client, "key", blob)
 
 			assert.Equal(t, []string{tt.want}, store.names())
+
+			var got bytes.Buffer
+			require.NoError(t, client.DownloadStream(context.Background(), &got, "key"))
+			assert.Equal(t, blob, got.Bytes())
 		})
 	}
+}
+
+// The threshold only decides whether the encoder runs: at or above it the blob shrinks, below it the blob stays full size.
+func TestClient_Compression_ThresholdDecidesWhetherTheEncoderRuns(t *testing.T) {
+	const threshold = 1024
+
+	store := newMemoryStore()
+	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: threshold})
+
+	upload(t, client, "below", compressibleBlob(threshold-1))
+	upload(t, client, "at", compressibleBlob(threshold))
+
+	assert.Greater(t, len(store.blob("kv/zstd/below")), threshold-1)
+	assert.Less(t, len(store.blob("kv/zstd/at")), threshold/2)
 }
 
 func TestClient_Compression_ZeroThresholdMeansDefault(t *testing.T) {
@@ -313,7 +303,8 @@ func TestClient_Compression_ZeroThresholdMeansDefault(t *testing.T) {
 	upload(t, client, "below", compressibleBlob(int(kv.DefaultCompressionThreshold)-1))
 	upload(t, client, "at", compressibleBlob(int(kv.DefaultCompressionThreshold)))
 
-	assert.ElementsMatch(t, []string{"kv/below", "kv/zstd/at"}, store.names())
+	assert.Greater(t, len(store.blob("kv/zstd/below")), int(kv.DefaultCompressionThreshold)-1)
+	assert.Less(t, len(store.blob("kv/zstd/at")), int(kv.DefaultCompressionThreshold))
 }
 
 func TestClient_Compression_DownloadMissIsErrCacheNotFound(t *testing.T) {
@@ -337,22 +328,6 @@ func TestClient_Compression_UploadChecksumCoversStoredBytes(t *testing.T) {
 
 	assert.Equal(t, hex.EncodeToString(stored[:]), store.checksums["kv/zstd/key"])
 	assert.NotEqual(t, hex.EncodeToString(raw[:]), store.checksums["kv/zstd/key"])
-}
-
-// Pins the symmetry assumption: a blob stored raw is still readable through the zstd name.
-func TestClient_Compression_SmallBlobReadableThroughZstdName(t *testing.T) {
-	store := newConvertingStore()
-	client := newCompressionTestClient(t, store, kv.CompressionParams{Enabled: true, Threshold: 1024})
-
-	blob := compressibleBlob(512)
-	upload(t, client, "small", blob)
-	require.Equal(t, []string{"kv/small"}, store.names())
-
-	var got bytes.Buffer
-	require.NoError(t, client.DownloadStream(context.Background(), &got, "small"))
-
-	assert.Equal(t, blob, got.Bytes())
-	assert.Equal(t, []string{"kv/zstd/small"}, store.requestedNames())
 }
 
 func TestClient_Compression_Concurrent(t *testing.T) {

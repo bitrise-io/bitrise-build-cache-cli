@@ -151,7 +151,7 @@ Swift compile caching requires explicit modules, which some projects cannot buil
 	activateXcodeCmd.Flags().Int64Var(&activateXcodeParams.RemoteCacheCompressionThreshold,
 		"remote-cache-compression-threshold",
 		activateXcodeParams.RemoteCacheCompressionThreshold,
-		"Smallest blob, in bytes, that --remote-cache-compression compresses.")
+		"Smallest blob, in bytes, that --remote-cache-compression compresses; smaller blobs are stored uncompressed.")
 
 	activateXcodeCmd.Flags().StringVar(&activateXcodeProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
 }
