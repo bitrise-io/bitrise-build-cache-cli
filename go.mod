@@ -5,12 +5,12 @@ go 1.26.0
 require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/huh/v2 v2.0.3
-	charm.land/lipgloss/v2 v2.0.5
+	charm.land/lipgloss/v2 v2.0.6
 	cloud.google.com/go/longrunning v1.3.0
 	github.com/bazelbuild/remote-apis v0.0.0-20260331222004-becdd8f9ff81
 	github.com/beevik/etree v1.8.1
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.55
-	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.39
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.61
+	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.40
 	github.com/dustin/go-humanize v1.1.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gofrs/flock v0.13.1
@@ -19,15 +19,15 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/pkg/xattr v0.4.12
-	github.com/shirou/gopsutil/v4 v4.26.8
+	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
 	github.com/zalando/go-keyring v0.2.8
 	github.com/zeebo/blake3 v0.2.4
-	golang.org/x/mod v0.41.0
-	golang.org/x/term v0.46.0
-	golang.org/x/text v0.42.0
+	golang.org/x/mod v0.42.0
+	golang.org/x/term v0.47.0
+	golang.org/x/text v0.43.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
 	google.golang.org/genproto/googleapis/bytestream v0.0.0-20251103181224-f26f9409b101
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
@@ -43,8 +43,8 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/catppuccin/go v0.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7 // indirect
-	github.com/charmbracelet/x/ansi v0.11.7 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260811164956-006e29f97886 // indirect
+	github.com/charmbracelet/x/ansi v0.11.8 // indirect
 	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
 	github.com/charmbracelet/x/exp/strings v0.0.0-20240722160745-212f7b056ed0 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
@@ -54,30 +54,30 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/ebitengine/purego v0.10.2 // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
-	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
+	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mattn/go-runewidth v0.0.27 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
-	github.com/tklauser/go-sysconf v0.3.16 // indirect
-	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/tklauser/go-sysconf v0.4.0 // indirect
+	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/net v0.59.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/tools v0.50.0 // indirect
+	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/tools v0.52.0 // indirect
 )
 
 tool golang.org/x/tools/go/analysis/passes/fieldalignment
