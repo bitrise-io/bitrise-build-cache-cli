@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -152,7 +153,7 @@ func TestLink_noBaseConfigCreatesSibling(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.CreatedSiblings, 1)
 
-	siblingPath := filepath.Join(tmp, SiblingXCConfigName)
+	siblingPath := filepath.Join(tmp, paths.XcodeAppSiblingXCConfigFileName)
 	assert.Equal(t, siblingPath, result.CreatedSiblings[0])
 
 	body, err := os.ReadFile(siblingPath)
@@ -164,7 +165,7 @@ func TestLink_noBaseConfigCreatesSibling(t *testing.T) {
 	require.NoError(t, err)
 	pbxStr := string(pbxBody)
 	assert.Contains(t, pbxStr, "baseConfigurationReference = ", "pbxproj must gain a baseConfigurationReference")
-	assert.Contains(t, pbxStr, SiblingXCConfigName, "pbxproj must reference the sibling by filename")
+	assert.Contains(t, pbxStr, paths.XcodeAppSiblingXCConfigFileName, "pbxproj must reference the sibling by filename")
 }
 
 func TestLink_relinkReusesExistingSiblingFileRef(t *testing.T) {
@@ -184,7 +185,7 @@ func TestLink_relinkReusesExistingSiblingFileRef(t *testing.T) {
 	require.Len(t, cfgs, 1)
 	require.NotEmpty(t, cfgs[0].BaseConfigRefID)
 	stripped := strings.Replace(string(pbxAfterFirst),
-		"baseConfigurationReference = "+cfgs[0].BaseConfigRefID+` /* `+SiblingXCConfigName+" */;\n\t\t\t", "", 1)
+		"baseConfigurationReference = "+cfgs[0].BaseConfigRefID+` /* `+paths.XcodeAppSiblingXCConfigFileName+" */;\n\t\t\t", "", 1)
 	require.NotEqual(t, string(pbxAfterFirst), stripped)
 	require.NoError(t, os.WriteFile(filepath.Join(projPath, "project.pbxproj"), []byte(stripped), 0o644))
 
@@ -194,7 +195,7 @@ func TestLink_relinkReusesExistingSiblingFileRef(t *testing.T) {
 	pbxAfterSecond, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, strings.Count(string(pbxAfterSecond), `path = "`+SiblingXCConfigName+`"`),
+	assert.Equal(t, 1, strings.Count(string(pbxAfterSecond), `path = "`+paths.XcodeAppSiblingXCConfigFileName+`"`),
 		"second Link() must not insert a duplicate sibling PBXFileReference")
 }
 
@@ -212,7 +213,7 @@ func TestUnlink_removesEmptySibling(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.RemovedSiblings, 1)
 
-	_, statErr := os.Stat(filepath.Join(tmp, SiblingXCConfigName))
+	_, statErr := os.Stat(filepath.Join(tmp, paths.XcodeAppSiblingXCConfigFileName))
 	assert.True(t, os.IsNotExist(statErr), "sibling xcconfig should be gone")
 }
 
