@@ -461,13 +461,14 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 }
 
 type fakeSidecarReader struct {
-	blob  *blobstats.Snapshot
-	paths []string
-	found bool
+	blob         *blobstats.Snapshot
+	paths        []string
+	invocationID string
+	found        bool
 }
 
-func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.Snapshot, []string, bool) {
-	return f.blob, f.paths, f.found
+func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+	return f.blob, f.paths, f.invocationID, f.found
 }
 
 func blobSnapshotWith(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
@@ -507,6 +508,35 @@ func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
 	assert.Equal(t, int64(7), captured.CacheBlobStats.Download.OpCount)
 	assert.Equal(t, int64(3), captured.CacheBlobStats.Download.MissCount)
 	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
+}
+
+func TestEnricher_SidecarInvocationIDWinsOverFreshUUID(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	const derivedID = "deadbeef-1111-4222-8333-444455556666"
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: derivedID},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.Equal(t, derivedID, captured.InvocationID, "sidecar-provided InvocationID must win over the fresh UUID fallback")
 }
 
 func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
