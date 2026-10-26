@@ -22,6 +22,7 @@ type OsProxy interface {
 	MkdirAll(name string, mode os.FileMode) error
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	ReadDir(name string) ([]os.DirEntry, error)
+	Readlink(name string) (string, error)
 	ReadFileIfExists(name string) (string, bool, error)
 	Remove(name string) error
 	Rename(oldpath, newpath string) error
@@ -92,6 +93,10 @@ func (d DefaultOsProxy) Stat(name string) (os.FileInfo, error) {
 
 func (d DefaultOsProxy) Lstat(name string) (os.FileInfo, error) {
 	return os.Lstat(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Readlink(name string) (string, error) {
+	return os.Readlink(name) //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) Getwd() (string, error) {
