@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // toolchainBundleID must match paths.XcodeToolchainBundleID; duplicated here so
@@ -187,8 +189,7 @@ func parseCache(body []byte) (cacheRecord, bool) {
 }
 
 func cachePath(name string, d resolveDeps) string {
-	// Must match internal/paths.TrampolineRealpathCachePrefix.
-	return filepath.Join(d.cacheDir(), "bitrise-tc-realpath-"+name)
+	return filepath.Join(d.cacheDir(), paths.TrampolineRealpathCachePrefix+name)
 }
 
 func parseInt64(s string) (int64, error) {
