@@ -22,9 +22,11 @@ const expectedAncestor = "xcodebuild"
 
 // SidecarReader resolves sidecars left by the proxy that overlap a manifest
 // group's time window. Returns the representative blob snapshot (largest-op
-// winner across overlapping sidecars) and the sidecar paths to unlink on PUT.
+// winner across overlapping sidecars), the sidecar paths to unlink on PUT, and
+// the derived InvocationID carried by the winning sidecar's WrapperLink (empty
+// when the proxy could not anchor peer ancestry).
 type SidecarReader interface {
-	Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, bool)
+	Lookup(group ManifestEntryGroup) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
 }
 
 type sidecarIndex struct {
@@ -38,20 +40,20 @@ func NewSidecarIndex(dir string, logger log.Logger) SidecarReader {
 	return &sidecarIndex{dir: dir, logger: logger}
 }
 
-func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, bool) {
+func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
 	logger := logOr(i.logger)
 
 	if i.dir == "" {
 		logger.Debugf("Sidecar index skipped: empty dir")
 
-		return nil, nil, false
+		return nil, nil, "", false
 	}
 
 	entries, err := os.ReadDir(i.dir)
 	if err != nil {
 		logger.Debugf("Sidecar index read %s: %s", i.dir, err)
 
-		return nil, nil, false
+		return nil, nil, "", false
 	}
 
 	groupStart := group.Start()
@@ -60,6 +62,7 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 	var (
 		best           *blobstats.Snapshot
 		bestBlobTotal  int64
+		bestInvocation string
 		versionSkipped bool
 	)
 	consumedPaths := make([]string, 0, len(entries))
@@ -70,36 +73,10 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 		}
 
 		path := filepath.Join(i.dir, de.Name())
-
-		body, err := os.ReadFile(path)
-		if err != nil {
-			logger.Debugf("Sidecar read %s: %s", path, err)
-
+		s, ok := loadSidecar(path, logger, &versionSkipped)
+		if !ok {
 			continue
 		}
-
-		var s sessions.Sidecar
-		if err := json.Unmarshal(body, &s); err != nil {
-			logger.Debugf("Sidecar unmarshal %s: %s", path, err)
-
-			continue
-		}
-
-		if s.SchemaVersion > supportedSidecarSchema {
-			if !versionSkipped {
-				logger.Debugf("Sidecar %s schema_version=%d > %d, leaving on disk", path, s.SchemaVersion, supportedSidecarSchema)
-				versionSkipped = true
-			}
-
-			continue
-		}
-
-		if !ancestryMatches(s.PeerAncestry) {
-			logger.Debugf("Sidecar %s ancestry rejected: %v", path, s.PeerAncestry)
-
-			continue
-		}
-
 		if !overlaps(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
@@ -109,6 +86,10 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 			if best == nil || total > bestBlobTotal {
 				best = blob
 				bestBlobTotal = total
+				bestInvocation = ""
+				if s.WrapperSession != nil {
+					bestInvocation = s.WrapperSession.InvocationID
+				}
 			}
 		}
 
@@ -116,10 +97,46 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 	}
 
 	if len(consumedPaths) == 0 {
-		return nil, nil, false
+		return nil, nil, "", false
 	}
 
-	return best, consumedPaths, true
+	return best, consumedPaths, bestInvocation, true
+}
+
+// loadSidecar reads + unmarshals + gates on schema / ancestry. Returns ok=false
+// (sidecar must be skipped) for any filter miss; versionSkipped tracks the
+// "logged once per Lookup" promise for schema-too-new.
+func loadSidecar(path string, logger log.Logger, versionSkipped *bool) (sessions.Sidecar, bool) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		logger.Debugf("Sidecar read %s: %s", path, err)
+
+		return sessions.Sidecar{}, false
+	}
+
+	var s sessions.Sidecar
+	if err := json.Unmarshal(body, &s); err != nil {
+		logger.Debugf("Sidecar unmarshal %s: %s", path, err)
+
+		return sessions.Sidecar{}, false
+	}
+
+	if s.SchemaVersion > supportedSidecarSchema {
+		if !*versionSkipped {
+			logger.Debugf("Sidecar %s schema_version=%d > %d, leaving on disk", path, s.SchemaVersion, supportedSidecarSchema)
+			*versionSkipped = true
+		}
+
+		return sessions.Sidecar{}, false
+	}
+
+	if !ancestryMatches(s.PeerAncestry) {
+		logger.Debugf("Sidecar %s ancestry rejected: %v", path, s.PeerAncestry)
+
+		return sessions.Sidecar{}, false
+	}
+
+	return s, true
 }
 
 // ---------------------------------------------------------------------------
