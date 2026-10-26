@@ -34,16 +34,11 @@ type (
 	UnlinkResult = xa.UnlinkResult
 )
 
-// Link wires each XCBuildConfiguration in the referenced project(s) to the
-// override xcconfig written by `activate xcode`. Required on Xcode 27+ IDE
-// builds — Xcode no longer propagates the `XCODE_XCCONFIG_FILE` user-env
+// LinkWithOptions wires each XCBuildConfiguration in the referenced project(s)
+// to the override xcconfig written by `activate xcode`. Required on Xcode 27+
+// IDE builds — Xcode no longer propagates the `XCODE_XCCONFIG_FILE` user-env
 // override to SwiftBuild, so the project is the only route into the IDE's
-// compilation tasks.
-func (a *Activator) Link(ctx context.Context, projectPath string) (LinkResult, error) {
-	return a.LinkWithOptions(ctx, projectPath, LinkOptions{})
-}
-
-// LinkWithOptions is Link plus opt-in extras (post-build script, future knobs).
+// compilation tasks. opts carries opt-in extras (post-build script, future knobs).
 func (a *Activator) LinkWithOptions(_ context.Context, projectPath string, opts LinkOptions) (LinkResult, error) {
 	if runtime.GOOS != utils.DarwinGOOS {
 		return LinkResult{}, ErrUnsupportedPlatform

@@ -26,7 +26,7 @@ func TestLink_returnsErrUnsupportedPlatformOnNonDarwin(t *testing.T) {
 
 	a := &Activator{Logger: newLogger()}
 
-	_, err := a.Link(context.Background(), "/does/not/matter.xcodeproj")
+	_, err := a.LinkWithOptions(context.Background(), "/does/not/matter.xcodeproj", LinkOptions{})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrUnsupportedPlatform)
 }
@@ -76,7 +76,7 @@ func TestLink_happyPath(t *testing.T) {
 		Envs:   map[string]string{},
 	}
 
-	result, err := a.Link(context.Background(), projDir)
+	result, err := a.LinkWithOptions(context.Background(), projDir, LinkOptions{})
 	require.NoError(t, err)
 	assert.Empty(t, result.ModifiedXCConfigs)
 	require.Len(t, result.CreatedSiblings, 1)
