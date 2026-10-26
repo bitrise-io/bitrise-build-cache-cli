@@ -13,15 +13,11 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/process"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// Must match internal/paths.XcelerateRootRelative + ProxyPidFileName. Duplicated
-// here to keep trampoline free of internal/xcelerate/* and internal/paths imports.
-const (
-	proxyPidRelative     = ".bitrise-xcelerate/proxy.pid"
-	remarkSentinelPrefix = "bitrise-xcelerate-remark-"
-	remarkText           = "remark: Bitrise remote build cache engaged"
-)
+const remarkText = "remark: Bitrise remote build cache engaged"
 
 const startTimeLookupTimeout = 200 * time.Millisecond
 
@@ -42,7 +38,7 @@ var defaultRemarkDeps = remarkDeps{
 			return 0, false
 		}
 
-		return readPidFile(filepath.Join(home, proxyPidRelative))
+		return readPidFile(filepath.Join(home, paths.XcelerateRootRelative, paths.ProxyPidFileName))
 	},
 	proxyStartTime: lookupProcessStartTimeMS,
 	createSentinel: func(path string) (bool, error) {
@@ -91,11 +87,11 @@ func emitEngagedRemark(d remarkDeps) {
 func sentinelName(pid int, lookup func(int) (int64, bool)) string {
 	if lookup != nil {
 		if start, ok := lookup(pid); ok {
-			return remarkSentinelPrefix + strconv.Itoa(pid) + "-" + strconv.FormatInt(start, 10)
+			return paths.TrampolineRemarkSentinelPrefix + strconv.Itoa(pid) + "-" + strconv.FormatInt(start, 10)
 		}
 	}
 
-	return remarkSentinelPrefix + strconv.Itoa(pid)
+	return paths.TrampolineRemarkSentinelPrefix + strconv.Itoa(pid)
 }
 
 func lookupProcessStartTimeMS(pid int) (int64, bool) {
