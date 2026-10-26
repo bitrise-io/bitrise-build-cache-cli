@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strconv"
 )
 
@@ -66,12 +67,24 @@ func Derive(a Anchor) string {
 // anchorableNames. Returns (_, false) when no anchorable ancestor is found —
 // callers must NOT fall through to the peer PID in that case; the resulting
 // InvocationID would overcount health probes and unrelated connections.
-func AnchorFromAncestry(hostname string, ancestry []AncestryEntry) (Anchor, bool) {
+//
+// Hostname is sampled internally via os.Hostname (empty on error) so callers
+// do not have to thread it.
+func AnchorFromAncestry(ancestry []AncestryEntry) (Anchor, bool) {
 	for _, e := range ancestry {
 		if _, ok := anchorableNames[e.Name]; ok {
-			return Anchor{Hostname: hostname, PID: e.PID, StartTimeMS: e.StartTimeMS}, true
+			return Anchor{Hostname: hostname(), PID: e.PID, StartTimeMS: e.StartTimeMS}, true
 		}
 	}
 
 	return Anchor{}, false
+}
+
+func hostname() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+
+	return h
 }

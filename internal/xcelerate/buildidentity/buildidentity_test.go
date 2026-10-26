@@ -35,11 +35,10 @@ func TestAnchorFromAncestry_MatchesAnchorableName(t *testing.T) {
 		{PID: 102, Name: "zsh", StartTimeMS: 3},
 	}
 
-	got, ok := AnchorFromAncestry("host", ancestry)
+	got, ok := AnchorFromAncestry(ancestry)
 	assert.True(t, ok)
 	assert.Equal(t, 101, got.PID)
 	assert.Equal(t, int64(2), got.StartTimeMS)
-	assert.Equal(t, "host", got.Hostname)
 }
 
 func TestAnchorFromAncestry_SWBBuildServiceMatches(t *testing.T) {
@@ -48,7 +47,7 @@ func TestAnchorFromAncestry_SWBBuildServiceMatches(t *testing.T) {
 		{PID: 201, Name: "SWBBuildService", StartTimeMS: 2},
 	}
 
-	got, ok := AnchorFromAncestry("host", ancestry)
+	got, ok := AnchorFromAncestry(ancestry)
 	assert.True(t, ok)
 	assert.Equal(t, 201, got.PID)
 }
@@ -59,7 +58,7 @@ func TestAnchorFromAncestry_NoMatchReturnsFalse(t *testing.T) {
 		{PID: 101, Name: "sh", StartTimeMS: 2},
 	}
 
-	_, ok := AnchorFromAncestry("host", ancestry)
+	_, ok := AnchorFromAncestry(ancestry)
 	assert.False(t, ok, "AnchorFromAncestry must NOT fall back to the peer PID — callers would overcount probes")
 }
 
@@ -76,7 +75,7 @@ func TestAnchorFromAncestry_UsingProxyAncestryWouldOvercount(t *testing.T) {
 
 	// If a caller mistakenly passes proxy ancestry, this helper still fires —
 	// which is precisely why the proxy-side invariant exists.
-	anchor, ok := AnchorFromAncestry("host", ancestry)
+	anchor, ok := AnchorFromAncestry(ancestry)
 	assert.True(t, ok)
 	assert.Equal(t, 1001, anchor.PID, "the helper has no way to tell proxy vs peer apart; callers must gate")
 }
