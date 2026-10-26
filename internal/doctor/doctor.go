@@ -22,8 +22,6 @@ const (
 	StateOK    State = "ok"
 	StateWarn  State = "warn"
 	StateError State = "error"
-
-	osDarwin = "darwin"
 )
 
 const osDarwin = "darwin"
