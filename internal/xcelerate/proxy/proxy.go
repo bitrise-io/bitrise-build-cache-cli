@@ -170,7 +170,6 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		writer:               newSidecarWriter(opts.Dir, p.logger),
 		ancestryResolver:     ancestry.resolveAncestry,
 		peerAncestryEntries:  ancestry.resolveAncestryEntries,
-		hostname:             hostnameForDerivation(),
 		wrapperSessionActive: p.wrapperSessionActive,
 	}
 }

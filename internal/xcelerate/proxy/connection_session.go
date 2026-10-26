@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"os"
 	"sync"
 	"time"
 
@@ -154,9 +153,6 @@ type sidecarStatsHandler struct {
 	// xcodebuild/Xcode. Covered by TestDerivePeerInvocationID_NeverUsesProxyAncestry.
 	peerAncestryEntries func(pid int) []AncestryEntry
 
-	// hostname is the once-sampled os.Hostname fed to buildidentity.Derive.
-	hostname string
-
 	// wrapperSessionActive returns true when p.currentSession != nil at
 	// TagConn time; derivation skips in that case because the wrapper already
 	// owns the InvocationID.
@@ -212,23 +208,12 @@ func (h *sidecarStatsHandler) derivePeerInvocationID(peerPID int) string {
 		bidEntries = append(bidEntries, buildidentity.AncestryEntry{PID: e.PID, Name: e.Name, StartTimeMS: e.StartTimeMS})
 	}
 
-	anchor, ok := buildidentity.AnchorFromAncestry(h.hostname, bidEntries)
+	anchor, ok := buildidentity.AnchorFromAncestry(bidEntries)
 	if !ok {
 		return ""
 	}
 
 	return buildidentity.Derive(anchor)
-}
-
-// hostnameForDerivation samples the hostname once; proxy startup reads it
-// and hands the value to the sidecar stats handler.
-func hostnameForDerivation() string {
-	h, err := os.Hostname()
-	if err != nil {
-		return ""
-	}
-
-	return h
 }
 
 // HandleConn flushes the per-conn sidecar on *grpcstats.ConnEnd. ConnBegin is

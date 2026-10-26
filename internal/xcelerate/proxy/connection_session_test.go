@@ -112,7 +112,6 @@ func TestDerivePeerInvocationID_PeerAncestryGate(t *testing.T) {
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 100, Name: "someRandomProbe", StartTimeMS: 1}}
 		},
-		hostname:             "host",
 		wrapperSessionActive: func() bool { return false },
 	}
 
@@ -124,7 +123,6 @@ func TestDerivePeerInvocationID_WrapperSessionWins(t *testing.T) {
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 101, Name: "xcodebuild", StartTimeMS: 2}}
 		},
-		hostname:             "host",
 		wrapperSessionActive: func() bool { return true },
 	}
 
@@ -136,7 +134,6 @@ func TestDerivePeerInvocationID_ReturnsDeterministicIDOnAnchor(t *testing.T) {
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 101, Name: "xcodebuild", StartTimeMS: 1_700_000_000_000}}
 		},
-		hostname:             "host",
 		wrapperSessionActive: func() bool { return false },
 	}
 
@@ -159,7 +156,6 @@ func TestDerivePeerInvocationID_NeverUsesProxyAncestry(t *testing.T) {
 
 			return []AncestryEntry{{PID: pid, Name: "xcodebuild", StartTimeMS: int64(pid)}}
 		},
-		hostname:             "host",
 		wrapperSessionActive: func() bool { return false },
 	}
 
@@ -176,7 +172,6 @@ func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 42, Name: "xcodebuild", StartTimeMS: 1}}
 		},
-		hostname:             "host",
 		wrapperSessionActive: func() bool { return false },
 	}
 
@@ -204,7 +199,6 @@ func TestTagConn_WrapperSessionGate_SetAfterAccept(t *testing.T) {
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 42, Name: "xcodebuild", StartTimeMS: 1_700_000_000_000}}
 		},
-		hostname:             "host",
 		wrapperSessionActive: func() bool { return active.Load() },
 	}
 
