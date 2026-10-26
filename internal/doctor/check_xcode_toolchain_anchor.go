@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"runtime"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -39,7 +38,7 @@ func diagnoseXcodeToolchainAnchor(osProxy utils.OsProxy) Result {
 		return Result{State: StateWarn, Detail: fmt.Sprintf("lstat %s: %s", paths.XcodeSelectLinkPath, err)}
 	}
 
-	anchorTarget, _ := os.Readlink(paths.XcodeSelectLinkPath)
+	anchorTarget, _ := osProxy.Readlink(paths.XcodeSelectLinkPath)
 
 	if _, err := osProxy.Stat(paths.XcodeSelectLinkPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

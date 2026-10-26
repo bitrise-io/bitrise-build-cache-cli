@@ -49,6 +49,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			ReadFileIfExistsFunc: func(name string) (string, bool, error) {
 //				panic("mock out the ReadFileIfExists method")
 //			},
+//			ReadlinkFunc: func(name string) (string, error) {
+//				panic("mock out the Readlink method")
+//			},
 //			RemoveFunc: func(name string) error {
 //				panic("mock out the Remove method")
 //			},
@@ -103,6 +106,9 @@ type OsProxyMock struct {
 
 	// ReadFileIfExistsFunc mocks the ReadFileIfExists method.
 	ReadFileIfExistsFunc func(name string) (string, bool, error)
+
+	// ReadlinkFunc mocks the Readlink method.
+	ReadlinkFunc func(name string) (string, error)
 
 	// RemoveFunc mocks the Remove method.
 	RemoveFunc func(name string) error
@@ -174,6 +180,11 @@ type OsProxyMock struct {
 			// Name is the name argument value.
 			Name string
 		}
+		// Readlink holds details about calls to the Readlink method.
+		Readlink []struct {
+			// Name is the name argument value.
+			Name string
+		}
 		// Remove holds details about calls to the Remove method.
 		Remove []struct {
 			// Name is the name argument value.
@@ -217,6 +228,7 @@ type OsProxyMock struct {
 	lockOpenFile         sync.RWMutex
 	lockReadDir          sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
+	lockReadlink         sync.RWMutex
 	lockRemove           sync.RWMutex
 	lockRename           sync.RWMutex
 	lockStat             sync.RWMutex
@@ -539,6 +551,38 @@ func (mock *OsProxyMock) ReadFileIfExistsCalls() []struct {
 	mock.lockReadFileIfExists.RLock()
 	calls = mock.calls.ReadFileIfExists
 	mock.lockReadFileIfExists.RUnlock()
+	return calls
+}
+
+// Readlink calls ReadlinkFunc.
+func (mock *OsProxyMock) Readlink(name string) (string, error) {
+	if mock.ReadlinkFunc == nil {
+		panic("OsProxyMock.ReadlinkFunc: method is nil but OsProxy.Readlink was just called")
+	}
+	callInfo := struct {
+		Name string
+	}{
+		Name: name,
+	}
+	mock.lockReadlink.Lock()
+	mock.calls.Readlink = append(mock.calls.Readlink, callInfo)
+	mock.lockReadlink.Unlock()
+	return mock.ReadlinkFunc(name)
+}
+
+// ReadlinkCalls gets all the calls that were made to Readlink.
+// Check the length with:
+//
+//	len(mockedOsProxy.ReadlinkCalls())
+func (mock *OsProxyMock) ReadlinkCalls() []struct {
+	Name string
+} {
+	var calls []struct {
+		Name string
+	}
+	mock.lockReadlink.RLock()
+	calls = mock.calls.Readlink
+	mock.lockReadlink.RUnlock()
 	return calls
 }
 
