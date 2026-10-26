@@ -255,3 +255,71 @@ func readToolchainPlist(t *testing.T, home string) string {
 
 	return string(body)
 }
+
+func TestDeveloperDirFromXcodebuildPath(t *testing.T) {
+	cases := map[string]string{
+		"/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild": "/Applications/Xcode.app/Contents/Developer",
+		"/opt/some-wrapper/xcodebuild": "",
+		"":                             "",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, developerDirFromXcodebuildPath(in), "input: %s", in)
+	}
+}
+
+func TestResolveDeveloperDir_derivesFromXcodebuildPath(t *testing.T) {
+	got, err := resolveDeveloperDir(context.Background(), failingCmdFunc(t),
+		"/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild")
+	require.NoError(t, err)
+	assert.Equal(t, "/Applications/Xcode.app/Contents/Developer", got)
+}
+
+func TestResolveDeveloperDir_fallsBackToXcodeSelect(t *testing.T) {
+	called := false
+	cmdFunc := func(_ context.Context, cmd string, args ...string) utils.Command {
+		if cmd == "xcode-select" && len(args) > 0 && args[0] == "-p" {
+			called = true
+
+			return &utilsMocks.CommandMock{
+				CombinedOutputFunc: func() ([]byte, error) {
+					return []byte("/Applications/Xcode.app/Contents/Developer\n"), nil
+				},
+			}
+		}
+
+		t.Fatalf("unexpected command %s %v", cmd, args)
+
+		return nil
+	}
+
+	got, err := resolveDeveloperDir(context.Background(), cmdFunc, "/opt/some-wrapper/xcodebuild")
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, "/Applications/Xcode.app/Contents/Developer", got)
+}
+
+func TestResolveDeveloperDir_xcodeSelectErrorPropagates(t *testing.T) {
+	cmdFunc := func(_ context.Context, _ string, _ ...string) utils.Command {
+		return &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return nil, errors.New("xcode-select missing")
+			},
+		}
+	}
+
+	_, err := resolveDeveloperDir(context.Background(), cmdFunc, "/opt/not-matching/path")
+	require.Error(t, err)
+}
+
+func TestResolveDeveloperDir_xcodeSelectEmptyIsError(t *testing.T) {
+	cmdFunc := func(_ context.Context, _ string, _ ...string) utils.Command {
+		return &utilsMocks.CommandMock{
+			CombinedOutputFunc: func() ([]byte, error) {
+				return []byte("\n"), nil
+			},
+		}
+	}
+
+	_, err := resolveDeveloperDir(context.Background(), cmdFunc, "/opt/not-matching/path")
+	require.Error(t, err)
+}
