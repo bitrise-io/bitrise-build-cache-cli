@@ -19,7 +19,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 )
 
 // connStub implements io.ReadWriter using separate read/write buffers.
@@ -109,7 +108,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
@@ -139,7 +138,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_MISS, result.Outcome)
@@ -160,7 +159,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_ERROR, result.Outcome)
@@ -175,7 +174,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 
 		getCaps := func(context.Context) error { return errors.New("caps error") }
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, getCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, getCaps, nil)
 		err := proc.initCapabilities(context.Background())
 
 		require.Error(t, err)
@@ -204,7 +203,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
@@ -229,7 +228,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		cfg := defaultConfig()
 		cfg.PushEnabled = false
 
-		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_PUSH_DISABLED, result.Outcome)
@@ -253,7 +252,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_ERROR, result.Outcome)
@@ -272,7 +271,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
@@ -289,7 +288,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
@@ -332,7 +331,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			BitriseStepExecutionID: "my-step",
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), meta, client, mockLogger, loggerFactory, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), meta, client, mockLogger, loggerFactory, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
@@ -360,7 +359,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 			w: &bytes.Buffer{},
 		}
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_OK, result.Outcome)
@@ -379,7 +378,7 @@ func Test_requestProcessor_processRequest(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // cancel before processRequest is called
 
-		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil, nil)
+		proc := newRequestProcessor(conn, defaultConfig(), configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, nil)
 		<-proc.ccSemaphore // drain to simulate semaphore held by another goroutine
 
 		result := proc.processRequest(ctx)
@@ -399,16 +398,15 @@ func Test_keyToPath(t *testing.T) {
 
 func Test_requestProcessor_projectModeGate(t *testing.T) {
 	cfg := ccacheconfig.Config{PushEnabled: true}
-	markerAbsent := func() bool { return false } // finder returns "is marker present?" — false → opted out
-	optInReader := func() machineconfig.Config { return machineconfig.Config{ProjectMode: machineconfig.ModeOptIn} }
-	alwaysReader := func() machineconfig.Config { return machineconfig.Config{ProjectMode: machineconfig.ModeAlways} }
+	optedOut := func() bool { return true }
+	notOptedOut := func() bool { return false }
 
 	t.Run("GET returns miss when opted out", func(t *testing.T) {
 		key := []byte{0xAB, 0xCD}
 		client := &ClientMock{}
 		conn := &connStub{r: bytes.NewBuffer(buildGetRequest(key)), w: &bytes.Buffer{}}
 
-		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, markerAbsent, optInReader)
+		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, optedOut)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_MISS, result.Outcome)
@@ -424,7 +422,7 @@ func Test_requestProcessor_projectModeGate(t *testing.T) {
 		client := &ClientMock{}
 		conn := &connStub{r: bytes.NewBuffer(buildPutRequest(key, value, 0x00)), w: &bytes.Buffer{}}
 
-		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, markerAbsent, optInReader)
+		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, optedOut)
 		result := proc.processRequest(context.Background())
 
 		assert.Equal(t, PROCESS_REQUEST_PUSH_DISABLED, result.Outcome)
@@ -434,14 +432,14 @@ func Test_requestProcessor_projectModeGate(t *testing.T) {
 		assert.Equal(t, byte(protocol.ResponseNoop), resp[0])
 	})
 
-	t.Run("mode=always does not gate", func(t *testing.T) {
+	t.Run("not opted out does not gate", func(t *testing.T) {
 		key := []byte{0xAB, 0xCD}
 		client := &ClientMock{
 			DownloadStreamFunc: func(_ context.Context, _ io.Writer, _ string) error { return kv.ErrCacheNotFound },
 		}
 		conn := &connStub{r: bytes.NewBuffer(buildGetRequest(key)), w: &bytes.Buffer{}}
 
-		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, markerAbsent, alwaysReader)
+		proc := newRequestProcessor(conn, cfg, configcommon.CacheConfigMetadata{}, client, mockLogger, nil, noOpCaps, notOptedOut)
 		_ = proc.processRequest(context.Background())
 
 		assert.Len(t, client.DownloadStreamCalls(), 1)
