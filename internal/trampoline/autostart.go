@@ -11,6 +11,7 @@ import (
 	"github.com/gofrs/flock"
 
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 // socketProbeTimeout is tight: a serving proxy answers within microseconds on
@@ -25,10 +26,6 @@ const startLockMaxWait = time.Second
 // startLockRetry is the sleep between re-probes while another process holds the
 // start lock.
 const startLockRetry = 10 * time.Millisecond
-
-const defaultSocketName = "xcelerate-proxy.sock"
-
-const startLockFilename = "bitrise-xcelerate-starting.lock"
 
 const cliBinaryName = "bitrise-build-cache"
 
@@ -50,10 +47,9 @@ var defaultAutostartDeps = autostartDeps{
 			return v
 		}
 
-		return filepath.Join(os.TempDir(), defaultSocketName)
+		return filepath.Join(os.TempDir(), paths.ProxySocketName)
 	},
-	// Must match internal/paths.TrampolineStartLockFilename.
-	lockPath: func() string { return filepath.Join(os.TempDir(), startLockFilename) },
+	lockPath: func() string { return filepath.Join(os.TempDir(), paths.TrampolineStartLockFilename) },
 	dial: func(path string, timeout time.Duration) error {
 		conn, err := net.DialTimeout("unix", path, timeout)
 		if err != nil {
