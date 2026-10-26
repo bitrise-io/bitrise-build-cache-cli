@@ -7,6 +7,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 )
 
+// DarwinGOOS is the runtime.GOOS value for macOS.
+const DarwinGOOS = "darwin"
+
 //go:generate moq -out mocks/os_proxy_mock.go -pkg mocks . OsProxy
 //nolint:interfacebloat
 type OsProxy interface {
