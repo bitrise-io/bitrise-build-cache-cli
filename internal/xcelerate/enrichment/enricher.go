@@ -91,12 +91,18 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	hitRate, hitRateOutcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
 
 	var (
-		sidecarBlob   *blobstats.Snapshot
-		consumedPaths []string
-		sidecarFound  bool
+		sidecarBlob         *blobstats.Snapshot
+		consumedPaths       []string
+		sidecarInvocationID string
+		sidecarFound        bool
 	)
 	if e.SidecarReader != nil {
-		sidecarBlob, consumedPaths, sidecarFound = e.SidecarReader.Lookup(group)
+		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
+	}
+
+	invocationID := sidecarInvocationID
+	if invocationID == "" {
+		invocationID = uuid.NewString()
 	}
 
 	if hitRateOutcome != xcactivitylog.OutcomeOK && !sidecarFound {
