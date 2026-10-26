@@ -29,9 +29,9 @@ type ancestryKey struct {
 	startTime int64
 }
 
-type ancestryEntry struct {
+type ancestryCacheEntry struct {
 	key   ancestryKey
-	chain []string
+	chain []AncestryEntry
 }
 
 func newAncestryCache() *ancestryCache {
@@ -41,7 +41,7 @@ func newAncestryCache() *ancestryCache {
 	}
 }
 
-func (c *ancestryCache) get(k ancestryKey) ([]string, bool) {
+func (c *ancestryCache) get(k ancestryKey) ([]AncestryEntry, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -52,23 +52,23 @@ func (c *ancestryCache) get(k ancestryKey) ([]string, bool) {
 
 	c.order.MoveToFront(el)
 
-	//nolint:forcetypeassert // elements are always *ancestryEntry
-	return el.Value.(*ancestryEntry).chain, true
+	//nolint:forcetypeassert // elements are always *ancestryCacheEntry
+	return el.Value.(*ancestryCacheEntry).chain, true
 }
 
-func (c *ancestryCache) put(k ancestryKey, chain []string) {
+func (c *ancestryCache) put(k ancestryKey, chain []AncestryEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if el, ok := c.index[k]; ok {
 		c.order.MoveToFront(el)
-		//nolint:forcetypeassert // elements are always *ancestryEntry
-		el.Value.(*ancestryEntry).chain = chain
+		//nolint:forcetypeassert // elements are always *ancestryCacheEntry
+		el.Value.(*ancestryCacheEntry).chain = chain
 
 		return
 	}
 
-	el := c.order.PushFront(&ancestryEntry{key: k, chain: chain})
+	el := c.order.PushFront(&ancestryCacheEntry{key: k, chain: chain})
 	c.index[k] = el
 
 	for c.order.Len() > ancestryCacheMax {
@@ -77,8 +77,8 @@ func (c *ancestryCache) put(k ancestryKey, chain []string) {
 			break
 		}
 
-		//nolint:forcetypeassert // elements are always *ancestryEntry
-		delete(c.index, oldest.Value.(*ancestryEntry).key)
+		//nolint:forcetypeassert // elements are always *ancestryCacheEntry
+		delete(c.index, oldest.Value.(*ancestryCacheEntry).key)
 		c.order.Remove(oldest)
 	}
 }
@@ -91,9 +91,10 @@ type AncestryEntry struct {
 	StartTimeMS int64
 }
 
-// resolveAncestryEntries is the rich variant of resolveAncestry; walks parent
-// PIDs returning (pid, name, start-ms) triples deepest-first. Separate from
-// resolveAncestry so the sidecar writer's []string signature stays stable.
+// resolveAncestryEntries walks parent PIDs returning (pid, name, start-ms)
+// triples deepest-first. Hard-capped on hops and wall-clock. Zero pid returns
+// nil. Cached by (pid, start-time) so a repeat call for the same peer is a
+// map lookup.
 func (c *ancestryCache) resolveAncestryEntries(pid int) []AncestryEntry {
 	if pid <= 0 {
 		return nil
@@ -102,7 +103,40 @@ func (c *ancestryCache) resolveAncestryEntries(pid int) []AncestryEntry {
 	ctx, cancel := context.WithTimeout(context.Background(), ancestryLookupLimit)
 	defer cancel()
 
-	return walkAncestryEntries(ctx, pid)
+	//nolint:gosec // PIDs fit in int32 on every OS we target.
+	start, err := processStartTime(ctx, int32(pid))
+	if err != nil {
+		return nil
+	}
+
+	key := ancestryKey{pid: pid, startTime: start}
+	if chain, ok := c.get(key); ok {
+		return chain
+	}
+
+	chain := walkAncestryEntries(ctx, pid)
+	c.put(key, chain)
+
+	return chain
+}
+
+// resolveAncestry returns the names-only projection consumed by the sidecar
+// writer's PeerAncestry field. Backs onto the shared entry cache.
+func (c *ancestryCache) resolveAncestry(pid int) []string {
+	return toNames(c.resolveAncestryEntries(pid))
+}
+
+func toNames(entries []AncestryEntry) []string {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name
+	}
+
+	return names
 }
 
 func walkAncestryEntries(ctx context.Context, pid int) []AncestryEntry {
@@ -132,68 +166,6 @@ func walkAncestryEntries(ctx context.Context, pid int) []AncestryEntry {
 		}
 
 		chain = append(chain, AncestryEntry{PID: int(current), Name: name, StartTimeMS: ct})
-
-		ppid, err := proc.PpidWithContext(ctx)
-		if err != nil || ppid <= 1 || ppid == current {
-			return chain
-		}
-
-		current = ppid
-	}
-
-	return chain
-}
-
-// resolveAncestry walks parent PIDs up to ancestryMaxHops and returns executable
-// basenames deepest-first (caller process → ancestors). Hard-capped on hops and
-// wall-clock. Zero pid returns nil.
-func (c *ancestryCache) resolveAncestry(pid int) []string {
-	if pid <= 0 {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), ancestryLookupLimit)
-	defer cancel()
-
-	//nolint:gosec // PIDs fit in int32 on every OS we target.
-	start, err := processStartTime(ctx, int32(pid))
-	if err != nil {
-		return nil
-	}
-
-	key := ancestryKey{pid: pid, startTime: start}
-	if chain, ok := c.get(key); ok {
-		return chain
-	}
-
-	chain := walkAncestry(ctx, pid)
-	c.put(key, chain)
-
-	return chain
-}
-
-func walkAncestry(ctx context.Context, pid int) []string {
-	chain := make([]string, 0, 8) //nolint:mnd // typical compile chain depth
-
-	//nolint:gosec // PIDs fit in int32.
-	current := int32(pid)
-
-	for range ancestryMaxHops {
-		if ctx.Err() != nil {
-			return chain
-		}
-
-		proc, err := process.NewProcessWithContext(ctx, current)
-		if err != nil {
-			return chain
-		}
-
-		name, err := proc.NameWithContext(ctx)
-		if err != nil || name == "" {
-			return chain
-		}
-
-		chain = append(chain, name)
 
 		ppid, err := proc.PpidWithContext(ctx)
 		if err != nil || ppid <= 1 || ppid == current {
