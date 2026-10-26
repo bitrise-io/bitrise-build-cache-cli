@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+
+	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 )
 
 // socketProbeTimeout is tight: a serving proxy answers within microseconds on
@@ -23,11 +25,6 @@ const startLockMaxWait = time.Second
 // startLockRetry is the sleep between re-probes while another process holds the
 // start lock.
 const startLockRetry = 10 * time.Millisecond
-
-// socketPathEnv overrides the proxy socket location. Mirrors
-// xceleratconfig.EnvProxySocketPath; duplicated here to keep trampoline free of
-// internal/xcelerate/* imports.
-const socketPathEnv = "BITRISE_XCELERATE_SOCKET_PATH"
 
 const defaultSocketName = "xcelerate-proxy.sock"
 
@@ -49,7 +46,7 @@ type autostartDeps struct {
 //nolint:gochecknoglobals // production dependency bundle; tests swap atoms.
 var defaultAutostartDeps = autostartDeps{
 	socketPath: func() string {
-		if v := os.Getenv(socketPathEnv); v != "" {
+		if v := os.Getenv(xceleratconfig.EnvProxySocketPath); v != "" {
 			return v
 		}
 
