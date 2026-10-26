@@ -4,7 +4,6 @@ package xcelerate
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"testing"
 
@@ -14,13 +13,6 @@ import (
 )
 
 func TestResolveCASPluginPath(t *testing.T) {
-	anchorMissing := func(name string) (os.FileInfo, error) {
-		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fs.ErrNotExist}
-	}
-	anchorPresent := func(_ string) (os.FileInfo, error) {
-		return nil, nil
-	}
-
 	cases := []struct {
 		name         string
 		envs         map[string]string

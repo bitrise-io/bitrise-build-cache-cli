@@ -32,7 +32,7 @@ func TestInstallXcodeToolchain_endToEnd(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorAbsentLstat(),
+		LstatFunc:       anchorMissing,
 	}
 
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
@@ -54,7 +54,7 @@ func TestInstallXcodeToolchain_fallsBackToXcodeSelect(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorAbsentLstat(),
+		LstatFunc:       anchorMissing,
 	}
 
 	called := false
@@ -91,7 +91,7 @@ func TestInstallXcodeToolchain_isNonFatalOnBrokenDeveloperDir(t *testing.T) {
 	home := t.TempDir()
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorAbsentLstat(),
+		LstatFunc:       anchorMissing,
 	}
 
 	cmdFunc := func(_ context.Context, _ string, _ ...string) utils.Command {
@@ -121,7 +121,7 @@ func TestInstallXcodeToolchain_pluginPathAnchoredWhenAnchorLive(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorPresentLstat(),
+		LstatFunc:       anchorPresent,
 	}
 
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
@@ -144,7 +144,7 @@ func TestInstallXcodeToolchain_pluginPathDerivedWhenAnchorAbsent(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorAbsentLstat(),
+		LstatFunc:       anchorMissing,
 	}
 
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
@@ -167,7 +167,7 @@ func TestInstallXcodeToolchain_pluginPathEnvOverrideBeatsAnchor(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorPresentLstat(),
+		LstatFunc:       anchorPresent,
 	}
 
 	envs := map[string]string{EnvCASPluginPath: "/opt/custom/libToolchainCASPlugin.dylib"}
@@ -190,7 +190,7 @@ func TestUninstallXcodeToolchain_removesBundleAndSymlink(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorAbsentLstat(),
+		LstatFunc:       anchorMissing,
 	}
 
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
@@ -231,18 +231,6 @@ func skipIfNonUnix(t *testing.T) {
 
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink tests are POSIX-only")
-	}
-}
-
-func anchorAbsentLstat() func(string) (os.FileInfo, error) {
-	return func(name string) (os.FileInfo, error) {
-		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fs.ErrNotExist}
-	}
-}
-
-func anchorPresentLstat() func(string) (os.FileInfo, error) {
-	return func(_ string) (os.FileInfo, error) {
-		return nil, nil
 	}
 }
 
