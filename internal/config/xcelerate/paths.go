@@ -71,13 +71,10 @@ func ResolveProxySocketPath(override string, envs map[string]string, osProxy uti
 // EnvCASPluginPath overrides the CAS plugin dylib path when set.
 const EnvCASPluginPath = "BITRISE_XCODE_CAS_PLUGIN_PATH"
 
-// ResolveCASPluginPath returns the CAS plugin dylib path: explicit override →
+// ResolveCASPluginPath returns the CAS plugin dylib path:
 // BITRISE_XCODE_CAS_PLUGIN_PATH env var → anchor-rooted (follows xcode-select -s)
 // when /var/db/xcode_select_link exists → derived from developerDir.
-func ResolveCASPluginPath(override string, envs map[string]string, developerDir string, osProxy utils.OsProxy) string {
-	if override != "" {
-		return override
-	}
+func ResolveCASPluginPath(envs map[string]string, developerDir string, osProxy utils.OsProxy) string {
 	if env := envs[EnvCASPluginPath]; env != "" {
 		return env
 	}
