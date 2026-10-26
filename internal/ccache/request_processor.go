@@ -15,31 +15,25 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/protocol"
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 )
 
-// ProjectMarkerFinder returns true when the caller must be treated as opted-in
-// (a marker file was found walking up from a build cwd) and false otherwise.
-// Nil means "always allow" — production wiring passes a real implementation.
-type ProjectMarkerFinder func() bool
-
-// MachineConfigReader returns the effective machine-wide config. Fail-open: a
-// zero value means "no opt-in gating for this request".
-type MachineConfigReader func() machineconfig.Config
+// OptedOutChecker reports whether the current request must be treated as
+// opted-out (machine ProjectMode is opt-in and no marker was found walking
+// up from the build cwd). Nil means "never opted out".
+type OptedOutChecker func() bool
 
 type requestProcessor struct {
-	client               Client
-	logger               log.Logger
-	reader               io.Reader
-	writer               io.Writer
-	ccSemaphore          chan struct{}
-	config               ccacheconfig.Config
-	metadata             configcommon.CacheConfigMetadata
-	loggerFactory        LoggerFactory
-	getCapabilities      func(context.Context) error
-	projectMarkerPresent ProjectMarkerFinder
-	readMachineConfig    MachineConfigReader
-	optOutLogged         bool
+	client          Client
+	logger          log.Logger
+	reader          io.Reader
+	writer          io.Writer
+	ccSemaphore     chan struct{}
+	config          ccacheconfig.Config
+	metadata        configcommon.CacheConfigMetadata
+	loggerFactory   LoggerFactory
+	getCapabilities func(context.Context) error
+	optedOutCheck   OptedOutChecker
+	optOutLogged    bool
 }
 
 func newRequestProcessor(
@@ -50,38 +44,30 @@ func newRequestProcessor(
 	logger log.Logger,
 	loggerFactory LoggerFactory,
 	getCapabilities func(context.Context) error,
-	projectMarkerPresent ProjectMarkerFinder,
-	readMachineConfig MachineConfigReader,
+	optedOutCheck OptedOutChecker,
 ) *requestProcessor {
 	sem := make(chan struct{}, 1)
 	sem <- struct{}{} // pre-fill: receiving acquires, sending releases
 
 	return &requestProcessor{
-		config:               config,
-		metadata:             metadata,
-		client:               client,
-		logger:               logger,
-		reader:               conn,
-		writer:               conn,
-		ccSemaphore:          sem,
-		loggerFactory:        loggerFactory,
-		getCapabilities:      getCapabilities,
-		projectMarkerPresent: projectMarkerPresent,
-		readMachineConfig:    readMachineConfig,
+		config:          config,
+		metadata:        metadata,
+		client:          client,
+		logger:          logger,
+		reader:          conn,
+		writer:          conn,
+		ccSemaphore:     sem,
+		loggerFactory:   loggerFactory,
+		getCapabilities: getCapabilities,
+		optedOutCheck:   optedOutCheck,
 	}
 }
 
 func (p *requestProcessor) optedOut() bool {
-	if p.readMachineConfig == nil {
+	if p.optedOutCheck == nil {
 		return false
 	}
-	if p.readMachineConfig().ProjectMode != machineconfig.ModeOptIn {
-		return false
-	}
-	if p.projectMarkerPresent == nil {
-		return false
-	}
-	if p.projectMarkerPresent() {
+	if !p.optedOutCheck() {
 		return false
 	}
 

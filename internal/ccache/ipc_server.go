@@ -20,23 +20,22 @@ import (
 )
 
 type IpcServer struct {
-	listener             net.Listener
-	client               Client
-	logger               log.Logger
-	loggerFactory        LoggerFactory
-	idleTimer            *time.Timer
-	sessionState         *sessionState
-	config               ccacheconfig.Config
-	metadata             configcommon.CacheConfigMetadata
-	timerMutex           sync.Mutex
-	capabilitiesMu       sync.Mutex
-	capabilitiesDone     bool
-	capabilitiesErr      error
-	activeInvocationID   string
-	activeParentID       string
-	activeInvocationMu   sync.Mutex
-	projectMarkerPresent ProjectMarkerFinder
-	readMachineConfig    MachineConfigReader
+	listener           net.Listener
+	client             Client
+	logger             log.Logger
+	loggerFactory      LoggerFactory
+	idleTimer          *time.Timer
+	sessionState       *sessionState
+	config             ccacheconfig.Config
+	metadata           configcommon.CacheConfigMetadata
+	timerMutex         sync.Mutex
+	capabilitiesMu     sync.Mutex
+	capabilitiesDone   bool
+	capabilitiesErr    error
+	activeInvocationID string
+	activeParentID     string
+	activeInvocationMu sync.Mutex
+	optedOutCheck      OptedOutChecker
 }
 
 func NewServer(
@@ -58,12 +57,8 @@ func NewServer(
 	}, nil
 }
 
-func (s *IpcServer) SetProjectMarkerFinder(f ProjectMarkerFinder) {
-	s.projectMarkerPresent = f
-}
-
-func (s *IpcServer) SetMachineConfigReader(r MachineConfigReader) {
-	s.readMachineConfig = r
+func (s *IpcServer) SetOptedOutChecker(c OptedOutChecker) {
+	s.optedOutCheck = c
 }
 
 func (s *IpcServer) Run(ctx context.Context) error {
@@ -133,7 +128,7 @@ func (s *IpcServer) handleConnection(ctx context.Context, cancelFn context.Cance
 		return
 	}
 
-	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.projectMarkerPresent, s.readMachineConfig)
+	processor := newRequestProcessor(conn, s.config, s.metadata, s.client, s.logger, s.loggerFactory, s.getCapabilities, s.optedOutCheck)
 
 	if err := processor.initCapabilities(ctx); err != nil {
 		s.logger.TErrorf("[%s] Capabilities check failed: %v", conID, err)

@@ -13,11 +13,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -46,6 +44,12 @@ type Credential struct {
 type Resolver func(ctx context.Context) (Credential, error)
 
 // resolveRepoURL may be nil, in which case no repository header is emitted.
+//
+// Opt-in gating fails SILENT (empty headers) via machineconfig.ProjectOptedOut:
+// an opt-in gate exists to keep traffic off a project the user did not opt in,
+// so a transient Getwd error or a malformed .bitrise-build-cache.json must
+// not silently sign a request anyway. Empty headers let Bazel skip auth or
+// surface a clean 401; fail-OPEN here would defeat the gate.
 func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, resolveRepoURL RepoURLResolver) error {
 	// Decoded and discarded, so a malformed payload is an error not a silent pass.
 	var req GetCredentialsRequest
@@ -54,7 +58,7 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, res
 		return fmt.Errorf("decode credential-helper request: %w", err)
 	}
 
-	if optedOut() {
+	if machineconfig.ProjectOptedOut(utils.DefaultOsProxy{}, nil) {
 		if err := json.NewEncoder(out).Encode(GetCredentialsResponse{Headers: map[string][]string{}}); err != nil {
 			return fmt.Errorf("encode empty credential-helper response: %w", err)
 		}
@@ -91,34 +95,4 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, resolve Resolver, res
 	}
 
 	return nil
-}
-
-// optedOut reports whether the machine-wide project mode is "opt-in" and the
-// current working directory has no marker up the tree. Any resolution failure
-// treats the request as opted-in — a missing config file, unreadable marker, or
-// unresolvable home dir must not silently kill the auth path.
-func optedOut() bool {
-	osProxy := utils.DefaultOsProxy{}
-
-	p, err := paths.Default()
-	if err != nil {
-		return false
-	}
-
-	cfg, err := machineconfig.Read(osProxy, p, nil)
-	if err != nil || cfg.ProjectMode != machineconfig.ModeOptIn {
-		return false
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return false
-	}
-
-	found, _, err := machineconfig.FindMarker(cwd, osProxy)
-	if err != nil {
-		return false
-	}
-
-	return !found
 }
