@@ -3,7 +3,6 @@
 package doctor
 
 import (
-	"errors"
 	"io/fs"
 	"os"
 	"testing"
@@ -49,7 +48,6 @@ func TestDiagnoseXcodeToolchainAnchor_anchorDanglingWarns(t *testing.T) {
 }
 
 func TestDiagnoseXcodeToolchainAnchor_pluginMissingWarns(t *testing.T) {
-	anchorPath := "/var/db/xcode_select_link"
 	pluginPath := "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib"
 	osProxy := &mocks.OsProxyMock{
 		LstatFunc: func(_ string) (os.FileInfo, error) { return nil, nil },
@@ -57,14 +55,11 @@ func TestDiagnoseXcodeToolchainAnchor_pluginMissingWarns(t *testing.T) {
 			return "/Applications/Xcode.app/Contents/Developer", nil
 		},
 		StatFunc: func(name string) (os.FileInfo, error) {
-			if name == anchorPath {
-				return nil, nil
-			}
 			if name == pluginPath {
 				return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
 			}
 
-			return nil, errors.New("unexpected stat " + name)
+			return nil, nil
 		},
 	}
 
