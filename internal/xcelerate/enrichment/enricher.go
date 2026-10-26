@@ -18,6 +18,7 @@ import (
 	pathsutil "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
@@ -51,7 +52,7 @@ type Enricher struct {
 
 	// LocalLogAppender appends a Record on each successful wrapperless PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
-	LocalLogAppender LocalLogAppender
+	LocalLogAppender invocationlog.Appender
 
 	// OnEmitted fires with the invocation ID on each successful wrapperless PUT.
 	// nil disables. Used by flush-session to collect IDs emitted during a sweep.
@@ -62,13 +63,6 @@ type Enricher struct {
 	// it so a single gunzip is shared with the grouping pass. nil = fall
 	// through to a direct ReadMetricsFromManifest read.
 	metricsLookup MetricsLookup
-}
-
-// LocalLogAppender is the subset of invocations.Writer used by the wrapperless
-// path. Defined here (instead of imported) to keep enricher's test harness
-// free of the invocations package when callers inject fakes.
-type LocalLogAppender interface {
-	Append(rec invocations.Record) error
 }
 
 // SetMetricsLookup wires the Watcher's per-tick metrics cache. Called at scan
