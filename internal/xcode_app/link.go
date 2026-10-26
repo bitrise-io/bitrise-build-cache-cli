@@ -21,8 +21,6 @@ const (
 	LinkBlockEnd   = "// [end] bitrise-build-cache xcode link"
 )
 
-const SiblingXCConfigName = paths.XcodeAppSiblingXCConfigFileName
-
 // LinkParams targets a single .xcodeproj or .xcworkspace. OverrideXCConfigPath
 // must be absolute — Xcode does not expand `~` in xcconfig include paths.
 type LinkParams struct {
@@ -96,7 +94,7 @@ func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, res
 	ctx := linkContext{
 		projDir:         projDir,
 		fileRefs:        fileRefs,
-		siblingPath:     filepath.Join(projDir, SiblingXCConfigName),
+		siblingPath:     filepath.Join(projDir, paths.XcodeAppSiblingXCConfigFileName),
 		siblingFileRef:  findExistingSiblingFileRef(fileRefs),
 		touchedXCConfig: map[string]struct{}{},
 		updatedPbx:      content,
@@ -166,15 +164,15 @@ func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, erro
 			return "", err
 		}
 		c.siblingFileRef = id
-		updated, err := insertSiblingFileReference(c.updatedPbx, c.siblingFileRef, SiblingXCConfigName)
+		updated, err := insertSiblingFileReference(c.updatedPbx, c.siblingFileRef, paths.XcodeAppSiblingXCConfigFileName)
 		if err != nil {
 			return "", err
 		}
 		c.updatedPbx = updated
-		c.fileRefs[id] = pbxFileRef{ID: id, Path: SiblingXCConfigName}
+		c.fileRefs[id] = pbxFileRef{ID: id, Path: paths.XcodeAppSiblingXCConfigFileName}
 	}
 
-	updated, err := attachBaseConfigReference(c.updatedPbx, cfg.ID, c.siblingFileRef, SiblingXCConfigName)
+	updated, err := attachBaseConfigReference(c.updatedPbx, cfg.ID, c.siblingFileRef, paths.XcodeAppSiblingXCConfigFileName)
 	if err != nil {
 		return "", err
 	}
@@ -185,7 +183,7 @@ func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, erro
 
 func findExistingSiblingFileRef(fileRefs map[string]pbxFileRef) string {
 	for id, ref := range fileRefs {
-		if ref.Path == SiblingXCConfigName {
+		if ref.Path == paths.XcodeAppSiblingXCConfigFileName {
 			return id
 		}
 	}
@@ -224,7 +222,7 @@ func unlinkOneProject(osProxy utils.OsProxy, projectPath string, result *UnlinkR
 	projDir := filepath.Dir(projectPath)
 	fileRefs := parseFileReferences(content)
 	configs := parseBuildConfigurations(content)
-	siblingPath := filepath.Join(projDir, SiblingXCConfigName)
+	siblingPath := filepath.Join(projDir, paths.XcodeAppSiblingXCConfigFileName)
 
 	visited := map[string]struct{}{}
 	warnedBase := map[string]struct{}{}
