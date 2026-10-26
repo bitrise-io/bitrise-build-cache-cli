@@ -2,13 +2,15 @@ package xcelerate
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/devdir"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
@@ -30,7 +32,7 @@ func installXcodeToolchain(
 		return
 	}
 
-	developerDir, err := devdir.Resolve(ctx, cmdFunc, originalXcodebuildPath)
+	developerDir, err := resolveDeveloperDir(ctx, cmdFunc, originalXcodebuildPath)
 	if err != nil {
 		logger.Warnf("Could not resolve Xcode developer dir for toolchain install: %s", err)
 
@@ -79,4 +81,34 @@ func uninstallXcodeToolchain(logger log.Logger, osProxy utils.OsProxy) {
 	}
 
 	logger.Infof("Removed Xcode toolchain bundle at %s", installPath)
+}
+
+// resolveDeveloperDir derives the developer dir from originalXcodebuildPath
+// when its shape matches <DeveloperDir>/usr/bin/xcodebuild, else falls back to
+// `xcode-select -p`.
+func resolveDeveloperDir(ctx context.Context, cmdFunc utils.CommandFunc, originalXcodebuildPath string) (string, error) {
+	if derived := developerDirFromXcodebuildPath(originalXcodebuildPath); derived != "" {
+		return derived, nil
+	}
+
+	cmd := cmdFunc(ctx, "xcode-select", "-p")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("xcode-select -p: %w", err)
+	}
+	developerDir := strings.TrimSpace(string(out))
+	if developerDir == "" {
+		return "", errors.New("xcode-select -p returned an empty developer dir")
+	}
+
+	return developerDir, nil
+}
+
+func developerDirFromXcodebuildPath(path string) string {
+	const suffix = "/usr/bin/xcodebuild"
+	if !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+
+	return strings.TrimSuffix(path, suffix)
 }
