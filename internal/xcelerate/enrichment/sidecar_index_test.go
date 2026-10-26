@@ -17,11 +17,16 @@ import (
 )
 
 type sidecarFixture struct {
-	SchemaVersion int                 `json:"schema_version"`
-	PeerAncestry  []string            `json:"peer_ancestry"`
-	AcceptedAt    time.Time           `json:"accepted_at"`
-	ClosedAt      time.Time           `json:"closed_at"`
-	BlobStats     *blobstats.Snapshot `json:"blobStats,omitempty"`
+	SchemaVersion  int                    `json:"schema_version"`
+	PeerAncestry   []string               `json:"peer_ancestry"`
+	AcceptedAt     time.Time              `json:"accepted_at"`
+	ClosedAt       time.Time              `json:"closed_at"`
+	BlobStats      *blobstats.Snapshot    `json:"blobStats,omitempty"`
+	WrapperSession *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
+}
+
+type sidecarFixtureWrapper struct {
+	InvocationID string `json:"invocation_id"`
 }
 
 func blob(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
@@ -53,7 +58,7 @@ func TestSidecarIndex_EmptyDirReturnsNotFound(t *testing.T) {
 	dir := t.TempDir()
 	idx := enrichment.NewSidecarIndex(dir, nil)
 
-	snap, paths, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
+	snap, paths, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
 	assert.False(t, ok)
 	assert.Empty(t, paths)
 	assert.Nil(t, snap)
@@ -62,14 +67,14 @@ func TestSidecarIndex_EmptyDirReturnsNotFound(t *testing.T) {
 func TestSidecarIndex_MissingDirReturnsNotFound(t *testing.T) {
 	idx := enrichment.NewSidecarIndex(filepath.Join(t.TempDir(), "nope"), nil)
 
-	_, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
+	_, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
 	assert.False(t, ok)
 }
 
 func TestSidecarIndex_EmptyDirStringReturnsNotFound(t *testing.T) {
 	idx := enrichment.NewSidecarIndex("", nil)
 
-	_, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
+	_, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)))
 	assert.False(t, ok)
 }
 
@@ -85,7 +90,7 @@ func TestSidecarIndex_AncestryRejectedWhenXcodebuildAbsent(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
+	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
 	assert.False(t, ok)
 }
 
@@ -101,7 +106,7 @@ func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, ok := idx.Lookup(groupFor(base.Add(10*time.Second), base.Add(20*time.Second)))
+	_, _, _, ok := idx.Lookup(groupFor(base.Add(10*time.Second), base.Add(20*time.Second)))
 	assert.False(t, ok)
 }
 
@@ -117,13 +122,31 @@ func TestSidecarIndex_SingleMatchPopulatesBlobAndPath(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)))
+	snap, paths, _, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)))
 	require.True(t, ok)
 	assert.Equal(t, []string{path}, paths)
 	require.NotNil(t, snap)
 	assert.Equal(t, int64(3), snap.Download.OpCount)
 	assert.Equal(t, int64(2), snap.Download.MissCount)
 	assert.Equal(t, int64(4), snap.Upload.OpCount)
+}
+
+func TestSidecarIndex_WrapperLinkInvocationIDSurfaced(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "deadbeef-1111-4222-8333-444455556666"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	_, _, invocationID, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
+	require.True(t, ok)
+	assert.Equal(t, "deadbeef-1111-4222-8333-444455556666", invocationID, "WrapperLink.InvocationID must be surfaced to callers")
 }
 
 func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
@@ -145,7 +168,7 @@ func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
+	snap, paths, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
 	require.True(t, ok)
 	assert.Len(t, paths, 2, "both overlapping sidecars must be unlinked")
 	require.NotNil(t, snap)
@@ -166,7 +189,7 @@ func TestSidecarIndex_FutureSchemaSkippedAndLeftOnDisk(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
+	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
 	assert.False(t, ok)
 
 	_, err := os.Stat(futurePath)
@@ -187,7 +210,7 @@ func TestSidecarIndex_CorruptJSONTolerated(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
+	snap, paths, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)))
 	require.True(t, ok)
 	assert.Equal(t, []string{path}, paths)
 	require.NotNil(t, snap)
