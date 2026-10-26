@@ -55,8 +55,7 @@ func toolchainOverrideBuildSettings(proxySocketPath, pluginPath string) map[stri
 }
 
 // RenderToolchainInfoPlist builds a ToolchainInfo.plist carrying the
-// compile-cache OverrideBuildSettings. pluginPath is derived from the active
-// developer dir so Xcode-beta / sidecar installs work.
+// compile-cache OverrideBuildSettings.
 func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error) {
 	if proxySocketPath == "" {
 		return nil, errors.New("proxy socket path is empty")
