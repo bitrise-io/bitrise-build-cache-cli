@@ -25,7 +25,7 @@ func TestRender_containsAllRequiredKeys(t *testing.T) {
 		"CLANG_ENABLE_MODULES = YES",
 		"COMPILATION_CACHE_ENABLE_CACHING = YES",
 		"COMPILATION_CACHE_ENABLE_PLUGIN = YES",
-		"COMPILATION_CACHE_PLUGIN_PATH = " + AppleCASPluginPath,
+		"COMPILATION_CACHE_PLUGIN_PATH = /var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib",
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock",
 		"SWIFT_ENABLE_COMPILE_CACHE = YES",
 		"OTHER_SWIFT_FLAGS = $(inherited) -cas-plugin-option remote-service-path=/tmp/xcelerate-proxy.sock",

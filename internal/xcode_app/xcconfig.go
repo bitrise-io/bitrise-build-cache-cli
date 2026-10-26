@@ -11,10 +11,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// AppleCASPluginPath is the xcconfig fallback for the stock plugin dylib.
-// anchored at /var/db/xcode_select_link; follows xcode-select -s auto-correct.
-const AppleCASPluginPath = "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib"
-
 // Render omits COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES on purpose:
 // SwiftBuild's CompilationCachingConfigFileTaskProducer bails (`return nil`)
 // when both REMOTE_SERVICE_PATH and SUPPORTED_LANGUAGES are set, so no
@@ -25,11 +21,12 @@ func Render(proxySocketPath string) (string, error) {
 	}
 
 	settings := map[string]string{
-		"CLANG_ENABLE_COMPILE_CACHE":            "YES",
-		"CLANG_ENABLE_MODULES":                  "YES",
-		"COMPILATION_CACHE_ENABLE_CACHING":      "YES",
-		"COMPILATION_CACHE_ENABLE_PLUGIN":       "YES",
-		"COMPILATION_CACHE_PLUGIN_PATH":         AppleCASPluginPath,
+		"CLANG_ENABLE_COMPILE_CACHE":       "YES",
+		"CLANG_ENABLE_MODULES":             "YES",
+		"COMPILATION_CACHE_ENABLE_CACHING": "YES",
+		"COMPILATION_CACHE_ENABLE_PLUGIN":  "YES",
+		// Anchored at /var/db/xcode_select_link so xcode-select -s auto-corrects.
+		"COMPILATION_CACHE_PLUGIN_PATH":         paths.XcodeSelectLinkCASPluginPath(),
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
 		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
