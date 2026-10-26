@@ -33,6 +33,9 @@ func TestDiagnoseXcodeToolchainAnchor_anchorDanglingWarns(t *testing.T) {
 		LstatFunc: func(_ string) (os.FileInfo, error) {
 			return nil, nil
 		},
+		ReadlinkFunc: func(_ string) (string, error) {
+			return "/Applications/Xcode-26.app/Contents/Developer", nil
+		},
 		StatFunc: func(_ string) (os.FileInfo, error) {
 			return nil, &fs.PathError{Op: "stat", Err: fs.ErrNotExist}
 		},
@@ -42,18 +45,16 @@ func TestDiagnoseXcodeToolchainAnchor_anchorDanglingWarns(t *testing.T) {
 
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "dangling")
+	assert.Contains(t, res.Detail, "/Applications/Xcode-26.app/Contents/Developer")
 }
 
 func TestDiagnoseXcodeToolchainAnchor_pluginMissingWarns(t *testing.T) {
 	anchorPath := "/var/db/xcode_select_link"
 	pluginPath := "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib"
 	osProxy := &mocks.OsProxyMock{
-		LstatFunc: func(name string) (os.FileInfo, error) {
-			if name == anchorPath {
-				return nil, nil
-			}
-
-			return nil, &fs.PathError{Op: "lstat", Path: name, Err: fs.ErrNotExist}
+		LstatFunc: func(_ string) (os.FileInfo, error) { return nil, nil },
+		ReadlinkFunc: func(_ string) (string, error) {
+			return "/Applications/Xcode.app/Contents/Developer", nil
 		},
 		StatFunc: func(name string) (os.FileInfo, error) {
 			if name == anchorPath {
@@ -71,16 +72,21 @@ func TestDiagnoseXcodeToolchainAnchor_pluginMissingWarns(t *testing.T) {
 
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, "CAS plugin missing")
+	assert.Contains(t, res.Detail, "/Applications/Xcode.app/Contents/Developer")
 }
 
 func TestDiagnoseXcodeToolchainAnchor_okWhenAnchorAndPluginPresent(t *testing.T) {
 	osProxy := &mocks.OsProxyMock{
 		LstatFunc: func(_ string) (os.FileInfo, error) { return nil, nil },
-		StatFunc:  func(_ string) (os.FileInfo, error) { return nil, nil },
+		ReadlinkFunc: func(_ string) (string, error) {
+			return "/Applications/Xcode.app/Contents/Developer", nil
+		},
+		StatFunc: func(_ string) (os.FileInfo, error) { return nil, nil },
 	}
 
 	res := diagnoseXcodeToolchainAnchor(osProxy)
 
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "/var/db/xcode_select_link")
+	assert.Contains(t, res.Detail, "/Applications/Xcode.app/Contents/Developer")
 }
