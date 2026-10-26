@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
@@ -24,7 +25,7 @@ func (d *Doctor) xcodeRecentBuildCheck() Check {
 				return Result{State: StateOK, Detail: "skipped (xcode not activated)"}
 			}
 
-			if runtime.GOOS != osDarwin {
+			if runtime.GOOS != utils.DarwinGOOS {
 				return Result{State: StateOK, Detail: "skipped (macOS only)"}
 			}
 

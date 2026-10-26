@@ -21,7 +21,7 @@ func (d *Doctor) xcodeToolchainAnchorCheck() Check {
 				return Result{State: StateOK, Detail: "skipped (xcode not activated)"}
 			}
 
-			if runtime.GOOS != osDarwin {
+			if runtime.GOOS != utils.DarwinGOOS {
 				return Result{State: StateOK, Detail: "skipped (macOS only)"}
 			}
 

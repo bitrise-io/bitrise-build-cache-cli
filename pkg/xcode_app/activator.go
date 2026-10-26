@@ -12,8 +12,6 @@ import (
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
-const darwinGOOS = "darwin"
-
 var ErrUnsupportedPlatform = errors.New("xcode link/unlink is only supported on macOS")
 
 // Activator drives Xcode.app link/unlink. Nil fields fall back to production
@@ -35,7 +33,7 @@ type (
 // override to SwiftBuild, so the project is the only route into the IDE's
 // compilation tasks.
 func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, error) {
-	if runtime.GOOS != darwinGOOS {
+	if runtime.GOOS != utils.DarwinGOOS {
 		return LinkResult{}, ErrUnsupportedPlatform
 	}
 
@@ -69,7 +67,7 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 // created. `baseConfigurationReference` set by Link is NOT reverted: pbxproj
 // offers no way to distinguish user-set from link-set.
 func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult, error) {
-	if runtime.GOOS != darwinGOOS {
+	if runtime.GOOS != utils.DarwinGOOS {
 		return UnlinkResult{}, ErrUnsupportedPlatform
 	}
 
