@@ -31,31 +31,30 @@ func (d *Doctor) xcodeToolchainAnchorCheck() Check {
 
 func diagnoseXcodeToolchainAnchor(osProxy utils.OsProxy) Result {
 	if _, err := osProxy.Lstat(paths.XcodeSelectLinkPath); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return Result{State: StateWarn, Detail: fmt.Sprintf("%s missing; multi-Xcode auto-follow disabled", paths.XcodeSelectLinkPath)}
-		}
-
-		return Result{State: StateWarn, Detail: fmt.Sprintf("lstat %s: %s", paths.XcodeSelectLinkPath, err)}
+		return anchorStatWarn("lstat", paths.XcodeSelectLinkPath, err,
+			fmt.Sprintf("%s missing; multi-Xcode auto-follow disabled", paths.XcodeSelectLinkPath))
 	}
 
 	anchorTarget, _ := osProxy.Readlink(paths.XcodeSelectLinkPath)
 
 	if _, err := osProxy.Stat(paths.XcodeSelectLinkPath); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return Result{State: StateWarn, Detail: fmt.Sprintf("%s is dangling (target %s does not exist)", paths.XcodeSelectLinkPath, anchorTarget)}
-		}
-
-		return Result{State: StateWarn, Detail: fmt.Sprintf("stat %s: %s", paths.XcodeSelectLinkPath, err)}
+		return anchorStatWarn("stat", paths.XcodeSelectLinkPath, err,
+			fmt.Sprintf("%s is dangling (target %s does not exist)", paths.XcodeSelectLinkPath, anchorTarget))
 	}
 
 	pluginPath := paths.XcodeSelectLinkCASPluginPath()
 	if _, err := osProxy.Stat(pluginPath); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return Result{State: StateWarn, Detail: fmt.Sprintf("CAS plugin missing at %s (anchor %s -> %s)", pluginPath, paths.XcodeSelectLinkPath, anchorTarget)}
-		}
-
-		return Result{State: StateWarn, Detail: fmt.Sprintf("stat %s: %s", pluginPath, err)}
+		return anchorStatWarn("stat", pluginPath, err,
+			fmt.Sprintf("CAS plugin missing at %s (anchor %s -> %s)", pluginPath, paths.XcodeSelectLinkPath, anchorTarget))
 	}
 
 	return Result{State: StateOK, Detail: fmt.Sprintf("ok (anchor %s -> %s)", paths.XcodeSelectLinkPath, anchorTarget)}
+}
+
+func anchorStatWarn(op, path string, err error, missingDetail string) Result {
+	if errors.Is(err, fs.ErrNotExist) {
+		return Result{State: StateWarn, Detail: missingDetail}
+	}
+
+	return Result{State: StateWarn, Detail: fmt.Sprintf("%s %s: %s", op, path, err)}
 }
