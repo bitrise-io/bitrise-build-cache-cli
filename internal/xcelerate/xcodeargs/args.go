@@ -112,6 +112,16 @@ var queryActions = []string{
 	"-exportNotarizedApp",
 	"-resolvePackageDependencies",
 	"-create-xcframework",
+	"-license",
+	"-runFirstLaunch",
+	"-checkFirstLaunchStatus",
+	"-downloadPlatform",
+	"-downloadAllPlatforms",
+	"-importPlatform",
+	"-downloadComponent",
+	"-importComponent",
+	"-deleteComponent",
+	"-showComponent",
 }
 
 var actions = slices.Concat(buildActions, queryActions)
