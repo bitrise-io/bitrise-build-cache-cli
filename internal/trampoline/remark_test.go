@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 func baseRemarkDeps(t *testing.T, pid int) (*bytes.Buffer, remarkDeps) {
@@ -109,7 +111,7 @@ func TestEmitEngagedRemark_CrossProcessDedup(t *testing.T) {
 	assert.Contains(t, out1, remarkText, "first process must emit remark")
 	assert.NotContains(t, out2, remarkText, "second process must skip (sentinel from first survived process exit)")
 
-	sentinel := filepath.Join(tmp, remarkSentinelPrefix+"7777")
+	sentinel := filepath.Join(tmp, paths.TrampolineRemarkSentinelPrefix+"7777")
 	_, err := os.Stat(sentinel)
 	assert.NoError(t, err, "sentinel must persist across process exit")
 }
