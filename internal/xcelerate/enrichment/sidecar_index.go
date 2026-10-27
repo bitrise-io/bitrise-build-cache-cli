@@ -134,7 +134,10 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 		return nil
 	}
 
-	var versionSkipped bool
+	var (
+		versionSkipped    bool
+		agedWithoutInvoID int
+	)
 	groups := make(map[string]SidecarGroup)
 
 	for _, de := range entries {
@@ -147,10 +150,12 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 		if !ok {
 			continue
 		}
-		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+		if s.ClosedAt.IsZero() || now.Sub(s.ClosedAt) <= minAge {
 			continue
 		}
-		if s.ClosedAt.IsZero() || now.Sub(s.ClosedAt) <= minAge {
+		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+			agedWithoutInvoID++
+
 			continue
 		}
 
@@ -167,6 +172,13 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 		}
 		g.Paths = append(g.Paths, path)
 		groups[s.WrapperSession.InvocationID] = g
+	}
+
+	// Aged sidecars without an anchored InvocationID will never surface as
+	// enriched invocations — the proxy's peer-ancestry gate silently dropped
+	// them. Warn-level because at this point it's not a transient condition.
+	if agedWithoutInvoID > 0 {
+		logger.Warnf("Enrichment: %d aged sidecar(s) have no WrapperSession.InvocationID — their cache stats will not land in BE", agedWithoutInvoID)
 	}
 
 	return groups
