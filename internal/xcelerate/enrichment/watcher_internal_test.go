@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
 func writeFixtureManifest(t *testing.T, home string) {
@@ -64,7 +66,7 @@ func TestWatcher_scan_MatchedEntry_FiresImmediately(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.Positive(t, calls)
 	assert.Empty(t, w.retries)
@@ -99,15 +101,15 @@ func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
 	w.retries = map[string]int{}
 
 	scans = 1
-	w.scan(false)
+	w.scan(false, false)
 	assert.Empty(t, handled, "held on first scan while MatchProbe still false")
 
 	scans = 2
-	w.scan(false)
+	w.scan(false, false)
 	assert.Empty(t, handled, "still held on second scan")
 
 	scans = 3
-	w.scan(false)
+	w.scan(false, false)
 	assert.Equal(t, []string{uuid}, handled, "fires on the scan MatchProbe first returns true")
 	assert.Contains(t, w.seen, uuid)
 }
@@ -146,18 +148,18 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 
 	// MaxCorrelationRetries=2 gives 2 retry scans held after the fresh sight,
 	// and orphan-fires on the next (4th total) scan.
-	w.scan(false)
+	w.scan(false, false)
 	assert.Empty(t, handled, "first sight: buckets the group for retry")
 	assert.NotEmpty(t, w.retries, "retry bucket must contain the held group")
 	assert.NotContains(t, w.seen, uuid)
 
-	w.scan(false)
+	w.scan(false, false)
 	assert.Empty(t, handled, "retry scan 1: decrements 2->1, still held")
 
-	w.scan(false)
+	w.scan(false, false)
 	assert.Empty(t, handled, "retry scan 2: decrements 1->0, still held")
 
-	w.scan(false)
+	w.scan(false, false)
 	assert.Equal(t, []string{uuid}, handled, "retries exhausted: mints as orphan")
 	assert.Contains(t, w.seen, uuid)
 }
@@ -182,7 +184,7 @@ func TestWatcher_scan_ZeroRetries_MintsImmediately(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.Equal(t, []string{uuid}, handled)
 	assert.Contains(t, w.seen, uuid)
@@ -208,7 +210,7 @@ func TestWatcher_scan_NilMatchProbe_FiresImmediately(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.Equal(t, []string{uuid}, handled)
 	assert.Contains(t, w.seen, uuid)
@@ -232,7 +234,7 @@ func TestWatcher_scan_SeedOnlyDoesNotPopulateRetries(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(true)
+	w.scan(true, false)
 
 	assert.Empty(t, handled, "seed scan must not emit")
 	assert.Contains(t, w.seen, uuid)
@@ -254,7 +256,7 @@ func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.NotEmpty(t, w.retries, "held groups must land in retries after first unmatched scan")
 	assert.NotContains(t, w.seen, uuid, "unmatched uuid must NOT be in seen (otherwise second scan is skipped)")
@@ -314,7 +316,7 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.ElementsMatch(t, []string{"UUID-DEFAULT", "UUID-MANAGED"}, handled,
 		"both glob roots must be observed on a single scan")
@@ -337,7 +339,7 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.Contains(t, handled, uuid, "nil Globs must fall back to DefaultDerivedDataGlob")
 }
@@ -358,7 +360,7 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.Equal(t, []string{"UUID-PACKAGE"}, handled,
 		"Logs/Package/ manifest (Xcode 26 package builds) must match the default glob")
@@ -412,7 +414,7 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	loaded, err := store.Load()
 	require.NoError(t, err)
@@ -478,7 +480,7 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsOneGroup(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	require.Len(t, groups, 1, "same-scheme entries within TimeGap must emit as one group")
 	assert.ElementsMatch(t, []string{"u1", "u2", "u3"}, groups[0].UUIDs())
@@ -503,13 +505,13 @@ func TestWatcher_scan_AppendingUUIDToExistingGroup_EmitsOnceMore(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 	require.Equal(t, 1, handleCalls, "initial scan emits one group")
 	assert.ElementsMatch(t, []string{"u1", "u2"}, lastUUIDs)
 
 	writeMultiEntryManifest(t, derivedRoot, "u1", "u2", "u3")
 
-	w.scan(false)
+	w.scan(false, false)
 	require.Equal(t, 2, handleCalls, "appending a new UUID to the same scheme re-emits the group")
 	assert.ElementsMatch(t, []string{"u1", "u2", "u3"}, lastUUIDs, "re-emitted group carries the enlarged UUID set (all entries, so upstream sees complete aggregation)")
 }
@@ -528,7 +530,7 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.scan(false)
+	w.scan(false, false)
 
 	assert.Zero(t, handles, "entries older than HandledManifestMaxAge must be skipped, not resurrected as orphans")
 	assert.Empty(t, w.seen, "stale entries must not be marked seen either")
@@ -552,6 +554,129 @@ func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
 
 	assert.Contains(t, handled, uuid, "ScanOnce must emit without a prior Run")
 	assert.Contains(t, w.seen, uuid, "ScanOnce must lazy-init seen and mark emitted uuids")
+}
+
+func TestWatcher_scanOrphanSidecars_FiresPseudoGroupForAgedOrphan(t *testing.T) {
+	home := t.TempDir()
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	start := now.Add(-5 * time.Minute)
+	stop := start.Add(45 * time.Second)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"invocation-X": {Start: start, Stop: stop, SidecarUUIDs: []string{"sidecar-a"}},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return now },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+		Handle: func(path string, g ManifestEntryGroup) {
+			assert.Equal(t, "", path, "synthetic path must be empty — no sibling xcactivitylog")
+			handled = append(handled, g)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	require.Len(t, handled, 1, "aged orphan sidecar must synthesize exactly one pseudo-group")
+	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-a", handled[0].Entries[0].UUID)
+	assert.Equal(t, start, handled[0].Start())
+	assert.Equal(t, stop, handled[0].Stop())
+
+	require.Len(t, reader.calls, 1)
+	assert.Equal(t, now, reader.calls[0].now)
+	assert.Equal(t, 2*DefaultPollInterval, reader.calls[0].minAge, "periodic tick must use 2*PollInterval as the age gate")
+}
+
+func TestWatcher_scanOrphanSidecars_ForceSynthesizeDropsAgeGate(t *testing.T) {
+	home := t.TempDir()
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"invocation-X": {Start: now.Add(-time.Second), Stop: now, SidecarUUIDs: []string{"sidecar-a"}},
+	}}
+
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return now },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+		Handle:                func(string, ManifestEntryGroup) {},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.ScanOnce()
+
+	require.Len(t, reader.calls, 1)
+	assert.Equal(t, time.Duration(0), reader.calls[0].minAge, "shutdown sweep must drop the age gate")
+}
+
+func TestWatcher_scanOrphanSidecars_SyntheticBypassesRetryBucket(t *testing.T) {
+	home := t.TempDir()
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"invocation-X": {Start: now.Add(-time.Minute), Stop: now.Add(-time.Second), SidecarUUIDs: []string{"sidecar-a"}},
+	}}
+
+	var handled int
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return now },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+		Handle:                func(string, ManifestEntryGroup) { handled++ },
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	assert.Equal(t, 1, handled, "synthetic group must bypass the retry bucket even when MatchProbe returns false")
+	assert.Empty(t, w.retries, "no retry bucket entry for synthetic groups")
+}
+
+func TestWatcher_scanOrphanSidecars_NoReaderNoSynthesis(t *testing.T) {
+	home := t.TempDir()
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	w := &Watcher{
+		HomeDir: home,
+		Now:     func() time.Time { return now },
+		Handle:  func(string, ManifestEntryGroup) { t.Fatal("no reader must produce no synthesis") },
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+}
+
+type stubReader struct {
+	groups map[string]SidecarGroup
+	calls  []stubReaderCall
+}
+
+type stubReaderCall struct {
+	now    time.Time
+	minAge time.Duration
+}
+
+func (s *stubReader) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+	return nil, nil, "", false
+}
+
+func (s *stubReader) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {
+	s.calls = append(s.calls, stubReaderCall{now: now, minAge: minAge})
+
+	return s.groups
 }
 
 func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {

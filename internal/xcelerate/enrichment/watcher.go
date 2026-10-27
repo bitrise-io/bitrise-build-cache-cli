@@ -38,6 +38,10 @@ type Watcher struct {
 	// behavior and is still what tests use unless they set the field.
 	HandledStore *HandledManifestStore
 
+	// SidecarReader feeds the orphan-sidecar pseudo-group synthesis at the tail
+	// of every scan tick. nil disables synthesis — pre-existing behavior.
+	SidecarReader SidecarReader
+
 	// Now is a test seam for the timestamp written into HandledStore records.
 	// nil falls back to time.Now.
 	Now func() time.Time
@@ -90,7 +94,7 @@ func (w *Watcher) Run(ctx context.Context) {
 	w.retries = make(map[string]int)
 
 	if !w.seedSeenFromStore() {
-		w.scan(true)
+		w.scan(true, false)
 	}
 
 	ticker := time.NewTicker(w.PollInterval)
@@ -101,12 +105,14 @@ func (w *Watcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.scan(false)
+			w.scan(false, false)
 		}
 	}
 }
 
 // ScanOnce runs a single synchronous pass; safe to call on a Watcher that was never Run.
+// Used by the shutdown sweep: synthesizes pseudo-groups unconditionally (age gate dropped)
+// so wrapperless invocations whose sidecars just closed still land in BE.
 func (w *Watcher) ScanOnce() {
 	if w.seen == nil {
 		w.seen = make(map[string]struct{})
@@ -115,7 +121,7 @@ func (w *Watcher) ScanOnce() {
 		w.retries = make(map[string]int)
 	}
 
-	w.scan(false)
+	w.scan(false, true)
 }
 
 // seedSeenFromStore returns true when HandledStore contributed at least one
@@ -141,7 +147,7 @@ func (w *Watcher) seedSeenFromStore() bool {
 	return len(records) > 0
 }
 
-func (w *Watcher) scan(seedOnly bool) {
+func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	logger := logOr(w.Logger)
 
 	globs := w.Globs
@@ -171,13 +177,50 @@ func (w *Watcher) scan(seedOnly bool) {
 			}
 
 			for _, group := range groups {
-				w.handleGroup(path, group, seedOnly)
+				w.handleGroup(path, group, seedOnly, false)
 			}
 		}
 	}
+
+	if !seedOnly {
+		w.scanOrphanSidecars(forceSynthesize)
+	}
 }
 
-func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, seedOnly bool) {
+// scanOrphanSidecars synthesizes pseudo-groups from aged orphan sidecars whose
+// WrapperSession.InvocationID is populated and was NOT already emitted via the
+// manifest path this tick. forceSynthesize drops the minAge gate — used by the
+// shutdown sweep so a sidecar that just closed still lands before exit.
+func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
+	if w.SidecarReader == nil {
+		return
+	}
+
+	logger := logOr(w.Logger)
+
+	pollInterval := w.PollInterval
+	if pollInterval == 0 {
+		pollInterval = DefaultPollInterval
+	}
+
+	minAge := 2 * pollInterval
+	if forceSynthesize {
+		minAge = 0
+	}
+
+	groups := w.SidecarReader.OrphanSidecarsGroupedByInvocation(w.now(), minAge)
+	for invocationID, group := range groups {
+		if len(group.SidecarUUIDs) == 0 {
+			continue
+		}
+
+		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop)
+		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
+		w.handleGroup("", pseudo, false, true)
+	}
+}
+
+func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, seedOnly, synthetic bool) {
 	logger := logOr(w.Logger)
 
 	stop := group.Stop()
@@ -205,9 +248,9 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 	key := groupKey(group)
 
-	if w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
+	if synthetic || w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
 		if w.Handle != nil {
-			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
 			w.Handle(manifestPath, group)
 		}
 		w.markGroupHandled(group)
