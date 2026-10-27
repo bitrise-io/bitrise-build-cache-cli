@@ -168,7 +168,6 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		listener:                   opts.Listener,
 		registry:                   p.sidecarRegistry,
 		writer:                     newSidecarWriter(opts.Dir, p.logger),
-		ancestryResolver:           ancestry.resolveAncestry,
 		peerAncestryEntries:        ancestry.resolveAncestryEntries,
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,

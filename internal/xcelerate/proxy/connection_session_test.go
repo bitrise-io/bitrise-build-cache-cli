@@ -79,8 +79,7 @@ func keyAt(i int) string {
 func TestFlushSession_SkipsWhenConnectionHadNoActivity(t *testing.T) {
 	dir := t.TempDir()
 	h := &sidecarStatsHandler{
-		writer:           newSidecarWriter(dir, nil),
-		ancestryResolver: func(int) []string { return nil },
+		writer: newSidecarWriter(dir, nil),
 	}
 
 	cs := newConnectionSession("k", 42, time.Now())
@@ -94,8 +93,7 @@ func TestFlushSession_SkipsWhenConnectionHadNoActivity(t *testing.T) {
 func TestFlushSession_WritesWhenConnectionHadActivity(t *testing.T) {
 	dir := t.TempDir()
 	h := &sidecarStatsHandler{
-		writer:           newSidecarWriter(dir, nil),
-		ancestryResolver: func(int) []string { return nil },
+		writer: newSidecarWriter(dir, nil),
 	}
 
 	cs := newConnectionSession("k", 42, time.Now())
@@ -140,8 +138,7 @@ func TestDerivePeerInvocationID_ReturnsDeterministicIDOnAnchor(t *testing.T) {
 func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
 	dir := t.TempDir()
 	h := &sidecarStatsHandler{
-		writer:           newSidecarWriter(dir, nil),
-		ancestryResolver: func(int) []string { return []string{"swiftc", "xcodebuild"} },
+		writer: newSidecarWriter(dir, nil),
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 42, Name: "xcodebuild", StartTimeMS: 1}}
 		},
@@ -166,9 +163,37 @@ func TestNewSessionSidecar_PropagatesDerivedDataPath(t *testing.T) {
 	cs := newConnectionSession("k", 42, time.Unix(0, 0))
 	cs.derivedDataPath = "/tmp/projectDD"
 
-	sc := newSessionSidecar(cs, time.Unix(1, 0), func(int) []string { return nil })
+	sc := newSessionSidecar(cs, time.Unix(1, 0))
 
 	assert.Equal(t, "/tmp/projectDD", sc.DerivedDataPath)
+}
+
+// TestNewSessionSidecar_PeerAncestryFromCachedEntries pins the Gap #4 fix:
+// the sidecar envelope's PeerAncestry names come from the ancestry entries
+// captured at TagConn time, not a re-walk at write time (which races the peer
+// PID's exit and would blank out the chain).
+func TestNewSessionSidecar_PeerAncestryFromCachedEntries(t *testing.T) {
+	cs := newConnectionSession("k", 42, time.Unix(0, 0))
+	cs.ancestryEntries = []AncestryEntry{
+		{PID: 42, Name: "swiftc", StartTimeMS: 1},
+		{PID: 10, Name: "xcodebuild", StartTimeMS: 2},
+	}
+
+	sc := newSessionSidecar(cs, time.Unix(1, 0))
+
+	assert.Equal(t, []string{"swiftc", "xcodebuild"}, sc.PeerAncestry)
+}
+
+// TestNewSessionSidecar_PeerAncestryNilEntriesSerialisesEmpty guards the
+// defensive fallback: a connection that never resolved ancestry (e.g. bufconn
+// tests, resolver not wired) must still serialise without panicking.
+func TestNewSessionSidecar_PeerAncestryNilEntriesSerialisesEmpty(t *testing.T) {
+	cs := newConnectionSession("k", 42, time.Unix(0, 0))
+	cs.ancestryEntries = nil
+
+	sc := newSessionSidecar(cs, time.Unix(1, 0))
+
+	assert.Empty(t, sc.PeerAncestry)
 }
 
 // TestTagConn_PopulatesDerivedDataPath exercises the DD-path flow through
@@ -197,8 +222,7 @@ func TestTagConn_WrapperSessionGate_SetAfterAccept(t *testing.T) {
 	dir := t.TempDir()
 	var active atomic.Bool
 	h := &sidecarStatsHandler{
-		writer:           newSidecarWriter(dir, nil),
-		ancestryResolver: func(int) []string { return []string{"swiftc", "xcodebuild"} },
+		writer: newSidecarWriter(dir, nil),
 		peerAncestryEntries: func(int) []AncestryEntry {
 			return []AncestryEntry{{PID: 42, Name: "xcodebuild", StartTimeMS: 1_700_000_000_000}}
 		},
