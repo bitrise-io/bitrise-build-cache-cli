@@ -165,12 +165,13 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	p.sidecarRegistry = newSessionRegistry()
 	ancestry := newAncestryCache()
 	p.sidecarStats = &sidecarStatsHandler{
-		listener:             opts.Listener,
-		registry:             p.sidecarRegistry,
-		writer:               newSidecarWriter(opts.Dir, p.logger),
-		ancestryResolver:     ancestry.resolveAncestry,
-		peerAncestryEntries:  ancestry.resolveAncestryEntries,
-		wrapperSessionActive: p.wrapperSessionActive,
+		listener:                   opts.Listener,
+		registry:                   p.sidecarRegistry,
+		writer:                     newSidecarWriter(opts.Dir, p.logger),
+		ancestryResolver:           ancestry.resolveAncestry,
+		peerAncestryEntries:        ancestry.resolveAncestryEntries,
+		derivedDataPathFromEntries: peerDerivedDataPath,
+		wrapperSessionActive:       p.wrapperSessionActive,
 	}
 }
 
