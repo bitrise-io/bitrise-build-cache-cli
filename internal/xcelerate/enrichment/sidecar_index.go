@@ -27,6 +27,23 @@ const expectedAncestor = "xcodebuild"
 // when the proxy could not anchor peer ancestry).
 type SidecarReader interface {
 	Lookup(group ManifestEntryGroup) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
+
+	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
+	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
+	// Ignores manifest correlation entirely — the result is "orphan-eligible":
+	// callers synthesize a pseudo-group so the enricher can emit a wrapperless
+	// PUT when no LogStoreManifest.plist ever arrived.
+	OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup
+}
+
+// SidecarGroup aggregates one or more sidecars sharing an InvocationID.
+// Blob stats are summed across the set; Start/Stop collapse to earliest/latest.
+type SidecarGroup struct {
+	Blob             *blobstats.Snapshot
+	Start, Stop      time.Time
+	DerivedDataPaths []string
+	SidecarUUIDs     []string
+	Paths            []string
 }
 
 type sidecarIndex struct {
@@ -101,6 +118,90 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 	}
 
 	return best, consumedPaths, bestInvocation, true
+}
+
+func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {
+	logger := logOr(i.logger)
+
+	if i.dir == "" {
+		return nil
+	}
+
+	entries, err := os.ReadDir(i.dir)
+	if err != nil {
+		logger.Debugf("Sidecar index read %s: %s", i.dir, err)
+
+		return nil
+	}
+
+	var versionSkipped bool
+	groups := make(map[string]SidecarGroup)
+
+	for _, de := range entries {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+			continue
+		}
+
+		path := filepath.Join(i.dir, de.Name())
+		s, ok := loadSidecar(path, logger, &versionSkipped)
+		if !ok {
+			continue
+		}
+		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+			continue
+		}
+		if s.ClosedAt.IsZero() || now.Sub(s.ClosedAt) <= minAge {
+			continue
+		}
+
+		g := groups[s.WrapperSession.InvocationID]
+		g.Blob = mergeBlobs(g.Blob, s.BlobStats)
+		if g.Start.IsZero() || (!s.AcceptedAt.IsZero() && s.AcceptedAt.Before(g.Start)) {
+			g.Start = s.AcceptedAt
+		}
+		if s.ClosedAt.After(g.Stop) {
+			g.Stop = s.ClosedAt
+		}
+		if s.SidecarUUID != "" {
+			g.SidecarUUIDs = append(g.SidecarUUIDs, s.SidecarUUID)
+		}
+		g.Paths = append(g.Paths, path)
+		groups[s.WrapperSession.InvocationID] = g
+	}
+
+	return groups
+}
+
+// mergeBlobs sums the per-direction counters (op / miss / error / skipped-saved
+// / bytes) of two snapshots. Histogram and throughput retained-sample fields
+// are intentionally dropped — the pseudo-group path only needs totals for the
+// hit-rate fallback and the analytics counters.
+func mergeBlobs(a, b *blobstats.Snapshot) *blobstats.Snapshot {
+	if a == nil && b == nil {
+		return nil
+	}
+	if a == nil {
+		cp := *b
+
+		return &cp
+	}
+	if b == nil {
+		return a
+	}
+
+	a.Upload.OpCount += b.Upload.OpCount
+	a.Upload.ErrorCount += b.Upload.ErrorCount
+	a.Upload.MissCount += b.Upload.MissCount
+	a.Upload.SkippedAlreadySavedCount += b.Upload.SkippedAlreadySavedCount
+	a.Upload.BytesTotal += b.Upload.BytesTotal
+
+	a.Download.OpCount += b.Download.OpCount
+	a.Download.ErrorCount += b.Download.ErrorCount
+	a.Download.MissCount += b.Download.MissCount
+	a.Download.SkippedAlreadySavedCount += b.Download.SkippedAlreadySavedCount
+	a.Download.BytesTotal += b.Download.BytesTotal
+
+	return a
 }
 
 // loadSidecar reads + unmarshals + gates on schema / ancestry. Returns ok=false
