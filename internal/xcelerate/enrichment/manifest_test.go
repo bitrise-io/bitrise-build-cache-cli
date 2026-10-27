@@ -256,3 +256,18 @@ func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, groups, 3)
 }
+
+func TestSyntheticManifestGroup_PopulatesBuildCommandAndSpan(t *testing.T) {
+	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(45 * time.Second)
+	g := enrichment.SyntheticManifestGroup("abc-123", start, stop)
+
+	require.Len(t, g.Entries, 1)
+	assert.Equal(t, enrichment.SyntheticManifestGroupUUIDPrefix+"abc-123", g.Entries[0].UUID,
+		"synthetic UUID must carry the sentinel prefix so it never collides with Xcode bare UUIDs")
+	assert.Equal(t, enrichment.CommandBuild, g.Entries[0].Command(),
+		"Signature \"build\" must route through Command() -> CommandBuild so the enricher does not drop the group")
+	assert.Equal(t, start, g.Start())
+	assert.Equal(t, stop, g.Stop())
+	assert.Equal(t, "build", g.Command(), "FullCommand+scheme-less synthesis must land as a bare \"build\"")
+}
