@@ -324,6 +324,24 @@ func (g ManifestEntryGroup) FullCommand() string {
 	return strings.Join(parts, " ")
 }
 
+// SyntheticManifestGroupUUIDPrefix tags pseudo-groups synthesized from aged
+// orphan sidecars. Bare xcodebuild UUIDs never carry this prefix so the
+// HandledManifestStore cannot collide across the real/synthetic boundary.
+const SyntheticManifestGroupUUIDPrefix = "synthetic-"
+
+// SyntheticManifestGroup builds a one-entry pseudo-group suitable for feeding
+// Enrich() when no LogStoreManifest.plist arrived. Signature "build" lands in
+// Command() → CommandBuild and FullCommand() → "build" so the enricher won't
+// drop the group as a side-effect.
+func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time) ManifestEntryGroup {
+	return ManifestEntryGroup{Entries: []ManifestEntry{{
+		UUID:      SyntheticManifestGroupUUIDPrefix + sidecarUUID,
+		Signature: "build",
+		Start:     start,
+		Stop:      stop,
+	}}}
+}
+
 // GroupManifestEntries expects entries from a single manifest — see the
 // ManifestEntryGroup invariant.
 func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []ManifestEntryGroup {
