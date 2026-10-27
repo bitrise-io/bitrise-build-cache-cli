@@ -159,6 +159,35 @@ func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
 	require.Len(t, entries, 1)
 }
 
+// TestNewSessionSidecar_PropagatesDerivedDataPath pins the sidecar envelope's
+// DerivedDataPath to the per-conn field; the enrichment watcher relies on this
+// to glob project-local DerivedData roots.
+func TestNewSessionSidecar_PropagatesDerivedDataPath(t *testing.T) {
+	cs := newConnectionSession("k", 42, time.Unix(0, 0))
+	cs.derivedDataPath = "/tmp/projectDD"
+
+	sc := newSessionSidecar(cs, time.Unix(1, 0), func(int) []string { return nil })
+
+	assert.Equal(t, "/tmp/projectDD", sc.DerivedDataPath)
+}
+
+// TestTagConn_PopulatesDerivedDataPath exercises the DD-path flow through
+// resolveDerivedDataPath into the connection session.
+func TestTagConn_PopulatesDerivedDataPath(t *testing.T) {
+	h := &sidecarStatsHandler{
+		peerAncestryEntries: func(int) []AncestryEntry {
+			return []AncestryEntry{{PID: 100, Name: "xcodebuild"}}
+		},
+		derivedDataPathFromEntries: func(_ []AncestryEntry) string { return "/tmp/dd" },
+	}
+
+	cs := newConnectionSession("k", 100, time.Now())
+	cs.ancestryEntries = h.resolveEntries(100)
+	cs.derivedDataPath = h.resolveDerivedDataPath(cs.ancestryEntries)
+
+	assert.Equal(t, "/tmp/dd", cs.derivedDataPath)
+}
+
 // TestTagConn_WrapperSessionGate_SetAfterAccept guards the gate's capture-at-TagConn
 // semantics: a wrapper SetSession that fires AFTER derivation runs must not retroactively
 // clear the derived InvocationID. The sidecar still carries the derivation; the

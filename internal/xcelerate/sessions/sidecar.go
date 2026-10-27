@@ -27,6 +27,13 @@ type Sidecar struct {
 
 	// WrapperSession carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.
 	WrapperSession *WrapperLink `json:"wrapper_session"`
+
+	// DerivedDataPath is the -derivedDataPath value parsed off the first
+	// xcodebuild ancestor at TagConn time. Empty when the flag was not
+	// supplied, the ancestor could not be introspected, or no xcodebuild
+	// ancestor is present. Additive to schema v2: readers unmarshal into the
+	// typed struct and ignore the field when absent — no SchemaVersion bump.
+	DerivedDataPath string `json:"derived_data_path,omitempty"`
 }
 
 // WrapperLink carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.
