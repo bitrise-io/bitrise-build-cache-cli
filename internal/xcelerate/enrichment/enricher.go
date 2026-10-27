@@ -38,6 +38,12 @@ type Enricher struct {
 	Now              func() time.Time
 	XcresultParser   xcresult.Parser
 	SidecarReader    SidecarReader
+
+	// OnEmit fires after a successful PutInvocation with the ID actually sent.
+	// The watcher wires this to its per-tick dedup set so an aged orphan
+	// sidecar sharing the ID with a manifest emission does not re-emit as a
+	// synthetic pseudo-group.
+	OnEmit func(invocationID string)
 }
 
 func (e *Enricher) now() time.Time {
@@ -151,6 +157,10 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	// matched=false always: matched groups short-circuit above and LastMatched
 	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
+
+	if e.OnEmit != nil {
+		e.OnEmit(invocationID)
+	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 }

@@ -48,6 +48,22 @@ type Watcher struct {
 
 	seen    map[string]struct{}
 	retries map[string]int
+
+	// tickEmittedIDs collects InvocationIDs the Enricher emitted via the
+	// manifest path during the current scan tick so scanOrphanSidecars can
+	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
+	tickEmittedIDs map[string]struct{}
+}
+
+// RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
+// the per-tick dedup set that scanOrphanSidecars reads: a sidecar whose ID
+// just emitted via the manifest path must not re-emit as a pseudo-group.
+func (w *Watcher) RecordEmittedInvocationID(invocationID string) {
+	if invocationID == "" || w.tickEmittedIDs == nil {
+		return
+	}
+
+	w.tickEmittedIDs[invocationID] = struct{}{}
 }
 
 func (w *Watcher) now() time.Time {
@@ -150,6 +166,9 @@ func (w *Watcher) seedSeenFromStore() bool {
 func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	logger := logOr(w.Logger)
 
+	w.tickEmittedIDs = make(map[string]struct{})
+	defer func() { w.tickEmittedIDs = nil }()
+
 	globs := w.Globs
 	if len(globs) == 0 {
 		globs = []string{DefaultDerivedDataGlob}
@@ -210,6 +229,11 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 
 	groups := w.SidecarReader.OrphanSidecarsGroupedByInvocation(w.now(), minAge)
 	for invocationID, group := range groups {
+		if _, emitted := w.tickEmittedIDs[invocationID]; emitted {
+			logger.Debugf("Watcher: skip synthetic pseudo-group for InvocationID %s (manifest path emitted this tick)", invocationID)
+
+			continue
+		}
 		if len(group.SidecarUUIDs) == 0 {
 			continue
 		}
