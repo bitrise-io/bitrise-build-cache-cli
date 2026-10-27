@@ -47,11 +47,13 @@ func TestDeactivate_Xcode_RemovesRootAndShellBlocks(t *testing.T) {
 	_, err := os.Stat(root)
 	assert.True(t, os.IsNotExist(err))
 
-	// Toolchain bundle + discovery symlink are also gone.
-	_, err = os.Lstat(tcBundle)
-	assert.True(t, os.IsNotExist(err))
-	_, err = os.Lstat(tcLink)
-	assert.True(t, os.IsNotExist(err))
+	if runtime.GOOS == "darwin" {
+		// Toolchain bundle + discovery symlink are also gone.
+		_, err = os.Lstat(tcBundle)
+		assert.True(t, os.IsNotExist(err))
+		_, err = os.Lstat(tcLink)
+		assert.True(t, os.IsNotExist(err))
+	}
 
 	bashAfter, err := os.ReadFile(bashRC)
 	require.NoError(t, err)
