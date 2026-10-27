@@ -682,6 +682,57 @@ func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
 	assert.Equal(t, int64(4), s.captured.CacheBlobStats.Upload.OpCount)
 }
 
+func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+
+	const derivedID = "deadbeef-1111-4222-8333-444455556666"
+	var emitted []string
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: derivedID},
+		OnEmit:        func(id string) { emitted = append(emitted, id) },
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	require.Len(t, emitted, 1, "OnEmit must fire exactly once after a successful PUT")
+	assert.Equal(t, derivedID, emitted[0], "OnEmit must receive the InvocationID actually sent to the backend")
+}
+
+func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return errors.New("boom") },
+	}
+
+	var emitted []string
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		OnEmit: func(id string) { emitted = append(emitted, id) },
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.Empty(t, emitted, "OnEmit must not fire when PutInvocation failed")
+}
+
 func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}

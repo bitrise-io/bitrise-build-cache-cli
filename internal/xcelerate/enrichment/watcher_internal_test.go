@@ -644,6 +644,53 @@ func TestWatcher_scanOrphanSidecars_SyntheticBypassesRetryBucket(t *testing.T) {
 	assert.Empty(t, w.retries, "no retry bucket entry for synthetic groups")
 }
 
+func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"id-manifest": {Start: fixtureNow.Add(-time.Minute), Stop: fixtureNow.Add(-30 * time.Second), SidecarUUIDs: []string{"sidecar-a"}},
+		"id-orphan":   {Start: fixtureNow.Add(-time.Minute), Stop: fixtureNow.Add(-30 * time.Second), SidecarUUIDs: []string{"sidecar-b"}},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			handled = append(handled, g)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	// Simulate the manifest-emission side: the enricher's OnEmit hook will
+	// fire with "id-manifest" between the manifest loop and scanOrphanSidecars.
+	// Here we approximate that by wrapping Handle to call RecordEmittedInvocationID.
+	w.Handle = func(path string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+		// Only the real manifest entries invoke the manifest-side side-effect; synthetic groups must not loop-feed the dedup set.
+		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			w.RecordEmittedInvocationID("id-manifest")
+		}
+	}
+
+	w.scan(false, false)
+
+	// Both manifest groups + one synthetic (id-orphan) must handle;
+	// id-manifest's synthetic must be skipped.
+	var synthetic []string
+	for _, g := range handled {
+		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			synthetic = append(synthetic, g.Entries[0].UUID)
+		}
+	}
+
+	require.Len(t, synthetic, 1, "exactly one synthetic group must emit — the dedup set must skip id-manifest's")
+	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-b", synthetic[0], "the surviving synthetic group must be the one whose InvocationID was NOT emitted via the manifest path")
+}
+
 func TestWatcher_scanOrphanSidecars_NoReaderNoSynthesis(t *testing.T) {
 	home := t.TempDir()
 	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
