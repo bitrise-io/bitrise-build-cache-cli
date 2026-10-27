@@ -333,7 +333,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		return matched
 	}
 
-	return &enrichment.Watcher{
+	w := &enrichment.Watcher{
 		HomeDir: b.homeDir,
 		Globs: []string{
 			enrichment.DefaultDerivedDataGlob,
@@ -347,6 +347,9 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		HandledStore:          b.handledManifests,
 		SidecarReader:         sidecarReader,
 	}
+	enricher.OnEmit = w.RecordEmittedInvocationID
+
+	return w
 }
 
 // watcherTimeGap widens the manifest-grouping window on CI to absorb
