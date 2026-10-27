@@ -3,12 +3,14 @@
 package enrichment_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -323,6 +325,48 @@ func TestSidecarIndex_OrphanSidecars_IgnoresSidecarsWithoutInvocationID(t *testi
 	now := base.Add(60 * time.Second)
 	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
 	assert.Empty(t, groups, "sidecars without a populated InvocationID must not surface as orphans")
+}
+
+func TestSidecarIndex_OrphanSidecars_WarnsOnAgedSidecarsWithoutInvocationID(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "aged-anchored.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-anchored",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	writeSidecar(t, dir, "aged-unanchored.json", sidecarFixture{
+		SchemaVersion: 2,
+		SidecarUUID:   "sidecar-unanchored",
+		PeerAncestry:  []string{"xcodebuild"},
+		AcceptedAt:    base,
+		ClosedAt:      base.Add(5 * time.Second),
+		BlobStats:     blob(5, 0, 0),
+		// WrapperSession nil — peer-ancestry anchoring failed on the proxy side.
+	})
+	writeSidecar(t, dir, "fresh-unanchored.json", sidecarFixture{
+		SchemaVersion: 2,
+		SidecarUUID:   "sidecar-fresh",
+		PeerAncestry:  []string{"xcodebuild"},
+		AcceptedAt:    base.Add(58 * time.Second),
+		ClosedAt:      base.Add(59 * time.Second),
+		BlobStats:     blob(1, 0, 0),
+		// Also unanchored but still inside the age window — must NOT contribute to the warn.
+	})
+
+	buf := &bytes.Buffer{}
+	idx := enrichment.NewSidecarIndex(dir, log.NewLogger(log.WithOutput(buf)))
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, 10*time.Second)
+
+	require.Len(t, groups, 1, "only the anchored aged sidecar must surface")
+	assert.Contains(t, buf.String(), "1 aged sidecar(s) have no WrapperSession.InvocationID",
+		"warn must fire for aged orphan sidecars that will never land in BE; fresh ones are excluded")
 }
 
 func TestSidecarIndex_OrphanSidecars_SchemaFilterRespected(t *testing.T) {
