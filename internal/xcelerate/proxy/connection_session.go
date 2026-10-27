@@ -31,6 +31,18 @@ type connectionSession struct {
 	// active. Empty when the wrapper owns the session or no anchor was found.
 	derivedInvocationID string
 
+	// derivedDataPath is the -derivedDataPath value parsed off the first
+	// "xcodebuild" ancestor's cmdline, resolved against that process's cwd.
+	// Empty when the flag was not supplied, the ancestor could not be
+	// introspected, or the peer has no xcodebuild ancestor at all. Shipped on
+	// the sidecar so the enrichment watcher can glob project-local DD roots.
+	derivedDataPath string
+
+	// ancestryEntries caches the resolved rich chain for the peer; sidecar
+	// write time projects names from this instead of re-walking (the PID may be
+	// dead by then).
+	ancestryEntries []AncestryEntry
+
 	// flushOnce guards against a GracefulStop flushAll racing ConnEnd.
 	flushOnce sync.Once
 
@@ -153,6 +165,12 @@ type sidecarStatsHandler struct {
 	// xcodebuild/Xcode. Covered by TestDerivePeerInvocationID_NeverUsesProxyAncestry.
 	peerAncestryEntries func(pid int) []AncestryEntry
 
+	// derivedDataPathFromEntries parses -derivedDataPath off the first
+	// xcodebuild entry in the cached chain. Empty when nothing to anchor on or
+	// the peer's cmdline is unreadable. Injectable so tests can skip
+	// gopsutil-driven process introspection.
+	derivedDataPathFromEntries func(entries []AncestryEntry) string
+
 	// wrapperSessionActive returns true when p.currentSession != nil at
 	// TagConn time; derivation skips in that case because the wrapper already
 	// owns the InvocationID.
@@ -183,10 +201,34 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 	}
 
 	cs := newConnectionSession(key, pc.peerPID, pc.acceptedAt)
-	cs.derivedInvocationID = h.derivePeerInvocationID(pc.peerPID)
+	cs.ancestryEntries = h.resolveEntries(pc.peerPID)
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries)
+	cs.derivedDataPath = h.resolveDerivedDataPath(cs.ancestryEntries)
 	h.registry.put(cs)
 
 	return contextWithSession(ctx, cs)
+}
+
+// resolveEntries returns the cached ancestry entries for peerPID, or nil when
+// the resolver is not wired (bufconn tests). Callers project / parse off the
+// cached slice to avoid a second walk when the PEER PID may be dead already.
+func (h *sidecarStatsHandler) resolveEntries(peerPID int) []AncestryEntry {
+	if h.peerAncestryEntries == nil {
+		return nil
+	}
+
+	return h.peerAncestryEntries(peerPID)
+}
+
+// resolveDerivedDataPath parses -derivedDataPath from the first xcodebuild
+// entry's cmdline. Returns "" when the resolver is not wired or no xcodebuild
+// anchor is present (health probe / unrelated peer).
+func (h *sidecarStatsHandler) resolveDerivedDataPath(entries []AncestryEntry) string {
+	if h.derivedDataPathFromEntries == nil || len(entries) == 0 {
+		return ""
+	}
+
+	return h.derivedDataPathFromEntries(entries)
 }
 
 // derivePeerInvocationID returns a deterministic InvocationID derived from
@@ -194,15 +236,14 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 //   - the wrapper owns the current session (its ID wins),
 //   - the peer ancestry lacks an anchorable name (health probe / unrelated),
 //   - the resolver was not wired (bufconn tests).
-func (h *sidecarStatsHandler) derivePeerInvocationID(peerPID int) string {
+func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry) string {
 	if h.wrapperSessionActive != nil && h.wrapperSessionActive() {
 		return ""
 	}
-	if h.peerAncestryEntries == nil {
+	if len(entries) == 0 {
 		return ""
 	}
 
-	entries := h.peerAncestryEntries(peerPID)
 	bidEntries := make([]buildidentity.AncestryEntry, 0, len(entries))
 	for _, e := range entries {
 		bidEntries = append(bidEntries, buildidentity.AncestryEntry{PID: e.PID, Name: e.Name, StartTimeMS: e.StartTimeMS})
