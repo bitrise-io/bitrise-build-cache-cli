@@ -143,6 +143,12 @@ const TrampolineStartLockFilename = "bitrise-xcelerate-starting.lock"
 // the trampoline binary free of internal/paths imports).
 const TrampolineRemarkSentinelPrefix = "bitrise-xcelerate-remark-"
 
+// TrampolineVisitURLSentinelPrefix prefixes per-InvocationID sentinel files
+// the trampoline atomically creates to dedup the Visit URL remark across shim
+// processes. Keyed by the derived InvocationID so each distinct xcodebuild /
+// Xcode / SWBBuildService anchor gets exactly one URL printed.
+const TrampolineVisitURLSentinelPrefix = "bitrise-xcelerate-visit-"
+
 // CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
 
