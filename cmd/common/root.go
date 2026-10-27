@@ -44,10 +44,7 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 		configcommon.LogCLIVersion(log.NewLogger(log.WithDebugLog(IsDebugLogMode)))
 
-		switch cmd.Name() {
-		case "login", "logout", "completion", "help", "status":
-			// status reports the auth source, so it must not refresh and mask it.
-		default:
+		if !shouldSkipHydrate(cmd) {
 			hydrateStoredAuth(cmd.Context())
 		}
 
@@ -57,6 +54,22 @@ In case of Bazel it's done via creating or modifying $HOME/.bazelrc.`,
 
 		RunVersionCheck(cmd)
 	},
+}
+
+func shouldSkipHydrate(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "login", "logout", "completion", "help",
+		"xcodebuild",
+		"start-proxy", "stop-proxy",
+		"start", "stop", "set-invocation-id", "health-check", "collect-stats",
+		"register-invocation", "register-child-invocation":
+		return true
+	case "status":
+		// status reports the auth source, so it must not refresh and mask it.
+		return true
+	default:
+		return false
+	}
 }
 
 func ShouldSkipVersionCheck(cmd *cobra.Command) bool {
