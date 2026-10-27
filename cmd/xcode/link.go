@@ -13,9 +13,6 @@ import (
 )
 
 //nolint:gochecknoglobals
-var linkPostBuildScript bool
-
-//nolint:gochecknoglobals
 var linkCmd = &cobra.Command{
 	Use:   "link <path>",
 	Short: "Wire an Xcode project or workspace to the Bitrise Build Cache override xcconfig",
@@ -31,11 +28,6 @@ For each XCBuildConfiguration:
   - Otherwise, create a sibling .bitrise-build-cache.xcconfig next to the .xcodeproj,
     set the baseConfigurationReference to it, and "#include?" the override from there.
 
-With --post-build-script, also inject a scheme PostActions ExecutionAction into
-every shared and user scheme, invoking "bitrise-build-cache xcelerate flush-session"
-followed by "bitrise-build-cache invocations list --limit 5" after each build so the
-latest invocations show up in Xcode's build log. Idempotent — identified by its ActionID.
-
 Idempotent — re-running replaces the marker block cleanly. SPM package targets are
 NOT reached by this command (architectural limitation).`,
 	Args:         cobra.ExactArgs(1),
@@ -48,9 +40,7 @@ NOT reached by this command (architectural limitation).`,
 			Envs:   utils.AllEnvs(),
 		}
 
-		result, err := activator.LinkWithOptions(cmd.Context(), args[0], xapkg.LinkOptions{
-			PostBuildScript: linkPostBuildScript,
-		})
+		result, err := activator.Link(cmd.Context(), args[0])
 		if err != nil {
 			if errors.Is(err, xapkg.ErrUnsupportedPlatform) {
 				return err //nolint:wrapcheck // sentinel
@@ -65,10 +55,7 @@ NOT reached by this command (architectural limitation).`,
 		for _, f := range result.CreatedSiblings {
 			logger.Donef("Created sibling xcconfig + patched project: %s", f)
 		}
-		for _, f := range result.ModifiedSchemes {
-			logger.Donef("Injected flush-session post-build action: %s", f)
-		}
-		if len(result.ModifiedXCConfigs) == 0 && len(result.CreatedSiblings) == 0 && len(result.ModifiedSchemes) == 0 {
+		if len(result.ModifiedXCConfigs) == 0 && len(result.CreatedSiblings) == 0 {
 			logger.Infof("Nothing to change — project already linked.")
 		}
 
@@ -78,6 +65,4 @@ NOT reached by this command (architectural limitation).`,
 
 func init() {
 	xcodeCommand.AddCommand(linkCmd)
-	linkCmd.Flags().BoolVar(&linkPostBuildScript, "post-build-script", false,
-		"Inject a scheme PostActions ExecutionAction that runs `bitrise-build-cache xcelerate flush-session` after each build. Also prints the latest invocations via `invocations list` so the current build is visible in Xcode's build log.")
 }
