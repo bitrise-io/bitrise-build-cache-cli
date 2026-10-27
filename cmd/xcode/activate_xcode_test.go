@@ -13,6 +13,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/xcode"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
@@ -65,7 +66,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		assert.FileExists(t, filepath.Join(home, ".bashrc"))
 		assert.FileExists(t, filepath.Join(home, ".zshrc"))
 		assert.FileExists(t, filepath.Join(home, ".github_env"))
-		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "bitrise-build-cache-cli")))
+		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, paths.CLIBinaryName)))
 		assert.FileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcodebuild")))
 
 		// make sure config was saved as expected
