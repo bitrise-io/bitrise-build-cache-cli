@@ -199,10 +199,36 @@ var alwaysRedactKeys = []string{ //nolint:gochecknoglobals
 // key isn't in the explicit lists above.
 var tokenValuePrefixes = []string{"bitpat_", "bitwat_"} //nolint:gochecknoglobals
 
+// sensitiveKeySubstrings are case-insensitive key-name substrings that imply a
+// credential-bearing env var — a safety net alongside alwaysRedactKeys /
+// tokenValuePrefixes so third-party CLIs that drop a *_TOKEN / *_SECRET /
+// *_PASSWORD / *_API_KEY / OAUTH* / PAT_* env (e.g. CLAUDE_CODE_OAUTH_TOKEN,
+// GITHUB_TOKEN, NPM_TOKEN) don't leak through the invocation PUT payload.
+var sensitiveKeySubstrings = []string{ //nolint:gochecknoglobals
+	"TOKEN",
+	"SECRET",
+	"PASSWORD",
+	"PASSWD",
+	"API_KEY",
+	"APIKEY",
+	"PRIVATE_KEY",
+	"OAUTH",
+	"CREDENTIAL",
+}
+
+// sensitiveKeySubstringExceptions are env-var names that match
+// sensitiveKeySubstrings but carry metadata (not a secret) — e.g.
+// BITRISE_SECRET_ENV_KEY_LIST holds a comma-separated list of key names.
+var sensitiveKeySubstringExceptions = map[string]struct{}{ //nolint:gochecknoglobals
+	"BITRISE_SECRET_ENV_KEY_LIST": {},
+}
+
 func redactBitriseEnvs(envs map[string]string) {
 	hasher := sha256.New()
+	redacted := make(map[string]struct{}, len(envs))
 	redact := func(key, value string) {
 		envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, value)[:4])
+		redacted[key] = struct{}{}
 	}
 
 	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
@@ -216,22 +242,45 @@ func redactBitriseEnvs(envs map[string]string) {
 	}
 
 	for _, key := range alwaysRedactKeys {
+		if _, done := redacted[key]; done {
+			continue
+		}
 		if envValue, ok := envs[key]; ok {
 			redact(key, envValue)
 		}
 	}
 
 	for key, value := range envs {
-		if !hasTokenPrefix(value) {
+		if _, done := redacted[key]; done {
 			continue
 		}
-		redact(key, value)
+		switch {
+		case hasTokenPrefix(value):
+			redact(key, value)
+		case hasSensitiveKeySubstring(key):
+			redact(key, value)
+		}
 	}
 }
 
 func hasTokenPrefix(value string) bool {
 	for _, p := range tokenValuePrefixes {
 		if strings.HasPrefix(value, p) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasSensitiveKeySubstring(key string) bool {
+	if _, excepted := sensitiveKeySubstringExceptions[key]; excepted {
+		return false
+	}
+
+	upper := strings.ToUpper(key)
+	for _, s := range sensitiveKeySubstrings {
+		if strings.Contains(upper, s) {
 			return true
 		}
 	}
