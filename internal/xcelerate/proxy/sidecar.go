@@ -87,14 +87,15 @@ func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAnces
 	}
 
 	return sessions.Sidecar{
-		SchemaVersion:  sessions.SidecarSchemaVersion,
-		Source:         "proxy",
-		SidecarUUID:    uuid.NewString(),
-		PeerPID:        conn.peerPID,
-		PeerAncestry:   resolveAncestry(conn.peerPID),
-		AcceptedAt:     conn.acceptedAt.UTC(),
-		ClosedAt:       closedAt.UTC(),
-		BlobStats:      stats.BlobStats,
-		WrapperSession: link,
+		SchemaVersion:   sessions.SidecarSchemaVersion,
+		Source:          "proxy",
+		SidecarUUID:     uuid.NewString(),
+		PeerPID:         conn.peerPID,
+		PeerAncestry:    resolveAncestry(conn.peerPID),
+		AcceptedAt:      conn.acceptedAt.UTC(),
+		ClosedAt:        closedAt.UTC(),
+		BlobStats:       stats.BlobStats,
+		WrapperSession:  link,
+		DerivedDataPath: conn.derivedDataPath,
 	}
 }
