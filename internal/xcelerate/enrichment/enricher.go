@@ -117,8 +117,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		}
 	}
 
-	invocationID := uuid.NewString()
-
 	var runErr error
 	if !group.Success() {
 		runErr = errors.New(group.ErrorMessage())
