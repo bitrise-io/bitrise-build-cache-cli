@@ -22,6 +22,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/slicebuf"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/cas"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
@@ -163,12 +164,12 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	}
 
 	p.sidecarRegistry = newSessionRegistry()
-	ancestry := newAncestryCache()
+	ancestry := buildidentity.NewAncestryCache()
 	p.sidecarStats = &sidecarStatsHandler{
 		listener:                   opts.Listener,
 		registry:                   p.sidecarRegistry,
 		writer:                     newSidecarWriter(opts.Dir, p.logger),
-		peerAncestryEntries:        ancestry.resolveAncestryEntries,
+		peerAncestryEntries:        ancestry.ResolveAncestryEntries,
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
 	}
