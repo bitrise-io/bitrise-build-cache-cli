@@ -502,17 +502,52 @@ func TestRedactBitriseEnvs_secretKeyListStillHonoured(t *testing.T) {
 	t.Parallel()
 
 	envs := map[string]string{
-		"BITRISE_SECRET_ENV_KEY_LIST": "MY_SECRET,OTHER",
-		"MY_SECRET":                   "s1",
+		"BITRISE_SECRET_ENV_KEY_LIST": "MY_LISTED,OTHER",
+		"MY_LISTED":                   "s1",
 		"OTHER":                       "s2",
-		"NOT_SECRET":                  "kept",
+		"UNRELATED":                   "kept",
 	}
 
 	redactBitriseEnvs(envs)
 
-	assert.Contains(t, envs["MY_SECRET"], "<sha256@")
+	assert.Contains(t, envs["MY_LISTED"], "<sha256@")
 	assert.Contains(t, envs["OTHER"], "<sha256@")
-	assert.Equal(t, "kept", envs["NOT_SECRET"])
+	assert.Equal(t, "kept", envs["UNRELATED"])
+}
+
+func TestRedactBitriseEnvs_sensitiveKeySubstringSafetyNet(t *testing.T) {
+	t.Parallel()
+
+	envs := map[string]string{
+		"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-abcdef",
+		"GITHUB_TOKEN":            "ghp_abcdef",
+		"NPM_TOKEN":               "npm_abcdef",
+		"AWS_SECRET_ACCESS_KEY":   "secretvalue",
+		"OPENAI_API_KEY":          "sk-abcdef",
+		"MY_PASSWORD":             "hunter2",
+		"MY_PRIVATE_KEY":          "-----BEGIN...",
+		"MY_CREDENTIAL":           "whatever",
+		"PATH":                    "/usr/bin",
+		"HOME":                    "/root",
+	}
+
+	redactBitriseEnvs(envs)
+
+	for _, key := range []string{
+		"CLAUDE_CODE_OAUTH_TOKEN",
+		"GITHUB_TOKEN",
+		"NPM_TOKEN",
+		"AWS_SECRET_ACCESS_KEY",
+		"OPENAI_API_KEY",
+		"MY_PASSWORD",
+		"MY_PRIVATE_KEY",
+		"MY_CREDENTIAL",
+	} {
+		assert.Contains(t, envs[key], "<sha256@",
+			"%s must be redacted by key-substring safety net", key)
+	}
+	assert.Equal(t, "/usr/bin", envs["PATH"], "PATH must pass through")
+	assert.Equal(t, "/root", envs["HOME"], "HOME must pass through")
 }
 
 func TestResolveDefaultBranch(t *testing.T) {
