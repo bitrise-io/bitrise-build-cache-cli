@@ -101,8 +101,8 @@ func diagnoseXcodeRecentBuild(derivedDataRoots []string, now time.Time) Result {
 
 		return Result{
 			State: StateOK,
-			Detail: fmt.Sprintf("recent xcode build: %d/%d hits (%d%%) at %s, project %s",
-				metrics.Hits, metrics.Total, pct, info.ModTime().UTC().Format(time.RFC3339), project),
+			Detail: fmt.Sprintf("recent xcode build: %d/%d hits (%d%%) at %s, project %s, path %s",
+				metrics.Hits, metrics.Total, pct, info.ModTime().UTC().Format(time.RFC3339), project, newest),
 		}
 	case xcactivitylog.OutcomeEmpty:
 		return Result{State: StateOK, Detail: fmt.Sprintf("recent xcode build at %s (project %s): activity log empty", info.ModTime().UTC().Format(time.RFC3339), project)}
