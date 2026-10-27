@@ -12,7 +12,7 @@ require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.61
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.40
 	github.com/dustin/go-humanize v1.1.0
-	github.com/godbus/dbus/v5 v5.2.3
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gofrs/flock v0.13.1
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/golang/protobuf v1.5.4
