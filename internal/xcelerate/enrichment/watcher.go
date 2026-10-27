@@ -38,8 +38,14 @@ type Watcher struct {
 	// behavior and is still what tests use unless they set the field.
 	HandledStore *HandledManifestStore
 
-	// SidecarReader feeds the orphan-sidecar pseudo-group synthesis at the tail
-	// of every scan tick. nil disables synthesis — pre-existing behavior.
+	// SidecarReader feeds two scan-tail paths: (a) per-scan DerivedDataPath
+	// hints turn each unique DD path into a <DD>/Logs/*/LogStoreManifest.plist
+	// glob, layered on top of the HOME-relative defaults so a direct
+	// `xcodebuild -derivedDataPath ./DerivedData` invocation is still correlated;
+	// (b) aged orphan sidecar synthesis builds pseudo-ManifestEntryGroups for
+	// InvocationIDs that never produced a LogStoreManifest.plist.
+	// Nil disables both — HOME-relative paths remain the fast path, and no
+	// synthesis fires.
 	SidecarReader SidecarReader
 
 	// Now is a test seam for the timestamp written into HandledStore records.
@@ -191,8 +197,28 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 
 	var manifestWindows []manifestWindow
 
-	for _, glob := range globs {
-		matches, err := filepath.Glob(filepath.Join(w.HomeDir, glob))
+	// HOME-relative defaults go through filepath.Join(HomeDir, ...); sidecar
+	// hints are already absolute so they stay as-is.
+	type scanTarget struct {
+		pattern  string
+		absolute bool
+	}
+
+	targets := make([]scanTarget, 0, len(globs))
+	for _, g := range globs {
+		targets = append(targets, scanTarget{pattern: g, absolute: false})
+	}
+	for _, pattern := range w.sidecarGlobs() {
+		targets = append(targets, scanTarget{pattern: pattern, absolute: true})
+	}
+
+	for _, t := range targets {
+		pattern := t.pattern
+		if !t.absolute {
+			pattern = filepath.Join(w.HomeDir, pattern)
+		}
+
+		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			logger.Debugf("LogWatcher glob failed: %s", err)
 
@@ -274,6 +300,28 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool, manifestWindows []man
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}
+}
+
+// sidecarGlobs expands each pending DerivedDataPath into a
+// LogStoreManifest.plist glob under its Logs tree. Returns nil when no
+// SidecarReader is wired or no sidecar carries a DD path — HOME-relative
+// defaults still cover IDE builds and the wrapper's managed DD root.
+func (w *Watcher) sidecarGlobs() []string {
+	if w.SidecarReader == nil {
+		return nil
+	}
+
+	paths := w.SidecarReader.PendingDerivedDataPaths()
+	if len(paths) == 0 {
+		return nil
+	}
+
+	globs := make([]string, 0, len(paths))
+	for _, p := range paths {
+		globs = append(globs, filepath.Join(p, "Logs", "*", "LogStoreManifest.plist"))
+	}
+
+	return globs
 }
 
 func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, seedOnly, synthetic bool) {
