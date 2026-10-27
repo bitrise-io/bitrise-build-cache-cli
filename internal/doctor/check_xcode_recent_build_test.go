@@ -97,6 +97,44 @@ func TestXcodeRecentBuildCheck_unparsedBuildReportsOK(t *testing.T) {
 	assert.Contains(t, res.Detail, "regex drift")
 }
 
+func TestXcodeRecentBuildCheck_picksNewestAcrossDefaultAndCacheRoots(t *testing.T) {
+	// Both the stock ~/Library/Developer/Xcode/DerivedData and the wrapper's
+	// ~/.bitrise/cache/xcode-dd carry a recent log; the newer one must win.
+	defaultDD := t.TempDir()
+	cacheDD := t.TempDir()
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+
+	writeGzipLog(t, defaultDD, "DefaultProj-abc", "default.xcactivitylog",
+		[]byte("note: 1 hits / 2 cacheable tasks (50%)\n"),
+		now.Add(-30*time.Minute))
+	writeGzipLog(t, cacheDD, "CacheProj-def", "cache.xcactivitylog",
+		[]byte("note: 9 hits / 10 cacheable tasks (90%)\n"),
+		now.Add(-1*time.Minute))
+
+	res := diagnoseXcodeRecentBuild([]string{defaultDD, cacheDD}, now)
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "9/10 hits (90%)")
+	assert.Contains(t, res.Detail, "project CacheProj-def")
+	assert.Contains(t, res.Detail, "path "+filepath.Join(cacheDD, "CacheProj-def", "Logs", "Build", "cache.xcactivitylog"))
+}
+
+func TestXcodeRecentBuildCheck_defaultRootPickedWhenCacheEmpty(t *testing.T) {
+	// Only the default DerivedData has a log — proves the default location is
+	// scanned (regression guard for ACI-5554 RDE verification gap).
+	defaultDD := t.TempDir()
+	cacheDD := t.TempDir() // present but empty
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+
+	writeGzipLog(t, defaultDD, "DefaultProj-xyz", "default.xcactivitylog",
+		[]byte("note: 7 hits / 8 cacheable tasks (87%)\n"),
+		now.Add(-5*time.Minute))
+
+	res := diagnoseXcodeRecentBuild([]string{defaultDD, cacheDD}, now)
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "7/8 hits")
+	assert.Contains(t, res.Detail, "project DefaultProj-xyz")
+}
+
 func TestXcodeRecentBuildCheck_skippedWhenNotActivated(t *testing.T) {
 	d := &Doctor{ActivatedTools: func() map[toolconfig.Tool]bool { return nil }}
 
