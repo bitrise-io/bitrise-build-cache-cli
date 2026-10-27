@@ -25,6 +25,11 @@ type FlushSessionClient interface {
 	FlushSession(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*session.FlushSessionResponse, error)
 }
 
+// noPendingMessage is the single stdout line both the proxy-missing branch and
+// a proxy-running-but-empty-queue response resolve to. Operators get the same
+// outcome string regardless of which path produced it.
+const noPendingMessage = "No pending invocations to flush."
+
 // FlushSession dials the running proxy, invokes the FlushSession RPC, and
 // prints a Visit URL per emitted invocation ID. Missing proxy is a soft no-op;
 // a stdout note still fires so the Xcode build log shows a visible outcome.
@@ -36,7 +41,7 @@ func FlushSession(ctx context.Context, logger log.Logger, osProxy utils.OsProxy,
 
 	if _, running := ProxyOwner(osProxy); !running {
 		logger.TWarnf("No xcelerate-proxy is running; nothing to flush")
-		fmt.Fprintln(stdout, "No pending invocations to flush (proxy not running).")
+		fmt.Fprintln(stdout, noPendingMessage+" (proxy not running).")
 
 		return nil
 	}
@@ -52,7 +57,9 @@ func FlushSession(ctx context.Context, logger log.Logger, osProxy utils.OsProxy,
 	return printEmittedURLs(ctx, logger, stdout, session.NewSessionClient(clientConn))
 }
 
-// printEmittedURLs invokes FlushSession and prints the resulting Visit URLs.
+// printEmittedURLs invokes FlushSession and prints the resulting Visit URLs,
+// falling back to noPendingMessage when the RPC succeeds with zero emitted IDs
+// so a proxy-running sweep still produces a visible outcome in the build log.
 // Separated so tests can inject a fake client without a real socket.
 func printEmittedURLs(ctx context.Context, logger log.Logger, stdout io.Writer, client FlushSessionClient) error {
 	callCtx, cancel := context.WithTimeout(ctx, flushSessionRPCTimeout)
@@ -65,7 +72,16 @@ func printEmittedURLs(ctx context.Context, logger log.Logger, stdout io.Writer, 
 		return nil
 	}
 
-	for _, id := range resp.GetEmittedInvocationIds() {
+	ids := resp.GetEmittedInvocationIds()
+	logger.Debugf("FlushSession RPC returned %d emitted invocation IDs", len(ids))
+
+	if len(ids) == 0 {
+		fmt.Fprintln(stdout, noPendingMessage)
+
+		return nil
+	}
+
+	for _, id := range ids {
 		fmt.Fprintf(stdout, "Invocation saved. Visit 👉 %s\n", enrichment.VisitURL(id))
 	}
 
