@@ -53,13 +53,6 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 		return LinkResult{}, fmt.Errorf("link %s: %w", projectPath, err)
 	}
 
-	for _, f := range result.ModifiedXCConfigs {
-		logger.Debugf("Appended include block: %s", f)
-	}
-	for _, f := range result.CreatedSiblings {
-		logger.Debugf("Created sibling xcconfig: %s", f)
-	}
-
 	return result, nil
 }
 
@@ -79,13 +72,6 @@ func (a *Activator) Unlink(_ context.Context, projectPath string) (UnlinkResult,
 	result, err := xa.Unlink(osProxy, xa.LinkParams{ProjectPath: projectPath})
 	if err != nil {
 		return UnlinkResult{}, fmt.Errorf("unlink %s: %w", projectPath, err)
-	}
-
-	for _, f := range result.ModifiedXCConfigs {
-		logger.Debugf("Stripped include block: %s", f)
-	}
-	for _, f := range result.RemovedSiblings {
-		logger.Debugf("Removed sibling xcconfig: %s", f)
 	}
 
 	return result, nil

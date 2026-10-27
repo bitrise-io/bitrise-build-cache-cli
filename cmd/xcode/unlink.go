@@ -22,7 +22,7 @@ touched, and removes any sibling .bitrise-build-cache.xcconfig that is now
 empty. The project's baseConfigurationReference is left in place — pbxproj
 gives us no way to distinguish "the user already had it" from "we set it".
 
-Idempotent — nothing to revert reports a no-op.`,
+Idempotent.`,
 	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,9 +51,6 @@ Idempotent — nothing to revert reports a no-op.`,
 		if len(result.WarnBaseRefs) > 0 {
 			logger.Warnf("baseConfigurationReference entries left in place (pbxproj offers no way to tell apart user-set vs. link-set): %s",
 				strings.Join(result.WarnBaseRefs, ", "))
-		}
-		if len(result.ModifiedXCConfigs) == 0 && len(result.RemovedSiblings) == 0 {
-			logger.Infof("Nothing to revert.")
 		}
 
 		return nil
