@@ -27,8 +27,6 @@ const startLockMaxWait = time.Second
 // start lock.
 const startLockRetry = 10 * time.Millisecond
 
-const cliBinaryName = "bitrise-build-cache"
-
 // autostartDeps is the dependency bundle for EnsureProxy; tests swap atoms.
 type autostartDeps struct {
 	socketPath    func() string
@@ -74,7 +72,7 @@ var defaultAutostartDeps = autostartDeps{
 	startAutostep: func() {
 		// Fire-and-forget: the autostart is best-effort, the compiler must proceed
 		// regardless and the proxy will be up on the next compile.
-		cmd := exec.CommandContext(context.Background(), cliBinaryName, "xcelerate", "start-proxy") //nolint:noctx // intentionally detached: must outlive trampoline exec
+		cmd := exec.CommandContext(context.Background(), paths.CLIBinaryName, "xcelerate", "start-proxy") //nolint:noctx,gosec // intentionally detached: must outlive trampoline exec; args are compile-time constants
 		cmd.Stdin = nil
 		cmd.Stdout = nil
 		cmd.Stderr = nil
