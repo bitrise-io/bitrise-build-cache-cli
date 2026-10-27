@@ -153,10 +153,9 @@ func (r *recorder) recordSkippedAlreadySaved(op cacheOp) {
 // per-conn session + sidecar writer. TagConn + HandleConn carry the ConnBegin
 // / ConnEnd signals.
 type sidecarStatsHandler struct {
-	listener         *PeerListener
-	registry         *sessionRegistry
-	writer           *sidecarWriter
-	ancestryResolver func(pid int) []string
+	listener *PeerListener
+	registry *sessionRegistry
+	writer   *sidecarWriter
 
 	// peerAncestryEntries resolves the PEER PID's ancestry as rich entries.
 	// INVARIANT: this helper is only ever called with a PID that originates
@@ -282,7 +281,7 @@ func (h *sidecarStatsHandler) flushSession(cs *connectionSession) {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, time.Now(), h.ancestryResolver)
+		sidecar := newSessionSidecar(cs, time.Now())
 		h.writer.write(sidecar)
 	})
 }
