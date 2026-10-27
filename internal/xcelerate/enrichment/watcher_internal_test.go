@@ -539,7 +539,8 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 // sidecarReaderStub is a minimal SidecarReader for watcher tests that only
 // cares about the pending DD-path hint stream.
 type sidecarReaderStub struct {
-	ddPaths []string
+	ddPaths      []string
+	pendingCount int
 }
 
 func (s *sidecarReaderStub) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
@@ -551,6 +552,14 @@ func (s *sidecarReaderStub) OrphanSidecarsGroupedByInvocation(_ time.Time, _ tim
 }
 
 func (s *sidecarReaderStub) PendingDerivedDataPaths() []string { return s.ddPaths }
+
+func (s *sidecarReaderStub) PendingCount() int {
+	if s.pendingCount > 0 {
+		return s.pendingCount
+	}
+
+	return len(s.ddPaths)
+}
 
 func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
 	home := t.TempDir()
@@ -580,6 +589,111 @@ func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
 
 	assert.Equal(t, []string{"UUID-PROJECT-LOCAL"}, handled,
 		"sidecar-advertised project-local DD must be globbed on top of HOME-relative defaults")
+}
+
+// captureLogger buffers Debugf calls so tests can assert on emitted lines.
+type captureLogger struct {
+	lines []string
+}
+
+func (c *captureLogger) Debugf(fmtStr string, args ...any) {
+	c.lines = append(c.lines, fmt.Sprintf(fmtStr, args...))
+}
+
+func (c *captureLogger) Errorf(fmtStr string, args ...any)  { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) Warnf(fmtStr string, args ...any)   { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) Infof(fmtStr string, args ...any)   { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) Printf(fmtStr string, args ...any)  { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) Donef(fmtStr string, args ...any)   { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) TErrorf(fmtStr string, args ...any) { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) TWarnf(fmtStr string, args ...any)  { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) TInfof(fmtStr string, args ...any)  { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) TPrintf(fmtStr string, args ...any) { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) TDebugf(fmtStr string, args ...any) { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) TDonef(fmtStr string, args ...any)  { c.Debugf(fmtStr, args...) }
+func (c *captureLogger) Println()                           {}
+func (c *captureLogger) EnableDebugLog(bool)                {}
+
+func TestWatcher_scan_StalledDiagnostic_EmitsWhenZeroManifestsWithPendingSidecars(t *testing.T) {
+	logger := &captureLogger{}
+	home := t.TempDir()
+	w := &Watcher{
+		Now:           func() time.Time { return fixtureNow },
+		HomeDir:       home,
+		SidecarReader: &sidecarReaderStub{ddPaths: []string{"/project/DD"}, pendingCount: 3},
+		Logger:        logger,
+		Handle:        func(string, ManifestEntryGroup) {},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	var found bool
+	for _, line := range logger.lines {
+		if strings.Contains(line, "0 manifests") && strings.Contains(line, "/project/DD") {
+			found = true
+
+			break
+		}
+	}
+	assert.True(t, found, "diagnostic debug line must fire; got %v", logger.lines)
+}
+
+func TestWatcher_scan_StalledDiagnostic_RateLimitedToOncePerMinute(t *testing.T) {
+	logger := &captureLogger{}
+	now := fixtureNow
+	w := &Watcher{
+		Now:           func() time.Time { return now },
+		HomeDir:       t.TempDir(),
+		SidecarReader: &sidecarReaderStub{ddPaths: []string{"/project/DD"}, pendingCount: 2},
+		Logger:        logger,
+		Handle:        func(string, ManifestEntryGroup) {},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+	w.scan(false, false) // same-tick: must stay silent
+
+	diagCount := 0
+	for _, line := range logger.lines {
+		if strings.Contains(line, "0 manifests") {
+			diagCount++
+		}
+	}
+	assert.Equal(t, 1, diagCount, "second scan at same timestamp must not re-emit (rate limited)")
+
+	now = fixtureNow.Add(zeroMatchStallInterval + time.Second)
+	w.scan(false, false)
+
+	diagCount = 0
+	for _, line := range logger.lines {
+		if strings.Contains(line, "0 manifests") {
+			diagCount++
+		}
+	}
+	assert.Equal(t, 2, diagCount, "after > 1min, diag must re-fire")
+}
+
+func TestWatcher_scan_StalledDiagnostic_SilentWhenNoSidecars(t *testing.T) {
+	logger := &captureLogger{}
+	w := &Watcher{
+		Now:           func() time.Time { return fixtureNow },
+		HomeDir:       t.TempDir(),
+		SidecarReader: &sidecarReaderStub{}, // zero sidecars
+		Logger:        logger,
+		Handle:        func(string, ManifestEntryGroup) {},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	for _, line := range logger.lines {
+		assert.NotContains(t, line, "0 manifests",
+			"no sidecars => no diagnostic (prevents noise on an idle machine)")
+	}
 }
 
 func TestWatcher_scan_SidecarAbsentOrEmpty_NoExtraGlobs(t *testing.T) {
@@ -888,6 +1002,8 @@ func (s *stubReader) OrphanSidecarsGroupedByInvocation(now time.Time, minAge tim
 }
 
 func (s *stubReader) PendingDerivedDataPaths() []string { return nil }
+
+func (s *stubReader) PendingCount() int { return 0 }
 
 func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	home := t.TempDir()
