@@ -38,13 +38,16 @@ func TestPrintEmittedURLs_PrintsOneLinePerID(t *testing.T) {
 	assert.Contains(t, out, "https://app.bitrise.io/build-cache/invocations/xcode/id-b")
 }
 
-func TestPrintEmittedURLs_EmptyResponseIsSilentAndSuccess(t *testing.T) {
+func TestPrintEmittedURLs_EmptyResponseFallsBackToNoPendingMessage(t *testing.T) {
+	// A proxy-running sweep that returns zero IDs must still produce the same
+	// outcome string as the proxy-missing branch, so operators get the same
+	// confirmation line regardless of which path produced it.
 	buf := &bytes.Buffer{}
 	client := &fakeFlushClient{resp: &session.FlushSessionResponse{}}
 
 	require.NoError(t, printEmittedURLs(context.Background(), nullLogger{}, buf, client))
 
-	assert.Empty(t, buf.String())
+	assert.Equal(t, "No pending invocations to flush.\n", buf.String())
 }
 
 func TestPrintEmittedURLs_RPCErrorExitsZero(t *testing.T) {
