@@ -76,9 +76,11 @@ func sidecarFilename(s sessions.Sidecar) string {
 }
 
 // newSessionSidecar materialises a sidecar from a per-conn session plus the
-// outcome of the current flush. Peer-ancestry resolution is injected so
-// callers can swap in a fake in tests.
-func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAncestry func(pid int) []string) sessions.Sidecar {
+// outcome of the current flush. PeerAncestry names are projected from the
+// entries captured at TagConn time — walking ancestry again at ConnEnd time
+// would race the peer PID's exit (proc gone → nil names → `peer_ancestry`
+// serialises as `null`).
+func newSessionSidecar(conn *connectionSession, closedAt time.Time) sessions.Sidecar {
 	stats := conn.state.getStats().toPublic()
 
 	var link *sessions.WrapperLink
@@ -91,7 +93,7 @@ func newSessionSidecar(conn *connectionSession, closedAt time.Time, resolveAnces
 		Source:          "proxy",
 		SidecarUUID:     uuid.NewString(),
 		PeerPID:         conn.peerPID,
-		PeerAncestry:    resolveAncestry(conn.peerPID),
+		PeerAncestry:    toNames(conn.ancestryEntries),
 		AcceptedAt:      conn.acceptedAt.UTC(),
 		ClosedAt:        closedAt.UTC(),
 		BlobStats:       stats.BlobStats,

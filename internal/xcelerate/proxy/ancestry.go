@@ -120,12 +120,9 @@ func (c *ancestryCache) resolveAncestryEntries(pid int) []AncestryEntry {
 	return chain
 }
 
-// resolveAncestry returns the names-only projection consumed by the sidecar
-// writer's PeerAncestry field. Backs onto the shared entry cache.
-func (c *ancestryCache) resolveAncestry(pid int) []string {
-	return toNames(c.resolveAncestryEntries(pid))
-}
-
+// toNames projects the names-only ancestry chain written into the sidecar's
+// PeerAncestry field. Reads from entries already captured at TagConn time so
+// the peer PID's exit between accept and ConnEnd cannot blank out the chain.
 func toNames(entries []AncestryEntry) []string {
 	if len(entries) == 0 {
 		return nil
