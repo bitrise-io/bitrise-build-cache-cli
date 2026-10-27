@@ -17,6 +17,34 @@ func TestShouldSkipVersionCheck_authTokenIsSkipped(t *testing.T) {
 	assert.True(t, ShouldSkipVersionCheck(cmd))
 }
 
+func TestSkipLists_DivergeOnStatusAndToken(t *testing.T) {
+	status := &cobra.Command{Use: "status"}
+	assert.True(t, shouldSkipHydrate(status))
+	assert.False(t, ShouldSkipVersionCheck(status))
+
+	token := &cobra.Command{Use: "token"}
+	assert.False(t, shouldSkipHydrate(token))
+	assert.True(t, ShouldSkipVersionCheck(token))
+}
+
+func TestShouldSkipHydrate(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"xcodebuild", true},
+		{"login", true},
+		{"activate", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{Use: tc.name}
+			assert.Equal(t, tc.want, shouldSkipHydrate(cmd))
+		})
+	}
+}
+
 func TestNewVersionCheckLogger_writesToStderr(t *testing.T) {
 	origStderr := os.Stderr
 	r, w, err := os.Pipe()
