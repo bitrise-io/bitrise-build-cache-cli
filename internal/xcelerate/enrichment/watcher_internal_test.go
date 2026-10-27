@@ -691,6 +691,105 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-b", synthetic[0], "the surviving synthetic group must be the one whose InvocationID was NOT emitted via the manifest path")
 }
 
+func TestWatcher_scanOrphanSidecars_DefersWhenManifestWindowOverlaps(t *testing.T) {
+	// Reproduces the Option-E ingest regression: a sidecar whose
+	// InvocationID was NOT emitted via Watcher.OnEmit (manifest fires later
+	// than the per-tick dedup window, or manifest handler short-circuits
+	// before OnEmit) must still defer pseudo-group emission when a real
+	// manifest in this scan time-overlaps the sidecar — the manifest path
+	// carries the enriched signals (TaskExecutionReasons, per-target
+	// timings, xcresult summary) that pseudo-groups cannot.
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-defer")
+	writeMultiEntryManifest(t, derivedRoot, "u1")
+	// Manifest entry window from writeMultiEntryManifest: start=762345900.0,
+	// stop=762345905.0 CFAbsoluteTime, which prints 2025-02-27 10:45:00 UTC
+	// after cfAbsoluteToTime (see watcher log output).
+	manifestStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
+	manifestStop := time.Date(2025, 2, 27, 10, 45, 5, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		// Sidecar window overlaps the manifest window — the manifest path
+		// will carry the row, so pseudo-group must NOT fire.
+		"invocation-overlap": {
+			Start:        manifestStart.Add(-time.Second),
+			Stop:         manifestStop.Add(time.Second),
+			SidecarUUIDs: []string{"sidecar-overlap"},
+		},
+		// Separate window — no manifest overlap, pseudo-group proceeds.
+		"invocation-orphan": {
+			Start:        manifestStart.Add(-time.Hour),
+			Stop:         manifestStart.Add(-time.Hour).Add(5 * time.Second),
+			SidecarUUIDs: []string{"sidecar-orphan"},
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow.Add(10 * time.Minute) },
+		SidecarReader: reader,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			handled = append(handled, g)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	var synthetic, real_ []string
+	for _, g := range handled {
+		uuid := g.Entries[0].UUID
+		if strings.HasPrefix(uuid, SyntheticManifestGroupUUIDPrefix) {
+			synthetic = append(synthetic, uuid)
+		} else {
+			real_ = append(real_, uuid)
+		}
+	}
+
+	assert.Equal(t, []string{"u1"}, real_, "the real manifest group must emit")
+	require.Len(t, synthetic, 1, "exactly one synthetic group must emit — the overlapping sidecar must be deferred")
+	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-orphan", synthetic[0],
+		"the surviving synthetic group must be the one whose window does not overlap any manifest")
+}
+
+func TestWatcher_scanOrphanSidecars_ShutdownSweepIgnoresOverlapDefer(t *testing.T) {
+	// Shutdown sweep (ScanOnce → forceSynthesize=true) must land every
+	// orphan sidecar even if a manifest time-overlaps — a Lookup failure
+	// earlier in this scan may have left the sidecar on disk, and this is
+	// the last chance to PUT its data before the proxy exits.
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-shutdown")
+	writeMultiEntryManifest(t, derivedRoot, "u1")
+	manifestStart := time.Date(2025, 2, 27, 12, 5, 0, 0, time.UTC)
+	manifestStop := time.Date(2025, 2, 27, 12, 5, 5, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"invocation-overlap": {
+			Start:        manifestStart.Add(-time.Second),
+			Stop:         manifestStop.Add(time.Second),
+			SidecarUUIDs: []string{"sidecar-overlap"},
+		},
+	}}
+
+	var synthetic int
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow.Add(10 * time.Minute) },
+		SidecarReader: reader,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+				synthetic++
+			}
+		},
+	}
+
+	w.ScanOnce()
+
+	assert.Equal(t, 1, synthetic, "shutdown sweep must fire the overlapping pseudo-group — last chance to land its data")
+}
+
 func TestWatcher_scanOrphanSidecars_NoReaderNoSynthesis(t *testing.T) {
 	home := t.TempDir()
 	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
