@@ -466,6 +466,7 @@ type fakeSidecarReader struct {
 	invocationID string
 	found        bool
 	orphans      map[string]enrichment.SidecarGroup
+	ddPaths      []string
 }
 
 func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
@@ -474,6 +475,10 @@ func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.
 
 func (f *fakeSidecarReader) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]enrichment.SidecarGroup {
 	return f.orphans
+}
+
+func (f *fakeSidecarReader) PendingDerivedDataPaths() []string {
+	return f.ddPaths
 }
 
 func blobSnapshotWith(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
