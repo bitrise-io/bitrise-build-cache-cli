@@ -243,12 +243,7 @@ func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry) st
 		return ""
 	}
 
-	bidEntries := make([]buildidentity.AncestryEntry, 0, len(entries))
-	for _, e := range entries {
-		bidEntries = append(bidEntries, buildidentity.AncestryEntry{PID: e.PID, Name: e.Name, StartTimeMS: e.StartTimeMS})
-	}
-
-	anchor, ok := buildidentity.AnchorFromAncestry(bidEntries)
+	anchor, ok := buildidentity.AnchorFromAncestry(entries)
 	if !ok {
 		return ""
 	}
