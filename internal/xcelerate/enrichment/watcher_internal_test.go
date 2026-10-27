@@ -536,6 +536,68 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 	assert.Empty(t, w.seen, "stale entries must not be marked seen either")
 }
 
+// sidecarReaderStub is a minimal SidecarReader for watcher tests that only
+// cares about the pending DD-path hint stream.
+type sidecarReaderStub struct {
+	ddPaths []string
+}
+
+func (s *sidecarReaderStub) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+	return nil, nil, "", false
+}
+
+func (s *sidecarReaderStub) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]SidecarGroup {
+	return nil
+}
+
+func (s *sidecarReaderStub) PendingDerivedDataPaths() []string { return s.ddPaths }
+
+func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
+	home := t.TempDir()
+
+	// Project-local DerivedData outside both HOME-relative defaults.
+	projectDD := filepath.Join(t.TempDir(), "DerivedData")
+	writeInlineManifest(t, projectDD, "Build", "UUID-PROJECT-LOCAL")
+
+	// Fake SidecarReader hints the watcher at the project-local DD path.
+	// Use the enrichment-package internal interface — must satisfy both Lookup
+	// and PendingDerivedDataPaths; satisfied via sidecarReaderStub below.
+	reader := &sidecarReaderStub{ddPaths: []string{projectDD}}
+
+	var handled []string
+	w := &Watcher{
+		Now:           func() time.Time { return fixtureNow },
+		HomeDir:       home,
+		SidecarReader: reader,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			handled = append(handled, g.UUIDs()...)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	assert.Equal(t, []string{"UUID-PROJECT-LOCAL"}, handled,
+		"sidecar-advertised project-local DD must be globbed on top of HOME-relative defaults")
+}
+
+func TestWatcher_scan_SidecarAbsentOrEmpty_NoExtraGlobs(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+
+	w := &Watcher{
+		Now:           func() time.Time { return fixtureNow },
+		HomeDir:       home,
+		SidecarReader: &sidecarReaderStub{ddPaths: nil}, // no hints
+		Handle:        func(string, ManifestEntryGroup) {},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	assert.NotPanics(t, func() { w.scan(false, false) }, "nil hints must not break the scan")
+}
+
 func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
 	home := t.TempDir()
 	writeFixtureManifest(t, home)
@@ -824,6 +886,8 @@ func (s *stubReader) OrphanSidecarsGroupedByInvocation(now time.Time, minAge tim
 
 	return s.groups
 }
+
+func (s *stubReader) PendingDerivedDataPaths() []string { return nil }
 
 func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	home := t.TempDir()

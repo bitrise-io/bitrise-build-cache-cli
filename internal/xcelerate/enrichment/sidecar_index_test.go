@@ -19,13 +19,14 @@ import (
 )
 
 type sidecarFixture struct {
-	SchemaVersion  int                    `json:"schema_version"`
-	SidecarUUID    string                 `json:"sidecar_uuid,omitempty"`
-	PeerAncestry   []string               `json:"peer_ancestry"`
-	AcceptedAt     time.Time              `json:"accepted_at"`
-	ClosedAt       time.Time              `json:"closed_at"`
-	BlobStats      *blobstats.Snapshot    `json:"blobStats,omitempty"`
-	WrapperSession *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
+	SchemaVersion   int                    `json:"schema_version"`
+	SidecarUUID     string                 `json:"sidecar_uuid,omitempty"`
+	PeerAncestry    []string               `json:"peer_ancestry"`
+	AcceptedAt      time.Time              `json:"accepted_at"`
+	ClosedAt        time.Time              `json:"closed_at"`
+	BlobStats       *blobstats.Snapshot    `json:"blobStats,omitempty"`
+	WrapperSession  *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
+	DerivedDataPath string                 `json:"derived_data_path,omitempty"`
 }
 
 type sidecarFixtureWrapper struct {
@@ -396,4 +397,35 @@ func TestSidecarIndex_OrphanSidecars_SchemaFilterRespected(t *testing.T) {
 	now := base.Add(60 * time.Second)
 	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
 	assert.Empty(t, groups, "schema-too-new and ancestry-rejected sidecars must not surface")
+}
+
+func TestSidecarIndex_PendingDerivedDataPaths_DedupedAndSkipsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
+
+	// Two sidecars share a DD path; a third has none; a fourth differs.
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		DerivedDataPath: "/project/DD",
+	})
+	writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		DerivedDataPath: "/project/DD",
+	})
+	writeSidecar(t, dir, "c.json", sidecarFixture{
+		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+	})
+	writeSidecar(t, dir, "d.json", sidecarFixture{
+		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		DerivedDataPath: "/other/DD",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	got := idx.PendingDerivedDataPaths()
+	assert.ElementsMatch(t, []string{"/project/DD", "/other/DD"}, got)
+}
+
+func TestSidecarIndex_PendingDerivedDataPaths_EmptyDirReturnsNil(t *testing.T) {
+	idx := enrichment.NewSidecarIndex(t.TempDir(), nil)
+	assert.Empty(t, idx.PendingDerivedDataPaths())
 }
