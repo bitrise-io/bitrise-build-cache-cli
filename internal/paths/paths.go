@@ -146,11 +146,6 @@ const TrampolineRemarkSentinelPrefix = "bitrise-xcelerate-remark-"
 // CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
 
-// XcelerateCLIBinaryName is hardcoded by the xcodebuild / xcrun wrapper scripts;
-// kept distinct from CLIBinaryName so installer.sh and the xcelerate copy don't
-// collide on PATH.
-const XcelerateCLIBinaryName = "bitrise-build-cache-cli"
-
 // Paths resolves on-disk locations rooted at a single home directory.
 type Paths struct {
 	Home string
