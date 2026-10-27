@@ -34,6 +34,13 @@ type SidecarReader interface {
 	// callers synthesize a pseudo-group so the enricher can emit a wrapperless
 	// PUT when no LogStoreManifest.plist ever arrived.
 	OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup
+
+	// PendingDerivedDataPaths returns the deduped set of DerivedDataPath values
+	// recorded in sidecars currently on disk. Zero entries when no sidecar
+	// carries a DD path. The enrichment watcher uses this to glob
+	// project-local DerivedData roots that live outside the HOME-relative
+	// defaults.
+	PendingDerivedDataPaths() []string
 }
 
 // SidecarGroup aggregates one or more sidecars sharing an InvocationID.
@@ -250,6 +257,57 @@ func loadSidecar(path string, logger log.Logger, versionSkipped *bool) (sessions
 	}
 
 	return s, true
+}
+
+// PendingDerivedDataPaths reads every sidecar on disk and returns the deduped
+// non-empty DerivedDataPath set. Unlike Lookup, this does not filter by
+// ancestry — a sidecar with no xcodebuild anchor can still legitimately carry
+// a DD path when peer resolution partially succeeded. Returns nil when the
+// index was constructed without a dir or no sidecar carries a DD path.
+func (i *sidecarIndex) PendingDerivedDataPaths() []string {
+	logger := logOr(i.logger)
+
+	if i.dir == "" {
+		return nil
+	}
+
+	entries, err := os.ReadDir(i.dir)
+	if err != nil {
+		logger.Debugf("Sidecar index read %s for DD paths: %s", i.dir, err)
+
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	paths := make([]string, 0, len(entries))
+	for _, de := range entries {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+			continue
+		}
+
+		path := filepath.Join(i.dir, de.Name())
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		var s sessions.Sidecar
+		if err := json.Unmarshal(body, &s); err != nil {
+			continue
+		}
+
+		if s.DerivedDataPath == "" {
+			continue
+		}
+		if _, dup := seen[s.DerivedDataPath]; dup {
+			continue
+		}
+
+		seen[s.DerivedDataPath] = struct{}{}
+		paths = append(paths, s.DerivedDataPath)
+	}
+
+	return paths
 }
 
 // ---------------------------------------------------------------------------
