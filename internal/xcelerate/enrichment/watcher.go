@@ -59,6 +59,10 @@ type Watcher struct {
 	// manifest path during the current scan tick so scanOrphanSidecars can
 	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
 	tickEmittedIDs map[string]struct{}
+
+	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
+	// line to one entry per minute.
+	lastStalledLogAt time.Time
 }
 
 // RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
@@ -71,6 +75,11 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string) {
 
 	w.tickEmittedIDs[invocationID] = struct{}{}
 }
+
+// zeroMatchStallInterval caps the "0 manifests across N globs" diagnostic to
+// once per minute so a stuck enrichment loop still flags itself without
+// flooding the debug log.
+const zeroMatchStallInterval = time.Minute
 
 func (w *Watcher) now() time.Time {
 	if w.Now != nil {
@@ -212,6 +221,7 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 		targets = append(targets, scanTarget{pattern: pattern, absolute: true})
 	}
 
+	totalMatches := 0
 	for _, t := range targets {
 		pattern := t.pattern
 		if !t.absolute {
@@ -224,6 +234,7 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 
 			continue
 		}
+		totalMatches += len(matches)
 
 		for _, path := range matches {
 			groups, err := LoadManifestGrouped(path, timeGap)
@@ -245,6 +256,8 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	if !seedOnly {
 		w.scanOrphanSidecars(forceSynthesize, manifestWindows)
 	}
+
+	w.logStalledIfSuspicious(logger, totalMatches, len(targets))
 }
 
 // scanOrphanSidecars synthesizes pseudo-groups from aged orphan sidecars whose
@@ -300,6 +313,31 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool, manifestWindows []man
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}
+}
+
+// logStalledIfSuspicious emits a once-per-minute diagnostic when a scan found
+// no manifests at all yet sidecars sit on disk — the exact state that was
+// invisible before the project-local DD glob hint fix. Writes to Debug so a
+// normal activate run stays quiet; set --debug to surface the signal.
+func (w *Watcher) logStalledIfSuspicious(logger log.Logger, totalMatches, globCount int) {
+	if totalMatches > 0 || w.SidecarReader == nil {
+		return
+	}
+
+	pending := w.SidecarReader.PendingCount()
+	if pending == 0 {
+		return
+	}
+
+	now := w.now()
+	if !w.lastStalledLogAt.IsZero() && now.Sub(w.lastStalledLogAt) < zeroMatchStallInterval {
+		return
+	}
+	w.lastStalledLogAt = now
+
+	ddPaths := w.SidecarReader.PendingDerivedDataPaths()
+	logger.Debugf("enrichment watcher: 0 manifests across %d globs; %d uncorrelated sidecars pending (DD paths: %v)",
+		globCount, pending, ddPaths)
 }
 
 // sidecarGlobs expands each pending DerivedDataPath into a
