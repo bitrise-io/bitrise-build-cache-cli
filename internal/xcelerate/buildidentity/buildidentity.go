@@ -20,8 +20,7 @@ type Anchor struct {
 }
 
 // AncestryEntry is one step of a peer process's ancestry: (pid, exe basename,
-// start-ms). Produced by proxy/ancestry and injected here so this package
-// stays import-light.
+// start-ms). Walked by WalkAncestryEntries and consumed by AnchorFromAncestry.
 type AncestryEntry struct {
 	PID         int
 	Name        string
