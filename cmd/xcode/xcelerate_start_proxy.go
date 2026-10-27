@@ -306,8 +306,11 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
 	}
 	enricher.XcresultParser = xcresult.NewDefaultParser(logger)
+
+	var sidecarReader enrichment.SidecarReader
 	if b.sessionsDir != "" {
-		enricher.SidecarReader = enrichment.NewSidecarIndex(b.sessionsDir, logger)
+		sidecarReader = enrichment.NewSidecarIndex(b.sessionsDir, logger)
+		enricher.SidecarReader = sidecarReader
 	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
@@ -337,6 +340,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
 		TimeGap:               watcherTimeGap(),
 		HandledStore:          b.handledManifests,
+		SidecarReader:         sidecarReader,
 	}
 }
 
