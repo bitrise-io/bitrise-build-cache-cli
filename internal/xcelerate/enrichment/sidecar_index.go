@@ -41,6 +41,11 @@ type SidecarReader interface {
 	// project-local DerivedData roots that live outside the HOME-relative
 	// defaults.
 	PendingDerivedDataPaths() []string
+	// PendingCount returns the number of sidecar files currently on disk,
+	// regardless of ancestry gate or DD path presence. Used by the watcher to
+	// detect the "0 manifests, N uncorrelated sidecars" diagnostic that fires
+	// when enrichment stalls because no DerivedData path is observable.
+	PendingCount() int
 }
 
 // SidecarGroup aggregates one or more sidecars sharing an InvocationID.
@@ -308,6 +313,31 @@ func (i *sidecarIndex) PendingDerivedDataPaths() []string {
 	}
 
 	return paths
+}
+
+// PendingCount counts JSON sidecar files currently on disk. Fast path: no
+// unmarshal, no ancestry gate. Returns zero on read errors (consistent with
+// the rest of the index — the signal exists for diagnostics, not correctness).
+func (i *sidecarIndex) PendingCount() int {
+	if i.dir == "" {
+		return 0
+	}
+
+	entries, err := os.ReadDir(i.dir)
+	if err != nil {
+		return 0
+	}
+
+	n := 0
+	for _, de := range entries {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+			continue
+		}
+
+		n++
+	}
+
+	return n
 }
 
 // ---------------------------------------------------------------------------

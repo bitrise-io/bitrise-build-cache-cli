@@ -481,6 +481,10 @@ func (f *fakeSidecarReader) PendingDerivedDataPaths() []string {
 	return f.ddPaths
 }
 
+func (f *fakeSidecarReader) PendingCount() int {
+	return len(f.ddPaths)
+}
+
 func blobSnapshotWith(downloadOps, downloadMiss, uploadOps int64) *blobstats.Snapshot {
 	return &blobstats.Snapshot{
 		Download: blobstats.DirectionSnapshot{OpCount: downloadOps, MissCount: downloadMiss},
