@@ -388,6 +388,17 @@ func Test_HasBuildAction(t *testing.T) {
 		{"empty argv defaults to build", []string{}, true},
 		{"exportArchive is a query", []string{"-exportArchive", "-archivePath", "a", "-exportPath", "b"}, false},
 		{"resolvePackageDependencies is a query", []string{"-resolvePackageDependencies", "-workspace", "Foo"}, false},
+		{"license is a query", []string{"-license"}, false},
+		{"runFirstLaunch is a query", []string{"-runFirstLaunch"}, false},
+		{"checkFirstLaunchStatus is a query", []string{"-checkFirstLaunchStatus"}, false},
+		{"downloadPlatform is a query", []string{"-downloadPlatform", "iOS"}, false},
+		{"downloadAllPlatforms is a query", []string{"-downloadAllPlatforms"}, false},
+		{"importPlatform is a query", []string{"-importPlatform", "/tmp/pkg"}, false},
+		{"downloadComponent is a query", []string{"-downloadComponent", "Metal"}, false},
+		{"importComponent is a query", []string{"-importComponent", "/tmp/pkg"}, false},
+		{"deleteComponent is a query", []string{"-deleteComponent", "Metal"}, false},
+		{"showComponent is a query", []string{"-showComponent"}, false},
+		{"license then build is a build (build wins)", []string{"-license", "build"}, true},
 	}
 
 	for _, tc := range tcs {
