@@ -32,7 +32,7 @@ set -e
 if [ "${1-}" = "-version" ]; then
   %s "$@"
 else
-  %s/` + paths.XcelerateCLIBinaryName + ` xcelerate xcodebuild "$@"
+  %s/` + paths.CLIBinaryName + ` xcelerate xcodebuild "$@"
 fi
 `
 	xcrunWrapperScriptContent = `#!/bin/bash
@@ -42,7 +42,7 @@ if [ "${1-}" = "xcodebuild" ] && [ "${2-}" = "-version" ]; then
   %s "$@"
 elif [ "${1-}" = "xcodebuild" ]; then
   shift
-  %s/` + paths.XcelerateCLIBinaryName + ` xcelerate xcodebuild "$@"
+  %s/` + paths.CLIBinaryName + ` xcelerate xcodebuild "$@"
 else
   %s "$@"
 fi
@@ -124,7 +124,7 @@ func Activate(
 	if _, _, err := clibin.InstallCLIAt(ctx, PathFor(osProxy, BinDir), clibin.InstallOpts{
 		OsProxy:     osProxy,
 		KillRunning: true,
-		Basename:    paths.XcelerateCLIBinaryName,
+		Basename:    paths.CLIBinaryName,
 	}, logger); err != nil {
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
