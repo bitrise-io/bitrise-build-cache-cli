@@ -205,10 +205,8 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 	return nil
 }
 
-// installUsrBinEntries copies trampolinePath over {swiftc, clang, swift} when
-// trampolinePath is non-empty and executable; symlinks everything else to the
-// xcode-select anchor. Empty / non-executable trampolinePath = pure-symlink
-// layout (graceful fallback when the trampoline download failed).
+// installUsrBinEntries copies trampolinePath over {swiftc, clang, swift};
+// symlinks everything else to the xcode-select anchor.
 func installUsrBinEntries(ctx context.Context, installPath, defaultToolchainPath, anchorToolchainPath, trampolinePath string) error {
 	srcBin := filepath.Join(defaultToolchainPath, "usr", "bin")
 	anchorBin := filepath.Join(anchorToolchainPath, "usr", "bin")

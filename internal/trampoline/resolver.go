@@ -16,8 +16,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// toolchainBundleID must match paths.XcodeToolchainBundleID; duplicated here so
-// trampoline/ does not need to import internal/paths.
+// toolchainBundleID must match paths.XcodeToolchainBundleID (import-free trampoline).
 const toolchainBundleID = "io.bitrise.cas.xctoolchain"
 
 const (
