@@ -381,8 +381,17 @@ func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata
 	md.Set("x-flare-blob-validation-level", "WARN")
 	md.Set("x-flare-ac-validation-mode", "fast")
 
+	// Prefer the per-call ctx-carried InvocationID over the shared
+	// c.invocationID. ChangeSession mutates the latter without blocking
+	// in-flight calls, so under multi-peer load one peer's upload could
+	// otherwise observe another peer's ID.
+	toolInvocationID := c.invocationID
+	if ctxID, ok := InvocationIDFromContext(ctx); ok {
+		toolInvocationID = ctxID
+	}
+
 	rmd := &remoteexecution.RequestMetadata{
-		ToolInvocationId: c.invocationID,
+		ToolInvocationId: toolInvocationID,
 		ToolDetails: &remoteexecution.ToolDetails{
 			ToolName: c.clientName,
 		},

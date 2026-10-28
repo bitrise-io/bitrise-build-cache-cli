@@ -7,6 +7,7 @@ import (
 
 	grpcstats "google.golang.org/grpc/stats"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 )
 
@@ -86,7 +87,9 @@ func sessionFromContext(ctx context.Context) *connectionSession {
 }
 
 func contextWithSession(ctx context.Context, cs *connectionSession) context.Context {
-	return context.WithValue(ctx, connSessionCtxKey{}, cs)
+	ctx = context.WithValue(ctx, connSessionCtxKey{}, cs)
+
+	return kv.WithInvocationID(ctx, cs.derivedInvocationID)
 }
 
 // recorder mirrors every record call to the global sessionState and, when
