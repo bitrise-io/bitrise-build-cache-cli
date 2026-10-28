@@ -69,11 +69,15 @@ type DirectionSnapshot struct {
 	// Downloads only, counted rather than timed: a cheap round trip would pull the latency down.
 	MissCount int64 `json:"missCount"`
 	// Uploads only: already stored this session, so nothing went over the wire.
-	SkippedAlreadySavedCount int64              `json:"skippedAlreadySavedCount"`
-	BytesTotal               int64              `json:"bytesTotal"`
-	LatencyMs                HistogramSnapshot  `json:"latencyMs"`
-	SizeBytes                HistogramSnapshot  `json:"sizeBytes"`
-	Throughput               ThroughputSnapshot `json:"throughput"`
+	SkippedAlreadySavedCount int64 `json:"skippedAlreadySavedCount"`
+	// CommitCount tracks uploads BE acknowledged — distinct from OpCount which counts successful
+	// UploadStreamToBuildCache returns. On the Option E ctx-decouple, these may diverge if BE acked
+	// but client ctx canceled before our handler returned.
+	CommitCount int64              `json:"commitCount"`
+	BytesTotal  int64              `json:"bytesTotal"`
+	LatencyMs   HistogramSnapshot  `json:"latencyMs"`
+	SizeBytes   HistogramSnapshot  `json:"sizeBytes"`
+	Throughput  ThroughputSnapshot `json:"throughput"`
 }
 
 func (s DirectionSnapshot) IsEmpty() bool {
@@ -248,6 +252,7 @@ type Recorder struct {
 	errorCount               int64
 	missCount                int64
 	skippedAlreadySavedCount int64
+	commitCount              int64
 	bytesTotal               int64
 	excludedSmallOps         int64
 }
@@ -262,6 +267,7 @@ func (r *Recorder) RecordTransfer(bytes int64, duration time.Duration) {
 	defer r.mu.Unlock()
 
 	r.opCount++
+	r.commitCount++
 	r.bytesTotal += bytes
 	r.latency.record(r.boundaries.latencyMs, duration.Milliseconds())
 	r.size.record(r.boundaries.sizeBytes, bytes)
@@ -295,6 +301,13 @@ func (r *Recorder) RecordSkippedAlreadySaved() {
 	r.addCounter(&r.skippedAlreadySavedCount)
 }
 
+// RecordCommit marks an upload the backend acknowledged. Currently incremented alongside OpCount
+// inside RecordTransfer; exposed so a future path that observes BE commit without a full transfer
+// return (e.g. ctx-decouple detaching the handler) can bump it separately.
+func (r *Recorder) RecordCommit() {
+	r.addCounter(&r.commitCount)
+}
+
 func (r *Recorder) Snapshot() DirectionSnapshot {
 	if r == nil {
 		return DirectionSnapshot{} //nolint:exhaustruct // zero value is the empty snapshot
@@ -312,6 +325,7 @@ func (r *Recorder) Snapshot() DirectionSnapshot {
 		ErrorCount:               r.errorCount,
 		MissCount:                r.missCount,
 		SkippedAlreadySavedCount: r.skippedAlreadySavedCount,
+		CommitCount:              r.commitCount,
 		BytesTotal:               r.bytesTotal,
 		LatencyMs:                r.latency.snapshot(r.boundaries.latencyMs),
 		SizeBytes:                r.size.snapshot(r.boundaries.sizeBytes),
@@ -349,6 +363,7 @@ func mergeDirections(first, second *Recorder) DirectionSnapshot {
 		ErrorCount:               first.errorCount + second.errorCount,
 		MissCount:                first.missCount + second.missCount,
 		SkippedAlreadySavedCount: first.skippedAlreadySavedCount + second.skippedAlreadySavedCount,
+		CommitCount:              first.commitCount + second.commitCount,
 		BytesTotal:               first.bytesTotal + second.bytesTotal,
 		LatencyMs:                mergeHistograms(&first.latency, &second.latency, boundaries.latencyMs),
 		SizeBytes:                mergeHistograms(&first.size, &second.size, boundaries.sizeBytes),
@@ -433,6 +448,7 @@ func (r *Recorder) reset() {
 	r.errorCount = 0
 	r.missCount = 0
 	r.skippedAlreadySavedCount = 0
+	r.commitCount = 0
 	r.bytesTotal = 0
 	r.excludedSmallOps = 0
 }
