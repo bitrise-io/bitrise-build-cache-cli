@@ -40,6 +40,7 @@ const (
 	CommandBuild   Command = "build"
 	CommandTest    Command = "test"
 	CommandArchive Command = "archive"
+	CommandClean   Command = "clean"
 	CommandUnknown Command = ""
 )
 
@@ -50,12 +51,14 @@ func (m ManifestEntry) Command() Command {
 	}
 
 	switch strings.ToLower(strings.SplitN(source, " ", 2)[0]) {
-	case "build", "building", "cleaning", "clean":
+	case "build", "building":
 		return CommandBuild
 	case "test", "testing":
 		return CommandTest
 	case "archive", "archiving":
 		return CommandArchive
+	case "clean", "cleaning":
+		return CommandClean
 	default:
 		return CommandUnknown
 	}
@@ -241,7 +244,7 @@ func (g ManifestEntryGroup) Success() bool {
 }
 
 // Primary picks the outermost entry by command rank (test > archive > build >
-// unknown). Ties are broken by earliest Start.
+// clean > unknown). Ties are broken by earliest Start.
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
@@ -255,10 +258,12 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 			return 2
 		case CommandBuild:
 			return 1
+		case CommandClean:
+			return 0
 		case CommandUnknown:
-			return 0
+			return -1
 		default:
-			return 0
+			return -1
 		}
 	}
 

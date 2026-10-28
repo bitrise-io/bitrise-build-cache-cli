@@ -40,14 +40,15 @@ func TestLoadManifest_ParsesEntries(t *testing.T) {
 	clean := byUUID["EEEE-FFFF-CLEAN"]
 	assert.Equal(t, "S", clean.Status, "highLevelStatus must be read from primaryObservable")
 	assert.True(t, clean.Success())
-	assert.Equal(t, enrichment.CommandBuild, clean.Command(), "gerund form Cleaning -> build")
+	assert.Equal(t, enrichment.CommandClean, clean.Command(), "gerund form Cleaning -> clean")
 }
 
 func TestCommand_GerundForms(t *testing.T) {
 	cases := map[string]enrichment.Command{
 		"Build MyScheme":        enrichment.CommandBuild,
 		"Building MyScheme":     enrichment.CommandBuild,
-		"Cleaning MyScheme":     enrichment.CommandBuild,
+		"Clean MyScheme":        enrichment.CommandClean,
+		"Cleaning MyScheme":     enrichment.CommandClean,
 		"Test MySchemeTests":    enrichment.CommandTest,
 		"Testing MySchemeTests": enrichment.CommandTest,
 		"Archive MyScheme":      enrichment.CommandArchive,
@@ -255,6 +256,54 @@ func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	groups, err := enrichment.LoadManifestGrouped("testdata/LogStoreManifest.plist", 60*time.Second)
 	require.NoError(t, err)
 	require.Len(t, groups, 3)
+}
+
+func TestManifestEntryGroup_CleanCommandRendering(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "c1", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "clean [S]", groups[0].Command())
+}
+
+func TestPrimary_BuildBeatsCleanInMixedGroup(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "c", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
+		{UUID: "b", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(5 * time.Second), Stop: base.Add(10 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, enrichment.CommandBuild, groups[0].Primary().Command(),
+		"Build must outrank Clean even when Clean starts earlier — rank beats same-time tiebreak")
+}
+
+func TestPrimary_CleanOnlyGroupReportsClean(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "c1", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, enrichment.CommandClean, groups[0].Primary().Command())
+}
+
+func TestPrimary_CleanBeatsUnknown(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "u", SchemeName: "S", Signature: "Resolve Packages", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
+		{UUID: "c", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base.Add(2 * time.Second), Stop: base.Add(4 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, enrichment.CommandClean, groups[0].Primary().Command(),
+		"Clean must outrank Unknown so a Clean+Unknown group still PUTs with command=clean")
 }
 
 func TestSyntheticManifestGroup_PopulatesBuildCommandAndSpan(t *testing.T) {
