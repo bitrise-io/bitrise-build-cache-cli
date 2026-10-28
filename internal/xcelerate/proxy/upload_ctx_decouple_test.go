@@ -122,9 +122,8 @@ func TestSave_ClientCtxCancelDoesNotAbortUpload(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stats.GetCacheBlobStats())
 	require.NotNil(t, stats.GetCacheBlobStats().GetCas())
-	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetCas().GetUpload().GetCommitCount(),
-		"BE commit must count once client cancel decoupled from upload")
-	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetCas().GetUpload().GetOpCount())
+	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetCas().GetUpload().GetOpCount(),
+		"upload op must count once client cancel decoupled from upload")
 }
 
 // TestPut_ClientCtxCancelDoesNotAbortUpload mirrors Save for CAS Put.
@@ -169,11 +168,11 @@ func TestPut_ClientCtxCancelDoesNotAbortUpload(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stats.GetCacheBlobStats())
 	require.NotNil(t, stats.GetCacheBlobStats().GetCas())
-	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetCas().GetUpload().GetCommitCount())
+	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetCas().GetUpload().GetOpCount())
 }
 
 // TestPutValue_ClientCtxCancelDoesNotAbortUpload asserts the same decouple on
-// the KV side; CommitCount must land under cas_blob_stats.kv.upload.
+// the KV side; the op count must land under cas_blob_stats.kv.upload.
 func TestPutValue_ClientCtxCancelDoesNotAbortUpload(t *testing.T) {
 	gate := newUploadGate()
 	kvClient := &mocks.ClientMock{UploadStreamToBuildCacheFunc: gate.fn()}
@@ -214,7 +213,7 @@ func TestPutValue_ClientCtxCancelDoesNotAbortUpload(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, stats.GetCacheBlobStats())
 	require.NotNil(t, stats.GetCacheBlobStats().GetKv())
-	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetKv().GetUpload().GetCommitCount())
+	assert.Equal(t, int64(1), stats.GetCacheBlobStats().GetKv().GetUpload().GetOpCount())
 }
 
 // TestGet_ClientCtxCancelStillPropagates is the negative test: downloads stay
@@ -267,7 +266,7 @@ func TestGet_ClientCtxCancelStillPropagates(t *testing.T) {
 
 // TestUpload_HangsPastDecoupledTimeout confirms the detach timeout actually
 // bounds a wedged backend: the shrunk timeout trips, the handler returns an
-// upload error, and CommitCount stays zero because the transfer never succeeded.
+// upload error, and OpCount stays zero because the transfer never succeeded.
 func TestUpload_HangsPastDecoupledTimeout(t *testing.T) {
 	restore := proxy.SetUploadDecoupledTimeoutForTest(50 * time.Millisecond)
 	t.Cleanup(restore)
@@ -300,7 +299,7 @@ func TestUpload_HangsPastDecoupledTimeout(t *testing.T) {
 	stats, err := session.NewSessionClient(cc).GetSessionStats(context.Background(), &emptypb.Empty{})
 	require.NoError(t, err)
 	if cas := stats.GetCacheBlobStats().GetCas(); cas != nil {
-		assert.Zero(t, cas.GetUpload().GetCommitCount(),
-			"timed-out upload must not count as a commit")
+		assert.Zero(t, cas.GetUpload().GetOpCount(),
+			"timed-out upload must not count as a successful op")
 	}
 }

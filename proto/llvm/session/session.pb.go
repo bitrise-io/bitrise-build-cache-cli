@@ -454,12 +454,8 @@ type BlobStats struct {
 	LatencyMs                *Histogram       `protobuf:"bytes,6,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
 	SizeBytes                *Histogram       `protobuf:"bytes,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	Throughput               *ThroughputStats `protobuf:"bytes,8,opt,name=throughput,proto3" json:"throughput,omitempty"`
-	// Uploads BE acknowledged. Distinct from op_count, which counts successful upload returns from
-	// the proxy's view. May diverge from op_count on paths that detach the upload from the client
-	// ctx (BE acked after the handler returned).
-	CommitCount   int64 `protobuf:"varint,9,opt,name=commit_count,json=commitCount,proto3" json:"commit_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *BlobStats) Reset() {
@@ -546,13 +542,6 @@ func (x *BlobStats) GetThroughput() *ThroughputStats {
 		return x.Throughput
 	}
 	return nil
-}
-
-func (x *BlobStats) GetCommitCount() int64 {
-	if x != nil {
-		return x.CommitCount
-	}
-	return 0
 }
 
 // cas and kv break the totals down by wire protocol. The totals stay the fields both build
@@ -729,7 +718,7 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"\x11p50_bytes_per_sec\x18\x03 \x01(\x03R\x0ep50BytesPerSec\x12)\n" +
 	"\x11p90_bytes_per_sec\x18\x04 \x01(\x03R\x0ep90BytesPerSec\x12$\n" +
 	"\x0emin_blob_bytes\x18\x05 \x01(\x03R\fminBlobBytes\x12,\n" +
-	"\x12excluded_small_ops\x18\x06 \x01(\x03R\x10excludedSmallOps\"\x89\x03\n" +
+	"\x12excluded_small_ops\x18\x06 \x01(\x03R\x10excludedSmallOps\"\xe6\x02\n" +
 	"\tBlobStats\x12\x19\n" +
 	"\bop_count\x18\x01 \x01(\x03R\aopCount\x12\x1f\n" +
 	"\verror_count\x18\x02 \x01(\x03R\n" +
@@ -745,8 +734,7 @@ const file_llvm_session_session_proto_rawDesc = "" +
 	"size_bytes\x18\a \x01(\v2\x12.session.HistogramR\tsizeBytes\x128\n" +
 	"\n" +
 	"throughput\x18\b \x01(\v2\x18.session.ThroughputStatsR\n" +
-	"throughput\x12!\n" +
-	"\fcommit_count\x18\t \x01(\x03R\vcommitCount\"o\n" +
+	"throughput\"o\n" +
 	"\x11ProtocolBlobStats\x12*\n" +
 	"\x06upload\x18\x01 \x01(\v2\x12.session.BlobStatsR\x06upload\x12.\n" +
 	"\bdownload\x18\x02 \x01(\v2\x12.session.BlobStatsR\bdownload\"\x86\x02\n" +
