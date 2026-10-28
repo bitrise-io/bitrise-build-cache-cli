@@ -36,10 +36,8 @@ type Sidecar struct {
 	DerivedDataPath string `json:"derived_data_path,omitempty"`
 
 	// Terminal reports whether this sidecar closes out the connection
-	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush that
-	// leaves the connection running. Additive to schema v2: enricher
-	// consumes both the same way today; future consumers may want to split
-	// per-build vs full-session accounting.
+	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush.
+	// Additive to schema v2.
 	Terminal bool `json:"terminal"`
 }
 

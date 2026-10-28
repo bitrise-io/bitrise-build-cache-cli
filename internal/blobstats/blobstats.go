@@ -71,8 +71,8 @@ type DirectionSnapshot struct {
 	// Uploads only: already stored this session, so nothing went over the wire.
 	SkippedAlreadySavedCount int64 `json:"skippedAlreadySavedCount"`
 	// CommitCount tracks uploads BE acknowledged — distinct from OpCount which counts successful
-	// UploadStreamToBuildCache returns. On the Option E ctx-decouple, these may diverge if BE acked
-	// but client ctx canceled before our handler returned.
+	// UploadStreamToBuildCache returns. Bumped by RecordTransfer on the success return; separate
+	// counter preserves the distinction when BE acks after the handler ctx cancels.
 	CommitCount int64              `json:"commitCount"`
 	BytesTotal  int64              `json:"bytesTotal"`
 	LatencyMs   HistogramSnapshot  `json:"latencyMs"`
@@ -301,9 +301,8 @@ func (r *Recorder) RecordSkippedAlreadySaved() {
 	r.addCounter(&r.skippedAlreadySavedCount)
 }
 
-// RecordCommit marks an upload the backend acknowledged. Currently incremented alongside OpCount
-// inside RecordTransfer; exposed so a future path that observes BE commit without a full transfer
-// return (e.g. ctx-decouple detaching the handler) can bump it separately.
+// RecordCommit marks an upload the backend acknowledged. Bumped by RecordTransfer on the success
+// return; separate counter preserves the distinction when BE acks after the handler ctx cancels.
 func (r *Recorder) RecordCommit() {
 	r.addCounter(&r.commitCount)
 }

@@ -283,9 +283,6 @@ func TestSwapState_RecordsLandInExactlyOneSliceUnderContention(t *testing.T) {
 		go func() {
 			defer done.Done()
 			start.Wait()
-			// Each goroutine reads the pointer once (same ordering the real
-			// recorder has) and records against it. The swap racing with this
-			// read must still have every record land in exactly one slice.
 			s := cs.state.Load()
 			s.recordDownload(opGet, 1, 0)
 		}()
@@ -369,8 +366,7 @@ func TestFlushIdle_WritesIntermediateForIdleAndActiveSessionsOnly(t *testing.T) 
 }
 
 // TestFlushIdle_IntermediateSidecarMarkedNonTerminal pins the Terminal flag:
-// idle flushes write terminal=false so future consumers can split per-build
-// vs full-session accounting.
+// idle flushes write terminal=false.
 func TestFlushIdle_IntermediateSidecarMarkedNonTerminal(t *testing.T) {
 	dir := t.TempDir()
 	registry := newSessionRegistry()
