@@ -28,7 +28,6 @@ func Render(proxySocketPath string) (string, error) {
 		// Anchored at /var/db/xcode_select_link so xcode-select -s auto-corrects.
 		"COMPILATION_CACHE_PLUGIN_PATH":         paths.XcodeSelectLinkCASPluginPath(),
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
-		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
 		// Bundle's OverrideBuildSettings is the only reach we have into SPM package targets.
 		"TOOLCHAINS": ToolchainID,
