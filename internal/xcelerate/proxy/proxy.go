@@ -70,7 +70,7 @@ type Proxy struct {
 	lastActivity      time.Time
 
 	sidecarStats    *sidecarStatsHandler
-	sidecarRegistry *sessionRegistry
+	sessionRegistry *sessionRegistry
 
 	// perConnFlushTimer self-reschedules every perConnIdleThreshold while
 	// the proxy serves. Independent of the wrapper inactivityTimer: that
@@ -169,11 +169,11 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		return
 	}
 
-	p.sidecarRegistry = newSessionRegistry()
+	p.sessionRegistry = newSessionRegistry()
 	ancestry := buildidentity.NewAncestryCache()
 	p.sidecarStats = &sidecarStatsHandler{
 		listener:                   opts.Listener,
-		registry:                   p.sidecarRegistry,
+		registry:                   p.sessionRegistry,
 		writer:                     newSidecarWriter(opts.Dir, p.logger),
 		peerAncestryEntries:        ancestry.ResolveAncestryEntries,
 		derivedDataPathFromEntries: peerDerivedDataPath,
@@ -244,6 +244,14 @@ func (p *Proxy) Serve(l net.Listener) error {
 // GracefulStop stops the underlying gRPC server after in-flight RPCs finish.
 // After the server returns, any outstanding per-connection sidecars are
 // flushed — otherwise a shutdown mid-build loses the still-open sessions.
+//
+// A firePerConnFlush callback that was already running when Stop() returned
+// false races GracefulStop: it keeps running + Reset()s the timer, which the
+// second Stop() in flushOutstandingSidecars cancels. The disk writes it does
+// race only on per-session state (atomic swap via connectionSession.swapState)
+// or terminalOnce-guarded flushTerminal; sidecar filenames carry a fresh UUID
+// per write + atomic rename, so an intermediate from the late callback cannot
+// clobber the shutdown terminal.
 func (p *Proxy) GracefulStop() {
 	if p.perConnFlushTimer != nil {
 		p.perConnFlushTimer.Stop()
@@ -253,7 +261,7 @@ func (p *Proxy) GracefulStop() {
 }
 
 func (p *Proxy) flushOutstandingSidecars() {
-	if p.sidecarRegistry == nil || p.sidecarStats == nil {
+	if p.sessionRegistry == nil || p.sidecarStats == nil {
 		return
 	}
 
@@ -261,7 +269,7 @@ func (p *Proxy) flushOutstandingSidecars() {
 		p.perConnFlushTimer.Stop()
 	}
 
-	p.sidecarRegistry.flushAll(p.sidecarStats.flushTerminal)
+	p.sessionRegistry.flushAll(p.sidecarStats.flushTerminal)
 }
 
 // FlushCurrentSession emits the currently-open session (if any) via the configured emitter.
