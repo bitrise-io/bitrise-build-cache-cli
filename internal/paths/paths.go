@@ -127,20 +127,20 @@ const (
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
 
+// The Trampoline* constants below are referenced by the trampoline package via
+// string literal — keeps the trampoline binary free of internal/paths imports.
+
 // TrampolineRealpathCachePrefix prefixes xcrun fallback cache files written
-// by the trampoline. Referenced by the trampoline package via string literal
-// (keeps the trampoline binary free of internal/paths imports).
+// by the trampoline.
 const TrampolineRealpathCachePrefix = "bitrise-tc-realpath-"
 
 // TrampolineStartLockFilename names the exclusive flock the trampoline grabs
-// before firing an autostart. Referenced by the trampoline package via string
-// literal (keeps the trampoline binary free of internal/paths imports).
+// before firing an autostart.
 const TrampolineStartLockFilename = "bitrise-xcelerate-starting.lock"
 
 // TrampolineRemarkSentinelPrefix prefixes per-proxy-session sentinel files the
 // trampoline atomically creates to dedup the engagement remark across shim
-// processes. Referenced by the trampoline package via string literal (keeps
-// the trampoline binary free of internal/paths imports).
+// processes.
 const TrampolineRemarkSentinelPrefix = "bitrise-xcelerate-remark-"
 
 // TrampolineVisitURLSentinelPrefix prefixes per-InvocationID sentinel files

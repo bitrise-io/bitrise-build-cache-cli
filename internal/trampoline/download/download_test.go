@@ -162,8 +162,6 @@ func TestEnsureForVersion_AtomicWrite(t *testing.T) {
 // of writeAtomic on rename failure: the stray .tmp file is NOT removed. The
 // trampoline download path is single-run per release-bump, so a persistent
 // .tmp from an earlier failed install gets overwritten on the next attempt.
-// If future callers need best-effort cleanup, writeAtomic should defer an
-// os.Remove(tmp) on the error return.
 func TestEnsureForVersion_CleanupOnRenameFailure(t *testing.T) {
 	home := t.TempDir()
 	p := paths.FromHome(home)
