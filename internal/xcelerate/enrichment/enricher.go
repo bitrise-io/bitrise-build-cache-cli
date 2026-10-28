@@ -39,11 +39,14 @@ type Enricher struct {
 	XcresultParser   xcresult.Parser
 	SidecarReader    SidecarReader
 
-	// OnEmit fires after a successful PutInvocation with the ID actually sent.
-	// The watcher wires this to its per-tick dedup set so an aged orphan
-	// sidecar sharing the ID with a manifest emission does not re-emit as a
-	// synthetic pseudo-group.
-	OnEmit func(invocationID string)
+	// OnEmit fires after a successful PutInvocation with the ID actually sent
+	// and the group whose PUT just succeeded. The watcher wires this to its
+	// per-tick dedup set so an aged orphan sidecar sharing the ID with a
+	// manifest emission does not re-emit as a synthetic pseudo-group — and so
+	// the orphan sweep can reuse the just-emitted group's InvocationID when
+	// a pseudo-group overlaps its window (dedup across the Clean+Build +
+	// pseudo-group triple).
+	OnEmit func(invocationID string, group ManifestEntryGroup)
 }
 
 func (e *Enricher) now() time.Time {
@@ -106,7 +109,10 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	invocationID := sidecarInvocationID
+	invocationID := group.OverrideInvocationID()
+	if invocationID == "" {
+		invocationID = sidecarInvocationID
+	}
 	if invocationID == "" {
 		invocationID = uuid.NewString()
 	}
@@ -159,7 +165,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	if e.OnEmit != nil {
-		e.OnEmit(invocationID)
+		e.OnEmit(invocationID, group)
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
