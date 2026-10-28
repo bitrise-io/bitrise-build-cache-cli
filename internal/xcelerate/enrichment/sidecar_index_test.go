@@ -82,7 +82,7 @@ func TestSidecarIndex_EmptyDirStringReturnsNotFound(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestSidecarIndex_AncestryRejectedWhenXcodebuildAbsent(t *testing.T) {
+func TestSidecarIndex_AncestryRejectedWhenNoAcceptedAnchor(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
@@ -96,6 +96,25 @@ func TestSidecarIndex_AncestryRejectedWhenXcodebuildAbsent(t *testing.T) {
 	idx := enrichment.NewSidecarIndex(dir, nil)
 	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
 	assert.False(t, ok)
+}
+
+func TestSidecarIndex_AncestryAcceptsXcodeIDE(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion: 2,
+		PeerAncestry:  []string{"SWBBuildService", "Xcode"},
+		AcceptedAt:    base,
+		ClosedAt:      base.Add(10 * time.Second),
+		BlobStats:     blob(3, 0, 4),
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)))
+	require.True(t, ok)
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(3), snap.Download.OpCount)
+	assert.Equal(t, int64(4), snap.Upload.OpCount)
 }
 
 func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
