@@ -76,12 +76,14 @@ func sidecarFilename(s sessions.Sidecar) string {
 }
 
 // newSessionSidecar materialises a sidecar from a per-conn session plus the
-// outcome of the current flush. PeerAncestry names are projected from the
-// entries captured at TagConn time — walking ancestry again at ConnEnd time
-// would race the peer PID's exit (proc gone → nil names → `peer_ancestry`
-// serialises as `null`).
-func newSessionSidecar(conn *connectionSession, closedAt time.Time) sessions.Sidecar {
-	stats := conn.state.getStats().toPublic()
+// state slice to serialise. The slice is passed explicitly (not read off conn)
+// so intermediate flushes can hand in the just-swapped-out state while the
+// connection goes on recording into a fresh one. PeerAncestry names are
+// projected from the entries captured at TagConn time — walking ancestry
+// again at close time would race the peer PID's exit (proc gone → nil names
+// → `peer_ancestry` serialises as `null`).
+func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt time.Time, terminal bool) sessions.Sidecar {
+	stats := state.getStats().toPublic()
 
 	var link *sessions.WrapperLink
 	if conn.derivedInvocationID != "" {
@@ -99,5 +101,6 @@ func newSessionSidecar(conn *connectionSession, closedAt time.Time) sessions.Sid
 		BlobStats:       stats.BlobStats,
 		WrapperSession:  link,
 		DerivedDataPath: conn.derivedDataPath,
+		Terminal:        terminal,
 	}
 }

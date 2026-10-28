@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	grpcstats "google.golang.org/grpc/stats"
@@ -11,6 +12,12 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 )
 
+// perConnIdleThreshold is the per-connection inactivity window after which an
+// intermediate sidecar is flushed. The wrapper's own inactivity timer sits on
+// top of SetSession; this one runs independently and covers the IDE plugin
+// case where ConnEnd only fires when Xcode fully quits.
+const perConnIdleThreshold = 15 * time.Second
+
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
 // Per-conn accounting runs additively alongside the global p.sessionState,
 // which remains the source of truth for the SetSession / GetSessionStats
@@ -18,14 +25,20 @@ import (
 type connSessionCtxKey struct{}
 
 // connectionSession is the per-conn counterpart of Proxy.sessionState. One
-// per accepted connection; flushed exactly once on gRPC ConnEnd.
+// per accepted connection; flushed terminally on gRPC ConnEnd and
+// intermediately on per-conn inactivity.
 type connectionSession struct {
 	// key is the synthetic RemoteAddr tag used across registry and listener.
 	key string
 
 	peerPID    int
 	acceptedAt time.Time
-	state      *sessionState
+
+	// state is swapped under swapState() on intermediate flushes so a
+	// just-captured slice can be written while an in-flight RPC continues
+	// recording into the new one. In-flight RPCs land fully in old or fully
+	// in new, never split.
+	state atomic.Pointer[sessionState]
 
 	// derivedInvocationID is set by TagConn when the peer's ancestry anchors to
 	// an xcodebuild/Xcode/SWBBuildService ancestor and no wrapper session is
@@ -44,38 +57,64 @@ type connectionSession struct {
 	// dead by then).
 	ancestryEntries []AncestryEntry
 
-	// flushOnce guards against a GracefulStop flushAll racing ConnEnd.
-	flushOnce sync.Once
+	// terminalOnce guards the terminal flush against a GracefulStop flushAll
+	// racing ConnEnd. Intermediate flushes have no sync.Once — they can fire
+	// repeatedly across the connection's lifetime.
+	terminalOnce sync.Once
 
-	// Zero firstActivityAt means no cache RPC ran (health probe, aborted
-	// dial); flushSession suppresses the sidecar write in that case.
-	activityMu      sync.Mutex
-	firstActivityAt time.Time
+	// Zero lastActivityAt means no cache RPC ran (health probe, aborted
+	// dial); flushTerminal suppresses the sidecar write in that case. Also
+	// drives the idle check for intermediate flushes.
+	activityMu     sync.Mutex
+	lastActivityAt time.Time
 }
 
 func (c *connectionSession) markActivity() {
 	c.activityMu.Lock()
 	defer c.activityMu.Unlock()
 
-	if c.firstActivityAt.IsZero() {
-		c.firstActivityAt = time.Now()
-	}
+	c.lastActivityAt = time.Now()
 }
 
 func (c *connectionSession) hadActivity() bool {
 	c.activityMu.Lock()
 	defer c.activityMu.Unlock()
 
-	return !c.firstActivityAt.IsZero()
+	return !c.lastActivityAt.IsZero()
+}
+
+// hadActivityWithin reports whether the last recorded RPC falls inside the
+// threshold measured from now. A zero lastActivityAt (no RPCs yet) counts as
+// "not within".
+func (c *connectionSession) hadActivityWithin(threshold time.Duration, now time.Time) bool {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	if c.lastActivityAt.IsZero() {
+		return false
+	}
+
+	return now.Sub(c.lastActivityAt) < threshold
+}
+
+// swapState atomically installs a fresh sessionState and returns the previous
+// one. Any RPC that already read the old pointer finishes recording into it;
+// any RPC that reads after the swap records into the new one.
+func (c *connectionSession) swapState() *sessionState {
+	fresh := newSessionState()
+
+	return c.state.Swap(fresh)
 }
 
 func newConnectionSession(key string, peerPID int, acceptedAt time.Time) *connectionSession {
-	return &connectionSession{
+	cs := &connectionSession{ //nolint:exhaustruct // optional fields populated by TagConn
 		key:        key,
 		peerPID:    peerPID,
 		acceptedAt: acceptedAt,
-		state:      newSessionState(),
 	}
+	cs.state.Store(newSessionState())
+
+	return cs
 }
 
 // sessionFromContext returns the per-conn session hung off the gRPC call ctx,
@@ -266,22 +305,59 @@ func (h *sidecarStatsHandler) HandleConn(ctx context.Context, cs grpcstats.ConnS
 		return
 	}
 
-	h.flushSession(session)
+	h.flushTerminal(session)
 	h.cleanupForContext(ctx)
 }
 
-// flushSession writes the sidecar exactly once (sync.Once dedup across the
-// ConnEnd and GracefulStop flushAll paths). A conn that never issued an RPC
-// (health probe, aborted dial) emits nothing — no file churn for the reader.
-func (h *sidecarStatsHandler) flushSession(cs *connectionSession) {
-	cs.flushOnce.Do(func() {
+// flushTerminal writes the final sidecar for a connection (ConnEnd /
+// GracefulStop). sync.Once dedups across the two paths. A conn that never
+// issued an RPC (health probe, aborted dial) emits nothing — no file churn for
+// the reader.
+func (h *sidecarStatsHandler) flushTerminal(cs *connectionSession) {
+	cs.terminalOnce.Do(func() {
 		if !cs.hadActivity() {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, time.Now())
+		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true)
 		h.writer.write(sidecar)
 	})
+}
+
+// flushIdle writes an intermediate sidecar for every outstanding session that
+// has activity but has gone quiet for at least threshold. The state pointer is
+// swapped atomically; in-flight RPCs land fully in old or fully in new, never
+// split. Called by the per-conn flush timer, so a long-lived IDE peer's
+// cacheBlobStats land on BE mid-day instead of waiting for Xcode to quit.
+func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) {
+	h.registry.mu.Lock()
+	sessions := make([]*connectionSession, 0, len(h.registry.byKey))
+	for _, cs := range h.registry.byKey {
+		sessions = append(sessions, cs)
+	}
+	h.registry.mu.Unlock()
+
+	for _, cs := range sessions {
+		if !cs.hadActivity() {
+			continue
+		}
+
+		if cs.hadActivityWithin(threshold, now) {
+			continue
+		}
+
+		// Skip-empty check runs BEFORE the swap so a connection that only
+		// saw hadActivity-flipping health traffic (markActivity set, no op
+		// recorded yet) keeps its counters across the next tick instead of
+		// draining to an empty intermediate.
+		if cs.state.Load().getStats().blobStats.IsEmpty() {
+			continue
+		}
+
+		old := cs.swapState()
+		sidecar := newSessionSidecar(cs, old, now, false)
+		h.writer.write(sidecar)
+	}
 }
 
 // cleanupForContext removes the registry + listener entries for the ctx's

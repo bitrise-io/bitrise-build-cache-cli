@@ -83,7 +83,7 @@ func TestFlushSession_SkipsWhenConnectionHadNoActivity(t *testing.T) {
 	}
 
 	cs := newConnectionSession("k", 42, time.Now())
-	h.flushSession(cs)
+	h.flushTerminal(cs)
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestFlushSession_WritesWhenConnectionHadActivity(t *testing.T) {
 
 	cs := newConnectionSession("k", 42, time.Now())
 	cs.markActivity()
-	h.flushSession(cs)
+	h.flushTerminal(cs)
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
 	cs.ancestryEntries = h.resolveEntries(42)
 	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries)
 	cs.markActivity()
-	h.flushSession(cs)
+	h.flushTerminal(cs)
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -163,9 +163,10 @@ func TestNewSessionSidecar_PropagatesDerivedDataPath(t *testing.T) {
 	cs := newConnectionSession("k", 42, time.Unix(0, 0))
 	cs.derivedDataPath = "/tmp/projectDD"
 
-	sc := newSessionSidecar(cs, time.Unix(1, 0))
+	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true)
 
 	assert.Equal(t, "/tmp/projectDD", sc.DerivedDataPath)
+	assert.True(t, sc.Terminal, "ConnEnd path marks the sidecar terminal")
 }
 
 // TestNewSessionSidecar_PeerAncestryFromCachedEntries pins the Gap #4 fix:
@@ -179,7 +180,7 @@ func TestNewSessionSidecar_PeerAncestryFromCachedEntries(t *testing.T) {
 		{PID: 10, Name: "xcodebuild", StartTimeMS: 2},
 	}
 
-	sc := newSessionSidecar(cs, time.Unix(1, 0))
+	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true)
 
 	assert.Equal(t, []string{"swiftc", "xcodebuild"}, sc.PeerAncestry)
 }
@@ -191,7 +192,7 @@ func TestNewSessionSidecar_PeerAncestryNilEntriesSerialisesEmpty(t *testing.T) {
 	cs := newConnectionSession("k", 42, time.Unix(0, 0))
 	cs.ancestryEntries = nil
 
-	sc := newSessionSidecar(cs, time.Unix(1, 0))
+	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true)
 
 	assert.Empty(t, sc.PeerAncestry)
 }
@@ -242,9 +243,156 @@ func TestTagConn_WrapperSessionGate_SetAfterAccept(t *testing.T) {
 	assert.Equal(t, derived, cs.derivedInvocationID, "late SetSession must not retroactively clear derivation")
 
 	cs.markActivity()
-	h.flushSession(cs)
+	h.flushTerminal(cs)
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "sidecar still emitted; wrapper's own PUT wins separately via SessionState")
+}
+
+// TestSwapState_ReturnsPriorAndInstallsFresh pins the atomic.Pointer swap:
+// Swap returns the previously-installed state, and the next Load reads the
+// fresh zero-valued one. The intermediate-flush path depends on both halves.
+func TestSwapState_ReturnsPriorAndInstallsFresh(t *testing.T) {
+	cs := newConnectionSession("k", 42, time.Now())
+	prior := cs.state.Load()
+	prior.recordDownload(opGet, 100, 0)
+
+	old := cs.swapState()
+	assert.Same(t, prior, old, "swapState must return the previously-installed pointer")
+	assert.False(t, old.getStats().blobStats.IsEmpty(), "old slice still carries the recorded op")
+
+	fresh := cs.state.Load()
+	assert.NotSame(t, old, fresh, "Load after swap must return a different pointer")
+	assert.True(t, fresh.getStats().blobStats.IsEmpty(), "fresh slice must start zero-valued")
+}
+
+// TestSwapState_RecordsLandInExactlyOneSliceUnderContention guards the
+// in-flight-RPC invariant: concurrent recorders racing a swap must each land
+// fully in exactly one of {old, new} — never partially in both.
+func TestSwapState_RecordsLandInExactlyOneSliceUnderContention(t *testing.T) {
+	cs := newConnectionSession("k", 42, time.Now())
+
+	const workers = 32
+	var start sync.WaitGroup
+	start.Add(1)
+	var done sync.WaitGroup
+	done.Add(workers)
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer done.Done()
+			start.Wait()
+			// Each goroutine reads the pointer once (same ordering the real
+			// recorder has) and records against it. The swap racing with this
+			// read must still have every record land in exactly one slice.
+			s := cs.state.Load()
+			s.recordDownload(opGet, 1, 0)
+		}()
+	}
+
+	start.Done()
+	old := cs.swapState()
+	done.Wait()
+
+	fresh := cs.state.Load()
+
+	oldOps := old.getStats().blobStats.Download.OpCount
+	newOps := fresh.getStats().blobStats.Download.OpCount
+	assert.Equal(t, int64(workers), oldOps+newOps, "every recorded op must land in exactly one slice")
+}
+
+// TestHadActivityWithin covers the idle-check used by flushIdle: zero
+// lastActivityAt is "not within"; a recent markActivity falls inside; a
+// stale lastActivityAt (threshold crossed) falls outside.
+func TestHadActivityWithin(t *testing.T) {
+	cs := newConnectionSession("k", 42, time.Now())
+
+	assert.False(t, cs.hadActivityWithin(5*time.Second, time.Now()), "zero lastActivityAt counts as not-within")
+
+	cs.markActivity()
+	assert.True(t, cs.hadActivityWithin(5*time.Second, time.Now()), "fresh markActivity falls inside threshold")
+
+	// Simulate time having passed by advancing `now` past the threshold.
+	future := time.Now().Add(1 * time.Hour)
+	assert.False(t, cs.hadActivityWithin(5*time.Second, future), "stale lastActivityAt falls outside")
+}
+
+// TestFlushIdle_WritesIntermediateForIdleAndActiveSessionsOnly guards the
+// per-conn idle flush: a mixed registry (no-activity, recently-active,
+// idle-with-ops) must produce an intermediate sidecar for only the idle one
+// that actually recorded an op.
+func TestFlushIdle_WritesIntermediateForIdleAndActiveSessionsOnly(t *testing.T) {
+	dir := t.TempDir()
+	registry := newSessionRegistry()
+	h := &sidecarStatsHandler{
+		writer:   newSidecarWriter(dir, nil),
+		registry: registry,
+	}
+
+	// Session A: no activity at all — must skip entirely.
+	noActivity := newConnectionSession("k-noact", 1, time.Unix(0, 0))
+	registry.put(noActivity)
+
+	// Session B: active just now — within threshold, must skip.
+	recent := newConnectionSession("k-recent", 2, time.Unix(0, 0))
+	recent.markActivity()
+	recent.state.Load().recordDownload(opGet, 10, 0)
+	registry.put(recent)
+
+	// Session C: last activity was long ago AND op recorded — must flush.
+	idleWithOps := newConnectionSession("k-idle-ops", 3, time.Unix(0, 0))
+	idleWithOps.state.Load().recordDownload(opGet, 20, 0)
+	// Manually backdate lastActivityAt to simulate elapsed idle time.
+	idleWithOps.activityMu.Lock()
+	idleWithOps.lastActivityAt = time.Now().Add(-1 * time.Hour)
+	idleWithOps.activityMu.Unlock()
+	registry.put(idleWithOps)
+
+	// Session D: idle but no ops recorded (markActivity flipped the flag but
+	// the RPC errored before recording). Must skip — nothing to serialise.
+	idleNoOps := newConnectionSession("k-idle-noops", 4, time.Unix(0, 0))
+	idleNoOps.markActivity()
+	idleNoOps.activityMu.Lock()
+	idleNoOps.lastActivityAt = time.Now().Add(-1 * time.Hour)
+	idleNoOps.activityMu.Unlock()
+	registry.put(idleNoOps)
+
+	h.flushIdle(time.Now(), 15*time.Second)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "only the idle-with-ops session writes an intermediate sidecar")
+
+	// Counters on the idle-with-ops session must have reset — swap installed a fresh slice.
+	assert.True(t, idleWithOps.state.Load().getStats().blobStats.IsEmpty(), "post-flush state must be fresh")
+}
+
+// TestFlushIdle_IntermediateSidecarMarkedNonTerminal pins the Terminal flag:
+// idle flushes write terminal=false so future consumers can split per-build
+// vs full-session accounting.
+func TestFlushIdle_IntermediateSidecarMarkedNonTerminal(t *testing.T) {
+	dir := t.TempDir()
+	registry := newSessionRegistry()
+	h := &sidecarStatsHandler{
+		writer:   newSidecarWriter(dir, nil),
+		registry: registry,
+	}
+
+	cs := newConnectionSession("k", 42, time.Unix(0, 0))
+	cs.state.Load().recordDownload(opGet, 10, 0)
+	cs.activityMu.Lock()
+	cs.lastActivityAt = time.Now().Add(-1 * time.Hour)
+	cs.activityMu.Unlock()
+	registry.put(cs)
+
+	h.flushIdle(time.Now(), 15*time.Second)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	body, err := os.ReadFile(dir + "/" + entries[0].Name())
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"terminal":false`, "intermediate flush writes terminal=false")
 }

@@ -34,6 +34,13 @@ type Sidecar struct {
 	// ancestor is present. Additive to schema v2: readers unmarshal into the
 	// typed struct and ignore the field when absent — no SchemaVersion bump.
 	DerivedDataPath string `json:"derived_data_path,omitempty"`
+
+	// Terminal reports whether this sidecar closes out the connection
+	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush that
+	// leaves the connection running. Additive to schema v2: enricher
+	// consumes both the same way today; future consumers may want to split
+	// per-build vs full-session accounting.
+	Terminal bool `json:"terminal"`
 }
 
 // WrapperLink carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.

@@ -71,6 +71,12 @@ type Proxy struct {
 
 	sidecarStats    *sidecarStatsHandler
 	sidecarRegistry *sessionRegistry
+
+	// perConnFlushTimer self-reschedules every perConnIdleThreshold while
+	// the proxy serves. Independent of the wrapper inactivityTimer: that
+	// one sits on top of SetSession, this one covers the IDE plugin flow
+	// where ConnEnd only fires when Xcode fully quits.
+	perConnFlushTimer *time.Timer
 }
 
 // SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
@@ -173,6 +179,21 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
 	}
+
+	p.perConnFlushTimer = time.AfterFunc(perConnIdleThreshold, p.firePerConnFlush)
+}
+
+// firePerConnFlush is the per-conn flush timer callback. Self-reschedules so
+// one AfterFunc covers the whole proxy lifetime. Stopped on GracefulStop and
+// flushOutstandingSidecars so no late fires race shutdown.
+func (p *Proxy) firePerConnFlush() {
+	if p.sidecarStats != nil {
+		p.sidecarStats.flushIdle(time.Now(), perConnIdleThreshold)
+	}
+
+	if p.perConnFlushTimer != nil {
+		p.perConnFlushTimer.Reset(perConnIdleThreshold)
+	}
 }
 
 // wrapperSessionActive reports whether the SetSession path currently owns the
@@ -195,7 +216,7 @@ func (p *Proxy) stateFor(ctx context.Context) *recorder {
 
 	cs.markActivity()
 
-	return &recorder{global: p.sessionState, conn: cs.state}
+	return &recorder{global: p.sessionState, conn: cs.state.Load()}
 }
 
 // Sized off the machine, not the client: the plugin will open as many streams
@@ -225,6 +246,9 @@ func (p *Proxy) Serve(l net.Listener) error {
 // After the server returns, any outstanding per-connection sidecars are
 // flushed — otherwise a shutdown mid-build loses the still-open sessions.
 func (p *Proxy) GracefulStop() {
+	if p.perConnFlushTimer != nil {
+		p.perConnFlushTimer.Stop()
+	}
 	p.grpcServer.GracefulStop()
 	p.flushOutstandingSidecars()
 }
@@ -234,7 +258,11 @@ func (p *Proxy) flushOutstandingSidecars() {
 		return
 	}
 
-	p.sidecarRegistry.flushAll(p.sidecarStats.flushSession)
+	if p.perConnFlushTimer != nil {
+		p.perConnFlushTimer.Stop()
+	}
+
+	p.sidecarRegistry.flushAll(p.sidecarStats.flushTerminal)
 }
 
 // FlushCurrentSession emits the currently-open session (if any) via the configured emitter.
