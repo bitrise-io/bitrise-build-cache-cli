@@ -763,6 +763,8 @@ func TestWatcher_scanOrphanSidecars_FiresPseudoGroupForAgedOrphan(t *testing.T) 
 	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-a", handled[0].Entries[0].UUID)
 	assert.Equal(t, start, handled[0].Start())
 	assert.Equal(t, stop, handled[0].Stop())
+	assert.Equal(t, "build", handled[0].Command(), "no overlapping manifest emission → signature falls back to bare build")
+	assert.Empty(t, handled[0].OverrideInvocationID(), "no manifest overlap → no override stamped")
 
 	require.Len(t, reader.calls, 1)
 	assert.Equal(t, now, reader.calls[0].now)
@@ -1000,6 +1002,145 @@ func (s *stubReader) OrphanSidecarsGroupedByInvocation(now time.Time, minAge tim
 func (s *stubReader) PendingDerivedDataPaths() []string { return nil }
 
 func (s *stubReader) PendingCount() int { return 0 }
+
+// TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTick
+// pins the Bug-2 dedup: Clean+Build-manifest-orphan + pseudo-group that overlap
+// the Build window must land as ONE BE row, keyed by the Build-manifest's
+// InvocationID. Also verifies the pseudo-group inherits the Build's
+// signature + scheme so the row renders as "build [IceCubesApp]".
+func TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTick(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-overlap-dedup")
+	writeMultiEntryManifest(t, derivedRoot, "u-build")
+
+	// The fixture spans ~762345900..762345905 CFAbsoluteTime (2025-02-27-ish),
+	// so the orphan sidecar's window must straddle those entries to overlap.
+	// fixtureNow (2025-02-27 12:00 UTC) is well past HandledManifestMaxAge
+	// trigger, so entries render ~10:45 UTC — within window.
+	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
+	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"sidecar-anchored-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return fixtureNow },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false }, // force manifest-orphan mint
+		MaxCorrelationRetries: 0,                                              // skip retry bucket so the mint fires immediately
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	const buildOrphanID = "build-manifest-orphan"
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+		// Only the real manifest group feeds the dedup set — the pseudo-group
+		// that comes later must not re-populate it.
+		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			w.RecordEmittedInvocationID(buildOrphanID, g)
+		}
+	}
+
+	w.scan(false, false)
+
+	require.Len(t, handled, 2, "exactly one real manifest group + one pseudo-group")
+
+	var pseudo *ManifestEntryGroup
+	for i, g := range handled {
+		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			pseudo = &handled[i]
+		}
+	}
+	require.NotNil(t, pseudo, "pseudo-group must emit")
+
+	assert.Equal(t, buildOrphanID, pseudo.OverrideInvocationID(),
+		"pseudo-group must re-PUT under the Build-manifest-orphan's InvocationID so the two rows dedup to one")
+	assert.Equal(t, "build [SharedScheme]", pseudo.Command(),
+		"pseudo-group must inherit the Build-manifest's signature + scheme instead of rendering as a bare build")
+}
+
+// TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap verifies
+// that a sidecar whose window does not overlap any tick-emitted manifest group
+// still emits a pseudo-group with the default "build" rendering and no override.
+// This preserves wrapperless shutdown-sweep PUT behavior.
+func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-nooverlap")
+	writeMultiEntryManifest(t, derivedRoot, "u-build")
+
+	// Sidecar starts hours before the manifest entries — guaranteed no overlap.
+	sidecarStart := time.Date(2025, 2, 27, 5, 0, 0, 0, time.UTC)
+	sidecarStop := time.Date(2025, 2, 27, 5, 0, 10, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"orphan-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-orphan"}},
+	}}
+
+	var pseudo *ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return fixtureNow },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 0,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			pseudo = &g
+		} else {
+			w.RecordEmittedInvocationID("build-orphan-elsewhere", g)
+		}
+	}
+
+	w.scan(false, false)
+
+	require.NotNil(t, pseudo, "pseudo-group must emit even without an overlapping manifest")
+	assert.Empty(t, pseudo.OverrideInvocationID(), "no overlap → no override → enricher uses the sidecar's wrapper InvocationID")
+	assert.Equal(t, "build", pseudo.Command(), "no scheme hint → bare build rendering")
+}
+
+// TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored verifies
+// forceSynthesize=true (shutdown sweep) never consults tickEmittedGroups,
+// so a late-closing sidecar lands under its own InvocationID even if a
+// manifest group overlaps.
+func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-shutdown-anchor")
+	writeMultiEntryManifest(t, derivedRoot, "u-build")
+
+	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
+	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"sidecar-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-shutdown"}},
+	}}
+
+	var pseudo *ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			pseudo = &g
+		} else {
+			w.RecordEmittedInvocationID("would-have-been-override", g)
+		}
+	}
+
+	w.ScanOnce()
+
+	require.NotNil(t, pseudo, "shutdown sweep must emit the pseudo-group")
+	assert.Empty(t, pseudo.OverrideInvocationID(),
+		"shutdown sweep (forceSynthesize=true) must NOT reuse manifest-orphan ID — sidecar stays anchored to its own invocation")
+}
 
 func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	home := t.TempDir()
