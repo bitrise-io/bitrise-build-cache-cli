@@ -39,9 +39,7 @@ func TestPrintEmittedURLs_PrintsOneLinePerID(t *testing.T) {
 }
 
 func TestPrintEmittedURLs_EmptyResponseFallsBackToNoPendingMessage(t *testing.T) {
-	// A proxy-running sweep that returns zero IDs must still produce the same
-	// outcome string as the proxy-missing branch, so operators get the same
-	// confirmation line regardless of which path produced it.
+	// Zero-ID sweep must match the proxy-missing branch's confirmation line.
 	buf := &bytes.Buffer{}
 	client := &fakeFlushClient{resp: &session.FlushSessionResponse{}}
 
