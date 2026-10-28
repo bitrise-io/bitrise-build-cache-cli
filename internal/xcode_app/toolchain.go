@@ -49,7 +49,6 @@ func toolchainOverrideBuildSettings(proxySocketPath, pluginPath string) map[stri
 		"COMPILATION_CACHE_ENABLE_PLUGIN":       "YES",
 		"COMPILATION_CACHE_PLUGIN_PATH":         pluginPath,
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
-		"OTHER_SWIFT_FLAGS":                     "$(inherited) -cas-plugin-option remote-service-path=" + proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
 	}
 }

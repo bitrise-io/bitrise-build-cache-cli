@@ -28,7 +28,6 @@ func TestRender_containsAllRequiredKeys(t *testing.T) {
 		"COMPILATION_CACHE_PLUGIN_PATH = /var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib",
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock",
 		"SWIFT_ENABLE_COMPILE_CACHE = YES",
-		"OTHER_SWIFT_FLAGS = $(inherited) -cas-plugin-option remote-service-path=/tmp/xcelerate-proxy.sock",
 		"TOOLCHAINS = " + ToolchainID,
 	} {
 		assert.Contains(t, got, want)
