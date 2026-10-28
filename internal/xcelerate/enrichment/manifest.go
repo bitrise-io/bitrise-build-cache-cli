@@ -40,6 +40,7 @@ const (
 	CommandBuild   Command = "build"
 	CommandTest    Command = "test"
 	CommandArchive Command = "archive"
+	CommandClean   Command = "clean"
 	CommandUnknown Command = ""
 )
 
@@ -50,12 +51,14 @@ func (m ManifestEntry) Command() Command {
 	}
 
 	switch strings.ToLower(strings.SplitN(source, " ", 2)[0]) {
-	case "build", "building", "cleaning", "clean":
+	case "build", "building":
 		return CommandBuild
 	case "test", "testing":
 		return CommandTest
 	case "archive", "archiving":
 		return CommandArchive
+	case "clean", "cleaning":
+		return CommandClean
 	default:
 		return CommandUnknown
 	}
@@ -241,7 +244,7 @@ func (g ManifestEntryGroup) Success() bool {
 }
 
 // Primary picks the outermost entry by command rank (archive > build > test >
-// unknown). Ties are broken by earliest Start.
+// clean > unknown). Ties are broken by earliest Start.
 //
 // Build outranks Test because build-for-testing and test share a scheme and
 // cluster into one group, and the test-without-building log never carries
@@ -260,10 +263,12 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 			return 2
 		case CommandTest:
 			return 1
+		case CommandClean:
+			return 0
 		case CommandUnknown:
-			return 0
+			return -1
 		default:
-			return 0
+			return -1
 		}
 	}
 
