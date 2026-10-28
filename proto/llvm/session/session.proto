@@ -75,6 +75,10 @@ message BlobStats {
   Histogram latency_ms = 6;
   Histogram size_bytes = 7;
   ThroughputStats throughput = 8;
+  // Uploads BE acknowledged. Distinct from op_count, which counts successful upload returns from
+  // the proxy's view. May diverge from op_count on paths that detach the upload from the client
+  // ctx (BE acked after the handler returned).
+  int64 commit_count = 9;
 }
 
 // cas and kv break the totals down by wire protocol. The totals stay the fields both build
