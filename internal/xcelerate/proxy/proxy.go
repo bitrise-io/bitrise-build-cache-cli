@@ -206,7 +206,10 @@ const maxConcurrentStreams = 64
 // uploadDecoupledTimeout caps a background upload so a wedged BE can't orphan
 // goroutines after client cancel. Covers one full retry attempt + headroom;
 // large blobs mid-second-retry may clip (accepted — retrier handles follow-up).
-const uploadDecoupledTimeout = 3 * time.Minute
+// Package var (not const) so tests can shrink it to milliseconds.
+//
+//nolint:gochecknoglobals // overridable via export_test.go seam
+var uploadDecoupledTimeout = 3 * time.Minute
 
 func streamWorkers() uint32 {
 	return uint32(max(4, min(runtime.NumCPU()*2, 32))) //nolint:gosec // bounded to 32

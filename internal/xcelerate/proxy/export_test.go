@@ -2,6 +2,16 @@ package proxy
 
 import "time"
 
+// SetUploadDecoupledTimeoutForTest overrides the detach-upload timeout in tests
+// and returns a restorer. Lets a hangs-past-timeout test run in milliseconds
+// without the 3-minute default.
+func SetUploadDecoupledTimeoutForTest(d time.Duration) func() {
+	previous := uploadDecoupledTimeout
+	uploadDecoupledTimeout = d
+
+	return func() { uploadDecoupledTimeout = previous }
+}
+
 // TouchSession exposes the private touchSession helper for tests.
 func (p *Proxy) TouchSession() { p.touchSession() }
 
