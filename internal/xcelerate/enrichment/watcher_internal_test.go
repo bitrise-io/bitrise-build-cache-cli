@@ -1004,7 +1004,7 @@ func (s *stubReader) PendingDerivedDataPaths() []string { return nil }
 func (s *stubReader) PendingCount() int { return 0 }
 
 // TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTick
-// pins the Bug-2 dedup: Clean+Build-manifest-orphan + pseudo-group that overlap
+// pins the dedup: Clean+Build-manifest-orphan + pseudo-group that overlap
 // the Build window must land as ONE BE row, keyed by the Build-manifest's
 // InvocationID. Also verifies the pseudo-group inherits the Build's
 // signature + scheme so the row renders as "build [IceCubesApp]".
@@ -1063,10 +1063,8 @@ func TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTi
 		"pseudo-group must inherit the Build-manifest's signature + scheme instead of rendering as a bare build")
 }
 
-// TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap verifies
-// that a sidecar whose window does not overlap any tick-emitted manifest group
-// still emits a pseudo-group with the default "build" rendering and no override.
-// This preserves wrapperless shutdown-sweep PUT behavior.
+// TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap: a
+// non-overlapping sidecar emits a bare-build pseudo-group with no override.
 func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-nooverlap")
@@ -1105,10 +1103,9 @@ func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testin
 	assert.Equal(t, "build", pseudo.Command(), "no scheme hint → bare build rendering")
 }
 
-// TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored verifies
-// forceSynthesize=true (shutdown sweep) never consults recentEmissions,
-// so a late-closing sidecar lands under its own InvocationID even if a
-// manifest group overlaps.
+// TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored:
+// forceSynthesize=true skips recentEmissions so a late sidecar keeps its own
+// InvocationID even when a manifest group overlaps.
 func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-shutdown-anchor")
@@ -1142,13 +1139,9 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 		"shutdown sweep (forceSynthesize=true) must NOT reuse manifest-orphan ID — sidecar stays anchored to its own invocation")
 }
 
-// TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention pins the
-// cross-tick regression: the IDE flow mints a manifest-orphan in tick N but
-// doesn't flush the sidecar until tick N+1 (plugin peer stays connected until
-// IDE build teardown). A tick-scoped dedup map would lose correlation across
-// the gap; the Watcher-owned recentEmissions cache must retain the manifest
-// group's ID through RecentEmissionsRetention so the pseudo-group PUTs under
-// the same InvocationID.
+// TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention: IDE flow
+// mints the manifest-orphan in tick N and flushes the sidecar in tick N+1 —
+// the pseudo-group must still PUT under the manifest-orphan's InvocationID.
 func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-cross-tick")
@@ -1210,11 +1203,9 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 		"cross-tick dedup: pseudo-group inherits the manifest's signature + scheme")
 }
 
-// TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention
-// pins the retention boundary: a manifest-emission older than
-// RecentEmissionsRetention is pruned at the next scan start, so a late sidecar
-// does NOT inherit the stale manifest-orphan ID and falls back to its own
-// InvocationID.
+// TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention: an
+// emission older than RecentEmissionsRetention is pruned, so a late sidecar
+// falls back to its own InvocationID instead of inheriting the stale ID.
 func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-expired")

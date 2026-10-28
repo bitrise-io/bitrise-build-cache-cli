@@ -348,9 +348,7 @@ func (i *sidecarIndex) PendingCount() int {
 	return n
 }
 
-// ---------------------------------------------------------------------------
 // Private
-// ---------------------------------------------------------------------------
 
 func ancestryMatches(ancestry []string) bool {
 	for _, a := range ancestry {

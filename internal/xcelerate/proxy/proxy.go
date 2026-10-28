@@ -225,8 +225,7 @@ func (p *Proxy) stateFor(ctx context.Context) *recorder {
 const maxConcurrentStreams = 64
 
 // uploadDecoupledTimeout caps a background upload so a wedged BE can't orphan
-// goroutines after client cancel. Covers one full retry attempt + headroom;
-// large blobs mid-second-retry may clip (accepted — retrier handles follow-up).
+// goroutines after client cancel. Covers one full retry attempt + headroom.
 // Package var (not const) so tests can shrink it to milliseconds.
 //
 //nolint:gochecknoglobals // overridable via export_test.go seam
