@@ -27,6 +27,25 @@ const startLockMaxWait = time.Second
 // start lock.
 const startLockRetry = 10 * time.Millisecond
 
+// cliBinaryPath resolves the absolute CLI path installed by `activate xcode` at
+// ~/.bitrise-xcelerate/bin/bitrise-build-cache. Trampoline runs under Xcode.app's
+// launchd PATH which usually lacks the user's shell bin dirs, so a bare name
+// lookup via PATH fails and start-proxy never fires. Falling back to the bare
+// name keeps `go test` on CI runners green when the install dir doesn't exist.
+func cliBinaryPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return paths.CLIBinaryName
+	}
+
+	abs := paths.FromHome(home).XcelerateBinFile(paths.CLIBinaryName)
+	if _, err := os.Stat(abs); err == nil {
+		return abs
+	}
+
+	return paths.CLIBinaryName
+}
+
 // autostartDeps is the dependency bundle for EnsureProxy; tests swap atoms.
 type autostartDeps struct {
 	socketPath    func() string
@@ -72,7 +91,7 @@ var defaultAutostartDeps = autostartDeps{
 	startAutostep: func() {
 		// Fire-and-forget: the autostart is best-effort, the compiler must proceed
 		// regardless and the proxy will be up on the next compile.
-		cmd := exec.CommandContext(context.Background(), paths.CLIBinaryName, "xcelerate", "start-proxy") //nolint:noctx,gosec // intentionally detached: must outlive trampoline exec; args are compile-time constants
+		cmd := exec.CommandContext(context.Background(), cliBinaryPath(), "xcelerate", "start-proxy") //nolint:noctx,gosec // intentionally detached: must outlive trampoline exec; args are compile-time constants
 		cmd.Stdin = nil
 		cmd.Stdout = nil
 		cmd.Stderr = nil
