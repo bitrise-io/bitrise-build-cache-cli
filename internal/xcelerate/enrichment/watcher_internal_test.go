@@ -1106,7 +1106,7 @@ func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testin
 }
 
 // TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored verifies
-// forceSynthesize=true (shutdown sweep) never consults tickEmittedGroups,
+// forceSynthesize=true (shutdown sweep) never consults recentEmissions,
 // so a late-closing sidecar lands under its own InvocationID even if a
 // manifest group overlaps.
 func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing.T) {
@@ -1141,6 +1141,152 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 	assert.Empty(t, pseudo.OverrideInvocationID(),
 		"shutdown sweep (forceSynthesize=true) must NOT reuse manifest-orphan ID — sidecar stays anchored to its own invocation")
 }
+
+// TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention pins the
+// cross-tick regression: the IDE flow mints a manifest-orphan in tick N but
+// doesn't flush the sidecar until tick N+1 (plugin peer stays connected until
+// IDE build teardown). A tick-scoped dedup map would lose correlation across
+// the gap; the Watcher-owned recentEmissions cache must retain the manifest
+// group's ID through RecentEmissionsRetention so the pseudo-group PUTs under
+// the same InvocationID.
+func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-cross-tick")
+	writeMultiEntryManifest(t, derivedRoot, "u-build")
+
+	// Sidecar window overlaps the manifest entries (~10:45 UTC on 2025-02-27).
+	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
+	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
+
+	// stagedReader returns no sidecar groups on the first call (tick N) and the
+	// orphan group on subsequent calls (tick N+1) — simulating the IDE flow
+	// where sidecar flush is deferred past the manifest-orphan mint.
+	reader := &stagedReader{stages: []map[string]SidecarGroup{
+		nil,
+		{"sidecar-anchored-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}}},
+	}}
+
+	// Clock advances less than RecentEmissionsRetention between ticks.
+	tickTimes := []time.Time{fixtureNow, fixtureNow.Add(RecentEmissionsRetention / 2)}
+	var tickIdx int
+	nowFn := func() time.Time { return tickTimes[tickIdx] }
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   nowFn,
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 0,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	const buildOrphanID = "build-manifest-orphan"
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			w.RecordEmittedInvocationID(buildOrphanID, g)
+		}
+	}
+
+	// Tick N: manifest-orphan mints; stubReader returns no sidecars.
+	w.scan(false, false)
+	require.Len(t, handled, 1, "tick N: only the manifest-orphan emits")
+	require.False(t, strings.HasPrefix(handled[0].Entries[0].UUID, SyntheticManifestGroupUUIDPrefix))
+
+	// Tick N+1: sidecar flushes; manifest entries already seen.
+	tickIdx = 1
+	w.scan(false, false)
+
+	require.Len(t, handled, 2, "tick N+1: pseudo-group emits")
+	pseudo := handled[1]
+	require.True(t, strings.HasPrefix(pseudo.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix),
+		"second emission must be the pseudo-group")
+	assert.Equal(t, buildOrphanID, pseudo.OverrideInvocationID(),
+		"cross-tick dedup: pseudo-group must re-PUT under the manifest-orphan ID "+
+			"recorded in tick N — Watcher-owned recentEmissions retained it across the tick boundary")
+	assert.Equal(t, "build [SharedScheme]", pseudo.Command(),
+		"cross-tick dedup: pseudo-group inherits the manifest's signature + scheme")
+}
+
+// TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention
+// pins the retention boundary: a manifest-emission older than
+// RecentEmissionsRetention is pruned at the next scan start, so a late sidecar
+// does NOT inherit the stale manifest-orphan ID and falls back to its own
+// InvocationID.
+func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-expired")
+	writeMultiEntryManifest(t, derivedRoot, "u-build")
+
+	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
+	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
+
+	reader := &stagedReader{stages: []map[string]SidecarGroup{
+		nil,
+		{"sidecar-anchored-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-late"}}},
+	}}
+
+	// Second tick lands past the retention window — the emission must be pruned.
+	tickTimes := []time.Time{fixtureNow, fixtureNow.Add(RecentEmissionsRetention + time.Minute)}
+	var tickIdx int
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return tickTimes[tickIdx] },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 0,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			w.RecordEmittedInvocationID("stale-manifest-id", g)
+		}
+	}
+
+	w.scan(false, false)
+	require.Len(t, handled, 1)
+
+	tickIdx = 1
+	w.scan(false, false)
+
+	require.Len(t, handled, 2)
+	pseudo := handled[1]
+	require.True(t, strings.HasPrefix(pseudo.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix))
+	assert.Empty(t, pseudo.OverrideInvocationID(),
+		"stale manifest emission must be pruned at scan start — pseudo-group falls back to its own InvocationID")
+}
+
+// stagedReader returns a different group map per invocation of
+// OrphanSidecarsGroupedByInvocation; the Nth call returns stages[N] (clamped
+// to the final entry). Lets tests simulate per-tick sidecar visibility.
+type stagedReader struct {
+	stages [](map[string]SidecarGroup)
+	calls  int
+}
+
+func (s *stagedReader) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+	return nil, nil, "", false
+}
+
+func (s *stagedReader) OrphanSidecarsGroupedByInvocation(time.Time, time.Duration) map[string]SidecarGroup {
+	idx := s.calls
+	if idx >= len(s.stages) {
+		idx = len(s.stages) - 1
+	}
+	s.calls++
+
+	return s.stages[idx]
+}
+
+func (s *stagedReader) PendingDerivedDataPaths() []string { return nil }
+
+func (s *stagedReader) PendingCount() int { return 0 }
 
 func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	home := t.TempDir()
