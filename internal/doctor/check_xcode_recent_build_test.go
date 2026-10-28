@@ -120,7 +120,7 @@ func TestXcodeRecentBuildCheck_picksNewestAcrossDefaultAndCacheRoots(t *testing.
 
 func TestXcodeRecentBuildCheck_defaultRootPickedWhenCacheEmpty(t *testing.T) {
 	// Only the default DerivedData has a log — proves the default location is
-	// scanned (regression guard for ACI-5554 RDE verification gap).
+	// scanned.
 	defaultDD := t.TempDir()
 	cacheDD := t.TempDir() // present but empty
 	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
