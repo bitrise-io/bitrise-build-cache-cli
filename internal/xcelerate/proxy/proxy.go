@@ -203,6 +203,11 @@ func (p *Proxy) stateFor(ctx context.Context) *recorder {
 // while it drains them.
 const maxConcurrentStreams = 64
 
+// uploadDecoupledTimeout caps a background upload so a wedged BE can't orphan
+// goroutines after client cancel. Covers one full retry attempt + headroom;
+// large blobs mid-second-retry may clip (accepted — retrier handles follow-up).
+const uploadDecoupledTimeout = 3 * time.Minute
+
 func streamWorkers() uint32 {
 	return uint32(max(4, min(runtime.NumCPU()*2, 32))) //nolint:gosec // bounded to 32
 }
@@ -564,13 +569,17 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	size := int64(buffer.Len())
 
+	uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadDecoupledTimeout)
+	defer cancel()
+
 	transferStart := time.Now()
-	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
+	err := p.kvClient.UploadStreamToBuildCache(uploadCtx, buffer, key, size)
 	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
 
+	p.logger.TDebugf("Upload committed: op=%s key=%s size=%d", opPut, key, size)
 	rec.recordUpload(opPut, size, transferElapsed)
 
 	return &llvmcas.CASPutResponse{
@@ -743,13 +752,17 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		reader = slicebuf.NewBufferWithData(request.GetData().GetBlob().GetData())
 	}
 
+	uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadDecoupledTimeout)
+	defer cancel()
+
 	transferStart := time.Now()
-	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
+	err := p.kvClient.UploadStreamToBuildCache(uploadCtx, reader, key, size)
 	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to upload data: %w", key, err)), nil
 	}
 
+	p.logger.TDebugf("Upload committed: op=%s key=%s size=%d", opSave, key, size)
 	rec.recordUpload(opSave, size, transferElapsed)
 
 	return &llvmcas.CASSaveResponse{
@@ -860,13 +873,17 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 
 	size := int64(buffer.Len())
 
+	uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadDecoupledTimeout)
+	defer cancel()
+
 	transferStart := time.Now()
-	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
+	err := p.kvClient.UploadStreamToBuildCache(uploadCtx, buffer, key, size)
 	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to upload value: %w", key, err)), nil
 	}
 
+	p.logger.TDebugf("Upload committed: op=%s key=%s size=%d", opPutValue, key, size)
 	rec.recordUpload(opPutValue, size, transferElapsed)
 
 	//nolint:exhaustruct
