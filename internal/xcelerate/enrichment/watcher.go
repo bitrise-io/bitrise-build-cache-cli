@@ -16,6 +16,13 @@ const DefaultDerivedDataGlob = "Library/Developer/Xcode/DerivedData/*/Logs/*/Log
 
 const DefaultMaxCorrelationRetries = 6
 
+// RecentEmissionsRetention bounds how long a manifest-emission is kept in
+// Watcher.recentEmissions so scanOrphanSidecars can dedup a pseudo-group PUT
+// across scan ticks. Covers the typical manifest-orphan-mint → sidecar-flush
+// gap on the IDE flow (orphan mints ~30s after first sighting; sidecar flushes
+// seconds-to-minutes after build end).
+const RecentEmissionsRetention = 10 * time.Minute
+
 type Watcher struct {
 	HomeDir      string
 	Globs        []string
@@ -60,24 +67,36 @@ type Watcher struct {
 	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
 	tickEmittedIDs map[string]struct{}
 
-	// tickEmittedGroups maps the same InvocationIDs to the ManifestEntryGroup
-	// whose PUT just succeeded, keyed by InvocationID. scanOrphanSidecars reads
-	// this to re-PUT a pseudo-group under the overlapping manifest-orphan's ID
-	// (Bug-2 dedup — see findOverlappingManifestGroup). Populated only inside
-	// RecordEmittedInvocationID (post-emit), so a dropped manifest group does
-	// not pollute the map.
-	tickEmittedGroups map[string]ManifestEntryGroup
+	// recentEmissions maps InvocationIDs the Enricher emitted via the manifest
+	// path to the ManifestEntryGroup whose PUT just succeeded. scanOrphanSidecars
+	// reads this to re-PUT a pseudo-group under the overlapping manifest-orphan's
+	// ID (Bug-2 dedup — see findOverlappingManifestGroup). Watcher-owned and
+	// persistent across ticks: the IDE flow mints the manifest-orphan in tick N
+	// and flushes the sidecar in tick N+1, so a tick-scoped map loses the
+	// correlation every time. Pruned at scan start by RecentEmissionsRetention.
+	// Populated only inside RecordEmittedInvocationID (post-emit), so a dropped
+	// manifest group does not pollute the map.
+	recentEmissions map[string]emissionRecord
 
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
 	lastStalledLogAt time.Time
 }
 
+// emissionRecord pairs a manifest-emitted group with the time it was recorded
+// so Watcher.recentEmissions can age out stale entries beyond RecentEmissionsRetention.
+type emissionRecord struct {
+	group     ManifestEntryGroup
+	emittedAt time.Time
+}
+
 // RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
 // the per-tick dedup set that scanOrphanSidecars reads: a sidecar whose ID
 // just emitted via the manifest path must not re-emit as a pseudo-group. It
-// also stashes the emitted group under its ID so a pseudo-group that overlaps
-// one of them can re-PUT under the same InvocationID (Bug-2 dedup).
+// also stashes the emitted group under its ID in the Watcher-owned
+// recentEmissions cache so a pseudo-group that overlaps one of them can re-PUT
+// under the same InvocationID (Bug-2 dedup) — across scan ticks, since the
+// IDE flow typically defers sidecar flush to the next tick.
 func (w *Watcher) RecordEmittedInvocationID(invocationID string, group ManifestEntryGroup) {
 	if invocationID == "" {
 		return
@@ -86,8 +105,25 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string, group ManifestE
 	if w.tickEmittedIDs != nil {
 		w.tickEmittedIDs[invocationID] = struct{}{}
 	}
-	if w.tickEmittedGroups != nil {
-		w.tickEmittedGroups[invocationID] = group
+	if w.recentEmissions != nil {
+		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: w.now()}
+	}
+}
+
+// pruneRecentEmissions drops recentEmissions entries older than
+// RecentEmissionsRetention. Called at scan start — the retention window is the
+// upper bound on the manifest-orphan-mint → sidecar-flush gap we're willing to
+// correlate across.
+func (w *Watcher) pruneRecentEmissions() {
+	if w.recentEmissions == nil {
+		return
+	}
+
+	cutoff := w.now().Add(-RecentEmissionsRetention)
+	for id, rec := range w.recentEmissions {
+		if rec.emittedAt.Before(cutoff) {
+			delete(w.recentEmissions, id)
+		}
 	}
 }
 
@@ -138,6 +174,7 @@ func (w *Watcher) Run(ctx context.Context) {
 
 	w.seen = make(map[string]struct{})
 	w.retries = make(map[string]int)
+	w.recentEmissions = make(map[string]emissionRecord)
 
 	if !w.seedSeenFromStore() {
 		w.scan(true, false)
@@ -165,6 +202,9 @@ func (w *Watcher) ScanOnce() {
 	}
 	if w.retries == nil {
 		w.retries = make(map[string]int)
+	}
+	if w.recentEmissions == nil {
+		w.recentEmissions = make(map[string]emissionRecord)
 	}
 
 	w.scan(false, true)
@@ -197,11 +237,17 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	logger := logOr(w.Logger)
 
 	w.tickEmittedIDs = make(map[string]struct{})
-	w.tickEmittedGroups = make(map[string]ManifestEntryGroup)
 	defer func() {
 		w.tickEmittedIDs = nil
-		w.tickEmittedGroups = nil
 	}()
+
+	// recentEmissions is Watcher-owned and persists across ticks; prune aged
+	// entries here so a dropped-but-still-remembered emission doesn't live
+	// forever. Initialize if nil — tests that drive scan() directly skip Run/ScanOnce.
+	if w.recentEmissions == nil {
+		w.recentEmissions = make(map[string]emissionRecord)
+	}
+	w.pruneRecentEmissions()
 
 	globs := w.Globs
 	if len(globs) == 0 {
@@ -274,9 +320,9 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 // pseudo-group triple into a single BE row.
 //
 // Not reusing Correlate(GroupCorrelationSpan(pseudo), pending): candidate shape
-// here is an ID→group map (tickEmittedGroups) and we need rank-based tie-break
+// here is an ID→group map (recentEmissions) and we need rank-based tie-break
 // on overlap, which Correlate's []PendingRecord contract doesn't carry.
-func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, candidates map[string]ManifestEntryGroup) (string, *ManifestEntryGroup) {
+func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, recentEmissions map[string]emissionRecord) (string, *ManifestEntryGroup) {
 	var (
 		bestID   string
 		bestGrp  ManifestEntryGroup
@@ -285,7 +331,8 @@ func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, candidate
 		found    bool
 	)
 
-	for id, g := range candidates {
+	for id, rec := range recentEmissions {
+		g := rec.group
 		if !overlaps(sidecarStart, sidecarStop, g.Start(), g.Stop()) {
 			continue
 		}
@@ -356,7 +403,7 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			signature, scheme, overrideID string
 		)
 		if !forceSynthesize {
-			if overrideKey, winner := findOverlappingManifestGroup(group.Start, group.Stop, w.tickEmittedGroups); winner != nil {
+			if overrideKey, winner := findOverlappingManifestGroup(group.Start, group.Stop, w.recentEmissions); winner != nil {
 				primary := winner.Primary()
 				signature = primary.Signature
 				scheme = primary.SchemeName
