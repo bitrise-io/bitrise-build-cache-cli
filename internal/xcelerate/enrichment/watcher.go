@@ -272,6 +272,10 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 // Used by scanOrphanSidecars to re-PUT a pseudo-group under the same ID a
 // manifest-orphan just emitted — collapses the Clean+Build-manifest-orphan +
 // pseudo-group triple into a single BE row.
+//
+// Not reusing Correlate(GroupCorrelationSpan(pseudo), pending): candidate shape
+// here is an ID→group map (tickEmittedGroups) and we need rank-based tie-break
+// on overlap, which Correlate's []PendingRecord contract doesn't carry.
 func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, candidates map[string]ManifestEntryGroup) (string, *ManifestEntryGroup) {
 	var (
 		bestID   string
