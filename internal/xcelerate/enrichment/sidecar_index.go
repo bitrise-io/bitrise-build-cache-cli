@@ -17,8 +17,16 @@ import (
 // are left on disk for a newer binary to consume.
 const supportedSidecarSchema = sessions.SidecarSchemaVersion
 
-// expectedAncestor must appear in a sidecar's PeerAncestry list to qualify.
-const expectedAncestor = "xcodebuild"
+// acceptedAncestors are process names that qualify a sidecar for enrichment.
+// "xcodebuild" is the CLI/CI flow; "Xcode" is the IDE flow (peer ancestry
+// resolves to [SWBBuildService, Xcode] because SwiftBuild hosts the plugin
+// out of process).
+//
+//nolint:gochecknoglobals // immutable set, equivalent to const.
+var acceptedAncestors = map[string]struct{}{
+	"xcodebuild": {},
+	"Xcode":      {},
+}
 
 // SidecarReader resolves sidecars left by the proxy that overlap a manifest
 // group's time window. Returns the representative blob snapshot (largest-op
@@ -346,7 +354,7 @@ func (i *sidecarIndex) PendingCount() int {
 
 func ancestryMatches(ancestry []string) bool {
 	for _, a := range ancestry {
-		if a == expectedAncestor {
+		if _, ok := acceptedAncestors[a]; ok {
 			return true
 		}
 	}
