@@ -60,6 +60,14 @@ type Watcher struct {
 	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
 	tickEmittedIDs map[string]struct{}
 
+	// tickEmittedGroups maps the same InvocationIDs to the ManifestEntryGroup
+	// whose PUT just succeeded, keyed by InvocationID. scanOrphanSidecars reads
+	// this to re-PUT a pseudo-group under the overlapping manifest-orphan's ID
+	// (Bug-2 dedup — see findOverlappingManifestGroup). Populated only inside
+	// RecordEmittedInvocationID (post-emit), so a dropped manifest group does
+	// not pollute the map.
+	tickEmittedGroups map[string]ManifestEntryGroup
+
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
 	lastStalledLogAt time.Time
@@ -67,13 +75,20 @@ type Watcher struct {
 
 // RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
 // the per-tick dedup set that scanOrphanSidecars reads: a sidecar whose ID
-// just emitted via the manifest path must not re-emit as a pseudo-group.
-func (w *Watcher) RecordEmittedInvocationID(invocationID string) {
-	if invocationID == "" || w.tickEmittedIDs == nil {
+// just emitted via the manifest path must not re-emit as a pseudo-group. It
+// also stashes the emitted group under its ID so a pseudo-group that overlaps
+// one of them can re-PUT under the same InvocationID (Bug-2 dedup).
+func (w *Watcher) RecordEmittedInvocationID(invocationID string, group ManifestEntryGroup) {
+	if invocationID == "" {
 		return
 	}
 
-	w.tickEmittedIDs[invocationID] = struct{}{}
+	if w.tickEmittedIDs != nil {
+		w.tickEmittedIDs[invocationID] = struct{}{}
+	}
+	if w.tickEmittedGroups != nil {
+		w.tickEmittedGroups[invocationID] = group
+	}
 }
 
 // zeroMatchStallInterval caps the "0 manifests across N globs" diagnostic to
@@ -182,7 +197,11 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	logger := logOr(w.Logger)
 
 	w.tickEmittedIDs = make(map[string]struct{})
-	defer func() { w.tickEmittedIDs = nil }()
+	w.tickEmittedGroups = make(map[string]ManifestEntryGroup)
+	defer func() {
+		w.tickEmittedIDs = nil
+		w.tickEmittedGroups = nil
+	}()
 
 	globs := w.Globs
 	if len(globs) == 0 {
@@ -245,6 +264,50 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	w.logStalledIfSuspicious(logger, totalMatches, len(targets))
 }
 
+// findOverlappingManifestGroup picks the manifest-emitted group that overlaps
+// [sidecarStart, sidecarStop) and whose Primary().Command() has the highest
+// commandRank. Equal-rank ties resolve to the longer-duration group. nil when
+// no candidate overlaps.
+//
+// Used by scanOrphanSidecars to re-PUT a pseudo-group under the same ID a
+// manifest-orphan just emitted — collapses the Clean+Build-manifest-orphan +
+// pseudo-group triple into a single BE row.
+//
+//nolint:unused // wired in commit 2 (fix(enrichment): render pseudo-group ...)
+func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, candidates map[string]ManifestEntryGroup) (string, *ManifestEntryGroup) {
+	var (
+		bestID   string
+		bestGrp  ManifestEntryGroup
+		bestRank = -2
+		bestDur  time.Duration
+		found    bool
+	)
+
+	for id, g := range candidates {
+		if !overlaps(sidecarStart, sidecarStop, g.Start(), g.Stop()) {
+			continue
+		}
+
+		r := commandRank(g.Primary().Command())
+		d := g.Duration()
+
+		switch {
+		case !found:
+			bestID, bestGrp, bestRank, bestDur, found = id, g, r, d, true
+		case r > bestRank:
+			bestID, bestGrp, bestRank, bestDur = id, g, r, d
+		case r == bestRank && d > bestDur:
+			bestID, bestGrp, bestDur = id, g, d
+		}
+	}
+
+	if !found {
+		return "", nil
+	}
+
+	return bestID, &bestGrp
+}
+
 // scanOrphanSidecars synthesizes pseudo-groups from aged orphan sidecars whose
 // WrapperSession.InvocationID is populated and was NOT already emitted via the
 // manifest path this tick. forceSynthesize drops the minAge gate — used by the
@@ -284,7 +347,7 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop)
+		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}

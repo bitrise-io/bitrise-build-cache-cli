@@ -848,7 +848,7 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 		handled = append(handled, g)
 		// Only the real manifest entries invoke the manifest-side side-effect; synthetic groups must not loop-feed the dedup set.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID("id-manifest")
+			w.RecordEmittedInvocationID("id-manifest", g)
 		}
 	}
 
