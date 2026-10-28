@@ -4,8 +4,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 )
 
-// AncestryEntry is proxy's local alias for buildidentity.AncestryEntry so
-// existing proxy call sites keep working without an import rename.
 type AncestryEntry = buildidentity.AncestryEntry
 
 // toNames projects the names-only ancestry chain written into the sidecar's

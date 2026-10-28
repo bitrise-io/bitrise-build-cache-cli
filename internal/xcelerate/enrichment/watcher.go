@@ -67,15 +67,10 @@ type Watcher struct {
 	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
 	tickEmittedIDs map[string]struct{}
 
-	// recentEmissions maps InvocationIDs the Enricher emitted via the manifest
-	// path to the ManifestEntryGroup whose PUT just succeeded. scanOrphanSidecars
-	// reads this to re-PUT a pseudo-group under the overlapping manifest-orphan's
-	// ID (Bug-2 dedup — see findOverlappingManifestGroup). Watcher-owned and
-	// persistent across ticks: the IDE flow mints the manifest-orphan in tick N
-	// and flushes the sidecar in tick N+1, so a tick-scoped map loses the
-	// correlation every time. Pruned at scan start by RecentEmissionsRetention.
-	// Populated only inside RecordEmittedInvocationID (post-emit), so a dropped
-	// manifest group does not pollute the map.
+	// recentEmissions maps IDs the manifest path just PUT to their groups, so
+	// scanOrphanSidecars can re-PUT a pseudo-group under the same ID. Watcher-
+	// owned, persists across ticks (IDE flow flushes sidecar in tick N+1).
+	// Pruned at scan start by RecentEmissionsRetention.
 	recentEmissions map[string]emissionRecord
 
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
@@ -315,10 +310,6 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 // commandRank. Equal-rank ties resolve to the longer-duration group. nil when
 // no candidate overlaps.
 //
-// Used by scanOrphanSidecars to re-PUT a pseudo-group under the same ID a
-// manifest-orphan just emitted — collapses the Clean+Build-manifest-orphan +
-// pseudo-group triple into a single BE row.
-//
 // Not reusing Correlate(GroupCorrelationSpan(pseudo), pending): candidate shape
 // here is an ID→group map (recentEmissions) and we need rank-based tie-break
 // on overlap, which Correlate's []PendingRecord contract doesn't carry.
@@ -366,8 +357,6 @@ func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, recentEmi
 // did not consume via SidecarReader.Lookup (consumed sidecars are unlinked
 // synchronously inside Handle before this function runs). Emit a pseudo-group
 // for each so the blob stats land at BE under the sidecar's wrapper InvocationID.
-// Any orphan row the manifest path already PUT under a different UUID stays as
-// a separate (empty) row; a cleaner UX is tracked as a follow-up.
 func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 	if w.SidecarReader == nil {
 		return
