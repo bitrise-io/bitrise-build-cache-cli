@@ -867,32 +867,26 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-b", synthetic[0], "the surviving synthetic group must be the one whose InvocationID was NOT emitted via the manifest path")
 }
 
-func TestWatcher_scanOrphanSidecars_DefersWhenManifestWindowOverlaps(t *testing.T) {
-	// Reproduces the Option-E ingest regression: a sidecar whose
-	// InvocationID was NOT emitted via Watcher.OnEmit (manifest fires later
-	// than the per-tick dedup window, or manifest handler short-circuits
-	// before OnEmit) must still defer pseudo-group emission when a real
-	// manifest in this scan time-overlaps the sidecar — the manifest path
-	// carries the enriched signals (TaskExecutionReasons, per-target
-	// timings, xcresult summary) that pseudo-groups cannot.
+func TestWatcher_scanOrphanSidecars_EmitsEvenWhenManifestWindowOverlaps(t *testing.T) {
+	// IDE flow regression: the manifest-path Lookup races with sidecar flush
+	// (plugin stays connected until the IDE build teardown, long after the
+	// manifest lands). If scanOrphanSidecars defers on time overlap, the
+	// sidecar's wrapper InvocationID + blob stats never PUT — BE sees only
+	// the empty orphan the manifest path minted. Overlap must not defer:
+	// consumed sidecars are unlinked synchronously inside Handle, so a
+	// sidecar still on disk here is one the manifest path did not consume.
 	home := t.TempDir()
-	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-defer")
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-overlap")
 	writeMultiEntryManifest(t, derivedRoot, "u1")
-	// Manifest entry window from writeMultiEntryManifest: start=762345900.0,
-	// stop=762345905.0 CFAbsoluteTime, which prints 2025-02-27 10:45:00 UTC
-	// after cfAbsoluteToTime (see watcher log output).
 	manifestStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
 	manifestStop := time.Date(2025, 2, 27, 10, 45, 5, 0, time.UTC)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		// Sidecar window overlaps the manifest window — the manifest path
-		// will carry the row, so pseudo-group must NOT fire.
 		"invocation-overlap": {
 			Start:        manifestStart.Add(-time.Second),
 			Stop:         manifestStop.Add(time.Second),
 			SidecarUUIDs: []string{"sidecar-overlap"},
 		},
-		// Separate window — no manifest overlap, pseudo-group proceeds.
 		"invocation-orphan": {
 			Start:        manifestStart.Add(-time.Hour),
 			Stop:         manifestStart.Add(-time.Hour).Add(5 * time.Second),
@@ -925,9 +919,11 @@ func TestWatcher_scanOrphanSidecars_DefersWhenManifestWindowOverlaps(t *testing.
 	}
 
 	assert.Equal(t, []string{"u1"}, real_, "the real manifest group must emit")
-	require.Len(t, synthetic, 1, "exactly one synthetic group must emit — the overlapping sidecar must be deferred")
-	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-orphan", synthetic[0],
-		"the surviving synthetic group must be the one whose window does not overlap any manifest")
+	assert.ElementsMatch(t,
+		[]string{SyntheticManifestGroupUUIDPrefix + "sidecar-overlap", SyntheticManifestGroupUUIDPrefix + "sidecar-orphan"},
+		synthetic,
+		"both sidecars must emit — overlap no longer defers",
+	)
 }
 
 func TestWatcher_scanOrphanSidecars_ShutdownSweepIgnoresOverlapDefer(t *testing.T) {
