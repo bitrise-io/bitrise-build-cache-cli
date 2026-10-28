@@ -89,8 +89,6 @@ var defaultAutostartDeps = autostartDeps{
 		return func() { _ = fl.Unlock() }, true, nil
 	},
 	startAutostep: func() {
-		// Fire-and-forget: the autostart is best-effort, the compiler must proceed
-		// regardless and the proxy will be up on the next compile.
 		cmd := exec.CommandContext(context.Background(), cliBinaryPath(), "xcelerate", "start-proxy") //nolint:noctx,gosec // intentionally detached: must outlive trampoline exec; args are compile-time constants
 		cmd.Stdin = nil
 		cmd.Stdout = nil

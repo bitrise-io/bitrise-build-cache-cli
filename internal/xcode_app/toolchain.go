@@ -174,10 +174,8 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 	return nil
 }
 
-// installUsrBinEntries copies trampolinePath over {swiftc, clang, swift} when
-// trampolinePath is non-empty and resolves; symlinks everything else to the
-// default toolchain. Empty trampolinePath = pure-symlink layout (graceful
-// fallback when the trampoline download failed).
+// installUsrBinEntries copies trampolinePath over {swiftc, clang, swift};
+// symlinks everything else.
 func installUsrBinEntries(ctx context.Context, installPath, defaultToolchainPath, trampolinePath string) error {
 	srcBin := filepath.Join(defaultToolchainPath, "usr", "bin")
 	dstBin := filepath.Join(installPath, "usr", "bin")
