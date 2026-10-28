@@ -178,16 +178,6 @@ func (w *Watcher) seedSeenFromStore() bool {
 	return len(records) > 0
 }
 
-// manifestWindow is a time span of a manifest group seen in the current scan.
-// scanOrphanSidecars uses the collection to defer pseudo-group emission for any
-// sidecar whose window overlaps a real manifest — the manifest path will carry
-// the richer signals (TaskExecutionReasons, per-target timings, xcresult
-// summary), so firing a pseudo-group on top would re-PUT the same invocation
-// with the slim sidecar-only shape and clobber the enriched row.
-type manifestWindow struct {
-	start, stop time.Time
-}
-
 func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	logger := logOr(w.Logger)
 
@@ -203,8 +193,6 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	if timeGap == 0 {
 		timeGap = LocalGroupTimeGap
 	}
-
-	var manifestWindows []manifestWindow
 
 	// HOME-relative defaults go through filepath.Join(HomeDir, ...); sidecar
 	// hints are already absolute so they stay as-is.
@@ -245,16 +233,13 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 			}
 
 			for _, group := range groups {
-				if start, stop := group.Start(), group.Stop(); !start.IsZero() && !stop.IsZero() {
-					manifestWindows = append(manifestWindows, manifestWindow{start: start, stop: stop})
-				}
 				w.handleGroup(path, group, seedOnly, false)
 			}
 		}
 	}
 
 	if !seedOnly {
-		w.scanOrphanSidecars(forceSynthesize, manifestWindows)
+		w.scanOrphanSidecars(forceSynthesize)
 	}
 
 	w.logStalledIfSuspicious(logger, totalMatches, len(targets))
@@ -265,15 +250,13 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 // manifest path this tick. forceSynthesize drops the minAge gate — used by the
 // shutdown sweep so a sidecar that just closed still lands before exit.
 //
-// manifestWindows carries every manifest group's time span seen in this scan;
-// an orphan whose window overlaps any of them is deferred: the manifest-driven
-// Enrich path reads the sidecar via SidecarReader.Lookup, so firing a
-// pseudo-group on top would re-PUT with the slim sidecar-only shape and clobber
-// the row that still carries TaskExecutionReasons / per-target timings / the
-// xcresult summary. Deferral is cheap — the sidecar stays on disk and a future
-// tick either picks it up as a real orphan (no overlap) or the manifest path
-// unlinks it after a successful PUT.
-func (w *Watcher) scanOrphanSidecars(forceSynthesize bool, manifestWindows []manifestWindow) {
+// Sidecars left on disk at this point are ones the manifest-driven Enrich path
+// did not consume via SidecarReader.Lookup (consumed sidecars are unlinked
+// synchronously inside Handle before this function runs). Emit a pseudo-group
+// for each so the blob stats land at BE under the sidecar's wrapper InvocationID.
+// Any orphan row the manifest path already PUT under a different UUID stays as
+// a separate (empty) row; a cleaner UX is tracked as a follow-up.
+func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 	if w.SidecarReader == nil {
 		return
 	}
@@ -298,14 +281,6 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool, manifestWindows []man
 			continue
 		}
 		if len(group.SidecarUUIDs) == 0 {
-			continue
-		}
-		// forceSynthesize = shutdown sweep: last chance to land sidecar data,
-		// so skip the overlap-defer and emit regardless (the manifest path's
-		// Lookup already consumed anything it could use earlier in this scan).
-		if !forceSynthesize && overlapsAnyManifestWindow(group.Start, group.Stop, manifestWindows) {
-			logger.Debugf("Watcher: defer pseudo-group for InvocationID %s (manifest window overlaps sidecar window; manifest path will carry enriched signals)", invocationID)
-
 			continue
 		}
 
@@ -442,25 +417,4 @@ func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
 	}
 
 	return len(group.Entries) > 0
-}
-
-// overlapsAnyManifestWindow returns true when [sidecarStart, sidecarStop)
-// intersects any [m.start, m.stop) in windows (half-open window overlap, same
-// convention as sidecar_index.overlaps). Zero timestamps on either side
-// disqualify — a sidecar without bounds can't claim overlap and a manifest
-// window with zero bounds is a corrupt plist we won't score against.
-func overlapsAnyManifestWindow(sidecarStart, sidecarStop time.Time, windows []manifestWindow) bool {
-	if sidecarStart.IsZero() || sidecarStop.IsZero() {
-		return false
-	}
-	for _, m := range windows {
-		if m.start.IsZero() || m.stop.IsZero() {
-			continue
-		}
-		if m.start.Before(sidecarStop) && sidecarStart.Before(m.stop) {
-			return true
-		}
-	}
-
-	return false
 }
