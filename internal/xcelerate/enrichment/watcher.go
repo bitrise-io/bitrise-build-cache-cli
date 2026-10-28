@@ -272,8 +272,6 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 // Used by scanOrphanSidecars to re-PUT a pseudo-group under the same ID a
 // manifest-orphan just emitted — collapses the Clean+Build-manifest-orphan +
 // pseudo-group triple into a single BE row.
-//
-//nolint:unused // wired in commit 2 (fix(enrichment): render pseudo-group ...)
 func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, candidates map[string]ManifestEntryGroup) (string, *ManifestEntryGroup) {
 	var (
 		bestID   string
@@ -347,7 +345,24 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
+		// Shutdown sweep stays sidecar-anchored: a late-closing sidecar's data
+		// must land under its own InvocationID, not fold into whatever
+		// manifest-orphan happened to fire this scan.
+		var (
+			signature, scheme, overrideID string
+		)
+		if !forceSynthesize {
+			if overrideKey, winner := findOverlappingManifestGroup(group.Start, group.Stop, w.tickEmittedGroups); winner != nil {
+				primary := winner.Primary()
+				signature = primary.Signature
+				scheme = primary.SchemeName
+				overrideID = overrideKey
+				logger.Debugf("Watcher: pseudo-group reuses manifest-orphan InvocationID %s (overlap: scheme=%s cmd=%s)",
+					overrideKey, scheme, primary.Command())
+			}
+		}
+
+		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, signature, scheme, overrideID)
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}
