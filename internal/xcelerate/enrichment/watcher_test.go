@@ -359,3 +359,91 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *t
 	assert.Equal(t, derivedID, captured[0].InvocationID,
 		"PUT must adopt the sidecar's derived InvocationID — the enriched row lands under the key the IDE already correlated against")
 }
+
+// TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderSidecarID
+// is the ACI-5623 regression variant: the proxy's empty-stat anchored-aged
+// flush writes a sidecar with BlobStats=nil but a populated WrapperSession.
+// InvocationID. The enricher must still adopt that InvocationID instead of
+// minting an orphan UUID — the previous Lookup implementation only surfaced
+// the ID inside the BlobStats-not-nil branch, which left this path broken.
+func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderSidecarID(t *testing.T) {
+	home := t.TempDir()
+	sidecarsDir := filepath.Join(home, "sessions")
+	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
+
+	derived := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-ide/Logs/Build")
+	require.NoError(t, os.MkdirAll(derived, 0o755))
+	fixture, err := os.ReadFile("testdata/LogStoreManifest.plist")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(derived, "LogStoreManifest.plist"), fixture, 0o644))
+
+	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
+	const derivedID = "ide-derived-invocation-nil-stats"
+
+	type sidecarFixtureFile struct {
+		SchemaVersion  int               `json:"schema_version"`
+		SidecarUUID    string            `json:"sidecar_uuid"`
+		PeerAncestry   []string          `json:"peer_ancestry"`
+		AcceptedAt     time.Time         `json:"accepted_at"`
+		ClosedAt       time.Time         `json:"closed_at"`
+		WrapperSession map[string]string `json:"wrapper_session"`
+		BlobStats      *blobstatsFixture `json:"blobStats,omitempty"`
+	}
+
+	// Empty-stat anchored-aged flush shape: no BlobStats, derived InvocationID only.
+	flushNilStatsSidecar := func() {
+		body, err := json.Marshal(sidecarFixtureFile{
+			SchemaVersion:  2,
+			SidecarUUID:    "sidecar-ide-nil",
+			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
+			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
+			ClosedAt:       time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC),
+			WrapperSession: map[string]string{"invocation_id": derivedID},
+			BlobStats:      nil,
+		})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(sidecarsDir, "a.json"), body, 0o600))
+	}
+
+	var captured []analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = append(captured, inv)
+
+			return nil
+		},
+	}
+
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: enrichment.NewSidecarIndex(sidecarsDir, nil),
+		Now:           func() time.Time { return fixtureNow },
+	}
+
+	w := &enrichment.Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return fixtureNow },
+		SidecarReader:         e.SidecarReader,
+		Handle:                e.Enrich,
+		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+	}
+	e.OnEmit = w.RecordEmittedInvocationID
+
+	// Tick N: manifest on disk, no sidecar yet. Group sits in the retry bucket.
+	w.ScanOnce()
+	assert.Empty(t, captured, "no sidecar yet — group must sit in retry bucket")
+
+	// Between ticks: proxy's empty-stat anchored-aged flush writes the sidecar.
+	flushNilStatsSidecar()
+
+	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs
+	// under the sidecar's derivedID — NOT an orphan UUID.
+	w.ScanOnce()
+
+	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
+	assert.Equal(t, derivedID, captured[0].InvocationID,
+		"PUT must adopt the nil-BlobStats sidecar's derived InvocationID — this is the ACI-5623 fix contract")
+}

@@ -530,8 +530,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 // hasCorrelationSignal is true when at least one of {MatchProbe, SidecarReader}
 // could possibly answer "yes" to canCorrelate. Neither wired → the retry bucket
-// has no signal to resolve on, so skip it and fire-and-mark immediately
-// (back-compat with the nil-MatchProbe shortcut).
+// has no signal to resolve on, so skip it and fire-and-mark immediately.
 func (w *Watcher) hasCorrelationSignal() bool {
 	return w.MatchProbe != nil || w.SidecarReader != nil
 }

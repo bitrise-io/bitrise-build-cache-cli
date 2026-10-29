@@ -21,11 +21,9 @@ import (
 const perConnIdleThreshold = 5 * time.Second
 
 // derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush
-// path: a derived-ID anchored connection with no cache ops still flushes once
-// it crosses N × perConnIdleThreshold of quiet, so the sidecar lands on disk
-// and the enricher can short-circuit orphan-mint. N=3 keeps us well under the
-// MaxCorrelationRetries budget (6 ticks × 5s = 30s) while giving the proxy
-// enough slack to avoid flushing a connection the IDE is still priming.
+// path. 3 × 5s = 15s stays under the enricher's 6 × 5s = 30s
+// MaxCorrelationRetries budget while giving the proxy slack to avoid flushing
+// a connection the IDE is still priming.
 const derivedIDFlushMultiplier = 3
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.

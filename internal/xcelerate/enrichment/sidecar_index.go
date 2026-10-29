@@ -124,16 +124,24 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 			continue
 		}
 
+		// Prefer-stats-bearing: the stats-winner's InvocationID always wins; a
+		// nil-BlobStats sidecar's InvocationID is the first-seen fallback so the
+		// empty-stat anchored-aged flush path still surfaces its derived ID when
+		// no stats-bearing sidecar overlaps the window.
+		sidecarInvocation := ""
+		if s.WrapperSession != nil {
+			sidecarInvocation = s.WrapperSession.InvocationID
+		}
+
 		if blob := s.BlobStats; blob != nil {
 			total := blob.Download.OpCount + blob.Download.MissCount + blob.Upload.OpCount
 			if best == nil || total > bestBlobTotal {
 				best = blob
 				bestBlobTotal = total
-				bestInvocation = ""
-				if s.WrapperSession != nil {
-					bestInvocation = s.WrapperSession.InvocationID
-				}
+				bestInvocation = sidecarInvocation
 			}
+		} else if best == nil && bestInvocation == "" && sidecarInvocation != "" {
+			bestInvocation = sidecarInvocation
 		}
 
 		consumedPaths = append(consumedPaths, path)
