@@ -17,7 +17,7 @@ import (
 )
 
 func TestRender_containsAllRequiredKeys(t *testing.T) {
-	got, err := Render("/tmp/xcelerate-proxy.sock")
+	got, err := Render("/tmp/xcelerate-proxy.sock", "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib")
 	require.NoError(t, err)
 
 	for _, want := range []string{
@@ -35,15 +35,37 @@ func TestRender_containsAllRequiredKeys(t *testing.T) {
 }
 
 func TestRender_omitsRemoteSupportedLanguages(t *testing.T) {
-	got, err := Render("/tmp/x.sock")
+	got, err := Render("/tmp/x.sock", "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib")
 	require.NoError(t, err)
 
 	assert.NotContains(t, got, "COMPILATION_CACHE_REMOTE_SUPPORTED_LANGUAGES")
 }
 
 func TestRender_emptyProxySocketIsError(t *testing.T) {
-	_, err := Render("")
+	_, err := Render("", "/dev/null")
 	require.Error(t, err)
+}
+
+func TestRender_emptyPluginPathIsError(t *testing.T) {
+	_, err := Render("/tmp/x.sock", "")
+	require.Error(t, err)
+}
+
+func TestRender_honorsCASPluginPathOverride(t *testing.T) {
+	got, err := Render("/tmp/x.sock", "/opt/custom/libToolchainCASPlugin.dylib")
+	require.NoError(t, err)
+
+	assert.Contains(t, got, "COMPILATION_CACHE_PLUGIN_PATH = /opt/custom/libToolchainCASPlugin.dylib")
+}
+
+func TestResolveCASPluginPath_envWins(t *testing.T) {
+	got := ResolveCASPluginPath(map[string]string{EnvCASPluginPath: "/opt/custom/libToolchainCASPlugin.dylib"})
+	assert.Equal(t, "/opt/custom/libToolchainCASPlugin.dylib", got)
+}
+
+func TestResolveCASPluginPath_defaultAnchorRooted(t *testing.T) {
+	got := ResolveCASPluginPath(nil)
+	assert.Equal(t, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib", got)
 }
 
 func TestWriteOverrideXCConfig_happyPath(t *testing.T) {
@@ -56,6 +78,19 @@ func TestWriteOverrideXCConfig_happyPath(t *testing.T) {
 	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock")
+}
+
+func TestWriteOverrideXCConfig_honorsCASPluginPathEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	envs := map[string]string{EnvCASPluginPath: "/opt/custom/libToolchainCASPlugin.dylib"}
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, envs, "/tmp/xcelerate-proxy.sock"))
+
+	path := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
+	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "COMPILATION_CACHE_PLUGIN_PATH = /opt/custom/libToolchainCASPlugin.dylib")
 }
 
 func TestWriteOverrideXCConfig_honorsEnvOverride(t *testing.T) {

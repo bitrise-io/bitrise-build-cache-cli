@@ -45,7 +45,7 @@ func installXcodeToolchain(
 	defaultToolchainPath := filepath.Join(developerDir, "Toolchains", "XcodeDefault.xctoolchain")
 	pluginPath := ResolveCASPluginPath(envs, developerDir, osProxy)
 
-	if err := xcode_app.InstallToolchain(ctx, installPath, defaultToolchainPath, proxySocketPath, pluginPath); err != nil {
+	if err := xcode_app.InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath); err != nil {
 		logger.Warnf("Could not install Xcode toolchain bundle: %s", err)
 
 		return

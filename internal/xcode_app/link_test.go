@@ -217,6 +217,64 @@ func TestUnlink_removesEmptySibling(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "sibling xcconfig should be gone")
 }
 
+// TestUnlink_scrubsSiblingBaseConfigReference pins the dangling-ref fix: when
+// Link() created the sibling, Unlink() must also strip the baseConfigurationReference
+// line and the PBXFileReference entry it inserted — otherwise the pbxproj points at
+// a deleted object id and Xcode logs it.
+func TestUnlink_scrubsSiblingBaseConfigReference(t *testing.T) {
+	tmp := t.TempDir()
+	projPath := writeProject(t, tmp, "NoBase.xcodeproj", minimalPbxNoBaseRef, nil)
+
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	_, err := Link(utils.DefaultOsProxy{}, LinkParams{ProjectPath: projPath, OverrideXCConfigPath: override})
+	require.NoError(t, err)
+
+	pbxAfterLink, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+	require.Contains(t, string(pbxAfterLink), "baseConfigurationReference = ",
+		"precondition: Link() must have inserted a baseConfigurationReference")
+	require.Contains(t, string(pbxAfterLink), paths.XcodeAppSiblingXCConfigFileName,
+		"precondition: Link() must have inserted a PBXFileReference for the sibling")
+
+	_, err = Unlink(utils.DefaultOsProxy{}, LinkParams{ProjectPath: projPath})
+	require.NoError(t, err)
+
+	pbxAfterUnlink, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(pbxAfterUnlink), "baseConfigurationReference",
+		"Unlink() must drop the baseConfigurationReference line we inserted")
+	assert.NotContains(t, string(pbxAfterUnlink), paths.XcodeAppSiblingXCConfigFileName,
+		"Unlink() must drop the sibling PBXFileReference we inserted")
+}
+
+// TestUnlink_leavesUserBaseConfigReferenceIntact pins the opposite half: when the
+// baseConfigurationReference points at a user-owned xcconfig (not our sibling),
+// Unlink() must leave the pbxproj alone — scrubbing would corrupt the project.
+func TestUnlink_leavesUserBaseConfigReferenceIntact(t *testing.T) {
+	tmp := t.TempDir()
+	projPath := writeProject(t, tmp, "Sample.xcodeproj", minimalPbxWithBaseRef, map[string]string{
+		"Base.xcconfig": "FOO = BAR\n",
+	})
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	_, err := Link(utils.DefaultOsProxy{}, LinkParams{ProjectPath: projPath, OverrideXCConfigPath: override})
+	require.NoError(t, err)
+
+	pbxBefore, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+
+	_, err = Unlink(utils.DefaultOsProxy{}, LinkParams{ProjectPath: projPath})
+	require.NoError(t, err)
+
+	pbxAfter, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
+	require.NoError(t, err)
+	assert.Equal(t, string(pbxBefore), string(pbxAfter),
+		"Unlink() must not edit the pbxproj when baseConfigurationReference points at a user xcconfig")
+}
+
 func TestLink_rejectsNonAbsOverride(t *testing.T) {
 	tmp := t.TempDir()
 	projPath := writeProject(t, tmp, "Sample.xcodeproj", minimalPbxWithBaseRef, map[string]string{
