@@ -448,3 +448,82 @@ func TestSidecarIndex_PendingDerivedDataPaths_EmptyDirReturnsNil(t *testing.T) {
 	idx := enrichment.NewSidecarIndex(t.TempDir(), nil)
 	assert.Empty(t, idx.PendingDerivedDataPaths())
 }
+
+func TestSidecarIndex_Has_ReturnsTrueOnOverlap(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "overlap.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second))),
+		"overlapping sidecar with anchored InvocationID must register as Has=true")
+}
+
+func TestSidecarIndex_Has_ReturnsFalseWhenNoOverlap(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.False(t, idx.Has(groupFor(base.Add(10*time.Second), base.Add(20*time.Second))),
+		"non-overlapping group must register as Has=false")
+}
+
+func TestSidecarIndex_Has_ReturnsFalseWhenInvocationIDBlank(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	// WrapperSession present but InvocationID blank — proxy ancestry gate
+	// failed; sidecar carries no correlatable identity, so Has must say no.
+	writeSidecar(t, dir, "blank.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: ""},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.False(t, idx.Has(groupFor(base, base.Add(5*time.Second))),
+		"sidecar with blank InvocationID must not satisfy Has — nothing to correlate on")
+}
+
+func TestSidecarIndex_Has_DoesNotConsume(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	path := writeSidecar(t, dir, "pinned.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second))))
+
+	// Call again — same answer, file still on disk, no side effect anywhere.
+	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second))))
+
+	_, err := os.Stat(path)
+	assert.NoError(t, err, "Has must be side-effect free; sidecar file must remain for a later Lookup")
+}

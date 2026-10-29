@@ -36,6 +36,12 @@ var acceptedAncestors = map[string]struct{}{
 type SidecarReader interface {
 	Lookup(group ManifestEntryGroup) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
 
+	// Has returns true when a sidecar overlapping the group's time window exists
+	// on disk with a non-empty WrapperSession.InvocationID. Side-effect free —
+	// used by the watcher's retry bucket to short-circuit orphan-mint without
+	// consuming sidecar paths.
+	Has(group ManifestEntryGroup) bool
+
 	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
 	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
 	// Ignores manifest correlation entirely — the result is "orphan-eligible":
@@ -138,6 +144,50 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 	}
 
 	return best, consumedPaths, bestInvocation, true
+}
+
+// Has walks i.dir once and returns true on the first sidecar whose
+// AcceptedAt/ClosedAt window overlaps the group AND whose
+// WrapperSession.InvocationID is non-empty. No file is unlinked or recorded.
+func (i *sidecarIndex) Has(group ManifestEntryGroup) bool {
+	logger := logOr(i.logger)
+
+	if i.dir == "" {
+		return false
+	}
+
+	entries, err := os.ReadDir(i.dir)
+	if err != nil {
+		logger.Debugf("Sidecar index read %s for Has: %s", i.dir, err)
+
+		return false
+	}
+
+	groupStart := group.Start()
+	groupStop := group.Stop()
+
+	var versionSkipped bool
+	for _, de := range entries {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+			continue
+		}
+
+		path := filepath.Join(i.dir, de.Name())
+		s, ok := loadSidecar(path, logger, &versionSkipped)
+		if !ok {
+			continue
+		}
+		if !overlaps(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
+			continue
+		}
+		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+			continue
+		}
+
+		return true
+	}
+
+	return false
 }
 
 func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {

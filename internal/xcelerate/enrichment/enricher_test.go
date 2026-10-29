@@ -473,6 +473,8 @@ func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup) (*blobstats.
 	return f.blob, f.paths, f.invocationID, f.found
 }
 
+func (f *fakeSidecarReader) Has(_ enrichment.ManifestEntryGroup) bool { return false }
+
 func (f *fakeSidecarReader) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]enrichment.SidecarGroup {
 	return f.orphans
 }
