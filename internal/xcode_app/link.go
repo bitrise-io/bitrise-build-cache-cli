@@ -220,50 +220,124 @@ func unlinkOneProject(osProxy utils.OsProxy, projectPath string, result *UnlinkR
 	}
 
 	projDir := filepath.Dir(projectPath)
-	fileRefs := parseFileReferences(content)
-	configs := parseBuildConfigurations(content)
-	siblingPath := filepath.Join(projDir, paths.XcodeAppSiblingXCConfigFileName)
+	ctx := unlinkContext{
+		projDir:       projDir,
+		fileRefs:      parseFileReferences(content),
+		siblingPath:   filepath.Join(projDir, paths.XcodeAppSiblingXCConfigFileName),
+		updatedPbx:    content,
+		siblingRefIDs: map[string]struct{}{},
+		visited:       map[string]struct{}{},
+		warnedBase:    map[string]struct{}{},
+	}
 
-	visited := map[string]struct{}{}
-	warnedBase := map[string]struct{}{}
-	for _, cfg := range configs {
-		if cfg.BaseConfigRefID == "" {
-			continue
-		}
-		ref, ok := fileRefs[cfg.BaseConfigRefID]
-		if !ok {
-			continue
-		}
-		xcconfigPath := filepath.Join(projDir, ref.Path)
-		if _, done := visited[xcconfigPath]; done {
-			continue
-		}
-		visited[xcconfigPath] = struct{}{}
-
-		stripped, changed, err := stripIncludeMarker(osProxy, xcconfigPath)
-		if err != nil {
+	for _, cfg := range parseBuildConfigurations(content) {
+		if err := ctx.processConfig(osProxy, cfg, result); err != nil {
 			return err
 		}
-		if changed {
-			result.ModifiedXCConfigs = appendUnique(result.ModifiedXCConfigs, xcconfigPath)
+	}
+
+	for refID := range ctx.siblingRefIDs {
+		ctx.updatedPbx = removeFileReferenceEntry(ctx.updatedPbx, refID)
+	}
+
+	if ctx.updatedPbx != content {
+		if err := osProxy.WriteFile(pbxPath, []byte(ctx.updatedPbx), 0o644); err != nil { //nolint:gosec // Xcode must read the pbxproj
+			return fmt.Errorf("write %s: %w", pbxPath, err)
 		}
+	}
 
-		if xcconfigPath == siblingPath && (stripped == "" || !hasNonMarkerContent(stripped)) {
-			if err := osProxy.Remove(xcconfigPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return fmt.Errorf("remove %s: %w", xcconfigPath, err)
-			}
-			result.RemovedSiblings = appendUnique(result.RemovedSiblings, xcconfigPath)
+	return nil
+}
 
-			continue
+type unlinkContext struct {
+	projDir       string
+	fileRefs      map[string]pbxFileRef
+	siblingPath   string
+	updatedPbx    string
+	siblingRefIDs map[string]struct{}
+	visited       map[string]struct{}
+	warnedBase    map[string]struct{}
+}
+
+func (c *unlinkContext) processConfig(osProxy utils.OsProxy, cfg pbxBuildConfig, result *UnlinkResult) error {
+	if cfg.BaseConfigRefID == "" {
+		return nil
+	}
+	ref, ok := c.fileRefs[cfg.BaseConfigRefID]
+	if !ok {
+		return nil
+	}
+	xcconfigPath := filepath.Join(c.projDir, ref.Path)
+	isSibling := xcconfigPath == c.siblingPath
+
+	if isSibling {
+		// Link() minted the baseConfigurationReference along with the sibling;
+		// the file-ref dies with the sibling, so the pbxproj line goes too.
+		c.updatedPbx = detachBaseConfigReference(c.updatedPbx, cfg.ID)
+		c.siblingRefIDs[cfg.BaseConfigRefID] = struct{}{}
+	}
+
+	if _, done := c.visited[xcconfigPath]; done {
+		return nil
+	}
+	c.visited[xcconfigPath] = struct{}{}
+
+	stripped, changed, err := stripIncludeMarker(osProxy, xcconfigPath)
+	if err != nil {
+		return err
+	}
+	if changed {
+		result.ModifiedXCConfigs = appendUnique(result.ModifiedXCConfigs, xcconfigPath)
+	}
+
+	if isSibling && (stripped == "" || !hasNonMarkerContent(stripped)) {
+		if err := osProxy.Remove(xcconfigPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove %s: %w", xcconfigPath, err)
 		}
+		result.RemovedSiblings = appendUnique(result.RemovedSiblings, xcconfigPath)
 
-		if _, warned := warnedBase[xcconfigPath]; !warned {
-			warnedBase[xcconfigPath] = struct{}{}
+		return nil
+	}
+
+	if !isSibling {
+		if _, warned := c.warnedBase[xcconfigPath]; !warned {
+			c.warnedBase[xcconfigPath] = struct{}{}
 			result.WarnBaseRefs = appendUnique(result.WarnBaseRefs, xcconfigPath)
 		}
 	}
 
 	return nil
+}
+
+// detachBaseConfigReference removes the `baseConfigurationReference = ...;` line
+// from the XCBuildConfiguration block identified by cfgID. No-op if the line is
+// absent (user already removed it) or the block cannot be located.
+func detachBaseConfigReference(content, cfgID string) string {
+	blockRe := regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(cfgID) + `\s*/\*[^*]*\*/\s*=\s*\{\s*\n\s*isa\s*=\s*XCBuildConfiguration;([\s\S]*?)\n\s*\};`)
+	loc := blockRe.FindStringSubmatchIndex(content)
+	if loc == nil {
+		return content
+	}
+
+	bodyStart, bodyEnd := loc[4], loc[5]
+	body := content[bodyStart:bodyEnd]
+	stripped := baseConfigLineRe.ReplaceAllString(body, "")
+	if stripped == body {
+		return content
+	}
+
+	return content[:bodyStart] + stripped + content[bodyEnd:]
+}
+
+var baseConfigLineRe = regexp.MustCompile(`(?m)^\s*baseConfigurationReference\s*=\s*` + pbxObjectIDPattern + `\s*/\*[^*]*\*/\s*;\s*\n`)
+
+// removeFileReferenceEntry drops the single-line PBXFileReference entry whose
+// object id is refID. The regex matches both the sibling-insertion shape and
+// anything structurally similar; absent id → no-op.
+func removeFileReferenceEntry(content, refID string) string {
+	re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(refID) + `\s*/\*[^*]*\*/\s*=\s*\{\s*isa\s*=\s*PBXFileReference;[^}]*\};\s*\n`)
+
+	return re.ReplaceAllString(content, "")
 }
 
 func appendIncludeMarker(osProxy utils.OsProxy, path, overridePath string) (bool, error) {
