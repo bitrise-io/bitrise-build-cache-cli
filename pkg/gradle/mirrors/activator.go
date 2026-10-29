@@ -140,13 +140,18 @@ func (a *Activator) Activate(_ context.Context) error {
 	selected := mirrorsconfig.FilterByFlagNames(a.selectedFlags)
 	projectRoot := a.resolveProjectRoot()
 
+	exporter := envexport.New(a.envs, a.logger)
+	// Mirrors template body uses only EnvCLIVersion; plugin version env vars are the full-gradle activator's job.
+	//nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+	exporter.ExportCLIVersion(configcommon.GetCLIVersion(a.logger))
+
 	if err := mirrorsconfig.Activate(a.logger, a.osProxy, mirrorsconfig.Params{
 		GradleHome:  gradleHome,
 		Mirrors:     selected,
 		Datacenter:  datacenter,
 		Enabled:     enabled,
 		ProjectRoot: projectRoot,
-		Exporter:    envexport.New(a.envs, a.logger),
+		Exporter:    exporter,
 	}); err != nil {
 		return fmt.Errorf("activate gradle mirrors: %w", err)
 	}

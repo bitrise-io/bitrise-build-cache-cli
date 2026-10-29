@@ -56,12 +56,26 @@ func Activate(
 
 			return string(output), err
 		}, utils.DefaultOsProxy{}, logger)
-	if configcommon.IsCI(envProvider, utils.DefaultOsProxy{}) {
-		exporter := envexport.New(envProvider, logger)
-		if metadata.CIProvider != "" {
-			ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
-		}
-		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+
+	// Always export CLI path, CLI version, and the pinned plugin versions, independent of CI.
+	// The init script reads BITRISE_BUILD_CACHE_GRADLE_*_PLUGIN_VERSION via System.getenv so that
+	// the init-script body stays byte-stable across CLI releases — critical for Gradle's
+	// configuration cache fingerprint across save/restore shards running different CLI versions.
+	exporter := envexport.New(envProvider, logger)
+	//nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+	exporter.ExportCLIPath()
+	//nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+	exporter.ExportCLIVersion(configcommon.GetCLIVersion(logger))
+	//nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+	exporter.ExportGradlePluginVersions(
+		consts.GradleCommonPluginDepVersion,
+		consts.GradleAnalyticsPluginDepVersion,
+		consts.GradleRemoteBuildCachePluginDepVersion,
+		consts.GradleTestDistributionPluginDepVersion,
+	)
+
+	if configcommon.IsCI(envProvider, utils.DefaultOsProxy{}) && metadata.CIProvider != "" {
+		ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
 	}
 
 	templateInventory, err := templateInventoryProvider(ctx, logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
