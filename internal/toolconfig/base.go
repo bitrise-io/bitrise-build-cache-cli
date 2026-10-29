@@ -21,7 +21,7 @@ const (
 const (
 	GradleConfigVersion    = "1.0.0"
 	BazelConfigVersion     = "1.1.0"
-	XcelerateConfigVersion = "1.0.0"
+	XcelerateConfigVersion = "1.1.0" // 1.1.0: zstd blob compression, switched on for older configs by the migrator
 	CcacheConfigVersion    = "1.0.0"
 )
 

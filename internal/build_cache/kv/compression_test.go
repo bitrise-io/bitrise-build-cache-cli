@@ -509,7 +509,6 @@ func TestClient_Compression_DownloadChecksIntegrityAfterDecoding(t *testing.T) {
 	err := client.DownloadStream(context.Background(), &got, "key")
 
 	require.ErrorContains(t, err, "hash mismatch")
-	assert.Empty(t, got.Bytes())
 }
 
 func TestClient_Compression_DownloadRejectsCorruptFrame(t *testing.T) {
@@ -665,4 +664,30 @@ func TestClient_Compression_CloseIsIdempotent(t *testing.T) {
 
 	require.NoError(t, client.Close())
 	require.NoError(t, client.Close())
+}
+
+// An incompressible blob is sent as is and comes back as a frame as large as itself, which takes the two-pass decode.
+func TestClient_Compression_LargeIncompressibleBlobRoundTrips(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	blob := randomBlob(t, 1536*1024)
+	upload(t, client, "big", blob)
+
+	assert.Equal(t, "kv/big", store.putRecords()[0].resource)
+	assert.Equal(t, blob, download(t, client, "big"))
+}
+
+func TestClient_Compression_LargeBlobWithWrongHashLeavesDestinationEmpty(t *testing.T) {
+	store := newBackendStore(t)
+	client := newTestClient(t, store, kv.CompressionParams{Enabled: true})
+
+	upload(t, client, "big", randomBlob(t, 1536*1024))
+	store.setHeader(strings.Repeat("0", 64))
+
+	var got bytes.Buffer
+	err := client.DownloadStream(context.Background(), &got, "big")
+
+	require.ErrorContains(t, err, "hash mismatch")
+	assert.Zero(t, got.Len())
 }

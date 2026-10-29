@@ -175,10 +175,7 @@ func NewClient(p NewClientParams) (*Client, error) {
 		return nil, err
 	}
 
-	comp, err := newCompression(p.Compression)
-	if err != nil {
-		return nil, err
-	}
+	comp := newCompression(p.Compression)
 
 	client := &Client{
 		channels:            channels,

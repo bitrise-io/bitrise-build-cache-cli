@@ -158,6 +158,8 @@ func (c *Client) uploadStream(ctx context.Context, payload uploadPayload, key, c
 		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
+		// Compressed payloads: offsets after the first message mix units (uncompressed lastCommittedSize + compressed bytes
+		// sent). The server reads only the first, and FileSize is built alike, so FinishWrite lands on the last message.
 		reader, sendLen, err := payload.from(lastCommittedSize)
 		if err != nil {
 			return err, true

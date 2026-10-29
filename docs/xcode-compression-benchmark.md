@@ -34,8 +34,10 @@ validation, and a resumed retry can bypass it, since validation is skipped for w
 response cannot tell old servers from new ones, so the client has no way to detect this and
 `--remote-cache-compression=false` is the only switch.
 
-A config written by an older `activate` has no `remoteCacheCompression` field and keeps compression off until
-`activate` runs again.
+A config written by an older `activate` has no `remoteCacheCompression` field. The xcelerate config version is 1.1.0
+for that reason: the first command an upgraded CLI runs after a version change migrates configs older than 1.1.0 and
+switches compression on (users are nudged to upgrade by `doctor`). A config at 1.1.0 or later carries an explicit
+choice, so a later `--remote-cache-compression=false` sticks.
 
 With compression on, the proxy's blob transfer latency and throughput (`cacheBlobStats`) include compress and
 decompress time, while the byte counts are raw.

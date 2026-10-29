@@ -2,8 +2,12 @@ package kv
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"runtime"
 
 	"github.com/klauspost/compress/zstd"
@@ -24,41 +28,184 @@ type CompressionParams struct {
 	Threshold int64
 }
 
+// compression keeps free lists of streaming coders, which are costly to build; a coder serves one transfer at a time.
 type compression struct {
 	threshold int64
-	enc       *zstd.Encoder
-	dec       *zstd.Decoder
+	encoders  chan *zstd.Encoder
+	decoders  chan *zstd.Decoder
 }
 
-func newCompression(p CompressionParams) (*compression, error) {
+func newCompression(p CompressionParams) *compression {
 	if !p.Enabled {
-		return nil, nil //nolint:nilnil
+		return nil
 	}
 
 	if p.Threshold <= 0 {
 		p.Threshold = DefaultCompressionThreshold
 	}
 
+	poolSize := runtime.GOMAXPROCS(0)
+
+	return &compression{
+		threshold: p.Threshold,
+		encoders:  make(chan *zstd.Encoder, poolSize),
+		decoders:  make(chan *zstd.Decoder, poolSize),
+	}
+}
+
+func (c *compression) getEncoder() (*zstd.Encoder, error) {
+	select {
+	case e := <-c.encoders:
+		return e, nil
+	default:
+	}
+
 	// SpeedFastest: 5-7% less ratio than the default level for ~20-30% less CPU on Xcode blobs.
-	enc, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	e, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest), zstd.WithEncoderConcurrency(1))
 	if err != nil {
 		return nil, fmt.Errorf("new zstd encoder: %w", err)
 	}
 
-	// The default caps decoder concurrency at 4, which would throttle parallel proxy Gets.
-	dec, err := zstd.NewReader(nil,
-		zstd.WithDecoderMaxMemory(maxDecodedBytes),
-		zstd.WithDecoderConcurrency(runtime.GOMAXPROCS(0)))
+	return e, nil
+}
+
+func (c *compression) putEncoder(e *zstd.Encoder) {
+	e.Reset(nil)
+
+	select {
+	case c.encoders <- e:
+	default:
+		_ = e.Close()
+	}
+}
+
+func (c *compression) getDecoder() (*zstd.Decoder, error) {
+	select {
+	case d := <-c.decoders:
+		return d, nil
+	default:
+	}
+
+	d, err := zstd.NewReader(nil, zstd.WithDecoderMaxMemory(maxDecodedBytes), zstd.WithDecoderConcurrency(1))
 	if err != nil {
 		return nil, fmt.Errorf("new zstd decoder: %w", err)
 	}
 
-	return &compression{threshold: p.Threshold, enc: enc, dec: dec}, nil
+	return d, nil
+}
+
+func (c *compression) putDecoder(d *zstd.Decoder) {
+	_ = d.Reset(nil)
+
+	select {
+	case c.decoders <- d:
+	default:
+		d.Close()
+	}
+}
+
+// encode streams src through a zstd encoder into memory, so only the compressed form is held, never a raw copy.
+// It returns the encoded bytes and how many raw bytes were read.
+func (c *compression) encode(src io.Reader, sizeHint int64) ([]byte, int64, error) {
+	enc, err := c.getEncoder()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var out bytes.Buffer
+	if grow := sizeHint / 2; grow > 0 && grow <= math.MaxInt32 {
+		out.Grow(int(grow))
+	}
+
+	enc.Reset(&out)
+
+	n, err := io.Copy(enc, src)
+	if err == nil {
+		err = enc.Close()
+	}
+
+	if err != nil {
+		_ = enc.Close()
+
+		return nil, n, fmt.Errorf("zstd encode: %w", err)
+	}
+
+	c.putEncoder(enc)
+
+	return out.Bytes(), n, nil
+}
+
+// decodeTo streams the decoded blob into dst without materialising it, and returns the decoded byte count.
+func (c *compression) decodeTo(dst io.Writer, compressed []byte) (int64, error) {
+	dec, err := c.getDecoder()
+	if err != nil {
+		return 0, err
+	}
+
+	if err := dec.Reset(bytes.NewReader(compressed)); err != nil {
+		dec.Close()
+
+		return 0, fmt.Errorf("zstd decode: %w", err)
+	}
+
+	n, err := io.Copy(dst, io.LimitReader(dec, int64(maxDecodedBytes)+1))
+	if err == nil && n > int64(maxDecodedBytes) {
+		err = errors.New("decoded blob exceeds the size limit")
+	}
+
+	if err != nil {
+		dec.Close()
+
+		return n, fmt.Errorf("zstd decode: %w", err)
+	}
+
+	c.putDecoder(dec)
+
+	return n, nil
+}
+
+// twoPassDecodeMin is the compressed size from which a download is decoded twice (hash and count, then write) so the
+// destination is sized exactly; a destination that grows while it fills wastes more memory than that costs in CPU.
+const twoPassDecodeMin = 1 << 20
+
+// decodeInto writes the decoded blob to dst and calls verify with its size and sha256 (hex). A rejected large blob
+// never reaches dst; a small one is written while it is hashed, so dst may hold it.
+func (c *compression) decodeInto(dst io.Writer, compressed []byte, verify func(decoded int64, sumHex string) error) (int64, error) {
+	h := sha256.New()
+
+	if len(compressed) < twoPassDecodeMin {
+		n, err := c.decodeTo(io.MultiWriter(dst, h), compressed)
+		if err != nil {
+			return n, err
+		}
+
+		return n, verify(n, hex.EncodeToString(h.Sum(nil)))
+	}
+
+	n, err := c.decodeTo(h, compressed)
+	if err != nil {
+		return n, err
+	}
+
+	if err := verify(n, hex.EncodeToString(h.Sum(nil))); err != nil {
+		return n, err
+	}
+
+	if g, ok := dst.(interface{ Grow(n int) }); ok && n <= math.MaxInt32 {
+		g.Grow(int(n))
+	}
+
+	written, err := c.decodeTo(dst, compressed)
+	if err == nil && written != n {
+		err = fmt.Errorf("zstd decode: second pass produced %d bytes, first pass %d", written, n)
+	}
+
+	return written, err
 }
 
 // compressedPayload is a blob's zstd form. Offsets refer to the uncompressed blob, as on the server.
 type compressedPayload struct {
-	enc    *zstd.Encoder
+	c      *compression
 	source io.ReadSeeker
 	size   int64
 	full   []byte
@@ -78,12 +225,16 @@ func (p *compressedPayload) from(offset int64) (io.Reader, int64, error) {
 		return nil, 0, fmt.Errorf("seek source to %d: %w", offset, err)
 	}
 
-	rest := make([]byte, p.size-offset)
-	if _, err := io.ReadFull(p.source, rest); err != nil {
-		return nil, 0, fmt.Errorf("read blob tail: %w", err)
+	want := p.size - offset
+
+	tail, n, err := p.c.encode(io.LimitReader(p.source, want), want)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	tail := p.enc.EncodeAll(rest, nil)
+	if n != want {
+		return nil, 0, fmt.Errorf("read blob tail: got %d of %d bytes", n, want)
+	}
 
 	return bytes.NewReader(tail), int64(len(tail)), nil
 }
@@ -98,29 +249,31 @@ func (c *compression) compress(source io.ReadSeeker, size int64) (*compressedPay
 		return nil, false, fmt.Errorf("seek to start: %w", err)
 	}
 
-	raw := bytes.NewBuffer(make([]byte, 0, size))
-	if _, err := io.Copy(raw, source); err != nil {
-		return nil, false, fmt.Errorf("read blob: %w", err)
+	full, n, err := c.encode(io.LimitReader(source, size), size)
+	if err != nil {
+		return nil, false, err
 	}
 
-	full := c.enc.EncodeAll(raw.Bytes(), make([]byte, 0, size/2))
+	if n != size {
+		return nil, false, fmt.Errorf("read blob: got %d of %d bytes", n, size)
+	}
+
 	if int64(len(full)) >= size {
 		return nil, false, nil
 	}
 
-	return &compressedPayload{enc: c.enc, source: source, size: size, full: full}, true, nil
-}
-
-func (c *compression) decompress(compressed []byte) ([]byte, error) {
-	raw, err := c.dec.DecodeAll(compressed, nil)
-	if err != nil {
-		return nil, fmt.Errorf("zstd decode: %w", err)
-	}
-
-	return raw, nil
+	return &compressedPayload{c: c, source: source, size: size, full: full}, true, nil
 }
 
 func (c *compression) close() {
-	_ = c.enc.Close()
-	c.dec.Close()
+	for {
+		select {
+		case e := <-c.encoders:
+			_ = e.Close()
+		case d := <-c.decoders:
+			d.Close()
+		default:
+			return
+		}
+	}
 }

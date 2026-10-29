@@ -122,7 +122,7 @@ func (*huhWizard) Run(ctx context.Context) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Compress Xcode cache blobs?").
-					Description("Default on — zstd sends ~2.7x fewer bytes for a small CPU cost.").
+					Description("Default on — zstd sends fewer bytes over the network for a small CPU cost.").
 					Affirmative("Yes, compress").
 					Negative("No, send as is").
 					Value(&compressXcode),

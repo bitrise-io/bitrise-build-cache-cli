@@ -64,10 +64,10 @@ func TestMigrateWith_dispatchesOnlyMinorBumps(t *testing.T) {
 	}
 
 	samples := []toolconfig.Sample{
-		{Tool: toolconfig.Gradle, ConfigVersion: "1.0.0"},    // expects 1.0.0 → none
-		{Tool: toolconfig.Bazel, ConfigVersion: "0.9.0"},     // expects 1.0.0 → major (Notify) → none
-		{Tool: toolconfig.Xcelerate, ConfigVersion: "1.0.0"}, // expects 1.0.0 → none
-		{Tool: toolconfig.Ccache, ConfigVersion: "1.0.0"},    // expects 1.0.0 → none
+		{Tool: toolconfig.Gradle, ConfigVersion: "1.0.0"},                              // expects 1.0.0 → none
+		{Tool: toolconfig.Bazel, ConfigVersion: "0.9.0"},                               // expects 1.0.0 → major (Notify) → none
+		{Tool: toolconfig.Xcelerate, ConfigVersion: toolconfig.XcelerateConfigVersion}, // already current → none
+		{Tool: toolconfig.Ccache, ConfigVersion: "1.0.0"},                              // expects 1.0.0 → none
 	}
 
 	MigrateWith(log.NewLogger(), "/home", samples, migrators)
@@ -77,16 +77,13 @@ func TestMigrateWith_dispatchesOnlyMinorBumps(t *testing.T) {
 func TestMigrateWith_minorBumpInvokesMigrator(t *testing.T) {
 	var called []toolconfig.Tool
 
-	migrator := &recordingMigrator{tool: toolconfig.Gradle, called: &called}
-	samples := []toolconfig.Sample{{Tool: toolconfig.Gradle, ConfigVersion: "1.0.0"}}
+	migrator := &recordingMigrator{tool: toolconfig.Xcelerate, called: &called}
+	// 1.0.0 predates the 1.1.0 xcelerate config (zstd compression), a minor bump the migrator handles silently.
+	samples := []toolconfig.Sample{{Tool: toolconfig.Xcelerate, ConfigVersion: "1.0.0"}}
 
-	// Pretend current gradle ConfigVersion is 1.1.0 by stubbing via a fresh
-	// CurrentConfigVersions map indirectly is overkill; instead test the
-	// helper directly by injecting a sample whose stored is one minor behind
-	// the actual current. Today the current is 1.0.0 so we cannot exercise
-	// the minor-bump path through MigrateWith yet — covered by needsMigrate.
 	MigrateWith(log.NewLogger(), "/home", samples, []toolconfig.Migrator{migrator})
-	assert.Empty(t, called)
+
+	assert.Equal(t, []toolconfig.Tool{toolconfig.Xcelerate}, called)
 }
 
 func TestMigrateWith_migratorErrorIsSwallowed(t *testing.T) {
