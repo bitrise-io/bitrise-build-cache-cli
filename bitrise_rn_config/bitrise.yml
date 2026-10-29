@@ -425,7 +425,7 @@ workflows:
     - change-workdir@2:
         inputs:
         - path: build
-    - save-cache@1:
+    - git::https://github.com/bitrise-steplib/bitrise-step-save-cache.git@ACI-5511-bump-go-steputils-alpha62:
         inputs:
         - key: ccache_executable_mac
         - paths: ./ccache
@@ -456,7 +456,7 @@ workflows:
     - change-workdir@2:
         inputs:
         - path: build
-    - save-cache@1:
+    - git::https://github.com/bitrise-steplib/bitrise-step-save-cache.git@ACI-5511-bump-go-steputils-alpha62:
         inputs:
         - key: ccache_executable_linux
         - paths: ./ccache
@@ -804,7 +804,7 @@ step_bundles:
   # -------------------------------------------------------------------------------
   rn-cli-build-cache:
     steps:
-    - restore-cache@3.0.0:
+    - git::https://github.com/bitrise-steplib/bitrise-step-restore-cache.git@ACI-5511-bump-go-steputils-alpha62:
         inputs:
         - key: ccache_executable_mac
         title: Get ccache executable
@@ -848,13 +848,13 @@ step_bundles:
     - save-cocoapods-cache: {}
   rn-cli-restore-snapshot-cache:
     steps:
-    - restore-cache@2.6.0:
+    - git::https://github.com/bitrise-steplib/bitrise-step-restore-cache.git@ACI-5511-bump-go-steputils-alpha62:
         inputs:
         - key: rn-android-snapshot-cache
         run_if: '{{getenv "USE_KV_CACHE" | eq "true"}}'
   rn-cli-save-snapshot-cache:
     steps:
-    - save-cache@1.5.1:
+    - git::https://github.com/bitrise-steplib/bitrise-step-save-cache.git@ACI-5511-bump-go-steputils-alpha62:
         inputs:
         - key: rn-android-snapshot-cache
         - paths: '**/android/build/**/*.*'

@@ -1700,7 +1700,7 @@ workflows:
             set -exo pipefail
 
             ../scripts/check_pattern.sh "$BITRISE_DEPLOY_DIR/xcodebuild.log" 'CompilationCacheMetrics'
-    - save-cache:
+    - git::https://github.com/bitrise-steplib/bitrise-step-save-cache.git@ACI-5511-bump-go-steputils-alpha62:
         title: 'ACI-5253: save the SPM checkouts the build actually used'
         inputs:
         - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
@@ -1711,7 +1711,7 @@ workflows:
         - content: |-
             set -exo pipefail
             rm -rf "${BITRISE_XCODE_DERIVED_DATA_PATH:?activate must export the DerivedData root}"/*/SourcePackages
-    - restore-cache:
+    - git::https://github.com/bitrise-steplib/bitrise-step-restore-cache.git@ACI-5511-bump-go-steputils-alpha62:
         title: 'ACI-5253: restore the SPM checkouts'
         inputs:
         - key: xcode-spm-e2e-{{ .OS }}-{{ .Arch }}-{{ .Branch }}
