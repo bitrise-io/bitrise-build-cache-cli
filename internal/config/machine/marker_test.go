@@ -136,8 +136,8 @@ func TestWriteMarkerIfMissing_ExistingMarkerAtDirIsNoop(t *testing.T) {
 	wrote, ancestor, err := WriteMarkerIfMissing(dir, utils.DefaultOsProxy{})
 
 	require.NoError(t, err)
-	assert.Empty(t, ancestor)
-	assert.Equal(t, target, wrote, "cwd-level marker is treated as a fresh-write result")
+	assert.Empty(t, wrote, "pre-existing dir-level marker must not be reported as a fresh write")
+	assert.Equal(t, target, ancestor)
 
 	body, err := os.ReadFile(target) //nolint:gosec // test tempdir
 	require.NoError(t, err)
