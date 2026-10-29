@@ -113,7 +113,6 @@ func TestActivator_Activate_ExportsCLIVersionButNotPluginVersions(t *testing.T) 
 		consts.EnvGradleTestDistributionPluginVersion,
 	} {
 		t.Setenv(k, "")
-		require.NoError(t, os.Unsetenv(k))
 	}
 
 	a := mirrors.NewActivator(mirrors.ActivatorParams{
@@ -128,7 +127,6 @@ func TestActivator_Activate_ExportsCLIVersionButNotPluginVersions(t *testing.T) 
 
 	assert.NotEmpty(t, os.Getenv(consts.EnvCLIVersion),
 		"mirrors activator must export BITRISE_BUILD_CACHE_CLI_VERSION — the mirrors init script reads it via System.getenv")
-	t.Cleanup(func() { os.Unsetenv(consts.EnvCLIVersion) })
 
 	for _, k := range []string{
 		consts.EnvGradleCommonPluginVersion,
