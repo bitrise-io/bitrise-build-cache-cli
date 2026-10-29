@@ -40,6 +40,7 @@ type CreateKVClientParams struct {
 	// OR-ed in via DebugEnabled, so a service started without the flag still
 	// honours its config.
 	DebugLogging bool
+	Compression  kv.CompressionParams
 }
 
 func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Client, error) {
@@ -69,6 +70,7 @@ func CreateKVClient(ctx context.Context, params CreateKVClientParams) (*kv.Clien
 		CapabilitiesClient:  params.CapabilitiesClient,
 		InvocationID:        params.InvocationID,
 		DebugLogging:        DebugEnabled(params.DebugLogging),
+		Compression:         params.Compression,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new kv client: %w", err)

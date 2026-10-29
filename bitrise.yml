@@ -1628,6 +1628,24 @@ workflows:
                 -skipMacroValidation 2> wrapper.log | tee xcodebuild.log | xcpretty
 
     - script:
+        title: assert zstd compression engaged
+        inputs:
+          - content: |-
+              #!/usr/bin/env bash
+              set -eo pipefail
+
+              # `-d activate` makes the proxy log each compressed upload and each decoded download. The rejection check is the
+              # real guard: upload lines alone are logged before the server accepts the blob, and a cold run has no downloads.
+              logs=(~/.local/state/xcelerate/logs/proxy-*-out.log)
+              if ! grep -qE "(Compressed|Decompressed) [^ ]+: [0-9]+ -> [0-9]+ bytes" "${logs[@]}"; then
+                echo "FAIL: no zstd (de)compression in the proxy logs"
+                exit 1
+              fi
+              if grep -qE "Failed to upload stream zstd/.*InvalidArgument" "${logs[@]}"; then
+                echo "FAIL: the server rejected compressed uploads"
+                exit 1
+              fi
+    - script:
         title: gather info
         inputs:
           - content: |-
@@ -1911,7 +1929,8 @@ workflows:
               #!/usr/bin/env bash
               set -eo pipefail
 
-              ../bitrise-build-cache-cli -d activate xcode --cache
+              # Uncompressed control for the compression-on-by-default workflows.
+              ../bitrise-build-cache-cli -d activate xcode --cache --remote-cache-compression=false
     - script:
         title: build app
         inputs:

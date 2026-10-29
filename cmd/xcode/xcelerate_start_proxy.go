@@ -19,6 +19,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
@@ -169,6 +170,10 @@ func StartXcodeCacheProxy(
 		InvocationID:       initialInvocationID,
 		SkipCapabilities:   true, // proxy handles capabilities calls internally
 		DebugLogging:       config.DebugLogging,
+		Compression: kv.CompressionParams{
+			Enabled:   config.RemoteCacheCompression,
+			Threshold: config.RemoteCacheCompressionThreshold,
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("create kv client: %w", err)

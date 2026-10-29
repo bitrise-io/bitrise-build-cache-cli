@@ -13,14 +13,15 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	gradleEnabled        bool
-	xcodeEnabled         bool
-	cppEnabled           bool
-	pushEnabled          bool
-	disablePrefixMapping bool
-	noSwiftCache         bool
-	buildCacheSkipFlags  bool
-	projectMode          string
+	gradleEnabled          bool
+	xcodeEnabled           bool
+	cppEnabled             bool
+	pushEnabled            bool
+	disablePrefixMapping   bool
+	noSwiftCache           bool
+	remoteCacheCompression bool
+	buildCacheSkipFlags    bool
+	projectMode            string
 )
 
 //nolint:gochecknoglobals
@@ -60,6 +61,8 @@ Note: This is a convenience activation method, if your activation requires fine-
 			NoSwiftCache:         noSwiftCache,
 			BuildCacheSkipFlags:  buildCacheSkipFlags,
 			DebugLogging:         common.DebugFromFlag(),
+
+			DisableRemoteCacheCompression: !remoteCacheCompression,
 		})
 
 		if err := a.Activate(cmd.Context()); err != nil {
@@ -83,6 +86,7 @@ func init() {
 	activateReactNativeCmd.Flags().BoolVar(&cppEnabled, "cpp", true, "Activate C++ build cache via ccache (native modules).")
 	activateReactNativeCmd.Flags().BoolVar(&pushEnabled, "cache-push", true, "Push enabled/disabled. Enabled means the build can also write new entries to the remote cache. Disabled means the build can only read from the remote cache.")
 	activateReactNativeCmd.Flags().BoolVar(&disablePrefixMapping, "disable-prefix-mapping", false, "Disable Clang prefix-mapping flags for the Xcode build cache (see `activate xcode --disable-prefix-mapping`).")
+	activateReactNativeCmd.Flags().BoolVar(&remoteCacheCompression, "remote-cache-compression", true, "Compress Xcode cache blobs with zstd (see `activate xcode --remote-cache-compression`). On by default; =false turns it off.")
 	activateReactNativeCmd.Flags().BoolVar(&noSwiftCache, "no-swift-cache", false, "Cache clang/Objective-C compilation only, leaving Swift uncached (see `activate xcode --no-swift-cache`).")
 	activateReactNativeCmd.Flags().BoolVar(&buildCacheSkipFlags, "cache-skip-flags", false, "Skip passing cache flags to xcodebuild except the socket path (see `activate xcode --cache-skip-flags`).")
 	activateReactNativeCmd.Flags().StringVar(&projectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
