@@ -15,8 +15,18 @@ import (
 // perConnIdleThreshold is the per-connection inactivity window after which an
 // intermediate sidecar is flushed. The wrapper's own inactivity timer sits on
 // top of SetSession; this one runs independently and covers the IDE plugin
-// case where ConnEnd only fires when Xcode fully quits.
-const perConnIdleThreshold = 15 * time.Second
+// case where ConnEnd only fires when Xcode fully quits. 5s pairs with the
+// enrichment watcher's correlation-retry budget so a quiet IDE connection
+// surfaces its derived InvocationID on disk before scanLogs exhausts.
+const perConnIdleThreshold = 5 * time.Second
+
+// derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush
+// path: a derived-ID anchored connection with no cache ops still flushes once
+// it crosses N × perConnIdleThreshold of quiet, so the sidecar lands on disk
+// and the enricher can short-circuit orphan-mint. N=3 keeps us well under the
+// MaxCorrelationRetries budget (6 ticks × 5s = 30s) while giving the proxy
+// enough slack to avoid flushing a connection the IDE is still priming.
+const derivedIDFlushMultiplier = 3
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
 // Per-conn accounting runs additively alongside the global p.sessionState,
@@ -346,11 +356,14 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 			continue
 		}
 
-		// Skip-empty check runs BEFORE the swap so a connection that only
-		// saw hadActivity-flipping health traffic (markActivity set, no op
-		// recorded yet) keeps its counters across the next tick instead of
-		// draining to an empty intermediate.
-		if cs.state.Load().getStats().blobStats.IsEmpty() {
+		// Skip empty-stat intermediate flushes UNLESS the connection has a
+		// derived InvocationID and has aged past (perConnIdleThreshold × 3) —
+		// quiet IDE connections surface their derived ID on disk so the
+		// enricher can correlate before scanLogs retries exhaust.
+		hasActivity := !cs.state.Load().getStats().blobStats.IsEmpty()
+		anchoredAndAged := cs.derivedInvocationID != "" &&
+			!cs.hadActivityWithin(threshold*derivedIDFlushMultiplier, now)
+		if !hasActivity && !anchoredAndAged {
 			continue
 		}
 
