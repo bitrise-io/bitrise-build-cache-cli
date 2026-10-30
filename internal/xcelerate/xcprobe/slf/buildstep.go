@@ -109,11 +109,15 @@ func (b BuildStep) countMessagesBySeverity(sev int) int {
 	return n
 }
 
-// DetailStepType classifies the step via its signature prefix. Mirrors
-// XCLogParser's DetailStepType enum one-to-one. Returned as a plain string
-// to keep the payload JSON shape stable without introducing a Go enum.
+// DetailStepType classifies the step via its signature prefix. The first
+// branch mirrors XCLogParser's DetailStepType enum (Xcode 10..15 era). The
+// second branch covers Xcode 26.x which renamed many command types
+// (`CompileSwift ` → `SwiftCompile `, `MergeSwiftModule ` → `SwiftMergeGeneratedHeaders `,
+// etc.) — surfaced here under the same output tokens so a downstream
+// histogram does not fork per Xcode major.
 func (b BuildStep) DetailStepType() string {
 	switch {
+	// XCLogParser classic shapes.
 	case hasPrefix(b.Signature, "CompileC "):
 		return "cCompilation"
 	case hasPrefix(b.Signature, "CompileSwift "):
@@ -148,6 +152,24 @@ func (b BuildStep) DetailStepType() string {
 		return "validateEmbeddedBinary"
 	case hasPrefix(b.Signature, "Validate "):
 		return "validate"
+
+	// Xcode 26.x command name shapes.
+	case hasPrefix(b.Signature, "SwiftCompile "):
+		return "swiftCompilation"
+	case hasPrefix(b.Signature, "SwiftDriver "), hasPrefix(b.Signature, "SwiftDriverJobDiscovery "), hasPrefix(b.Signature, "SwiftDriver\\"):
+		return "swiftAggregatedCompilation"
+	case hasPrefix(b.Signature, "SwiftEmitModule "):
+		return "swiftCompilation"
+	case hasPrefix(b.Signature, "SwiftMergeGeneratedHeaders "):
+		return "mergeSwiftModule"
+	case hasPrefix(b.Signature, "CodeSign "):
+		return "codeSign"
+	case hasPrefix(b.Signature, "Copy "):
+		return "copyResourceFile"
+	case hasPrefix(b.Signature, "ProcessInfoPlistFile "):
+		return "processInfoPlist"
+	case hasPrefix(b.Signature, "RegisterExecutionPolicyException "):
+		return "registerExecutionPolicy"
 	}
 
 	return "other"

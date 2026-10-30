@@ -18,9 +18,35 @@ import (
 // Run executes the enabled collectors concurrently under
 // opts.PerCollectorTimeout and merges their Outputs. One collector's failure
 // never kills another; errors surface on EnrichmentPayload.CollectorErrors.
-// Nil logger is tolerated.
+// Nil logger is tolerated. Top-N caps and the attachment-decode gate are
+// propagated from opts onto the per-collector Input before dispatch so
+// hook sites don't have to re-plumb them.
 func Run(ctx context.Context, opts xceleratconfig.EnrichmentOptions, in collect.Input, logger log.Logger) payload.EnrichmentPayload {
+	in = applyOptsToInput(opts, in)
+
 	return runWith(ctx, opts.PerCollectorTimeout, enabledCollectors(opts), in, logger)
+}
+
+func applyOptsToInput(opts xceleratconfig.EnrichmentOptions, in collect.Input) collect.Input {
+	in.DecodeAttachments = opts.ActivityLogAttach
+
+	if in.TargetTopN == 0 {
+		in.TargetTopN = opts.TargetTopN
+	}
+
+	if in.StepTopN == 0 {
+		in.StepTopN = opts.StepTopN
+	}
+
+	if in.SwiftTopN == 0 {
+		in.SwiftTopN = opts.SwiftTopN
+	}
+
+	if in.ClangTopN == 0 {
+		in.ClangTopN = opts.ClangTopN
+	}
+
+	return in
 }
 
 func runWith(ctx context.Context, perTimeout time.Duration, collectors []collect.Collector, in collect.Input, logger log.Logger) payload.EnrichmentPayload {
@@ -103,6 +129,10 @@ func enabledCollectors(opts xceleratconfig.EnrichmentOptions) []collect.Collecto
 		cs = append(cs, collect.BuildSettingsCollector{})
 	}
 
+	if opts.ActivityLog || opts.ActivityLogAttach {
+		cs = append(cs, collect.ActivityLogCollector{})
+	}
+
 	return cs
 }
 
@@ -117,5 +147,33 @@ func mergeOutput(dst *payload.EnrichmentPayload, src collect.Output) {
 
 	if src.BuildTimings != nil {
 		dst.BuildTimings = src.BuildTimings
+	}
+
+	if len(src.Targets) > 0 {
+		dst.Targets = src.Targets
+	}
+
+	if len(src.StepTypeHist) > 0 {
+		dst.StepTypeHist = src.StepTypeHist
+	}
+
+	if len(src.TopSteps) > 0 {
+		dst.TopSteps = src.TopSteps
+	}
+
+	if len(src.TopSwiftFuncs) > 0 {
+		dst.TopSwiftFuncs = src.TopSwiftFuncs
+	}
+
+	if len(src.TopSwiftTypes) > 0 {
+		dst.TopSwiftTypes = src.TopSwiftTypes
+	}
+
+	if src.LinkerStats != nil {
+		dst.LinkerStats = src.LinkerStats
+	}
+
+	if src.AttachmentsCCM != nil {
+		dst.AttachmentsCCM = src.AttachmentsCCM
 	}
 }
