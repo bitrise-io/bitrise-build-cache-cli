@@ -128,7 +128,7 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 		if !ok {
 			continue
 		}
-		if !overlaps(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
+		if !overlapsClosed(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
 
@@ -187,7 +187,7 @@ func (i *sidecarIndex) Has(group ManifestEntryGroup) bool {
 		if !ok {
 			continue
 		}
-		if !overlaps(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
+		if !overlapsPotential(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
 		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
@@ -420,12 +420,32 @@ func ancestryMatches(ancestry []string) bool {
 	return false
 }
 
-// overlaps uses the half-open window [AcceptedAt, ClosedAt) ∩ [groupStart, groupStop).
-// Any zero timestamp disqualifies the sidecar.
-func overlaps(accepted, closed, groupStart, groupStop time.Time) bool {
+// overlapsClosed uses the half-open window [AcceptedAt, ClosedAt) ∩ [groupStart, groupStop).
+// Any zero timestamp disqualifies the sidecar — used by Lookup, which reads
+// stats and so must wait for a closed, final sidecar.
+func overlapsClosed(accepted, closed, groupStart, groupStop time.Time) bool {
 	if accepted.IsZero() || closed.IsZero() || groupStart.IsZero() || groupStop.IsZero() {
 		return false
 	}
 
 	return accepted.Before(groupStop) && groupStart.Before(closed)
+}
+
+// overlapsPotential answers "could this (possibly-open) sidecar still correlate
+// to the group?" — used by Has to defer the retry bucket while a sidecar is
+// still open. An open sidecar whose AcceptedAt sits before the group's stop
+// counts: its final ClosedAt will land somewhere after now, so the window
+// overlap can only be settled once the sidecar closes.
+func overlapsPotential(accepted, closed, groupStart, groupStop time.Time) bool {
+	if accepted.IsZero() || groupStart.IsZero() || groupStop.IsZero() {
+		return false
+	}
+	if accepted.After(groupStop) {
+		return false
+	}
+	if !closed.IsZero() {
+		return overlapsClosed(accepted, closed, groupStart, groupStop)
+	}
+
+	return true
 }

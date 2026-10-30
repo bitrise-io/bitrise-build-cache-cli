@@ -598,6 +598,102 @@ func TestSidecarIndex_Has_ReturnsFalseWhenInvocationIDBlank(t *testing.T) {
 		"sidecar with blank InvocationID must not satisfy Has — nothing to correlate on")
 }
 
+// TestSidecarIndex_Has_ReturnsTrueForOpenSidecarPotentialOverlap pins the
+// Option-A fix: an open sidecar (ClosedAt zero) whose AcceptedAt sits inside
+// the manifest group's window must count as a potential overlap, so the retry
+// bucket defers minting an orphan until the sidecar closes.
+func TestSidecarIndex_Has_ReturnsTrueForOpenSidecarPotentialOverlap(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	groupStart := base
+	groupStop := base.Add(10 * time.Second)
+
+	writeSidecar(t, dir, "open.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     groupStart.Add(-time.Second),
+		ClosedAt:       time.Time{},
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "open-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.True(t, idx.Has(groupFor(groupStart, groupStop)),
+		"open sidecar whose Start precedes group.Stop must count as potential overlap so retry bucket defers")
+}
+
+// TestSidecarIndex_Lookup_StillSkipsOpenSidecar pins the Lookup semantics are
+// unchanged by the Option-A fix: Lookup reads stats, so an open sidecar
+// (ClosedAt zero) is still skipped — only closed sidecars contribute to the
+// stats snapshot.
+func TestSidecarIndex_Lookup_StillSkipsOpenSidecar(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	groupStart := base
+	groupStop := base.Add(10 * time.Second)
+
+	writeSidecar(t, dir, "open.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     groupStart.Add(-time.Second),
+		ClosedAt:       time.Time{},
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "open-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(groupFor(groupStart, groupStop))
+	assert.False(t, ok, "open sidecar must not satisfy Lookup — stats aren't final yet")
+	assert.Empty(t, paths)
+	assert.Nil(t, snap)
+	assert.Empty(t, invocationID)
+}
+
+// TestSidecarIndex_Has_ReturnsFalseForOpenSidecarAfterGroupStop pins the
+// upper bound of the potential-overlap window: an open sidecar whose
+// AcceptedAt sits strictly after group.Stop cannot possibly correlate even
+// after it closes, so Has must still say no.
+func TestSidecarIndex_Has_ReturnsFalseForOpenSidecarAfterGroupStop(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	groupStart := base
+	groupStop := base.Add(5 * time.Second)
+
+	writeSidecar(t, dir, "after.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     groupStop.Add(time.Second),
+		ClosedAt:       time.Time{},
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "after-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.False(t, idx.Has(groupFor(groupStart, groupStop)),
+		"open sidecar that started after group.Stop can never overlap — Has must say no")
+}
+
+// TestSidecarIndex_Has_ReturnsTrueForClosedSidecar_SameAsBeforeFix guards the
+// pre-fix behaviour for closed sidecars: an in-range closed sidecar still
+// resolves to Has=true via overlapsClosed inside overlapsPotential.
+func TestSidecarIndex_Has_ReturnsTrueForClosedSidecar_SameAsBeforeFix(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "closed.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "closed-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second))),
+		"closed in-range sidecar must still satisfy Has — regression guard for the pre-fix behaviour")
+}
+
 func TestSidecarIndex_Has_DoesNotConsume(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
