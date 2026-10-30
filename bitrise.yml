@@ -260,6 +260,47 @@ workflows:
         title: Send slack if failed
         run_if: ".IsBuildFailed"
 
+  bump-prefix:
+    description: |
+      Open PRs against bitrise-io/internal-platform-services bumping the pinned
+      bitrise-build-cache CLI version + per-arch sha256 in the instance-manager
+      VM startup prefix (staging first, then production), wait for each PR's
+      checks and merge it as the Bitrise Infrabot. Terraform applies the
+      ConfigMap on merge. Chained after verify-release, independent of
+      bump-prebooting. Safe to retry: a branch already at the tag is skipped.
+    envs:
+    - IPS_BOT_TOKEN: $IPS_BOT_TOKEN
+    meta:
+      bitrise.io:
+        machine_type_id: g2.linux.medium
+        stack: linux-docker-android-22.04
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script:
+        title: Open prefix bump PRs
+        inputs:
+        - content: |
+            #!/usr/bin/env bash
+            set -e
+            ./scripts/prefix_pr_bump.sh
+    - slack@4:
+        inputs:
+          - channel: "#team-advanced-ci-alerts-website"
+          - text: |-
+              VM startup prefix bump FAILED for $BITRISE_GIT_TAG! :rotating_light:
+
+              Could not open / merge the bump PRs to bitrise-io/internal-platform-services.
+              Check build: $BITRISE_BUILD_URL
+
+              The release itself succeeded — retry this workflow once the issue is fixed (no need to re-cut the tag).
+          - emoji: ":rotating_light:"
+          - color: "#ee003b"
+          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
+        title: Send slack if failed
+        run_if: ".IsBuildFailed"
+
   rde-mac-local-dx-smoke:
     description: |
       On-demand: provision a Bitrise Remote Dev Environment (RDE) mac
@@ -344,6 +385,13 @@ workflows:
             set -ex
             make lint
     - go-test@1: {}
+    - script@1:
+        title: prefix bump script tests
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -e
+            ./scripts/prefix_pr_bump_test.sh
     - script@1:
         title: integration tests
         inputs:
@@ -2763,8 +2811,9 @@ pipelines:
     # Tag-triggered. Runs the `release` workflow (build + publish + GAR
     # and R2 mirrors), then `verify-release` (end-to-end smoke against
     # the just-published artifacts + GAR fallback), then `bump-prebooting`
-    # (opens + bypass-merges a PR to build-prebooting-deployments). Each
-    # workflow is an independent build so they can be re-run individually
+    # (opens + bypass-merges a PR to build-prebooting-deployments) and
+    # `bump-prefix` (staging then production PRs to internal-platform-services).
+    # Each workflow is an independent build so they can be re-run individually
     # without re-cutting the tag.
     workflows:
       release: {}
@@ -2772,6 +2821,9 @@ pipelines:
         depends_on:
         - release
       bump-prebooting:
+        depends_on:
+        - verify-release
+      bump-prefix:
         depends_on:
         - verify-release
     triggers:

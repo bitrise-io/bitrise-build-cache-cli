@@ -19,6 +19,7 @@ When you report status, report it **per channel**, and state what you actually c
 1. **CLI GitHub release** — promoted out of prerelease, all expected assets present (Step 6).
 2. **`verify-release`** — green (Step 6).
 3. **`bump-prebooting` PR** (preboot VM image) — **merged** (Step 6b). This is how provision-injected features, e.g. the gradle-mirrors init script, reach the *default* fleet. The bypass-merge can stall and need a manual approval.
+3b. **`bump-prefix` PRs** (Build Hub VM startup prefix) — **merged on both `staging` and `production`** (Step 6c).
 4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
 5. **Step GitHub releases** — cut for the scoped steps (Step 8), **and for the two dual-line repos, BOTH lines cut and each tag asserted to sit on the branch it names** (Step 8). A `0.x` tag accidentally cut from `main` passes every other check in this list.
 6. **Steplib PRs** — merged (Step 9).
@@ -121,6 +122,13 @@ The `release-and-verify` pipeline chains a `bump-prebooting` workflow after `ver
 
 - **Confirm the PR actually MERGED — don't assume the bot finished.** The bypass-merge can fail (`base branch policy prohibits the merge`) even when the CLI release is fully green.
 - `gh pr merge --admin` does **not** work there (admins can't bypass that repo's rule). Fix: approve the bump PR by hand — it's authored by the bot, so a maintainer approval satisfies the 1-approval rule — then `gh pr merge --squash --delete-branch`. Verify the diff is the version + the two sha256s from this release's `checksums.txt`. Do NOT re-cut the tag.
+
+### 6c. Verify the prefix bump (`bump-prefix`)
+
+The `release-and-verify` pipeline also chains `bump-prefix` after `verify-release`, in parallel with `bump-prebooting`. `scripts/prefix_pr_bump.sh` opens a PR in `bitrise-io/internal-platform-services` bumping the three pinned lines (`BITRISE_BUILD_CACHE_CLI_VERSION` and the linux_amd64 / darwin_arm64 sha256) in `systems/instance-management/nomad_startup_script_prefix_build_cache.sh`, first against `staging`, then against `production`. Each PR is merged as the Bitrise Infrabot once its checks pass; Terraform applies the ConfigMap on merge and Reloader rolls the instance-manager pods.
+
+- **Confirm both PRs MERGED.** A branch where the pin file does not exist yet is skipped with a message, and a branch already at the tag is skipped; a failing check leaves the PR open and the workflow red (Slack alert). Retry the workflow after fixing, no need to re-cut the tag.
+- Needs the `IPS_BOT_TOKEN` secret (Infrabot PAT on internal-platform-services, bypass actor on the `staging` and `production` branch rules).
 
 ### 7. Wait for step auto-update PRs
 
