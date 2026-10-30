@@ -100,6 +100,9 @@ const (
 	// xcelerateBinSubdir holds the xcelerate wrapper scripts (xcodebuild / xcrun) and CLI copy.
 	xcelerateBinSubdir = "bin"
 
+	// xcelerateToolchainSubdir holds the per-user trampoline cache under XcelerateRoot.
+	xcelerateToolchainSubdir = "toolchain"
+
 	// xcelerateConfigFile is the JSON config file written by `activate xcode`.
 	xcelerateConfigFile = "config.json"
 
@@ -124,13 +127,30 @@ const (
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
 )
 
+// The Trampoline* constants below are referenced by the trampoline package via
+// string literal — keeps the trampoline binary free of internal/paths imports.
+
+// TrampolineRealpathCachePrefix prefixes xcrun fallback cache files written
+// by the trampoline.
+const TrampolineRealpathCachePrefix = "bitrise-tc-realpath-"
+
+// TrampolineStartLockFilename names the exclusive flock the trampoline grabs
+// before firing an autostart.
+const TrampolineStartLockFilename = "bitrise-xcelerate-starting.lock"
+
+// TrampolineRemarkSentinelPrefix prefixes per-proxy-session sentinel files the
+// trampoline atomically creates to dedup the engagement remark across shim
+// processes.
+const TrampolineRemarkSentinelPrefix = "bitrise-xcelerate-remark-"
+
+// TrampolineVisitURLSentinelPrefix prefixes per-InvocationID sentinel files
+// the trampoline atomically creates to dedup the Visit URL remark across shim
+// processes. Keyed by the derived InvocationID so each distinct xcodebuild /
+// Xcode / SWBBuildService anchor gets exactly one URL printed.
+const TrampolineVisitURLSentinelPrefix = "bitrise-xcelerate-visit-"
+
 // CLIBinaryName is the on-disk name of the CLI executable.
 const CLIBinaryName = "bitrise-build-cache"
-
-// XcelerateCLIBinaryName is hardcoded by the xcodebuild / xcrun wrapper scripts;
-// kept distinct from CLIBinaryName so installer.sh and the xcelerate copy don't
-// collide on PATH.
-const XcelerateCLIBinaryName = "bitrise-build-cache-cli"
 
 // Paths resolves on-disk locations rooted at a single home directory.
 type Paths struct {
@@ -253,6 +273,12 @@ func (p Paths) XcelerateBinDir() string {
 // XcelerateBinFile returns a file path under XcelerateBinDir.
 func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
+}
+
+// TrampolineBinary returns the cached universal trampoline path for a CLI
+// version under ~/.bitrise-xcelerate/toolchain/.
+func (p Paths) TrampolineBinary(cliVersion string) string {
+	return filepath.Join(p.XcelerateRoot(), xcelerateToolchainSubdir, "trampoline-"+cliVersion+"-universal")
 }
 
 // XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
