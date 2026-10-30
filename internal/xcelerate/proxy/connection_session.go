@@ -15,15 +15,16 @@ import (
 // perConnIdleThreshold is the per-connection inactivity window after which an
 // intermediate sidecar is flushed. The wrapper's own inactivity timer sits on
 // top of SetSession; this one runs independently and covers the IDE plugin
-// case where ConnEnd only fires when Xcode fully quits. 5s pairs with the
-// enrichment watcher's correlation-retry budget so a quiet IDE connection
-// surfaces its derived InvocationID on disk before scanLogs exhausts.
-const perConnIdleThreshold = 5 * time.Second
+// case where ConnEnd only fires when Xcode fully quits. Under the manifest-
+// anchored InvocationID scheme the sidecar no longer dictates identity, so
+// the 15s window is enough to keep intermediate flushes rare on a quiet IDE.
+const perConnIdleThreshold = 15 * time.Second
 
 // derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush
-// path. 3 × 5s = 15s stays under the enricher's 6 × 5s = 30s
-// MaxCorrelationRetries budget while giving the proxy slack to avoid flushing
-// a connection the IDE is still priming.
+// path: a derived-ID anchored connection with no cache ops still flushes once
+// it crosses N × perConnIdleThreshold of quiet so the sidecar lands on disk
+// and the enricher can correlate it. 3 × 15s = 45s gives the proxy enough
+// slack to avoid flushing a connection the IDE is still priming.
 const derivedIDFlushMultiplier = 3
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
