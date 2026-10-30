@@ -55,7 +55,29 @@ type Enricher struct {
 	// OnEmitted fires with the invocation ID on each successful wrapperless PUT.
 	// nil disables. Used by flush-session to collect IDs emitted during a sweep.
 	OnEmitted func(invocationID string)
+
+	// EnrichmentHook, when non-nil, is called after attachXcresultSummary and
+	// before PutInvocation to attach the xcprobe EnrichmentPayload onto
+	// inv.Enrichment. Injected from a layer that can import both
+	// internal/config/xcelerate (for EnrichmentOptions) and the xcprobe
+	// package (for Run); keeping it a function here avoids the cycle that
+	// a direct import would introduce (flush_session.go -> enrichment ->
+	// config/xcelerate).
+	EnrichmentHook EnrichmentHookFn
 }
+
+// EnrichmentHookFn is the injected shape of the Phase-0 enrichment attach.
+// window is derived from the group aggregate span, derivedDataPath from the
+// manifest path's enclosing DerivedData root (provisional until PR 594
+// lands canonical plumbing).
+type EnrichmentHookFn func(
+	ctx context.Context,
+	manifestPath string,
+	group ManifestEntryGroup,
+	host configcommon.HostMetadata,
+	benchmarkPhase string,
+	inv *analytics.Invocation,
+)
 
 func (e *Enricher) now() time.Time {
 	if e.Now != nil {
@@ -158,6 +180,14 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
 
 	e.attachXcresultSummary(manifestPath, group, inv)
+
+	// Phase 0 enrichment hook. Symmetric with the wrapper site in
+	// cmd/xcode/xcodebuild.go. DerivedData / window are provisional on the
+	// IDE path until PR 594 lands the canonical plumbing. Branch root today:
+	// fix/aci-5623-manifest-sidecar-convergence.
+	if e.EnrichmentHook != nil {
+		e.EnrichmentHook(context.Background(), manifestPath, group, e.Metadata.HostMetadata, e.Metadata.BenchmarkPhase, inv)
+	}
 
 	TickAttempt(e.Health, e.Logger, e.now())
 
