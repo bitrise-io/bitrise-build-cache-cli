@@ -6,17 +6,14 @@ import (
 )
 
 // EnrichmentOptions declares which xcprobe collectors run and under what
-// bounds. Zero value = all collectors off. CLI > env > file precedence is
-// applied by LoadEnrichmentOptions.
+// bounds. Zero value = all collectors off. Precedence: CLI > env.
 type EnrichmentOptions struct {
-	// Phase 0 — always-opt-in, non-perturbing.
 	HostSnapshot       bool
 	BuildTimingSummary bool
 	BuildSettings      bool
 
-	// Phase 1+ reserved slots. Keep them in the struct so the loader /
-	// precedence shape is stable across phases; the aggregator still only
-	// instantiates what Phase 0 ships.
+	// Reserved slots: not yet instantiated by the aggregator but kept in the
+	// struct so the loader / precedence shape stays stable.
 	ActivityLog       bool
 	ActivityLogAttach bool
 
@@ -35,9 +32,7 @@ type EnrichmentOptions struct {
 	FailOpen            bool
 }
 
-// AnyEnabled reports whether any collector bool is set. Both the wrapper and
-// the enricher hook sites check this and short-circuit when false, so a
-// disabled-by-default EnrichmentOptions pays zero runtime cost.
+// AnyEnabled is the hook-site short-circuit — false means zero runtime cost.
 func (o EnrichmentOptions) AnyEnabled() bool {
 	return o.HostSnapshot ||
 		o.BuildTimingSummary ||
@@ -52,8 +47,7 @@ func (o EnrichmentOptions) AnyEnabled() bool {
 		o.BuildDB
 }
 
-// EnrichmentFlags carries the --enrich / --enrich-all / --enrich-none CLI
-// flag values. Zero value = no CLI override; env/file win.
+// EnrichmentFlags carries --enrich / --enrich-all / --enrich-none values.
 type EnrichmentFlags struct {
 	Enabled []string
 	All     bool
@@ -61,18 +55,12 @@ type EnrichmentFlags struct {
 }
 
 const (
-	// EnvEnrichmentCollectors enables individual collectors via a
-	// comma-separated list, e.g.
+	// EnvEnrichmentCollectors is a comma-separated collector list, e.g.
 	// BITRISE_BUILD_CACHE_ENRICH=hostsnap,buildtiming,buildsettings
 	EnvEnrichmentCollectors = "BITRISE_BUILD_CACHE_ENRICH"
-	// EnvEnrichmentAll turns every collector on (short-circuits individual).
-	EnvEnrichmentAll = "BITRISE_BUILD_CACHE_ENRICH_ALL"
-	// EnvEnrichmentNone forces every collector off, overriding any other setting.
-	EnvEnrichmentNone = "BITRISE_BUILD_CACHE_ENRICH_NONE"
+	EnvEnrichmentAll        = "BITRISE_BUILD_CACHE_ENRICH_ALL"
+	EnvEnrichmentNone       = "BITRISE_BUILD_CACHE_ENRICH_NONE"
 
-	// Collector tokens accepted on the env list / --enrich flag. Mirror the
-	// field names on EnrichmentOptions (lower-kebab) so the user wire format
-	// stays stable across phases.
 	collectorHostSnap      = "hostsnap"
 	collectorBuildTiming   = "buildtiming"
 	collectorBuildSettings = "buildsettings"
@@ -80,12 +68,9 @@ const (
 	collectorNone          = "none"
 )
 
-// LoadEnrichmentOptions resolves EnrichmentOptions from env then CLI flags.
-// CLI --enrich-none wins over everything; env ENRICH_NONE wins over env
-// ENRICH_ALL / ENRICH; a bare --enrich-all turns everything on.
-//
-// env=nil is tolerated (treated as a function returning ""); the Phase 0
-// hook sites pass os.Getenv.
+// LoadEnrichmentOptions resolves EnrichmentOptions from env then CLI flags
+// (flags win). None > All > per-collector list at each layer. A nil env is
+// treated as returning "".
 func LoadEnrichmentOptions(env func(string) string, flags EnrichmentFlags) EnrichmentOptions {
 	if env == nil {
 		env = func(string) string { return "" }
@@ -96,26 +81,24 @@ func LoadEnrichmentOptions(env func(string) string, flags EnrichmentFlags) Enric
 		FailOpen:            true,
 	}
 
-	// env layer.
 	applyCollectorList(&opts, parseCollectorList(env(EnvEnrichmentCollectors)))
 
 	if truthy(env(EnvEnrichmentAll)) {
-		setAllPhase0(&opts, true)
+		setAllCollectors(&opts, true)
 	}
 
 	if truthy(env(EnvEnrichmentNone)) {
-		setAllPhase0(&opts, false)
+		setAllCollectors(&opts, false)
 	}
 
-	// flag layer — CLI wins over env.
 	applyCollectorList(&opts, flags.Enabled)
 
 	if flags.All {
-		setAllPhase0(&opts, true)
+		setAllCollectors(&opts, true)
 	}
 
 	if flags.None {
-		setAllPhase0(&opts, false)
+		setAllCollectors(&opts, false)
 	}
 
 	return opts
@@ -152,14 +135,16 @@ func applyCollectorList(opts *EnrichmentOptions, list []string) {
 		case collectorBuildSettings:
 			opts.BuildSettings = true
 		case collectorAll:
-			setAllPhase0(opts, true)
+			setAllCollectors(opts, true)
 		case collectorNone:
-			setAllPhase0(opts, false)
+			setAllCollectors(opts, false)
 		}
 	}
 }
 
-func setAllPhase0(opts *EnrichmentOptions, on bool) {
+// setAllCollectors toggles the currently-wired collector set — reserved
+// slots on EnrichmentOptions stay off until their collector lands.
+func setAllCollectors(opts *EnrichmentOptions, on bool) {
 	opts.HostSnapshot = on
 	opts.BuildTimingSummary = on
 	opts.BuildSettings = on

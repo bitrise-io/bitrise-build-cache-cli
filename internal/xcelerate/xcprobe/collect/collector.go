@@ -1,6 +1,4 @@
-// Package collect defines the Collector contract for xcprobe sources. The
-// contract has zero coupling to config: the aggregator owns the enabled-set
-// decision and only instantiates collectors it was asked for.
+// Package collect defines the Collector contract for xcprobe sources.
 package collect
 
 import (
@@ -13,15 +11,15 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 )
 
-// Collector is one data source. Each collector runs in its own goroutine
-// under PerCollectorTimeout; one failure does not kill another.
+// Collector is one data source. Each runs in its own goroutine; one failure
+// does not kill another.
 type Collector interface {
 	Name() string
 	Collect(ctx context.Context, in Input) (Output, error)
 }
 
 // Input is the read-only call context passed to every collector. Collectors
-// are pure read: no DerivedData mutation, no file writes.
+// must not mutate DerivedData or write any files.
 type Input struct {
 	DerivedDataPath string
 	Project         string
@@ -30,20 +28,14 @@ type Input struct {
 	WindowEnd       time.Time
 	XcodebuildInfo  *xcodebuildinfo.Client
 
-	// HostBase is the already-populated baseline. The host collector composes
-	// it into the richer Snapshot. HostMetadata is value-only (no pointers,
-	// no slices), so passing by value here cannot alias.
+	// HostBase is composed into the richer host.Snapshot by the host collector.
 	HostBase common.HostMetadata
 
-	// BenchmarkPhase is the common.BenchmarkPhase string ("baseline",
-	// "warmup", or ""). Phase-3+ flag-injection collectors are hard-disabled
-	// on baseline; Phase 0 collectors are unaffected.
 	BenchmarkPhase string
 
-	// XcodebuildInfoBytes is the raw tail of `xcodebuild -showBuildTimingSummary`
-	// stdout for the just-run invocation, when available. nil = no-op for the
-	// buildtiming collector. Populated by the wrapper's assembleArgs path; the
-	// IDE path currently leaves this nil (SLF-based alternative lands in Phase 1).
+	// XcodebuildInfoBytes is the raw stdout tail of
+	// `xcodebuild -showBuildTimingSummary` for the just-run invocation; nil
+	// no-ops the buildtiming collector. Populated by the wrapper path only.
 	XcodebuildInfoBytes []byte
 }
 

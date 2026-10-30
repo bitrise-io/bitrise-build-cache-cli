@@ -59,8 +59,7 @@ func (c *Client) ListSchemesAndConfigurations(ctx context.Context, workspace, pr
 	return nil, nil, nil
 }
 
-// showBuildSettingsRunner is the exec seam for ShowBuildSettings; tests swap
-// it to avoid shelling out to a real xcodebuild.
+// showBuildSettingsRunner is swapped by tests to avoid shelling out.
 //
 //nolint:gochecknoglobals
 var showBuildSettingsRunner = func(ctx context.Context, workDir string, args ...string) ([]byte, error) {
@@ -70,8 +69,8 @@ var showBuildSettingsRunner = func(ctx context.Context, workDir string, args ...
 	return cmd.CombinedOutput()
 }
 
-// ShowBuildSettings runs `xcodebuild -showBuildSettings -json` for the given
-// scheme and project and returns the raw JSON bytes. The caller unmarshals.
+// ShowBuildSettings runs `xcodebuild -showBuildSettings -json` and returns
+// the raw JSON bytes.
 func (c *Client) ShowBuildSettings(ctx context.Context, scheme, project string) ([]byte, error) {
 	args := []string{"-showBuildSettings", "-json", "-scheme", scheme}
 	if project != "" {

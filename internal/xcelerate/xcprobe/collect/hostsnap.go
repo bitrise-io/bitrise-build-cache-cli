@@ -6,7 +6,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/host"
 )
 
-// HostSnapCollector wraps host.Capture.
 type HostSnapCollector struct{}
 
 func (HostSnapCollector) Name() string { return "hostsnap" }
