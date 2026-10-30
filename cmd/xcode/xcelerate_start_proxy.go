@@ -311,6 +311,7 @@ func (b *analyticsBundle) watcherWithEmit(ctx context.Context, logger log.Logger
 		XcodeBuildNumber: b.xcodeBuildNumber,
 		Logger:           logger,
 		OnEmitted:        onEmitted,
+		EnrichmentHook:   newEnrichmentHook(logger),
 	}
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}

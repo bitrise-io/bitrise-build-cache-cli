@@ -42,6 +42,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/collect"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/pkg/common/childstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
@@ -479,6 +482,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	}, c.Config.AuthConfig, c.Metadata)
 
 	c.attachXcresultSummary(ctx, inv)
+
+	c.attachEnrichment(ctx, inv, runStats)
 
 	c.writeJobSummary(runStats, proxyOutcome)
 
@@ -992,6 +997,31 @@ func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analy
 
 	c.Logger.Infof("Attached xcresult summary to invocation %s (targets=%d, failures=%d)",
 		c.InvocationID, len(inv.Targets), len(inv.Failures))
+}
+
+// attachEnrichment runs the opt-in xcprobe collectors and attaches the
+// resulting EnrichmentPayload onto inv.Enrichment. Gated on
+// opts.AnyEnabled() so a disabled-by-default EnrichmentOptions is zero cost.
+// Symmetric with the IDE hook in internal/xcelerate/enrichment/enricher.go.
+func (c *XcodebuildRunner) attachEnrichment(ctx context.Context, inv *analytics.Invocation, runStats xcodeargs.RunStats) {
+	opts := xcelerate.LoadEnrichmentOptions(&c.Config, os.Getenv, xcelerate.EnrichmentFlags{})
+	if !opts.AnyEnabled() {
+		return
+	}
+
+	in := collect.Input{
+		DerivedDataPath: c.XcodeArgs.DerivedDataPath(),
+		Project:         c.XcodeArgs.ProjectDir(),
+		WindowStart:     runStats.StartTime,
+		WindowEnd:       runStats.StartTime.Add(time.Duration(runStats.DurationMS) * time.Millisecond),
+		HostBase:        c.Metadata.HostMetadata,
+		BenchmarkPhase:  c.Metadata.BenchmarkPhase,
+	}
+
+	out := xcprobe.Run(ctx, opts, in, c.Logger)
+	if err := payload.AttachToInvocation(inv, out); err != nil {
+		c.Logger.Warnf("Failed to attach xcprobe enrichment to invocation %s: %v", c.InvocationID, err)
+	}
 }
 
 func (c *XcodebuildRunner) resolveXcresultParser() xcresult.Parser {

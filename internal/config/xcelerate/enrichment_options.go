@@ -2,6 +2,22 @@ package xcelerate
 
 import "time"
 
+// EnrichmentFlags carries the --enrich / --enrich-all / --enrich-none CLI
+// flag values. Zero value = no CLI override; env/file win by default.
+type EnrichmentFlags struct {
+	Enabled []string
+	All     bool
+	None    bool
+}
+
+// LoadEnrichmentOptions returns a zero-value EnrichmentOptions until the
+// full precedence loader lands (file < env < flags). Hook sites can safely
+// call this today — AnyEnabled() stays false, so neither the wrapper nor
+// the enricher pays any runtime cost.
+func LoadEnrichmentOptions(_ *Config, _ func(string) string, _ EnrichmentFlags) EnrichmentOptions {
+	return EnrichmentOptions{}
+}
+
 // EnrichmentOptions declares which xcprobe collectors run and under what
 // bounds. Zero value = all collectors off. CLI > env > file precedence is
 // applied by LoadEnrichmentOptions.
