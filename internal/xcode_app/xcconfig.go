@@ -29,13 +29,14 @@ func Render(proxySocketPath, pluginPath string) (string, error) {
 	}
 
 	settings := map[string]string{
-		"CLANG_ENABLE_COMPILE_CACHE":            "YES",
-		"CLANG_ENABLE_MODULES":                  "YES",
-		"COMPILATION_CACHE_ENABLE_CACHING":      "YES",
-		"COMPILATION_CACHE_ENABLE_PLUGIN":       "YES",
-		"COMPILATION_CACHE_PLUGIN_PATH":         pluginPath,
-		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
-		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
+		"CLANG_ENABLE_COMPILE_CACHE":                  "YES",
+		"CLANG_ENABLE_MODULES":                        "YES",
+		"COMPILATION_CACHE_ENABLE_CACHING":            "YES",
+		"COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS": "YES",
+		"COMPILATION_CACHE_ENABLE_PLUGIN":             "YES",
+		"COMPILATION_CACHE_PLUGIN_PATH":               pluginPath,
+		"COMPILATION_CACHE_REMOTE_SERVICE_PATH":       proxySocketPath,
+		"SWIFT_ENABLE_COMPILE_CACHE":                  "YES",
 		// Bundle's OverrideBuildSettings is the only reach we have into SPM package targets.
 		"TOOLCHAINS": ToolchainID,
 	}
