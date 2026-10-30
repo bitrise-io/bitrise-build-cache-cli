@@ -7,25 +7,20 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 )
 
-// SoftCapBytes is the enrichment payload size the attach step tries to stay
-// under. If the first marshal exceeds it, the attach step drops the largest
-// sub-row and remarshals once; it never fails solely on size.
+// SoftCapBytes is the target payload size. Over the cap, the largest sub-row
+// is dropped and marshal retried once; attach never fails solely on size.
 const SoftCapBytes = 64 * 1024
 
-// AttachToInvocation marshals p and writes it to inv.Enrichment as
-// json.RawMessage. If the first marshal exceeds SoftCapBytes, the largest
-// sub-row (host / buildSettings / buildTimings by serialised length) is
-// dropped and the attach is retried once; the drop is recorded on
-// CollectorErrors so the operator sees why a field vanished. Returns an
-// error only if marshaling fails outright.
+// AttachToInvocation marshals p into inv.Enrichment. When the first marshal
+// exceeds SoftCapBytes, the largest of host / buildSettings / buildTimings
+// (by serialised length) is dropped, the drop recorded on CollectorErrors,
+// and the attach retried once. At most one sub-row is dropped per call.
 func AttachToInvocation(inv *analytics.Invocation, p EnrichmentPayload) error {
 	if inv == nil {
 		return fmt.Errorf("attach enrichment: nil invocation")
 	}
 
-	// musttag: common.HostMetadata (embedded transitively via host.Snapshot)
-	// has no json tags — those fields serialise under their Go names by
-	// design (common package is off-limits to this scaffold).
+	// common.HostMetadata (transitively embedded) has no json tags by design.
 	raw, err := json.Marshal(p) //nolint:musttag
 	if err != nil {
 		return fmt.Errorf("marshal enrichment payload: %w", err)
@@ -53,10 +48,7 @@ func AttachToInvocation(inv *analytics.Invocation, p EnrichmentPayload) error {
 }
 
 // dropLargestSubRow nils out whichever of host/buildSettings/buildTimings
-// serialises to the most bytes and returns the dropped field name. Returns
-// "" when every sub-row is already nil. Marshal errors here are impossible
-// for the Phase-0 payload shape (plain structs with concrete types), but we
-// treat them as size=0 defensively.
+// serialises to the most bytes and returns its name, "" when all are nil.
 func dropLargestSubRow(p *EnrichmentPayload) string {
 	type candidate struct {
 		name  string

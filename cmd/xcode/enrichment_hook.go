@@ -16,9 +16,8 @@ import (
 	xcprobepayload "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 )
 
-// enrichmentRunFn runs the aggregator and attaches the payload. Package-level
-// var so hook-site tests can swap in a fake that neither shells out nor talks
-// to the network. Defaults to the real xcprobe.Run + AttachToInvocation pair.
+// enrichmentRunFn is a swap seam for hook-site tests that need to bypass
+// xcprobe.Run (shelling out, network).
 //
 //nolint:gochecknoglobals
 var enrichmentRunFn = func(
@@ -34,12 +33,9 @@ var enrichmentRunFn = func(
 	}
 }
 
-// newEnrichmentHook returns an EnrichmentHookFn that reads EnrichmentOptions
-// at hook time, short-circuits when nothing is enabled, and otherwise runs
-// the xcprobe aggregator and attaches the payload. Injected into
-// enrichment.Enricher at construction so enricher.go stays off the
-// internal/config/xcelerate import graph (would create a cycle with
-// flush_session.go).
+// newEnrichmentHook builds the IDE-side EnrichmentHookFn. Function-shaped
+// injection keeps enricher.go off internal/config/xcelerate (avoids a cycle
+// with flush_session.go).
 func newEnrichmentHook(logger log.Logger) enrichment.EnrichmentHookFn {
 	return func(
 		ctx context.Context,

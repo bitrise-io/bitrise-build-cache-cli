@@ -269,7 +269,6 @@ func Test_ShowBuildSettings_passesSchemeAndProject(t *testing.T) {
 	assert.Equal(t, "/tmp/proj", gotWorkDir)
 	assert.Equal(t, []string{"-showBuildSettings", "-json", "-scheme", "App", "-project", "App.xcodeproj"}, gotArgs)
 
-	// Verify the raw JSON is parseable in the shape xcodebuild emits.
 	var decoded []struct {
 		BuildSettings map[string]string `json:"buildSettings"`
 	}

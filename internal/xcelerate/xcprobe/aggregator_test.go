@@ -56,9 +56,9 @@ func TestRun_buildTimingOnly_wiresJustThatCollector(t *testing.T) {
 	assert.Empty(t, out.CollectorErrors)
 }
 
-// TestRunWith_oneCollectorErrors_othersStillPopulate asserts the aggregator's
-// isolation contract: one collector's error lands under CollectorErrors keyed
-// by its Name(), while sibling collectors' outputs still populate.
+// TestRunWith_oneCollectorErrors_othersStillPopulate asserts collector
+// isolation: one error lands under CollectorErrors keyed by Name(), siblings
+// still populate.
 func TestRunWith_oneCollectorErrors_othersStillPopulate(t *testing.T) {
 	broken := fakeCollector{name: "broken", err: errors.New("boom")}
 

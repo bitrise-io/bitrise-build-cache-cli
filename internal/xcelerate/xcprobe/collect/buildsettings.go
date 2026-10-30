@@ -9,9 +9,7 @@ import (
 )
 
 // BuildSettingsCollector plucks a known-good subset of build settings from
-// `xcodebuild -showBuildSettings -json`. The field set is intentionally
-// bounded for Phase 0; the broader catalogue arrives with later-phase
-// collectors.
+// `xcodebuild -showBuildSettings -json`.
 type BuildSettingsCollector struct{}
 
 func (BuildSettingsCollector) Name() string { return "buildsettings" }
@@ -39,9 +37,8 @@ func (BuildSettingsCollector) Collect(ctx context.Context, in Input) (Output, er
 	return Output{BuildSettings: snap}, nil
 }
 
-// parseShowBuildSettings extracts the Phase-0 field set from the raw
-// `xcodebuild -showBuildSettings -json` bytes. First row is the top-level
-// target for the scheme; subsequent rows are dependencies.
+// parseShowBuildSettings reads the first row (the scheme's top-level target;
+// subsequent rows are dependencies) and extracts the known-good field set.
 func parseShowBuildSettings(raw []byte) (*payload.BuildSettingsSnapshot, error) {
 	var rows []showBuildSettingsRow
 	if err := json.Unmarshal(raw, &rows); err != nil {
@@ -75,9 +72,8 @@ func pick(m map[string]string, key string) string {
 	return ""
 }
 
-// pickDeploymentTarget resolves the first *_DEPLOYMENT_TARGET that actually
-// carries a value — the key depends on the platform, and the scheme does not
-// publish a stable name across them.
+// pickDeploymentTarget returns the first non-empty *_DEPLOYMENT_TARGET —
+// the key varies by platform and the scheme does not publish a stable name.
 func pickDeploymentTarget(m map[string]string) string {
 	for _, k := range []string{
 		"IPHONEOS_DEPLOYMENT_TARGET",

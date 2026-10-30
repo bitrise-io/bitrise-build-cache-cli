@@ -1,8 +1,6 @@
-// Package host captures Xcode-specific host probes (thermal, memory, VM
-// marker, Spotlight / Time Machine state, model identity) and composes them
-// onto common.HostMetadata without extending the common type. The hot paths
-// (Bazel / Gradle / ccache activation) stay on the Bazel-sized common type;
-// only Xcode enrichment opts into these extra probes.
+// Package host captures Xcode-only host probes (thermal, memory, VM marker,
+// Spotlight / Time Machine state, model identity) and composes them onto
+// common.HostMetadata without extending the common type.
 package host
 
 import (
@@ -16,10 +14,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
-// Snapshot composes HostMetadata with the Xcode-only probes. HostMetadata is
-// embedded by value; callers mutate only the Xcode-specific fields. JSON tags
-// are present so this struct doubles as the wire shape attached to the
-// enrichment payload.
+// Snapshot composes HostMetadata (embedded by value) with Xcode-only probes
+// and doubles as the wire shape attached to the enrichment payload.
 type Snapshot struct {
 	common.HostMetadata
 
@@ -35,10 +31,9 @@ type Snapshot struct {
 	Chip              string `json:"chip,omitempty"`
 }
 
-// systemProfilerCache caches the one slow probe for the lifetime of the
-// process. The others (pmset, vm_stat, sysctl, mdutil, tmutil) are re-run on
-// every Capture — they move during a build. Guarded by its own mutex rather
-// than sync.Once so tests can swap the cache state without copying a Once.
+// systemProfiler output is cached for the process lifetime (hardware identity
+// never changes); other probes re-run every Capture since they move during a
+// build. Mutex rather than sync.Once so tests can reset without copying.
 //
 //nolint:gochecknoglobals
 var (
@@ -48,8 +43,8 @@ var (
 	systemProfilerChip   string
 )
 
-// Capture composes a Snapshot off the supplied base, adding Xcode-specific
-// probes. The base is read-only; this never mutates it.
+// Capture returns a Snapshot composed of the read-only base and fresh probe
+// readings.
 func Capture(ctx context.Context, base common.HostMetadata) Snapshot {
 	s := Snapshot{HostMetadata: base}
 
@@ -64,8 +59,8 @@ func Capture(ctx context.Context, base common.HostMetadata) Snapshot {
 	return s
 }
 
-// run is a tiny wrapper so tests can swap it. Each probe returns a safe zero
-// value on error — a missing probe never breaks enrichment.
+// run is swapped by tests; probes return zero values on error so a missing
+// probe never breaks enrichment.
 //
 //nolint:gochecknoglobals
 var run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -163,7 +158,7 @@ func probeUptime(ctx context.Context) uint64 {
 		return 0
 	}
 
-	// Format: `{ sec = 1700000000, usec = 0 } Mon Nov 13 ...`
+	// Output format: `{ sec = 1700000000, usec = 0 } Mon Nov 13 ...`.
 	trimmed := strings.TrimSpace(string(out))
 
 	secIdx := strings.Index(trimmed, "sec = ")
@@ -218,8 +213,6 @@ func probeSpotlight(ctx context.Context) bool {
 
 	s := strings.ToLower(string(out))
 
-	// `Indexing enabled.` → active. `Indexing disabled.` → not. Any other
-	// variant we treat as not-active to stay honest about what we observed.
 	return strings.Contains(s, "indexing enabled")
 }
 
@@ -229,7 +222,6 @@ func probeTimeMachine(ctx context.Context) bool {
 		return false
 	}
 
-	// Running = 1 when a backup is in progress.
 	return strings.Contains(string(out), "Running = 1")
 }
 

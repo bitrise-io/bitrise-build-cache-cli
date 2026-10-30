@@ -44,12 +44,9 @@ func TestAttachToInvocation_populatesRawMessage(t *testing.T) {
 func TestAttachToInvocation_dropsLargestSubRow_whenOverSoftCap(t *testing.T) {
 	inv := &analytics.Invocation{}
 
-	// Craft a buildTimings histogram large enough to cross SoftCapBytes;
-	// keep host + buildSettings small so buildTimings is unambiguously the
-	// biggest row.
+	// Make buildTimings unambiguously the largest row (~80B per entry * 1500
+	// well above 64 KB) while keeping host + buildSettings small.
 	bigBuckets := map[string]BuildTimingBucket{}
-	// Each key is ~50 bytes, each row serialises to ~80 bytes; aim well
-	// above 64 KB.
 	for i := 0; i < 1500; i++ {
 		key := fmt.Sprintf("task-type-%s-%06d", strings.Repeat("x", 30), i)
 		bigBuckets[key] = BuildTimingBucket{
@@ -89,10 +86,9 @@ func TestAttachToInvocation_nilInvocation_errors(t *testing.T) {
 	assert.Contains(t, err.Error(), "nil invocation")
 }
 
-// TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize documents the
-// current contract from AttachToInvocation's docstring: at most one sub-row
-// is dropped, and the attach step then succeeds even if the remainder is
-// still over SoftCapBytes. The payload is "at-cap-or-over" after retry.
+// TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize pins the single-
+// pass contract: at most one sub-row is dropped and the attach still
+// succeeds even if the remainder still exceeds SoftCapBytes.
 func TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize(t *testing.T) {
 	inv := &analytics.Invocation{}
 
@@ -102,9 +98,8 @@ func TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize(t *testing.T) {
 		bigBuckets[key] = BuildTimingBucket{Count: i, TotalSeconds: float64(i)}
 	}
 
-	// Host is forced "large" via a long thermalPressure value so the
-	// post-drop payload still exceeds SoftCapBytes after buildTimings is
-	// evicted.
+	// Oversized thermalPressure keeps host larger than SoftCapBytes even
+	// after buildTimings is dropped.
 	bigHost := &host.Snapshot{
 		HostMetadata:    configcommon.HostMetadata{OS: "Darwin"},
 		ThermalPressure: strings.Repeat("y", SoftCapBytes+1024),
@@ -122,8 +117,6 @@ func TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize(t *testing.T) {
 	var round EnrichmentPayload
 	require.NoError(t, json.Unmarshal(inv.Enrichment, &round))
 
-	// One sub-row (the larger) is dropped; the other survives even though it
-	// alone exceeds the soft cap.
 	droppedCount := 0
 	if round.Host == nil {
 		droppedCount++

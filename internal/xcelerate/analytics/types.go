@@ -80,8 +80,8 @@ type Invocation struct {
 	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
 	Targets  []TargetSummary  `json:"targets,omitempty"`
 	Failures []FailureSummary `json:"failures,omitempty"`
-	// Enrichment carries xcprobe EnrichmentPayload bytes. json.RawMessage keeps
-	// this a one-way edge (payload -> analytics) with zero typed import.
+	// Enrichment carries the xcprobe payload as bytes to keep the dependency
+	// one-way (xcprobe/payload -> analytics, never the reverse).
 	Enrichment json.RawMessage `json:"enrichment,omitempty"`
 }
 

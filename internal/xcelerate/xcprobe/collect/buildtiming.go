@@ -10,15 +10,13 @@ import (
 )
 
 // BuildTimingCollector parses the tail of `xcodebuild
-// -showBuildTimingSummary` and emits one bucket per observed task type.
-// Input.XcodebuildInfoBytes is the raw stdout tail; nil = no-op.
+// -showBuildTimingSummary` into one bucket per observed task type.
 type BuildTimingCollector struct{}
 
 func (BuildTimingCollector) Name() string { return "buildtiming" }
 
-// knownBuildTaskTypes is the Phase-0 allow-list — one bucket per observed
-// type, so new xcodebuild task types do not create unbounded cardinality on
-// the BE. Keep this short; Phase 1's SLF collector handles the long tail.
+// knownBuildTaskTypes is an allow-list bounding BE row cardinality: unknown
+// task types are dropped rather than creating a new bucket per unseen type.
 var knownBuildTaskTypes = []string{ //nolint:gochecknoglobals
 	"CompileSwift",
 	"CompileC",
@@ -30,12 +28,7 @@ var knownBuildTaskTypes = []string{ //nolint:gochecknoglobals
 	"CompileStoryboard",
 }
 
-// buildTimingLineRe matches rows in the "Build Timing Summary" tail:
-//
-//	CompileSwift   (1234 tasks)  |   56.789 seconds
-//
-// The duration format is a float with optional decimals followed by
-// "seconds"; the task count is an integer in parens.
+// buildTimingLineRe matches rows like `CompileSwift (1234 tasks) | 56.789 seconds`.
 var buildTimingLineRe = regexp.MustCompile( //nolint:gochecknoglobals
 	`^\s*([A-Za-z][A-Za-z0-9_]+)\s+\((\d+)\s+tasks?\)\s*\|\s*(\d+\.?\d*)\s*seconds\s*$`,
 )

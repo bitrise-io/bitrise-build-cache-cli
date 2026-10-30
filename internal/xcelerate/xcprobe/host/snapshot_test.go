@@ -86,14 +86,12 @@ func TestCapture_composesBaseWithoutMutation(t *testing.T) {
 
 	snap := Capture(context.Background(), base)
 
-	// Composed base remains intact.
 	assert.Equal(t, "Darwin arm64", snap.OS)
 	assert.Equal(t, 16, snap.CPUCores)
 	assert.Equal(t, "test-mac.local", snap.Hostname)
 
-	// Xcode-specific probes populated.
 	assert.Contains(t, snap.ThermalPressure, "CPU_Scheduler_Limit")
-	// (256000 + 128000) pages * 16384 bytes / 1 MB = 6_000 MB
+	// (256000 + 128000) * 16384 / 1 MB = 6000 MB
 	assert.Equal(t, uint64(6000), snap.MemFreeMB)
 	assert.Equal(t, uint64(4096), snap.SwapTotalMB)
 	assert.Equal(t, uint64(3072), snap.SwapFreeMB)
@@ -104,8 +102,7 @@ func TestCapture_composesBaseWithoutMutation(t *testing.T) {
 	assert.Equal(t, "Mac15,10", snap.ModelID)
 	assert.Equal(t, "Apple M4 Max", snap.Chip)
 
-	// Base untouched (value-type, so this is tautological, but it guards
-	// against anyone later turning the field into a pointer).
+	// Tautological for a value type but guards against future pointerisation.
 	require.Equal(t, "test-mac.local", base.Hostname)
 }
 
@@ -121,7 +118,6 @@ func TestCapture_toleratesCommandFailures(t *testing.T) {
 
 	snap := Capture(context.Background(), common.HostMetadata{OS: "Darwin"})
 
-	// Every probe falls back to zero without failing enrichment.
 	assert.Equal(t, "Darwin", snap.OS)
 	assert.Empty(t, snap.ThermalPressure)
 	assert.Zero(t, snap.MemFreeMB)

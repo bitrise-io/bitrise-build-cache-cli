@@ -104,9 +104,8 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 	return result, nil
 }
 
-// DDRootFromManifestPath returns the DerivedData workspace root enclosing a
-// LogStoreManifest.plist (…/<DD>/Logs/<Build|Test>/LogStoreManifest.plist →
-// <DD>). Returns "" when the input is empty.
+// DDRootFromManifestPath returns the DerivedData root for a manifest at
+// `<DD>/Logs/<Build|Test>/LogStoreManifest.plist`. Empty input returns "".
 func DDRootFromManifestPath(manifestPath string) string {
 	if manifestPath == "" {
 		return ""

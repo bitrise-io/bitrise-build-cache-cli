@@ -13,7 +13,7 @@ func TestEnrichmentOptions_AnyEnabled_zeroValue(t *testing.T) {
 	assert.False(t, EnrichmentOptions{}.AnyEnabled())
 }
 
-func TestEnrichmentOptions_AnyEnabled_eachPhase0Toggle(t *testing.T) {
+func TestEnrichmentOptions_AnyEnabled_eachCollectorToggle(t *testing.T) {
 	cases := []struct {
 		name string
 		opts EnrichmentOptions
@@ -63,7 +63,7 @@ func TestLoadEnrichmentOptions_envList_enablesIndividual(t *testing.T) {
 	assert.False(t, opts.BuildSettings)
 }
 
-func TestLoadEnrichmentOptions_envAll_enablesEveryPhase0(t *testing.T) {
+func TestLoadEnrichmentOptions_envAll_enablesEveryCollector(t *testing.T) {
 	env := func(k string) string {
 		if k == EnvEnrichmentAll {
 			return "true"
@@ -103,7 +103,6 @@ func TestLoadEnrichmentOptions_flagsWinOverEnv(t *testing.T) {
 		return ""
 	}
 
-	// Env turned hostsnap on; flags.All turns everything on too.
 	opts := LoadEnrichmentOptions(env, EnrichmentFlags{All: true})
 	assert.True(t, opts.HostSnapshot)
 	assert.True(t, opts.BuildTimingSummary)
@@ -124,7 +123,6 @@ func TestLoadEnrichmentOptions_flagNone_killsEverything(t *testing.T) {
 }
 
 func TestLoadEnrichmentOptions_flagList_additive(t *testing.T) {
-	// env sets hostsnap; flag adds buildsettings; result: both on.
 	env := func(k string) string {
 		if k == EnvEnrichmentCollectors {
 			return "hostsnap"
@@ -150,7 +148,6 @@ func TestLoadEnrichmentOptions_envListUnknownToken_ignored(t *testing.T) {
 
 	opts := LoadEnrichmentOptions(env, EnrichmentFlags{})
 	assert.True(t, opts.HostSnapshot)
-	// unknown token must not panic / enable anything else
 	assert.False(t, opts.BuildTimingSummary)
 	assert.False(t, opts.BuildSettings)
 }

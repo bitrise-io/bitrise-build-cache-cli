@@ -999,17 +999,15 @@ func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analy
 		c.InvocationID, len(inv.Targets), len(inv.Failures))
 }
 
-// xcprobeRunFn is the aggregator entrypoint used by the wrapper hook site.
-// Package-level var so hook-site tests can swap it for a fake that neither
-// shells out nor talks to the network.
+// xcprobeRunFn is a swap seam for hook-site tests that need to bypass
+// xcprobe.Run (shelling out, network).
 //
 //nolint:gochecknoglobals
 var xcprobeRunFn = xcprobe.Run
 
-// attachEnrichment runs the opt-in xcprobe collectors and attaches the
-// resulting EnrichmentPayload onto inv.Enrichment. Gated on
-// opts.AnyEnabled() so a disabled-by-default EnrichmentOptions is zero cost.
-// Symmetric with the IDE hook in internal/xcelerate/enrichment/enricher.go.
+// attachEnrichment is the wrapper-side counterpart to the IDE hook in
+// internal/xcelerate/enrichment/enricher.go. Both gate on AnyEnabled() so a
+// disabled EnrichmentOptions is zero cost.
 func (c *XcodebuildRunner) attachEnrichment(ctx context.Context, inv *analytics.Invocation, runStats xcodeargs.RunStats) {
 	opts := xcelerate.LoadEnrichmentOptions(os.Getenv, xcelerate.EnrichmentFlags{})
 	if !opts.AnyEnabled() {

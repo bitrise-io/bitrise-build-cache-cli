@@ -20,9 +20,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 )
 
-// TestNewEnrichmentHook_hookSiteSymmetry exercises the IDE hook's gating.
-// Mirrors TestAttachEnrichment_hookSiteSymmetry on the wrapper side so both
-// hook sites keep the same short-circuit contract.
+// TestNewEnrichmentHook_hookSiteSymmetry pins the IDE hook's gating,
+// mirroring TestAttachEnrichment_hookSiteSymmetry on the wrapper side.
 func TestNewEnrichmentHook_hookSiteSymmetry(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -45,7 +44,7 @@ func TestNewEnrichmentHook_hookSiteSymmetry(t *testing.T) {
 					Host:          &host.Snapshot{HostMetadata: configcommon.HostMetadata{OS: "Darwin"}},
 				}
 
-				raw, err := json.Marshal(out) //nolint:musttag // see payload/emit.go
+				raw, err := json.Marshal(out) //nolint:musttag // common.HostMetadata has no json tags by design
 				require.NoError(t, err)
 				inv.Enrichment = raw
 			})

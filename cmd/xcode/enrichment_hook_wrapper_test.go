@@ -22,9 +22,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 )
 
-// TestAttachEnrichment_hookSiteSymmetry exercises the wrapper's
-// attachEnrichment gating. Mirrors TestNewEnrichmentHook_hookSiteSymmetry on
-// the IDE side so both hook sites keep the same short-circuit contract.
+// TestAttachEnrichment_hookSiteSymmetry pins the wrapper hook's gating,
+// mirroring TestNewEnrichmentHook_hookSiteSymmetry on the IDE side.
 func TestAttachEnrichment_hookSiteSymmetry(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
