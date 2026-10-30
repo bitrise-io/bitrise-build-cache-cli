@@ -25,8 +25,10 @@ type EnrichmentOptions struct {
 
 	BuildDB bool
 
-	SwiftTopN int
-	ClangTopN int
+	SwiftTopN  int
+	ClangTopN  int
+	TargetTopN int
+	StepTopN   int
 
 	PerCollectorTimeout time.Duration
 	FailOpen            bool
@@ -61,11 +63,13 @@ const (
 	EnvEnrichmentAll        = "BITRISE_BUILD_CACHE_ENRICH_ALL"
 	EnvEnrichmentNone       = "BITRISE_BUILD_CACHE_ENRICH_NONE"
 
-	collectorHostSnap      = "hostsnap"
-	collectorBuildTiming   = "buildtiming"
-	collectorBuildSettings = "buildsettings"
-	collectorAll           = "all"
-	collectorNone          = "none"
+	collectorHostSnap          = "hostsnap"
+	collectorBuildTiming       = "buildtiming"
+	collectorBuildSettings     = "buildsettings"
+	collectorActivityLog       = "activitylog"
+	collectorActivityLogAttach = "activitylog-attach"
+	collectorAll               = "all"
+	collectorNone              = "none"
 )
 
 // LoadEnrichmentOptions resolves EnrichmentOptions from env then CLI flags
@@ -134,6 +138,11 @@ func applyCollectorList(opts *EnrichmentOptions, list []string) {
 			opts.BuildTimingSummary = true
 		case collectorBuildSettings:
 			opts.BuildSettings = true
+		case collectorActivityLog:
+			opts.ActivityLog = true
+		case collectorActivityLogAttach:
+			opts.ActivityLog = true
+			opts.ActivityLogAttach = true
 		case collectorAll:
 			setAllCollectors(opts, true)
 		case collectorNone:
@@ -148,6 +157,8 @@ func setAllCollectors(opts *EnrichmentOptions, on bool) {
 	opts.HostSnapshot = on
 	opts.BuildTimingSummary = on
 	opts.BuildSettings = on
+	opts.ActivityLog = on
+	opts.ActivityLogAttach = on
 }
 
 func truthy(v string) bool {

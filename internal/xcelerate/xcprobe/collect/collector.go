@@ -37,6 +37,22 @@ type Input struct {
 	// `xcodebuild -showBuildTimingSummary` for the just-run invocation; nil
 	// no-ops the buildtiming collector. Populated by the wrapper path only.
 	XcodebuildInfoBytes []byte
+
+	// ActivityLogPath is the resolved `.xcactivitylog` path. When non-empty
+	// the xcactivitylog collector reads it directly; otherwise it walks
+	// DerivedDataPath + the Window* range to find the newest matching log.
+	ActivityLogPath string
+
+	// TargetTopN caps the per-invocation TopSteps list; defaults to 25 when 0.
+	TargetTopN int
+	StepTopN   int
+	SwiftTopN  int
+	ClangTopN  int
+
+	// DecodeAttachments gates Phase 2 — when false the activitylog collector
+	// skips the per-section attachment decode so the token walk stays strictly
+	// Phase-1 only.
+	DecodeAttachments bool
 }
 
 // Output is what one collector returned. Fields are nil when not produced.
@@ -44,4 +60,13 @@ type Output struct {
 	Host          *host.Snapshot
 	BuildTimings  *payload.BuildTimingHistogram
 	BuildSettings *payload.BuildSettingsSnapshot
+
+	// xcactivitylog collector outputs.
+	Targets        []payload.TargetRow
+	StepTypeHist   []payload.StepTypeBucket
+	TopSteps       []payload.StepRow
+	TopSwiftFuncs  []payload.SwiftTiming
+	TopSwiftTypes  []payload.SwiftTiming
+	LinkerStats    *payload.LinkerStatistics
+	AttachmentsCCM *payload.CompilationCacheMetrics
 }

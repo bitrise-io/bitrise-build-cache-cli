@@ -56,7 +56,7 @@ func dropLargestSubRow(p *EnrichmentPayload) string {
 		clear func()
 	}
 
-	candidates := make([]candidate, 0, 3)
+	candidates := make([]candidate, 0, 10)
 
 	if p.Host != nil {
 		candidates = append(candidates, candidate{name: "host", size: marshalSize(p.Host), clear: func() { p.Host = nil }})
@@ -68,6 +68,34 @@ func dropLargestSubRow(p *EnrichmentPayload) string {
 
 	if p.BuildTimings != nil {
 		candidates = append(candidates, candidate{name: "buildTimings", size: marshalSize(p.BuildTimings), clear: func() { p.BuildTimings = nil }})
+	}
+
+	if len(p.Targets) > 0 {
+		candidates = append(candidates, candidate{name: "targets", size: marshalSize(p.Targets), clear: func() { p.Targets = nil }})
+	}
+
+	if len(p.StepTypeHist) > 0 {
+		candidates = append(candidates, candidate{name: "stepTypeHist", size: marshalSize(p.StepTypeHist), clear: func() { p.StepTypeHist = nil }})
+	}
+
+	if len(p.TopSteps) > 0 {
+		candidates = append(candidates, candidate{name: "topSteps", size: marshalSize(p.TopSteps), clear: func() { p.TopSteps = nil }})
+	}
+
+	if len(p.TopSwiftFuncs) > 0 {
+		candidates = append(candidates, candidate{name: "topSwiftFuncs", size: marshalSize(p.TopSwiftFuncs), clear: func() { p.TopSwiftFuncs = nil }})
+	}
+
+	if len(p.TopSwiftTypes) > 0 {
+		candidates = append(candidates, candidate{name: "topSwiftTypes", size: marshalSize(p.TopSwiftTypes), clear: func() { p.TopSwiftTypes = nil }})
+	}
+
+	if p.LinkerStats != nil {
+		candidates = append(candidates, candidate{name: "linkerStats", size: marshalSize(p.LinkerStats), clear: func() { p.LinkerStats = nil }})
+	}
+
+	if p.AttachmentsCCM != nil {
+		candidates = append(candidates, candidate{name: "attachmentsCCM", size: marshalSize(p.AttachmentsCCM), clear: func() { p.AttachmentsCCM = nil }})
 	}
 
 	if len(candidates) == 0 {
