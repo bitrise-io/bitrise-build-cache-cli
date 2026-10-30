@@ -68,10 +68,18 @@ type Watcher struct {
 	tickEmittedIDs map[string]struct{}
 
 	// recentEmissions maps IDs the manifest path just PUT to their groups, so
-	// scanOrphanSidecars can re-PUT a pseudo-group under the same ID. Watcher-
-	// owned, persists across ticks (IDE flow flushes sidecar in tick N+1).
-	// Pruned at scan start by RecentEmissionsRetention.
+	// scanOrphanSidecars can find a prior emission whose window overlaps a
+	// pseudo-group. Watcher-owned, persists across ticks (IDE flow flushes
+	// sidecar in tick N+1). Pruned at scan start by RecentEmissionsRetention.
 	recentEmissions map[string]emissionRecord
+
+	// emittedUnderID is the set of InvocationIDs the manifest path has already
+	// PUT to BE within the retention window. scanOrphanSidecars consults it to
+	// skip pseudo-groups whose would-be OverrideInvocationID is already a live
+	// BE row — a late pseudo-group PUT would clobber the authoritative manifest
+	// row's hit rate with partial sidecar stats (BE is last-write-wins).
+	// Populated at the same site as recentEmissions; pruned on the same cadence.
+	emittedUnderID map[string]time.Time
 
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
@@ -88,36 +96,45 @@ type emissionRecord struct {
 // RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
 // the per-tick dedup set that scanOrphanSidecars reads: a sidecar whose ID
 // just emitted via the manifest path must not re-emit as a pseudo-group. It
-// also stashes the emitted group under its ID in the Watcher-owned
-// recentEmissions cache so a pseudo-group that overlaps one of them can re-PUT
-// under the same InvocationID (Bug-2 dedup) — across scan ticks, since the
-// IDE flow typically defers sidecar flush to the next tick.
+// also stashes the emitted group in recentEmissions so scanOrphanSidecars can
+// find an overlapping manifest window, and marks the ID in emittedUnderID so a
+// late pseudo-group that overlaps a prior manifest emission is skipped
+// (BE last-write-wins would clobber the authoritative row with partial stats).
 func (w *Watcher) RecordEmittedInvocationID(invocationID string, group ManifestEntryGroup) {
 	if invocationID == "" {
 		return
 	}
 
+	now := w.now()
 	if w.tickEmittedIDs != nil {
 		w.tickEmittedIDs[invocationID] = struct{}{}
 	}
 	if w.recentEmissions != nil {
-		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: w.now()}
+		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: now}
+	}
+	if w.emittedUnderID != nil {
+		w.emittedUnderID[invocationID] = now
 	}
 }
 
-// pruneRecentEmissions drops recentEmissions entries older than
-// RecentEmissionsRetention. Called at scan start — the retention window is the
-// upper bound on the manifest-orphan-mint → sidecar-flush gap we're willing to
-// correlate across.
+// pruneRecentEmissions drops recentEmissions + emittedUnderID entries older
+// than RecentEmissionsRetention. Called at scan start — the retention window
+// is the upper bound on the manifest-orphan-mint → sidecar-flush gap we're
+// willing to correlate across.
 func (w *Watcher) pruneRecentEmissions() {
-	if w.recentEmissions == nil {
-		return
-	}
-
 	cutoff := w.now().Add(-RecentEmissionsRetention)
-	for id, rec := range w.recentEmissions {
-		if rec.emittedAt.Before(cutoff) {
-			delete(w.recentEmissions, id)
+	if w.recentEmissions != nil {
+		for id, rec := range w.recentEmissions {
+			if rec.emittedAt.Before(cutoff) {
+				delete(w.recentEmissions, id)
+			}
+		}
+	}
+	if w.emittedUnderID != nil {
+		for id, at := range w.emittedUnderID {
+			if at.Before(cutoff) {
+				delete(w.emittedUnderID, id)
+			}
 		}
 	}
 }
@@ -170,6 +187,7 @@ func (w *Watcher) Run(ctx context.Context) {
 	w.seen = make(map[string]struct{})
 	w.retries = make(map[string]int)
 	w.recentEmissions = make(map[string]emissionRecord)
+	w.emittedUnderID = make(map[string]time.Time)
 
 	if !w.seedSeenFromStore() {
 		w.scan(true, false)
@@ -200,6 +218,9 @@ func (w *Watcher) ScanOnce() {
 	}
 	if w.recentEmissions == nil {
 		w.recentEmissions = make(map[string]emissionRecord)
+	}
+	if w.emittedUnderID == nil {
+		w.emittedUnderID = make(map[string]time.Time)
 	}
 
 	w.scan(false, true)
@@ -236,11 +257,15 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 		w.tickEmittedIDs = nil
 	}()
 
-	// recentEmissions is Watcher-owned and persists across ticks; prune aged
-	// entries here so a dropped-but-still-remembered emission doesn't live
-	// forever. Initialize if nil — tests that drive scan() directly skip Run/ScanOnce.
+	// recentEmissions + emittedUnderID are Watcher-owned and persist across
+	// ticks; prune aged entries here so a dropped-but-still-remembered emission
+	// doesn't live forever. Initialize if nil — tests that drive scan() directly
+	// skip Run/ScanOnce.
 	if w.recentEmissions == nil {
 		w.recentEmissions = make(map[string]emissionRecord)
+	}
+	if w.emittedUnderID == nil {
+		w.emittedUnderID = make(map[string]time.Time)
 	}
 	w.pruneRecentEmissions()
 
@@ -388,21 +413,17 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 		// Shutdown sweep stays sidecar-anchored: a late-closing sidecar's data
 		// must land under its own InvocationID, not fold into whatever
 		// manifest-orphan happened to fire this scan.
-		var (
-			signature, scheme, overrideID string
-		)
 		if !forceSynthesize {
-			if overrideKey, winner := findOverlappingManifestGroup(group.Start, group.Stop, w.recentEmissions); winner != nil {
-				primary := winner.Primary()
-				signature = primary.Signature
-				scheme = primary.SchemeName
-				overrideID = overrideKey
-				logger.Debugf("Watcher: pseudo-group reuses manifest-orphan InvocationID %s (overlap: scheme=%s cmd=%s)",
-					overrideKey, scheme, primary.Command())
+			if overrideKey, _ := findOverlappingManifestGroup(group.Start, group.Stop, w.recentEmissions); overrideKey != "" {
+				if _, alreadyEmitted := w.emittedUnderID[overrideKey]; alreadyEmitted {
+					logger.Debugf("Watcher: skip pseudo-group — manifest row already PUT under InvocationID %s (late sidecar wave would clobber hitRate)", overrideKey)
+
+					continue
+				}
 			}
 		}
 
-		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, signature, scheme, overrideID)
+		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}
