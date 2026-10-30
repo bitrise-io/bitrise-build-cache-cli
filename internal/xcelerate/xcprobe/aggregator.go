@@ -89,11 +89,22 @@ func Run(ctx context.Context, opts xceleratconfig.EnrichmentOptions, in collect.
 	return out
 }
 
-// enabledCollectors is intentionally empty in the scaffold commit — later
-// commits in the series append each Phase-0 collector keyed on the matching
-// opts bool.
-func enabledCollectors(_ xceleratconfig.EnrichmentOptions) []collect.Collector {
-	return nil
+func enabledCollectors(opts xceleratconfig.EnrichmentOptions) []collect.Collector {
+	var cs []collect.Collector
+
+	if opts.HostSnapshot {
+		cs = append(cs, collect.HostSnapCollector{})
+	}
+
+	if opts.BuildTimingSummary {
+		cs = append(cs, collect.BuildTimingCollector{})
+	}
+
+	if opts.BuildSettings {
+		cs = append(cs, collect.BuildSettingsCollector{})
+	}
+
+	return cs
 }
 
 func mergeOutput(dst *payload.EnrichmentPayload, src collect.Output) {
