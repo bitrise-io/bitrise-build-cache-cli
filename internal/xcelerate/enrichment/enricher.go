@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
@@ -109,12 +108,17 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	invocationID := group.OverrideInvocationID()
+	invocationID := group.ManifestUUID()
+	if invocationID == "" {
+		invocationID = group.OverrideInvocationID()
+	}
 	if invocationID == "" {
 		invocationID = sidecarInvocationID
 	}
 	if invocationID == "" {
-		invocationID = uuid.NewString()
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
+
+		return
 	}
 
 	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {

@@ -278,8 +278,7 @@ func commandRank(c Command) int {
 	}
 }
 
-// Primary picks the outermost entry by command rank (test > archive > build >
-// clean > unknown). Ties are broken by earliest Start.
+// Primary picks the outermost entry by command rank, then earliest Start, then lex-smallest UUID (deterministic across Go-map iteration order).
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
@@ -290,13 +289,28 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 
 	for _, e := range g.Entries[1:] {
 		r := commandRank(e.Command())
-		if r > bestRank || (r == bestRank && e.Start.Before(best.Start)) {
+		switch {
+		case r > bestRank:
 			best = e
 			bestRank = r
+		case r == bestRank && e.Start.Before(best.Start):
+			best = e
+		case r == bestRank && e.Start.Equal(best.Start) && e.UUID < best.UUID:
+			best = e
 		}
 	}
 
 	return best
+}
+
+// ManifestUUID returns Primary().UUID when the group is manifest-sourced, empty for SyntheticManifestGroup pseudo-groups.
+func (g ManifestEntryGroup) ManifestUUID() string {
+	uuid := g.Primary().UUID
+	if strings.HasPrefix(uuid, SyntheticManifestGroupUUIDPrefix) {
+		return ""
+	}
+
+	return uuid
 }
 
 // Command returns empty when the primary is unknown so the caller skips PUT.
