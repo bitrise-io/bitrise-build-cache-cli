@@ -17,20 +17,22 @@ import (
 )
 
 // Snapshot composes HostMetadata with the Xcode-only probes. HostMetadata is
-// embedded by value; callers mutate only the Xcode-specific fields.
+// embedded by value; callers mutate only the Xcode-specific fields. JSON tags
+// are present so this struct doubles as the wire shape attached to the
+// enrichment payload.
 type Snapshot struct {
 	common.HostMetadata
 
-	ThermalPressure   string
-	MemFreeMB         uint64
-	SwapTotalMB       uint64
-	SwapFreeMB        uint64
-	UptimeSeconds     uint64
-	IsVirtual         bool
-	SpotlightActive   bool
-	TimeMachineActive bool
-	ModelID           string
-	Chip              string
+	ThermalPressure   string `json:"thermalPressure,omitempty"`
+	MemFreeMB         uint64 `json:"memFreeMB,omitempty"`
+	SwapTotalMB       uint64 `json:"swapTotalMB,omitempty"`
+	SwapFreeMB        uint64 `json:"swapFreeMB,omitempty"`
+	UptimeSeconds     uint64 `json:"uptimeSeconds,omitempty"`
+	IsVirtual         bool   `json:"isVirtual,omitempty"`
+	SpotlightActive   bool   `json:"spotlightActive,omitempty"`
+	TimeMachineActive bool   `json:"timeMachineActive,omitempty"`
+	ModelID           string `json:"modelID,omitempty"`
+	Chip              string `json:"chip,omitempty"`
 }
 
 // systemProfilerCache caches the one slow probe for the lifetime of the

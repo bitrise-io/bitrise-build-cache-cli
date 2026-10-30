@@ -95,14 +95,24 @@ func (f *Finder) LatestForCommand(command enrichment.Command) (LatestBuild, erro
 		Configuration: extractConfiguration(best.Signature),
 	}
 
-	// <DD-root>/Logs/<Build|Test>/LogStoreManifest.plist -> <DD-root>
-	ddRoot := filepath.Dir(filepath.Dir(filepath.Dir(bestPath)))
+	ddRoot := DDRootFromManifestPath(bestPath)
 	if ws, proj := f.readWorkspaceInfo(ddRoot); ws != "" || proj != "" {
 		result.Workspace = ws
 		result.Project = proj
 	}
 
 	return result, nil
+}
+
+// DDRootFromManifestPath returns the DerivedData workspace root enclosing a
+// LogStoreManifest.plist (…/<DD>/Logs/<Build|Test>/LogStoreManifest.plist →
+// <DD>). Returns "" when the input is empty.
+func DDRootFromManifestPath(manifestPath string) string {
+	if manifestPath == "" {
+		return ""
+	}
+
+	return filepath.Dir(filepath.Dir(filepath.Dir(manifestPath)))
 }
 
 // Xcode writes signatures like "Cleaning project X with scheme Y and configuration Debug".
@@ -172,7 +182,7 @@ func (f *Finder) readWorkspacePathRaw(ddRoot string) string {
 // An unreadable info.plist (or one with an empty WorkspacePath) is treated as
 // a mismatch under an active filter.
 func (f *Finder) matchesHint(manifestPath string) bool {
-	ddRoot := filepath.Dir(filepath.Dir(filepath.Dir(manifestPath)))
+	ddRoot := DDRootFromManifestPath(manifestPath)
 
 	raw := f.readWorkspacePathRaw(ddRoot)
 	if raw == "" {
