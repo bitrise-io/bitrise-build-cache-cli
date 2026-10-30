@@ -66,10 +66,10 @@ func projectModePrompt(logger log.Logger) (machineconfig.Mode, error) {
 	return mode, nil
 }
 
-// confirmMarkerForCwd asks whether to drop the opt-in marker at the current
-// directory, when none is already found walking up from it. Any lookup or
-// write failure degrades to a warn-and-continue: this is a convenience step,
-// not a gate.
+// confirmMarkerForCwd asks whether to write the opt-in marker file at the
+// current directory, when none is already found walking up from it. Any lookup
+// or write failure degrades to a warn-and-continue: this is a convenience
+// step, not a gate.
 func confirmMarkerForCwd(logger log.Logger, osProxy utils.OsProxy) {
 	cwd, err := osProxy.Getwd()
 	if err != nil {
