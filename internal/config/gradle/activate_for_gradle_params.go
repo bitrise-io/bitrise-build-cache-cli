@@ -189,7 +189,6 @@ func (params ActivateGradleParams) commonTemplateInventory(
 		Debug:       isDebug,
 		AppSlug:     metadata.BitriseAppID,
 		CIProvider:  metadata.CIProvider,
-		Version:     consts.GradleCommonPluginDepVersion,
 		CLIPath:     cliPath,
 		ProjectMode: string(projectMode),
 	}
@@ -211,8 +210,7 @@ func (params ActivateGradleParams) cacheTemplateInventory(
 		logger.Infof("(i) Cache plugin usage: %+v", UsageLevelDependency)
 
 		return CacheTemplateInventory{
-			Usage:   UsageLevelDependency,
-			Version: consts.GradleRemoteBuildCachePluginDepVersion,
+			Usage: UsageLevelDependency,
 		}, nil
 	}
 
@@ -233,7 +231,6 @@ func (params ActivateGradleParams) cacheTemplateInventory(
 
 	return CacheTemplateInventory{
 		Usage:               UsageLevelEnabled,
-		Version:             consts.GradleRemoteBuildCachePluginDepVersion,
 		EndpointURLWithPort: cacheEndpointURL,
 		IsPushEnabled:       params.Cache.PushEnabled,
 		ValidationLevel:     params.Cache.ValidationLevel,
@@ -264,8 +261,7 @@ func (params ActivateGradleParams) analyticsTemplateInventory(
 		logger.Infof("(i) Analytics plugin usage: %+v", UsageLevelDependency)
 
 		return AnalyticsTemplateInventory{
-			Usage:   UsageLevelDependency,
-			Version: consts.GradleAnalyticsPluginDepVersion,
+			Usage: UsageLevelDependency,
 		}
 	}
 
@@ -273,7 +269,6 @@ func (params ActivateGradleParams) analyticsTemplateInventory(
 
 	return AnalyticsTemplateInventory{
 		Usage:        UsageLevelEnabled,
-		Version:      consts.GradleAnalyticsPluginDepVersion,
 		Endpoint:     consts.GradleAnalyticsEndpoint,
 		Port:         consts.GradleAnalyticsPort,
 		HTTPEndpoint: consts.GradleAnalyticsHTTPEndpoint,
@@ -297,8 +292,7 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 		logger.Infof("(i) Test distribution plugin usage: %+v", UsageLevelDependency)
 
 		return TestDistroTemplateInventory{
-			Usage:   UsageLevelDependency,
-			Version: consts.GradleTestDistributionPluginDepVersion,
+			Usage: UsageLevelDependency,
 		}, nil
 	}
 
@@ -315,7 +309,6 @@ func (params ActivateGradleParams) testDistroTemplateInventory(
 
 	return TestDistroTemplateInventory{
 		Usage:           UsageLevelEnabled,
-		Version:         consts.GradleTestDistributionPluginDepVersion,
 		Endpoint:        consts.GradleTestDistributionEndpoint,
 		KvEndpoint:      consts.GradleTestDistributionKvEndpoint,
 		Port:            consts.GradleTestDistributionPort,
