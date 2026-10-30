@@ -72,6 +72,10 @@ const (
 	// enrichment watcher and retry queue share.
 	xcelerateEnrichmentSubdir = "enrichment"
 
+	// xcelerateSessionsSubdir holds per-connection sidecar JSON files the
+	// proxy writes on close, consumed by the enrichment side.
+	xcelerateSessionsSubdir = "sessions"
+
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
@@ -289,6 +293,12 @@ func (p Paths) XcelerateLogDir() string {
 // XcelerateEnrichmentDir returns ~/.local/state/xcelerate/enrichment.
 func (p Paths) XcelerateEnrichmentDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateEnrichmentSubdir)
+}
+
+// XcelerateSessionsDir returns ~/.local/state/xcelerate/sessions, where the
+// proxy drops per-connection sidecar JSON files on close.
+func (p Paths) XcelerateSessionsDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateSessionsSubdir)
 }
 
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to

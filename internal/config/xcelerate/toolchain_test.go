@@ -26,7 +26,7 @@ func TestInstallXcodeToolchain_endToEnd(t *testing.T) {
 	home := t.TempDir()
 	fakeDeveloperDir := filepath.Join(t.TempDir(), "Developer")
 	seedFakeDeveloperDir(t, fakeDeveloperDir)
-	// <developer>/usr/bin/xcodebuild shape → devdir.FromXcodebuildPath resolves without xcode-select.
+	// <developer>/usr/bin/xcodebuild shape → derives developer dir without xcode-select.
 	fakeXcodebuild := filepath.Join(fakeDeveloperDir, "usr", "bin", "xcodebuild")
 
 	osProxy := &utilsMocks.OsProxyMock{
@@ -73,7 +73,7 @@ func TestInstallXcodeToolchain_fallsBackToXcodeSelect(t *testing.T) {
 		return nil
 	}
 
-	// Non-matching shape → devdir.FromXcodebuildPath returns "" and xcode-select fallback kicks in.
+	// Non-matching shape forces the xcode-select fallback.
 	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, cmdFunc,
 		nil, "/tmp/proxy.sock", "/opt/xcode-wrapper/xcodebuild")
 

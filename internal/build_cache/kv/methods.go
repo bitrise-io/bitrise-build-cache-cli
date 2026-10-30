@@ -381,8 +381,13 @@ func (c *Client) getMethodCallMetadata(ctx context.Context, logMD bool) metadata
 	md.Set("x-flare-blob-validation-level", "WARN")
 	md.Set("x-flare-ac-validation-mode", "fast")
 
+	toolInvocationID := c.invocationID
+	if ctxID, ok := InvocationIDFromContext(ctx); ok {
+		toolInvocationID = ctxID
+	}
+
 	rmd := &remoteexecution.RequestMetadata{
-		ToolInvocationId: c.invocationID,
+		ToolInvocationId: toolInvocationID,
 		ToolDetails: &remoteexecution.ToolDetails{
 			ToolName: c.clientName,
 		},

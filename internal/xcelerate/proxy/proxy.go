@@ -22,6 +22,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/hash"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/slicebuf"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 	llvmcas "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/cas"
 	llvmkv "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/llvm/session"
@@ -67,11 +68,42 @@ type Proxy struct {
 	InactivityTimeout time.Duration
 	inactivityTimer   *time.Timer
 	lastActivity      time.Time
+
+	sidecarStats    *sidecarStatsHandler
+	sessionRegistry *sessionRegistry
+
+	// perConnFlushTimer self-reschedules every perConnIdleThreshold while
+	// the proxy serves. Independent of the wrapper inactivityTimer: that
+	// one sits on top of SetSession, this one covers the IDE plugin flow
+	// where ConnEnd only fires when Xcode fully quits.
+	perConnFlushTimer *time.Timer
+}
+
+// SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
+type SidecarOptions struct {
+	// Dir is where sessions.Sidecar JSON files are written. Empty disables.
+	Dir string
+	// Listener is the *PeerListener wrapper the proxy serves on. Required
+	// when Dir is set.
+	Listener *PeerListener
 }
 
 const defaultInactivityTimeout = 5 * time.Minute
 
 func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactory LoggerFactory, emitter InvocationEmitter) *Proxy {
+	return NewProxyWithOptions(kvClient, pushEnabled, logger, loggerFactory, emitter, SidecarOptions{})
+}
+
+// NewProxyWithOptions is the full constructor; zero-value SidecarOptions
+// disables sidecar writes.
+func NewProxyWithOptions(
+	kvClient Client,
+	pushEnabled bool,
+	logger log.Logger,
+	loggerFactory LoggerFactory,
+	emitter InvocationEmitter,
+	sidecar SidecarOptions,
+) *Proxy {
 	//nolint:exhaustruct
 	proxy := &Proxy{
 		kvClient:      kvClient,
@@ -85,7 +117,9 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 		},
 	}
 
-	grpcServer := grpc.NewServer(
+	proxy.installSidecar(sidecar)
+
+	serverOpts := []grpc.ServerOption{
 		// Unbounded by default: gRPC spawns a goroutine per stream, and the
 		// compilation plugin opens hundreds at once. A CPU-starved proxy holds
 		// each one far longer, so threads and fds grow with service time. See
@@ -111,7 +145,13 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 
 			return resp, err
 		}),
-	)
+	}
+
+	if proxy.sidecarStats != nil {
+		serverOpts = append(serverOpts, grpc.StatsHandler(proxy.sidecarStats))
+	}
+
+	grpcServer := grpc.NewServer(serverOpts...)
 
 	llvmcas.RegisterCASDBServiceServer(grpcServer, proxy)
 	llvmkv.RegisterKeyValueDBServer(grpcServer, proxy)
@@ -122,10 +162,74 @@ func NewProxy(kvClient Client, pushEnabled bool, logger log.Logger, loggerFactor
 	return proxy
 }
 
+// installSidecar wires sidecar machinery if opts.Dir is set. A nil Listener
+// disables peer-PID tagging.
+func (p *Proxy) installSidecar(opts SidecarOptions) {
+	if opts.Dir == "" {
+		return
+	}
+
+	p.sessionRegistry = newSessionRegistry()
+	ancestry := buildidentity.NewAncestryCache()
+	p.sidecarStats = &sidecarStatsHandler{
+		listener:                   opts.Listener,
+		registry:                   p.sessionRegistry,
+		writer:                     newSidecarWriter(opts.Dir, p.logger),
+		peerAncestryEntries:        ancestry.ResolveAncestryEntries,
+		derivedDataPathFromEntries: peerDerivedDataPath,
+		wrapperSessionActive:       p.wrapperSessionActive,
+	}
+
+	p.perConnFlushTimer = time.AfterFunc(perConnIdleThreshold, p.firePerConnFlush)
+}
+
+// firePerConnFlush is the per-conn flush timer callback. Self-reschedules so
+// one AfterFunc covers the whole proxy lifetime. Stopped on GracefulStop and
+// flushOutstandingSidecars so no late fires race shutdown.
+func (p *Proxy) firePerConnFlush() {
+	if p.sidecarStats != nil {
+		p.sidecarStats.flushIdle(time.Now(), perConnIdleThreshold)
+	}
+
+	if p.perConnFlushTimer != nil {
+		p.perConnFlushTimer.Reset(perConnIdleThreshold)
+	}
+}
+
+// wrapperSessionActive reports whether the SetSession path currently owns the
+// InvocationID. Trampoline/orphan derivation defers to the wrapper when true.
+func (p *Proxy) wrapperSessionActive() bool {
+	p.sessionMutex.Lock()
+	defer p.sessionMutex.Unlock()
+
+	return p.currentSession != nil
+}
+
+// stateFor returns a recorder that mirrors to the global sessionState and,
+// when the ctx carries a per-conn session, to that one too. Keeps sidecar
+// accounting in lockstep without changing the global session's semantics.
+func (p *Proxy) stateFor(ctx context.Context) *recorder {
+	cs := sessionFromContext(ctx)
+	if cs == nil {
+		return &recorder{global: p.sessionState}
+	}
+
+	cs.markActivity()
+
+	return &recorder{global: p.sessionState, conn: cs.state.Load()}
+}
+
 // Sized off the machine, not the client: the plugin will open as many streams
 // as it has compiles, and the proxy's job is to keep its own thread count flat
 // while it drains them.
 const maxConcurrentStreams = 64
+
+// uploadDecoupledTimeout caps a background upload so a wedged BE can't orphan
+// goroutines after client cancel. Covers one full retry attempt + headroom.
+// Package var (not const) so tests can shrink it to milliseconds.
+//
+//nolint:gochecknoglobals // overridable via export_test.go seam
+var uploadDecoupledTimeout = 3 * time.Minute
 
 func streamWorkers() uint32 {
 	return uint32(max(4, min(runtime.NumCPU()*2, 32))) //nolint:gosec // bounded to 32
@@ -138,8 +242,34 @@ func (p *Proxy) Serve(l net.Listener) error {
 }
 
 // GracefulStop stops the underlying gRPC server after in-flight RPCs finish.
+// After the server returns, any outstanding per-connection sidecars are
+// flushed — otherwise a shutdown mid-build loses the still-open sessions.
+//
+// A firePerConnFlush callback that was already running when Stop() returned
+// false races GracefulStop: it keeps running + Reset()s the timer, which the
+// second Stop() in flushOutstandingSidecars cancels. The disk writes it does
+// race only on per-session state (atomic swap via connectionSession.swapState)
+// or terminalOnce-guarded flushTerminal; sidecar filenames carry a fresh UUID
+// per write + atomic rename, so an intermediate from the late callback cannot
+// clobber the shutdown terminal.
 func (p *Proxy) GracefulStop() {
+	if p.perConnFlushTimer != nil {
+		p.perConnFlushTimer.Stop()
+	}
 	p.grpcServer.GracefulStop()
+	p.flushOutstandingSidecars()
+}
+
+func (p *Proxy) flushOutstandingSidecars() {
+	if p.sessionRegistry == nil || p.sidecarStats == nil {
+		return
+	}
+
+	if p.perConnFlushTimer != nil {
+		p.perConnFlushTimer.Stop()
+	}
+
+	p.sessionRegistry.flushAll(p.sidecarStats.flushTerminal)
 }
 
 // FlushCurrentSession emits the currently-open session (if any) via the configured emitter.
@@ -328,9 +458,11 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		p.logReadCallStats("Get", key, start, hit)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmcas.CASGetResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.recordMiss(opGet)
+			rec.recordMiss(opGet)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASGetResponse{
@@ -338,7 +470,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 			}
 		}
 
-		p.sessionState.recordError(opGet, err)
+		rec.recordError(opGet, err)
 		p.logger.TErrorf("Get error: %s", err)
 
 		return &llvmcas.CASGetResponse{
@@ -359,7 +491,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 		return errorHandler(fmt.Errorf("%s: failed to download data: %w", key, err)), nil
 	}
 
-	p.sessionState.saveKeyOnce(key)
+	rec.saveKeyOnce(key)
 	size := int64(buffer.Len())
 
 	data := blob{} //nolint:exhaustruct
@@ -374,7 +506,7 @@ func (p *Proxy) Get(ctx context.Context, request *llvmcas.CASGetRequest) (*llvmc
 	}
 
 	hit = true
-	p.sessionState.recordDownload(opGet, size, transferElapsed)
+	rec.recordDownload(opGet, size, transferElapsed)
 
 	return &llvmcas.CASGetResponse{
 		Outcome: llvmcas.CASGetResponse_SUCCESS,
@@ -396,10 +528,12 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	var key string
 
-	errorHandler := func(err error) *llvmcas.CASPutResponse {
-		p.sessionState.markKeyUnsaved(key)
+	rec := p.stateFor(ctx)
 
-		p.sessionState.recordError(opPut, err)
+	errorHandler := func(err error) *llvmcas.CASPutResponse {
+		rec.markKeyUnsaved(key)
+
+		rec.recordError(opPut, err)
 		p.logger.TErrorf("Put error: %s", err)
 
 		return &llvmcas.CASPutResponse{
@@ -450,9 +584,9 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	p.logger.TDebugf("Put: CAS ID: %s", key)
 
-	if p.sessionState.saveKeyOnce(key) {
+	if rec.saveKeyOnce(key) {
 		p.logger.TDebugf("Put: CAS ID already saved in this session: %s", key)
-		p.sessionState.recordSkippedAlreadySaved(opPut)
+		rec.recordSkippedAlreadySaved(opPut)
 
 		return &llvmcas.CASPutResponse{
 			Contents: &llvmcas.CASPutResponse_CasId{
@@ -473,14 +607,18 @@ func (p *Proxy) Put(ctx context.Context, request *llvmcas.CASPutRequest) (*llvmc
 
 	size := int64(buffer.Len())
 
+	uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadDecoupledTimeout)
+	defer cancel()
+
 	transferStart := time.Now()
-	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
+	err := p.kvClient.UploadStreamToBuildCache(uploadCtx, buffer, key, size)
 	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("failed to upload data: %w", err)), nil
 	}
 
-	p.sessionState.recordUpload(opPut, size, transferElapsed)
+	p.logger.TDebugf("Upload committed: op=%s key=%s size=%d", opPut, key, size)
+	rec.recordUpload(opPut, size, transferElapsed)
 
 	return &llvmcas.CASPutResponse{
 		Contents: &llvmcas.CASPutResponse_CasId{
@@ -501,9 +639,11 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		p.logReadCallStats("Load", key, start, hit)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmcas.CASLoadResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.recordMiss(opLoad)
+			rec.recordMiss(opLoad)
 
 			//nolint:exhaustruct
 			return &llvmcas.CASLoadResponse{
@@ -511,7 +651,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 			}
 		}
 
-		p.sessionState.recordError(opLoad, err)
+		rec.recordError(opLoad, err)
 		p.logger.TErrorf("Load error: %s", err)
 
 		return &llvmcas.CASLoadResponse{
@@ -532,7 +672,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 		return errorHandler(fmt.Errorf("%s: failed to download data: %w", key, err)), nil
 	}
 
-	p.sessionState.saveKeyOnce(key)
+	rec.saveKeyOnce(key)
 	size := int64(buffer.Len())
 
 	data, err := io.ReadAll(buffer)
@@ -541,7 +681,7 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 	}
 
 	hit = true
-	p.sessionState.recordDownload(opLoad, size, transferElapsed)
+	rec.recordDownload(opLoad, size, transferElapsed)
 
 	return &llvmcas.CASLoadResponse{
 		Outcome: llvmcas.CASLoadResponse_SUCCESS,
@@ -560,10 +700,12 @@ func (p *Proxy) Load(ctx context.Context, request *llvmcas.CASLoadRequest) (*llv
 func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llvmcas.CASSaveResponse, error) {
 	var key string
 
-	errorHandler := func(err error) *llvmcas.CASSaveResponse {
-		p.sessionState.markKeyUnsaved(key)
+	rec := p.stateFor(ctx)
 
-		p.sessionState.recordError(opSave, err)
+	errorHandler := func(err error) *llvmcas.CASSaveResponse {
+		rec.markKeyUnsaved(key)
+
+		rec.recordError(opSave, err)
 		p.logger.TErrorf("Save error: %s", err)
 
 		return &llvmcas.CASSaveResponse{
@@ -617,9 +759,9 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 
 	p.logger.TDebugf("Save: CAS ID: %s", key)
 
-	if p.sessionState.saveKeyOnce(key) {
+	if rec.saveKeyOnce(key) {
 		p.logger.TDebugf("Save: CAS ID already saved in this session: %s", key)
-		p.sessionState.recordSkippedAlreadySaved(opSave)
+		rec.recordSkippedAlreadySaved(opSave)
 
 		return &llvmcas.CASSaveResponse{
 			Contents: &llvmcas.CASSaveResponse_CasId{
@@ -648,14 +790,18 @@ func (p *Proxy) Save(ctx context.Context, request *llvmcas.CASSaveRequest) (*llv
 		reader = slicebuf.NewBufferWithData(request.GetData().GetBlob().GetData())
 	}
 
+	uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadDecoupledTimeout)
+	defer cancel()
+
 	transferStart := time.Now()
-	err := p.kvClient.UploadStreamToBuildCache(ctx, reader, key, size)
+	err := p.kvClient.UploadStreamToBuildCache(uploadCtx, reader, key, size)
 	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to upload data: %w", key, err)), nil
 	}
 
-	p.sessionState.recordUpload(opSave, size, transferElapsed)
+	p.logger.TDebugf("Upload committed: op=%s key=%s size=%d", opSave, key, size)
+	rec.recordUpload(opSave, size, transferElapsed)
 
 	return &llvmcas.CASSaveResponse{
 		Contents: &llvmcas.CASSaveResponse_CasId{
@@ -676,9 +822,11 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 		p.logReadCallStats("GetValue", key, start, hit)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmkv.GetValueResponse {
 		if errors.Is(err, kv.ErrCacheNotFound) {
-			p.sessionState.recordMiss(opGetValue)
+			rec.recordMiss(opGetValue)
 
 			//nolint:exhaustruct
 			return &llvmkv.GetValueResponse{
@@ -686,7 +834,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 			}
 		}
 
-		p.sessionState.recordError(opGetValue, err)
+		rec.recordError(opGetValue, err)
 		p.logger.TErrorf("GetValue error: %s", err)
 
 		return &llvmkv.GetValueResponse{
@@ -715,7 +863,7 @@ func (p *Proxy) GetValue(ctx context.Context, request *llvmkv.GetValueRequest) (
 	}
 
 	hit = true
-	p.sessionState.recordDownload(opGetValue, size, transferElapsed)
+	rec.recordDownload(opGetValue, size, transferElapsed)
 
 	return &llvmkv.GetValueResponse{
 		Outcome: llvmkv.GetValueResponse_SUCCESS,
@@ -737,8 +885,10 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 		p.logWriteCallStats("PutValue", key, start)
 	}()
 
+	rec := p.stateFor(ctx)
+
 	errorHandler := func(err error) *llvmkv.PutValueResponse {
-		p.sessionState.recordError(opPutValue, err)
+		rec.recordError(opPutValue, err)
 		p.logger.TErrorf("PutValue error: %s", err)
 
 		return &llvmkv.PutValueResponse{
@@ -761,14 +911,18 @@ func (p *Proxy) PutValue(ctx context.Context, request *llvmkv.PutValueRequest) (
 
 	size := int64(buffer.Len())
 
+	uploadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), uploadDecoupledTimeout)
+	defer cancel()
+
 	transferStart := time.Now()
-	err := p.kvClient.UploadStreamToBuildCache(ctx, buffer, key, size)
+	err := p.kvClient.UploadStreamToBuildCache(uploadCtx, buffer, key, size)
 	transferElapsed := time.Since(transferStart)
 	if err != nil {
 		return errorHandler(fmt.Errorf("%s: failed to upload value: %w", key, err)), nil
 	}
 
-	p.sessionState.recordUpload(opPutValue, size, transferElapsed)
+	p.logger.TDebugf("Upload committed: op=%s key=%s size=%d", opPutValue, key, size)
+	rec.recordUpload(opPutValue, size, transferElapsed)
 
 	//nolint:exhaustruct
 	return &llvmkv.PutValueResponse{}, nil

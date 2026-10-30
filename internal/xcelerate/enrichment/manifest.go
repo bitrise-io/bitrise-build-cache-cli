@@ -40,6 +40,7 @@ const (
 	CommandBuild   Command = "build"
 	CommandTest    Command = "test"
 	CommandArchive Command = "archive"
+	CommandClean   Command = "clean"
 	CommandUnknown Command = ""
 )
 
@@ -50,12 +51,14 @@ func (m ManifestEntry) Command() Command {
 	}
 
 	switch strings.ToLower(strings.SplitN(source, " ", 2)[0]) {
-	case "build", "building", "cleaning", "clean":
+	case "build", "building":
 		return CommandBuild
 	case "test", "testing":
 		return CommandTest
 	case "archive", "archiving":
 		return CommandArchive
+	case "clean", "cleaning":
+		return CommandClean
 	default:
 		return CommandUnknown
 	}
@@ -152,6 +155,21 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 //     can pick a pending record that only overlaps part of the window.
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
+
+	// overrideInvocationID is set by SyntheticManifestGroup when the orphan
+	// sweep already identified a manifest-emitted InvocationID that overlaps
+	// this pseudo-group's time window. Enricher.Enrich reads it via
+	// OverrideInvocationID() to re-PUT under that ID instead of minting a new
+	// orphan — this collapses the manifest-orphan + pseudo-group pair into one
+	// BE row.
+	overrideInvocationID string
+}
+
+// OverrideInvocationID returns the InvocationID the pseudo-group must PUT under,
+// or "" when no override was stamped. Only SyntheticManifestGroup populates
+// this; real manifest-derived groups return "".
+func (g ManifestEntryGroup) OverrideInvocationID() string {
+	return g.overrideInvocationID
 }
 
 func (g ManifestEntryGroup) UUIDs() []string {
@@ -214,6 +232,19 @@ func (g ManifestEntryGroup) Duration() time.Duration {
 	return stop.Sub(start)
 }
 
+// PrimarySpan is the time span of Primary() alone — the invocation anchor's
+// own build-action window, not the wider cluster that includes post-build
+// indexing / preview compiles. Used by the BE row payload so durationMs
+// reflects the build, not the aggregate cluster.
+func (g ManifestEntryGroup) PrimarySpan() time.Duration {
+	p := g.Primary()
+	if p.Start.IsZero() || p.Stop.IsZero() {
+		return 0
+	}
+
+	return p.Stop.Sub(p.Start)
+}
+
 // ErrorMessage returns the first non-empty entry message so a mixed-status
 // group surfaces failure signal while mirroring Success()'s AND semantics.
 func (g ManifestEntryGroup) ErrorMessage() string {
@@ -240,40 +271,59 @@ func (g ManifestEntryGroup) Success() bool {
 	return true
 }
 
-// Primary picks the outermost entry by command rank (test > archive > build >
-// unknown). Ties are broken by earliest Start.
+// commandRank orders Command values so the Primary picker and overlap tie-break
+// in findOverlappingManifestGroup agree: test > archive > build > clean >
+// unknown.
+func commandRank(c Command) int {
+	switch c {
+	case CommandTest:
+		return 3
+	case CommandArchive:
+		return 2
+	case CommandBuild:
+		return 1
+	case CommandClean:
+		return 0
+	case CommandUnknown:
+		return -1
+	default:
+		return -1
+	}
+}
+
+// Primary picks the outermost entry by command rank, then earliest Start, then lex-smallest UUID (deterministic across Go-map iteration order).
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
 	}
 
-	rank := func(c Command) int {
-		switch c {
-		case CommandTest:
-			return 3
-		case CommandArchive:
-			return 2
-		case CommandBuild:
-			return 1
-		case CommandUnknown:
-			return 0
-		default:
-			return 0
-		}
-	}
-
 	best := g.Entries[0]
-	bestRank := rank(best.Command())
+	bestRank := commandRank(best.Command())
 
 	for _, e := range g.Entries[1:] {
-		r := rank(e.Command())
-		if r > bestRank || (r == bestRank && e.Start.Before(best.Start)) {
+		r := commandRank(e.Command())
+		switch {
+		case r > bestRank:
 			best = e
 			bestRank = r
+		case r == bestRank && e.Start.Before(best.Start):
+			best = e
+		case r == bestRank && e.Start.Equal(best.Start) && e.UUID < best.UUID:
+			best = e
 		}
 	}
 
 	return best
+}
+
+// ManifestUUID returns Primary().UUID when the group is manifest-sourced, empty for SyntheticManifestGroup pseudo-groups.
+func (g ManifestEntryGroup) ManifestUUID() string {
+	uuid := g.Primary().UUID
+	if strings.HasPrefix(uuid, SyntheticManifestGroupUUIDPrefix) {
+		return ""
+	}
+
+	return uuid
 }
 
 // Command returns empty when the primary is unknown so the caller skips PUT.
@@ -322,6 +372,35 @@ func (g ManifestEntryGroup) FullCommand() string {
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// SyntheticManifestGroupUUIDPrefix tags pseudo-groups synthesized from aged
+// orphan sidecars. Bare xcodebuild UUIDs never carry this prefix so the
+// HandledManifestStore cannot collide across the real/synthetic boundary.
+const SyntheticManifestGroupUUIDPrefix = "synthetic-"
+
+// SyntheticManifestGroup builds a one-entry pseudo-group suitable for feeding
+// Enrich() when no LogStoreManifest.plist arrived. signature falls back to
+// "build" so Command()→CommandBuild and the enricher does not drop the group;
+// scheme is stamped as SchemeName so the rendered command carries the scheme.
+// overrideInvocationID, when non-empty, redirects the PUT at the ID of a
+// manifest-orphan that overlapped this pseudo-group's window — dedups the
+// Clean+Build-manifest-orphan + pseudo-group pair into a single BE row.
+func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature, scheme, overrideInvocationID string) ManifestEntryGroup {
+	if signature == "" {
+		signature = "build"
+	}
+
+	return ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       SyntheticManifestGroupUUIDPrefix + sidecarUUID,
+			Signature:  signature,
+			SchemeName: scheme,
+			Start:      start,
+			Stop:       stop,
+		}},
+		overrideInvocationID: overrideInvocationID,
+	}
 }
 
 // GroupManifestEntries expects entries from a single manifest — see the

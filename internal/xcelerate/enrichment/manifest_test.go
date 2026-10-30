@@ -40,14 +40,15 @@ func TestLoadManifest_ParsesEntries(t *testing.T) {
 	clean := byUUID["EEEE-FFFF-CLEAN"]
 	assert.Equal(t, "S", clean.Status, "highLevelStatus must be read from primaryObservable")
 	assert.True(t, clean.Success())
-	assert.Equal(t, enrichment.CommandBuild, clean.Command(), "gerund form Cleaning -> build")
+	assert.Equal(t, enrichment.CommandClean, clean.Command(), "gerund form Cleaning -> clean")
 }
 
 func TestCommand_GerundForms(t *testing.T) {
 	cases := map[string]enrichment.Command{
 		"Build MyScheme":        enrichment.CommandBuild,
 		"Building MyScheme":     enrichment.CommandBuild,
-		"Cleaning MyScheme":     enrichment.CommandBuild,
+		"Clean MyScheme":        enrichment.CommandClean,
+		"Cleaning MyScheme":     enrichment.CommandClean,
 		"Test MySchemeTests":    enrichment.CommandTest,
 		"Testing MySchemeTests": enrichment.CommandTest,
 		"Archive MyScheme":      enrichment.CommandArchive,
@@ -255,4 +256,159 @@ func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	groups, err := enrichment.LoadManifestGrouped("testdata/LogStoreManifest.plist", 60*time.Second)
 	require.NoError(t, err)
 	require.Len(t, groups, 3)
+}
+
+func TestManifestEntryGroup_CleanCommandRendering(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "c1", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "clean [S]", groups[0].Command())
+}
+
+func TestPrimary_BuildBeatsCleanInMixedGroup(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "c", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
+		{UUID: "b", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(5 * time.Second), Stop: base.Add(10 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, enrichment.CommandBuild, groups[0].Primary().Command(),
+		"Build must outrank Clean even when Clean starts earlier — rank beats same-time tiebreak")
+}
+
+func TestPrimary_CleanOnlyGroupReportsClean(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "c1", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, enrichment.CommandClean, groups[0].Primary().Command())
+}
+
+func TestPrimary_CleanBeatsUnknown(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "u", SchemeName: "S", Signature: "Resolve Packages", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
+		{UUID: "c", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base.Add(2 * time.Second), Stop: base.Add(4 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, enrichment.CommandClean, groups[0].Primary().Command(),
+		"Clean must outrank Unknown so a Clean+Unknown group still PUTs with command=clean")
+}
+
+func TestSyntheticManifestGroup_PopulatesBuildCommandAndSpan(t *testing.T) {
+	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(45 * time.Second)
+	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "", "", "")
+
+	require.Len(t, g.Entries, 1)
+	assert.Equal(t, enrichment.SyntheticManifestGroupUUIDPrefix+"abc-123", g.Entries[0].UUID,
+		"synthetic UUID must carry the sentinel prefix so it never collides with Xcode bare UUIDs")
+	assert.Equal(t, enrichment.CommandBuild, g.Entries[0].Command(),
+		"empty signature must fall back to \"build\" so the enricher does not drop the group")
+	assert.Equal(t, start, g.Start())
+	assert.Equal(t, stop, g.Stop())
+	assert.Equal(t, "build", g.Command(), "FullCommand+scheme-less synthesis must land as a bare \"build\"")
+	assert.Empty(t, g.OverrideInvocationID(), "no override stamped")
+}
+
+func TestSyntheticManifestGroup_WithSignatureAndSchemeRendersFullCommand(t *testing.T) {
+	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(45 * time.Second)
+	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "Build IceCubesApp", "IceCubesApp", "")
+
+	require.Len(t, g.Entries, 1)
+	assert.Equal(t, enrichment.CommandBuild, g.Entries[0].Command())
+	assert.Equal(t, "build [IceCubesApp]", g.Command(),
+		"signature+scheme must render as the real action+scheme command")
+}
+
+func TestSyntheticManifestGroup_StampsOverrideInvocationID(t *testing.T) {
+	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(1 * time.Second)
+	g := enrichment.SyntheticManifestGroup("sidecar-x", start, stop, "", "", "override-id")
+
+	assert.Equal(t, "override-id", g.OverrideInvocationID())
+}
+
+func TestManifestEntryGroup_Primary_StableAcrossShuffledInput(t *testing.T) {
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+
+	// Three entries at identical rank (all build) + identical Start — only UUID
+	// differs. Any Primary() tiebreak that doesn't consult UUID can land on
+	// whichever entry appears first in the slice.
+	entries := []enrichment.ManifestEntry{
+		{UUID: "mmm-middle", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "aaa-first", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "zzz-last", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+	}
+
+	orderings := [][]enrichment.ManifestEntry{
+		{entries[0], entries[1], entries[2]},
+		{entries[1], entries[2], entries[0]},
+		{entries[2], entries[0], entries[1]},
+		{entries[1], entries[0], entries[2]},
+		{entries[2], entries[1], entries[0]},
+		{entries[0], entries[2], entries[1]},
+	}
+
+	var picks []string
+	for _, order := range orderings {
+		g := enrichment.ManifestEntryGroup{Entries: append([]enrichment.ManifestEntry(nil), order...)}
+		picks = append(picks, g.Primary().UUID)
+	}
+
+	for _, p := range picks {
+		assert.Equal(t, "aaa-first", p,
+			"Primary() must pick the lex-smallest UUID at tied rank+Start regardless of input order")
+	}
+}
+
+// TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic ensures the sentinel-
+// prefixed pseudo-group UUID does not accidentally land as a BE InvocationID.
+func TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic(t *testing.T) {
+	start := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(10 * time.Second)
+	g := enrichment.SyntheticManifestGroup("sidecar-xyz", start, stop, "", "", "")
+
+	assert.Empty(t, g.ManifestUUID(),
+		"synthetic pseudo-group UUIDs carry the sentinel prefix; ManifestUUID must return empty so the enricher falls through to override/sidecar")
+}
+
+// TestManifestEntryGroup_ManifestUUID_ReturnsPrimaryForManifestSourced is the
+// happy-path mirror of the synthetic-group check: real manifest-sourced groups
+// expose Primary().UUID as the authoritative BE identity.
+func TestManifestEntryGroup_ManifestUUID_ReturnsPrimaryForManifestSourced(t *testing.T) {
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+	}}
+
+	assert.Equal(t, "u-primary", g.ManifestUUID())
+}
+
+// TestManifestEntryGroup_PrimarySpan_UsesPrimaryEntryOnly guards the split
+// between the row-side (PrimarySpan — anchor's own window) and correlation-side
+// (Duration — wide cluster span including post-build indexing / preview compiles).
+func TestManifestEntryGroup_PrimarySpan_UsesPrimaryEntryOnly(t *testing.T) {
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		// Primary: Build (rank 1), 10s window.
+		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		// Late non-Primary: unknown command (rank -1), 50s window joining the cluster.
+		{UUID: "u-late", SchemeName: "S", Signature: "Indexing S", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(70 * time.Second)},
+	}}
+
+	assert.Equal(t, 10*time.Second, g.PrimarySpan(), "PrimarySpan is anchored to Primary().Stop-Primary().Start")
+	assert.Equal(t, 70*time.Second, g.Duration(), "Duration stays as the wide cluster span used by correlation")
 }
