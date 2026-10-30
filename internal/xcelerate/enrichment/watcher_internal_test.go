@@ -1103,12 +1103,11 @@ func (s *stubReader) PendingDerivedDataPaths() []string { return nil }
 
 func (s *stubReader) PendingCount() int { return 0 }
 
-// TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTick
-// pins the dedup: Clean+Build-manifest-orphan + pseudo-group that overlap
-// the Build window must land as ONE BE row, keyed by the Build-manifest's
-// InvocationID. Also verifies the pseudo-group inherits the Build's
-// signature + scheme so the row renders as "build [IceCubesApp]".
-func TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTick(t *testing.T) {
+// TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedUnderSameInvocationID
+// pins the clobber-safe path: a pseudo-group that overlaps a prior manifest
+// emission must NOT PUT. BE is last-write-wins, so a late-wave pseudo-group's
+// partial hitRate would overwrite the authoritative manifest row.
+func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedUnderSameInvocationID(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-overlap-dedup")
 	writeMultiEntryManifest(t, derivedRoot, "u-build")
@@ -1147,20 +1146,10 @@ func TestWatcher_scanOrphanSidecars_ReusesManifestOrphanID_WhenOverlapsEmittedTi
 
 	w.scan(false, false)
 
-	require.Len(t, handled, 2, "exactly one real manifest group + one pseudo-group")
-
-	var pseudo *ManifestEntryGroup
-	for i, g := range handled {
-		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			pseudo = &handled[i]
-		}
-	}
-	require.NotNil(t, pseudo, "pseudo-group must emit")
-
-	assert.Equal(t, buildOrphanID, pseudo.OverrideInvocationID(),
-		"pseudo-group must re-PUT under the Build-manifest-orphan's InvocationID so the two rows dedup to one")
-	assert.Equal(t, "build [SharedScheme]", pseudo.Command(),
-		"pseudo-group must inherit the Build-manifest's signature + scheme instead of rendering as a bare build")
+	require.Len(t, handled, 1,
+		"only the real manifest group must emit — the overlapping pseudo-group is skipped so its partial stats don't clobber the manifest row")
+	assert.False(t, strings.HasPrefix(handled[0].Entries[0].UUID, SyntheticManifestGroupUUIDPrefix),
+		"the single emission must be the real manifest group, not a pseudo-group")
 }
 
 // TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap: a
@@ -1241,7 +1230,9 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 
 // TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention: IDE flow
 // mints the manifest-orphan in tick N and flushes the sidecar in tick N+1 —
-// the pseudo-group must still PUT under the manifest-orphan's InvocationID.
+// the late pseudo-group must NOT PUT. Watcher-owned emittedUnderID retains the
+// manifest ID across the tick boundary, so the late pseudo-group's partial
+// stats can't clobber the authoritative manifest row.
 func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-cross-tick")
@@ -1292,15 +1283,8 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	tickIdx = 1
 	w.scan(false, false)
 
-	require.Len(t, handled, 2, "tick N+1: pseudo-group emits")
-	pseudo := handled[1]
-	require.True(t, strings.HasPrefix(pseudo.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix),
-		"second emission must be the pseudo-group")
-	assert.Equal(t, buildOrphanID, pseudo.OverrideInvocationID(),
-		"cross-tick dedup: pseudo-group must re-PUT under the manifest-orphan ID "+
-			"recorded in tick N — Watcher-owned recentEmissions retained it across the tick boundary")
-	assert.Equal(t, "build [SharedScheme]", pseudo.Command(),
-		"cross-tick dedup: pseudo-group inherits the manifest's signature + scheme")
+	require.Len(t, handled, 1,
+		"tick N+1: late-wave pseudo-group must be skipped — emittedUnderID retains the manifest ID across ticks so its partial stats don't clobber the manifest row")
 }
 
 // TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention: an
@@ -1346,11 +1330,39 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	tickIdx = 1
 	w.scan(false, false)
 
-	require.Len(t, handled, 2)
+	require.Len(t, handled, 2,
+		"tick N+1: pseudo-group must emit — stale emittedUnderID entry was pruned at scan start so the skip gate no longer trips")
 	pseudo := handled[1]
 	require.True(t, strings.HasPrefix(pseudo.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix))
 	assert.Empty(t, pseudo.OverrideInvocationID(),
 		"stale manifest emission must be pruned at scan start — pseudo-group falls back to its own InvocationID")
+}
+
+// TestWatcher_emittedUnderID_PrunedAfterRetention verifies the field is pruned
+// on the same cadence as recentEmissions. The Watcher internals rely on both
+// to age out together; divergence would leave stale skip gates after
+// recentEmissions no longer carries the overlap context.
+func TestWatcher_emittedUnderID_PrunedAfterRetention(t *testing.T) {
+	now := fixtureNow
+	w := &Watcher{
+		Now:             func() time.Time { return now },
+		recentEmissions: map[string]emissionRecord{},
+		emittedUnderID:  map[string]time.Time{},
+	}
+
+	// Record an emission at t=now; both maps carry the ID.
+	w.RecordEmittedInvocationID("manifest-id-X", ManifestEntryGroup{})
+	require.Contains(t, w.emittedUnderID, "manifest-id-X")
+	require.Contains(t, w.recentEmissions, "manifest-id-X")
+
+	// Advance past the retention window and prune.
+	now = fixtureNow.Add(RecentEmissionsRetention + time.Minute)
+	w.pruneRecentEmissions()
+
+	assert.NotContains(t, w.emittedUnderID, "manifest-id-X",
+		"stale emittedUnderID entry must be pruned so a later orphan sidecar for the same ID is not perpetually skipped")
+	assert.NotContains(t, w.recentEmissions, "manifest-id-X",
+		"recentEmissions must prune on the same cadence to keep the two maps in sync")
 }
 
 // stagedReader returns a different group map per invocation of
