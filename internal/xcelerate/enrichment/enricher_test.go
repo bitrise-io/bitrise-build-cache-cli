@@ -781,8 +781,6 @@ func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	assert.Zero(t, puts)
 }
 
-// TestEnricher_PutsUnderManifestUUID_WhenManifestPresent pins the primary rung
-// of the ID ladder: manifest UUID beats sidecar InvocationID when both exist.
 func TestEnricher_PutsUnderManifestUUID_WhenManifestPresent(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
@@ -812,10 +810,6 @@ func TestEnricher_PutsUnderManifestUUID_WhenManifestPresent(t *testing.T) {
 	assert.Equal(t, "manifest-uuid", captured.InvocationID)
 }
 
-// TestEnricher_FallsBackToOverride_WhenSyntheticGroup pins rung 2: pseudo-groups
-// synthesized from orphan sidecars carry a sentinel-prefixed UUID that
-// ManifestUUID() returns empty for, so the OverrideInvocationID stamped by
-// SyntheticManifestGroup anchors the PUT.
 func TestEnricher_FallsBackToOverride_WhenSyntheticGroup(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
@@ -834,13 +828,9 @@ func TestEnricher_FallsBackToOverride_WhenSyntheticGroup(t *testing.T) {
 	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "override-id")
 	e.Enrich("", g)
 
-	assert.Equal(t, "override-id", captured.InvocationID,
-		"synthetic groups fall through ManifestUUID() == '' and land on the override rung")
+	assert.Equal(t, "override-id", captured.InvocationID)
 }
 
-// TestEnricher_FallsBackToSidecarLookup_WhenNoManifestNoOverride pins rung 3:
-// a synthetic group with no override still gets an identity from the sidecar
-// lookup, so a sidecar-landed-but-no-manifest flow still emits.
 func TestEnricher_FallsBackToSidecarLookup_WhenNoManifestNoOverride(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
@@ -863,13 +853,9 @@ func TestEnricher_FallsBackToSidecarLookup_WhenNoManifestNoOverride(t *testing.T
 	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "")
 	e.Enrich("", g)
 
-	assert.Equal(t, "sidecar-id", captured.InvocationID,
-		"synthetic group + no override + sidecar lookup hit → sidecar InvocationID anchors the PUT")
+	assert.Equal(t, "sidecar-id", captured.InvocationID)
 }
 
-// TestEnricher_DropsAndWarns_WhenNoIdentitySource covers the retired
-// uuid.NewString() branch — the enricher now drops and warns instead of
-// minting a stray UUID that could never be correlated back.
 func TestEnricher_DropsAndWarns_WhenNoIdentitySource(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
@@ -890,19 +876,13 @@ func TestEnricher_DropsAndWarns_WhenNoIdentitySource(t *testing.T) {
 	}
 
 	now := time.Now()
-	// Synthetic group with no override + no sidecar reader → every rung empty.
 	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "")
 	e.Enrich("", g)
 
-	assert.Zero(t, puts, "no identity source must drop the PUT")
-	assert.Contains(t, logBuf.String(), "no InvocationID source",
-		"drop must surface a warn so an operator can diagnose the stall")
+	assert.Zero(t, puts)
+	assert.Contains(t, logBuf.String(), "no InvocationID source")
 }
 
-// TestEnricher_DeterministicReputs_ProduceSameInvocationID simulates two scans
-// of the same manifest content and verifies the enricher PUTs under the same
-// InvocationID — the convergence promise that lets BE merge re-PUTs on
-// identity.
 func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
@@ -918,12 +898,10 @@ func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-	// Scan 1: entries in natural order.
 	g1 := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
 		{UUID: "aaa", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 		{UUID: "bbb", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 	}}
-	// Scan 2: shuffled — Go map iteration simulated.
 	g2 := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
 		{UUID: "bbb", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 		{UUID: "aaa", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
@@ -933,8 +911,6 @@ func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
 	e.Enrich("", g2)
 
 	require.Len(t, ids, 2)
-	assert.Equal(t, ids[0], ids[1],
-		"same manifest content, shuffled input → same BE InvocationID (BE merges re-PUTs on identity)")
-	assert.Equal(t, "aaa", ids[0],
-		"deterministic choice is the lex-smallest UUID at tied rank+Start")
+	assert.Equal(t, ids[0], ids[1])
+	assert.Equal(t, "aaa", ids[0])
 }

@@ -20,11 +20,7 @@ import (
 // the 15s window is enough to keep intermediate flushes rare on a quiet IDE.
 const perConnIdleThreshold = 15 * time.Second
 
-// derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush
-// path: a derived-ID anchored connection with no cache ops still flushes once
-// it crosses N × perConnIdleThreshold of quiet so the sidecar lands on disk
-// and the enricher can correlate it. 3 × 15s = 45s gives the proxy enough
-// slack to avoid flushing a connection the IDE is still priming.
+// derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush path so quiet derived-ID connections surface on disk.
 const derivedIDFlushMultiplier = 3
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
@@ -355,10 +351,6 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 			continue
 		}
 
-		// Skip empty-stat intermediate flushes UNLESS the connection has a
-		// derived InvocationID and has aged past (perConnIdleThreshold × 3) —
-		// quiet IDE connections surface their derived ID on disk so the
-		// enricher can correlate before scanLogs retries exhaust.
 		hasActivity := !cs.state.Load().getStats().blobStats.IsEmpty()
 		anchoredAndAged := cs.derivedInvocationID != "" &&
 			!cs.hadActivityWithin(threshold*derivedIDFlushMultiplier, now)

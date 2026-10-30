@@ -83,6 +83,14 @@ func NewSidecarIndex(dir string, logger log.Logger) SidecarReader {
 	return &sidecarIndex{dir: dir, logger: logger}
 }
 
+func invocationIDOf(s sessions.Sidecar) string {
+	if s.WrapperSession == nil {
+		return ""
+	}
+
+	return s.WrapperSession.InvocationID
+}
+
 func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
 	logger := logOr(i.logger)
 
@@ -124,14 +132,8 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 			continue
 		}
 
-		// Prefer-stats-bearing: the stats-winner's InvocationID always wins; a
-		// nil-BlobStats sidecar's InvocationID is the first-seen fallback so the
-		// empty-stat anchored-aged flush path still surfaces its derived ID when
-		// no stats-bearing sidecar overlaps the window.
-		sidecarInvocation := ""
-		if s.WrapperSession != nil {
-			sidecarInvocation = s.WrapperSession.InvocationID
-		}
+		// Prefer-stats-bearing: stats-winner InvocationID always wins; nil-BlobStats first-seen is the fallback.
+		sidecarInvocation := invocationIDOf(s)
 
 		if blob := s.BlobStats; blob != nil {
 			total := blob.Download.OpCount + blob.Download.MissCount + blob.Upload.OpCount

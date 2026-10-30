@@ -270,12 +270,6 @@ func TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID(t *testing.T) {
 	assert.Positive(t, matched, "manifest path must emit under the sidecar-provided sharedID — this is what the dedup set keys on")
 }
 
-// TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID pins
-// the ACI-5623 convergence contract end-to-end: on tick N the IDE manifest
-// lands with no sidecar yet; on tick N+1 the proxy flushes an intermediate
-// sidecar carrying the derived InvocationID; the enricher must emit exactly
-// ONE row for that group, keyed on the sidecar's ID (not an orphan-minted
-// UUID that would stall the enriched invocation at BE under a dead key).
 func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *testing.T) {
 	home := t.TempDir()
 	sidecarsDir := filepath.Join(home, "sessions")
@@ -356,26 +350,12 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *t
 	w.ScanOnce()
 
 	require.Len(t, captured, 1, "exactly one PUT must fire — the retry bucket resolves on sidecar presence")
-	// Under the ACI-5623 convergence rework the manifest UUID is the authoritative
-	// BE identity; the sidecar's derived InvocationID is only a lookup fallback
-	// for the manifest-less path. Both overlapping manifest UUIDs are acceptable
-	// winners — the fixture's scheme iteration order is non-deterministic (Go-map
-	// iteration inside LoadManifest), so the test asserts "a manifest UUID won"
-	// instead of pinning to a specific one.
-	_ = derivedID
 	assert.Contains(t, []string{"AAAA-BBBB-BUILD", "CCCC-DDDD-TEST"}, captured[0].InvocationID,
-		"PUT must adopt the manifest UUID of the overlapping group — convergence contract: same manifest content → same BE InvocationID across re-PUTs")
+		"PUT must adopt the manifest UUID of the overlapping group")
 	assert.NotEqual(t, derivedID, captured[0].InvocationID,
 		"sidecar InvocationID must NOT dictate identity when the manifest UUID is present")
 }
 
-// TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID
-// is the ACI-5623 regression variant: the proxy's empty-stat anchored-aged
-// flush writes a sidecar with BlobStats=nil but a populated WrapperSession.
-// InvocationID. Under the convergence rework the enricher PUTs under the
-// manifest UUID; the sidecar's role here is to pass canCorrelate (so the
-// retry bucket resolves) and to carry blob stats onto the manifest-anchored
-// row — not to dictate the ID.
 func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
 	home := t.TempDir()
 	sidecarsDir := filepath.Join(home, "sessions")
@@ -449,19 +429,12 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	// Between ticks: proxy's empty-stat anchored-aged flush writes the sidecar.
 	flushNilStatsSidecar()
 
-	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs
-	// under the sidecar's derivedID — NOT an orphan UUID.
+	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
 	w.ScanOnce()
 
 	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
-	// Convergence contract: manifest UUID anchors identity, even when the
-	// sidecar surfaces a derived InvocationID with nil BlobStats. The derived
-	// ID stays available for sidecar-only / manifest-less fallback paths.
-	// Scheme iteration order inside the fixture is non-deterministic — see the
-	// sibling test for the rationale behind the Contains check.
-	_ = derivedID
 	assert.Contains(t, []string{"AAAA-BBBB-BUILD", "CCCC-DDDD-TEST"}, captured[0].InvocationID,
-		"PUT must adopt the manifest UUID — ACI-5623 convergence contract")
+		"PUT must adopt the manifest UUID")
 	assert.NotEqual(t, derivedID, captured[0].InvocationID,
 		"nil-BlobStats sidecar's derived InvocationID must NOT dictate identity when manifest UUID is present")
 }

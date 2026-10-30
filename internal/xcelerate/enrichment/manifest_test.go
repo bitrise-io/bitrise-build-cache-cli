@@ -341,12 +341,6 @@ func TestSyntheticManifestGroup_StampsOverrideInvocationID(t *testing.T) {
 	assert.Equal(t, "override-id", g.OverrideInvocationID())
 }
 
-// TestManifestEntryGroup_Primary_StableAcrossShuffledInput pins the UUID
-// tie-break on Primary(). LoadManifest iterates the plist's Logs map in
-// random Go-map order; the previous rank+Start tie-break would then return
-// different Primary entries across scans of the same manifest, which breaks
-// the "manifest UUID == BE InvocationID" convergence promise. Lex-UUID
-// tie-break makes the choice deterministic regardless of input order.
 func TestManifestEntryGroup_Primary_StableAcrossShuffledInput(t *testing.T) {
 	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
 

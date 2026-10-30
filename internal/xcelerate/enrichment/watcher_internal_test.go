@@ -1417,3 +1417,50 @@ func TestWatcher_FirstPass_FiresWhenSidecarAlreadyPresent(t *testing.T) {
 	assert.Empty(t, w.retries, "no retry bucket when first-pass canCorrelate succeeds")
 	assert.Contains(t, w.seen, uuid)
 }
+
+func TestCanCorrelate_BothWiredBothFalse(t *testing.T) {
+	w := &Watcher{
+		MatchProbe:    func(ManifestEntryGroup) bool { return false },
+		SidecarReader: &hasControllingStub{hasFn: func() bool { return false }},
+	}
+
+	assert.False(t, w.canCorrelate(ManifestEntryGroup{}))
+}
+
+// TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil guards against
+// hasCorrelationSignal() regressing the wrapper flow when MatchProbe alone owns the row.
+func TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	var probeMatches bool
+
+	var handled []string
+	w := &Watcher{
+		Now:                   func() time.Time { return fixtureNow },
+		HomeDir:               home,
+		SidecarReader:         nil,
+		MatchProbe:            func(ManifestEntryGroup) bool { return probeMatches },
+		MaxCorrelationRetries: 6,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			if groupContainsUUID(g, uuid) {
+				handled = append(handled, uuid)
+			}
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	// Tick 1 — probe unmatched. Retry bucket opens on MatchProbe signal (nil SidecarReader
+	// must not block hasCorrelationSignal).
+	w.scan(false, false)
+	assert.Empty(t, handled, "first scan buckets the group (probe not matched yet)")
+	require.NotEmpty(t, w.retries, "retry bucket must open on MatchProbe signal even with nil SidecarReader")
+
+	// Tick 2 — probe matches. Retry bucket resolves via MatchProbe alone.
+	probeMatches = true
+	w.scan(false, false)
+	assert.Equal(t, []string{uuid}, handled, "MatchProbe must resolve retry bucket when SidecarReader is nil")
+	assert.Contains(t, w.seen, uuid)
+}

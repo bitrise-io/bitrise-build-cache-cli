@@ -117,11 +117,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	// Identity ladder: manifest UUID > OverrideInvocationID > sidecar lookup.
-	// Steps 1 and 2 are mutually exclusive by construction (manifest groups
-	// have no override, synthetic groups return "" from ManifestUUID), but
-	// kept separate for readability — do not collapse. If all three return
-	// empty we drop and warn: there is no identity source to PUT under.
 	invocationID := group.ManifestUUID()
 	if invocationID == "" {
 		invocationID = group.OverrideInvocationID()
