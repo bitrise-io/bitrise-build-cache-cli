@@ -35,14 +35,16 @@ type Snapshot struct {
 
 // systemProfilerCache caches the one slow probe for the lifetime of the
 // process. The others (pmset, vm_stat, sysctl, mdutil, tmutil) are re-run on
-// every Capture — they move during a build.
+// every Capture — they move during a build. Guarded by its own mutex rather
+// than sync.Once so tests can swap the cache state without copying a Once.
 //
 //nolint:gochecknoglobals
-var systemProfilerCache = struct {
-	sync.Once
-	modelID string
-	chip    string
-}{}
+var (
+	systemProfilerMu     sync.Mutex
+	systemProfilerLoaded bool
+	systemProfilerModel  string
+	systemProfilerChip   string
+)
 
 // Capture composes a Snapshot off the supplied base, adding Xcode-specific
 // probes. The base is read-only; this never mutates it.
@@ -226,25 +228,32 @@ func probeTimeMachine(ctx context.Context) bool {
 }
 
 func probeHardwareIdentity(ctx context.Context) (modelID, chip string) {
-	systemProfilerCache.Do(func() {
-		out, err := run(ctx, "system_profiler", "SPHardwareDataType")
-		if err != nil {
-			return
+	systemProfilerMu.Lock()
+	defer systemProfilerMu.Unlock()
+
+	if systemProfilerLoaded {
+		return systemProfilerModel, systemProfilerChip
+	}
+
+	systemProfilerLoaded = true
+
+	out, err := run(ctx, "system_profiler", "SPHardwareDataType")
+	if err != nil {
+		return "", ""
+	}
+
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+
+		switch {
+		case strings.HasPrefix(line, "Model Identifier:"):
+			systemProfilerModel = strings.TrimSpace(strings.TrimPrefix(line, "Model Identifier:"))
+		case strings.HasPrefix(line, "Chip:"):
+			systemProfilerChip = strings.TrimSpace(strings.TrimPrefix(line, "Chip:"))
+		case strings.HasPrefix(line, "Processor Name:") && systemProfilerChip == "":
+			systemProfilerChip = strings.TrimSpace(strings.TrimPrefix(line, "Processor Name:"))
 		}
+	}
 
-		for _, line := range strings.Split(string(out), "\n") {
-			line = strings.TrimSpace(line)
-
-			switch {
-			case strings.HasPrefix(line, "Model Identifier:"):
-				systemProfilerCache.modelID = strings.TrimSpace(strings.TrimPrefix(line, "Model Identifier:"))
-			case strings.HasPrefix(line, "Chip:"):
-				systemProfilerCache.chip = strings.TrimSpace(strings.TrimPrefix(line, "Chip:"))
-			case strings.HasPrefix(line, "Processor Name:") && systemProfilerCache.chip == "":
-				systemProfilerCache.chip = strings.TrimSpace(strings.TrimPrefix(line, "Processor Name:"))
-			}
-		}
-	})
-
-	return systemProfilerCache.modelID, systemProfilerCache.chip
+	return systemProfilerModel, systemProfilerChip
 }
