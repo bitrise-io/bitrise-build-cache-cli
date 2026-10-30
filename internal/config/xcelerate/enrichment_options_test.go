@@ -42,7 +42,7 @@ func TestEnrichmentOptions_AnyEnabled_ignoresNonBoolFields(t *testing.T) {
 }
 
 func TestLoadEnrichmentOptions_defaults_allOff(t *testing.T) {
-	opts := LoadEnrichmentOptions(nil, nil, EnrichmentFlags{})
+	opts := LoadEnrichmentOptions(nil, EnrichmentFlags{})
 	assert.False(t, opts.AnyEnabled())
 	assert.Equal(t, 10*time.Second, opts.PerCollectorTimeout)
 	assert.True(t, opts.FailOpen)
@@ -57,7 +57,7 @@ func TestLoadEnrichmentOptions_envList_enablesIndividual(t *testing.T) {
 		return ""
 	}
 
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{})
 	assert.True(t, opts.HostSnapshot)
 	assert.True(t, opts.BuildTimingSummary)
 	assert.False(t, opts.BuildSettings)
@@ -72,7 +72,7 @@ func TestLoadEnrichmentOptions_envAll_enablesEveryPhase0(t *testing.T) {
 		return ""
 	}
 
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{})
 	assert.True(t, opts.HostSnapshot)
 	assert.True(t, opts.BuildTimingSummary)
 	assert.True(t, opts.BuildSettings)
@@ -90,7 +90,7 @@ func TestLoadEnrichmentOptions_envNone_overridesEnvAll(t *testing.T) {
 		return ""
 	}
 
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{})
 	assert.False(t, opts.AnyEnabled())
 }
 
@@ -104,7 +104,7 @@ func TestLoadEnrichmentOptions_flagsWinOverEnv(t *testing.T) {
 	}
 
 	// Env turned hostsnap on; flags.All turns everything on too.
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{All: true})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{All: true})
 	assert.True(t, opts.HostSnapshot)
 	assert.True(t, opts.BuildTimingSummary)
 	assert.True(t, opts.BuildSettings)
@@ -119,7 +119,7 @@ func TestLoadEnrichmentOptions_flagNone_killsEverything(t *testing.T) {
 		return ""
 	}
 
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{None: true})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{None: true})
 	assert.False(t, opts.AnyEnabled())
 }
 
@@ -133,7 +133,7 @@ func TestLoadEnrichmentOptions_flagList_additive(t *testing.T) {
 		return ""
 	}
 
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{Enabled: []string{"buildsettings"}})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{Enabled: []string{"buildsettings"}})
 	assert.True(t, opts.HostSnapshot)
 	assert.True(t, opts.BuildSettings)
 	assert.False(t, opts.BuildTimingSummary)
@@ -148,7 +148,7 @@ func TestLoadEnrichmentOptions_envListUnknownToken_ignored(t *testing.T) {
 		return ""
 	}
 
-	opts := LoadEnrichmentOptions(nil, env, EnrichmentFlags{})
+	opts := LoadEnrichmentOptions(env, EnrichmentFlags{})
 	assert.True(t, opts.HostSnapshot)
 	// unknown token must not panic / enable anything else
 	assert.False(t, opts.BuildTimingSummary)

@@ -1004,7 +1004,7 @@ func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analy
 // opts.AnyEnabled() so a disabled-by-default EnrichmentOptions is zero cost.
 // Symmetric with the IDE hook in internal/xcelerate/enrichment/enricher.go.
 func (c *XcodebuildRunner) attachEnrichment(ctx context.Context, inv *analytics.Invocation, runStats xcodeargs.RunStats) {
-	opts := xcelerate.LoadEnrichmentOptions(&c.Config, os.Getenv, xcelerate.EnrichmentFlags{})
+	opts := xcelerate.LoadEnrichmentOptions(os.Getenv, xcelerate.EnrichmentFlags{})
 	if !opts.AnyEnabled() {
 		return
 	}

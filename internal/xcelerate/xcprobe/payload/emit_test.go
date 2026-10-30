@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/host"
 )
 
 func TestAttachToInvocation_populatesRawMessage(t *testing.T) {
@@ -19,10 +21,10 @@ func TestAttachToInvocation_populatesRawMessage(t *testing.T) {
 
 	p := EnrichmentPayload{
 		SchemaVersion: EnrichmentPayloadSchemaVersion,
-		Host: &HostSnapshot{
-			OS:    "Darwin",
-			Chip:  "Apple M4 Max",
-			MemFreeMB: 16384,
+		Host: &host.Snapshot{
+			HostMetadata: configcommon.HostMetadata{OS: "Darwin"},
+			Chip:         "Apple M4 Max",
+			MemFreeMB:    16384,
 		},
 	}
 
@@ -58,7 +60,7 @@ func TestAttachToInvocation_dropsLargestSubRow_whenOverSoftCap(t *testing.T) {
 
 	p := EnrichmentPayload{
 		SchemaVersion: EnrichmentPayloadSchemaVersion,
-		Host:          &HostSnapshot{OS: "Darwin"},
+		Host:          &host.Snapshot{HostMetadata: configcommon.HostMetadata{OS: "Darwin"}},
 		BuildSettings: &BuildSettingsSnapshot{SwiftOptimizationLevel: "-Onone"},
 		BuildTimings:  &BuildTimingHistogram{Buckets: bigBuckets},
 	}

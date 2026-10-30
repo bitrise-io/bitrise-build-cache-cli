@@ -23,7 +23,10 @@ func AttachToInvocation(inv *analytics.Invocation, p EnrichmentPayload) error {
 		return fmt.Errorf("attach enrichment: nil invocation")
 	}
 
-	raw, err := json.Marshal(p)
+	// musttag: common.HostMetadata (embedded transitively via host.Snapshot)
+	// has no json tags — those fields serialise under their Go names by
+	// design (common package is off-limits to this scaffold).
+	raw, err := json.Marshal(p) //nolint:musttag
 	if err != nil {
 		return fmt.Errorf("marshal enrichment payload: %w", err)
 	}
@@ -38,7 +41,7 @@ func AttachToInvocation(inv *analytics.Invocation, p EnrichmentPayload) error {
 			p.CollectorErrors[dropped] = fmt.Sprintf("dropped: payload exceeded %d bytes", SoftCapBytes)
 		}
 
-		raw, err = json.Marshal(p)
+		raw, err = json.Marshal(p) //nolint:musttag
 		if err != nil {
 			return fmt.Errorf("re-marshal enrichment payload after soft-cap drop: %w", err)
 		}

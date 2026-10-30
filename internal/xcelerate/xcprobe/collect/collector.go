@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodebuildinfo"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/host"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 )
 
@@ -48,7 +49,7 @@ type Input struct {
 
 // Output is what one collector returned. Fields are nil when not produced.
 type Output struct {
-	Host          *payload.HostSnapshot
+	Host          *host.Snapshot
 	BuildTimings  *payload.BuildTimingHistogram
 	BuildSettings *payload.BuildSettingsSnapshot
 }

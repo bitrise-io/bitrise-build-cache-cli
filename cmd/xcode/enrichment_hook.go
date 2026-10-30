@@ -3,18 +3,36 @@ package xcode
 import (
 	"context"
 	"os"
-	"path/filepath"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/collect"
 	xcprobepayload "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/payload"
 )
+
+// enrichmentRunFn runs the aggregator and attaches the payload. Package-level
+// var so hook-site tests can swap in a fake that neither shells out nor talks
+// to the network. Defaults to the real xcprobe.Run + AttachToInvocation pair.
+//
+//nolint:gochecknoglobals
+var enrichmentRunFn = func(
+	ctx context.Context,
+	opts xceleratconfig.EnrichmentOptions,
+	in collect.Input,
+	logger log.Logger,
+	inv *analytics.Invocation,
+) {
+	out := xcprobe.Run(ctx, opts, in, logger)
+	if err := xcprobepayload.AttachToInvocation(inv, out); err != nil {
+		logger.Warnf("Failed to attach xcprobe enrichment to invocation %s: %v", inv.InvocationID, err)
+	}
+}
 
 // newEnrichmentHook returns an EnrichmentHookFn that reads EnrichmentOptions
 // at hook time, short-circuits when nothing is enabled, and otherwise runs
@@ -31,17 +49,13 @@ func newEnrichmentHook(logger log.Logger) enrichment.EnrichmentHookFn {
 		benchmarkPhase string,
 		inv *analytics.Invocation,
 	) {
-		opts := xceleratconfig.LoadEnrichmentOptions(nil, os.Getenv, xceleratconfig.EnrichmentFlags{})
+		opts := xceleratconfig.LoadEnrichmentOptions(os.Getenv, xceleratconfig.EnrichmentFlags{})
 		if !opts.AnyEnabled() {
 			return
 		}
 
-		// xcprobe-TODO: swap for PR 594's connection_session.DerivedDataPath()
-		// on rebase. Provisional today: the IDE path's manifest lives at
-		// …/<DD>/Logs/Build/LogStoreManifest.plist, so grandparent-of-dir is
-		// the DerivedData workspace root.
 		in := collect.Input{
-			DerivedDataPath: provisionalDerivedDataPathFromManifest(manifestPath),
+			DerivedDataPath: deriveddata.DDRootFromManifestPath(manifestPath),
 			Scheme:          group.SchemeName(),
 			WindowStart:     group.Start(),
 			WindowEnd:       group.Stop(),
@@ -49,20 +63,6 @@ func newEnrichmentHook(logger log.Logger) enrichment.EnrichmentHookFn {
 			BenchmarkPhase:  benchmarkPhase,
 		}
 
-		out := xcprobe.Run(ctx, opts, in, logger)
-		if err := xcprobepayload.AttachToInvocation(inv, out); err != nil {
-			logger.Warnf("Failed to attach xcprobe enrichment to invocation %s: %v", inv.InvocationID, err)
-		}
+		enrichmentRunFn(ctx, opts, in, logger, inv)
 	}
-}
-
-func provisionalDerivedDataPathFromManifest(manifestPath string) string {
-	if manifestPath == "" {
-		return ""
-	}
-
-	logsBuild := filepath.Dir(manifestPath)
-	logs := filepath.Dir(logsBuild)
-
-	return filepath.Dir(logs)
 }

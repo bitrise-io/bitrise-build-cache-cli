@@ -80,15 +80,13 @@ const (
 	collectorNone          = "none"
 )
 
-// LoadEnrichmentOptions resolves EnrichmentOptions from the three sources,
-// lowest precedence first: xcelerate config file (not read in Phase 0 —
-// reserved for a later phase that persists collector preferences), env, CLI
-// flags. CLI --enrich-none wins over everything; env ENRICH_NONE wins over
-// env ENRICH_ALL / ENRICH; a bare --enrich-all turns everything on.
+// LoadEnrichmentOptions resolves EnrichmentOptions from env then CLI flags.
+// CLI --enrich-none wins over everything; env ENRICH_NONE wins over env
+// ENRICH_ALL / ENRICH; a bare --enrich-all turns everything on.
 //
 // env=nil is tolerated (treated as a function returning ""); the Phase 0
 // hook sites pass os.Getenv.
-func LoadEnrichmentOptions(_ *Config, env func(string) string, flags EnrichmentFlags) EnrichmentOptions {
+func LoadEnrichmentOptions(env func(string) string, flags EnrichmentFlags) EnrichmentOptions {
 	if env == nil {
 		env = func(string) string { return "" }
 	}
