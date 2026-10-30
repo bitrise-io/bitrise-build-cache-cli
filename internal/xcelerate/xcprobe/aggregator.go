@@ -120,4 +120,3 @@ func mergeOutput(dst *payload.EnrichmentPayload, src collect.Output) {
 		dst.BuildTimings = src.BuildTimings
 	}
 }
-

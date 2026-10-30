@@ -51,7 +51,9 @@ func AttachToInvocation(inv *analytics.Invocation, p EnrichmentPayload) error {
 
 // dropLargestSubRow nils out whichever of host/buildSettings/buildTimings
 // serialises to the most bytes and returns the dropped field name. Returns
-// "" when every sub-row is already nil.
+// "" when every sub-row is already nil. Marshal errors here are impossible
+// for the Phase-0 payload shape (plain structs with concrete types), but we
+// treat them as size=0 defensively.
 func dropLargestSubRow(p *EnrichmentPayload) string {
 	type candidate struct {
 		name  string
@@ -62,18 +64,15 @@ func dropLargestSubRow(p *EnrichmentPayload) string {
 	candidates := make([]candidate, 0, 3)
 
 	if p.Host != nil {
-		b, _ := json.Marshal(p.Host)
-		candidates = append(candidates, candidate{name: "host", size: len(b), clear: func() { p.Host = nil }})
+		candidates = append(candidates, candidate{name: "host", size: marshalSize(p.Host), clear: func() { p.Host = nil }})
 	}
 
 	if p.BuildSettings != nil {
-		b, _ := json.Marshal(p.BuildSettings)
-		candidates = append(candidates, candidate{name: "buildSettings", size: len(b), clear: func() { p.BuildSettings = nil }})
+		candidates = append(candidates, candidate{name: "buildSettings", size: marshalSize(p.BuildSettings), clear: func() { p.BuildSettings = nil }})
 	}
 
 	if p.BuildTimings != nil {
-		b, _ := json.Marshal(p.BuildTimings)
-		candidates = append(candidates, candidate{name: "buildTimings", size: len(b), clear: func() { p.BuildTimings = nil }})
+		candidates = append(candidates, candidate{name: "buildTimings", size: marshalSize(p.BuildTimings), clear: func() { p.BuildTimings = nil }})
 	}
 
 	if len(candidates) == 0 {
@@ -90,4 +89,13 @@ func dropLargestSubRow(p *EnrichmentPayload) string {
 	biggest.clear()
 
 	return biggest.name
+}
+
+func marshalSize(v any) int {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return 0
+	}
+
+	return len(b)
 }

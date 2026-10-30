@@ -32,7 +32,7 @@ var knownBuildTaskTypes = []string{ //nolint:gochecknoglobals
 
 // buildTimingLineRe matches rows in the "Build Timing Summary" tail:
 //
-//	    CompileSwift   (1234 tasks)  |   56.789 seconds
+//	CompileSwift   (1234 tasks)  |   56.789 seconds
 //
 // The duration format is a float with optional decimals followed by
 // "seconds"; the task count is an integer in parens.

@@ -90,7 +90,7 @@ func probeThermal(ctx context.Context) string {
 
 var vmStatPageRe = regexp.MustCompile(`page size of (\d+) bytes`) //nolint:gochecknoglobals
 
-func probeMemory(ctx context.Context) (free, swapTotal, swapFree uint64) {
+func probeMemory(ctx context.Context) (uint64, uint64, uint64) {
 	out, err := run(ctx, "vm_stat")
 	if err != nil {
 		return 0, 0, 0
@@ -114,9 +114,8 @@ func probeMemory(ctx context.Context) (free, swapTotal, swapFree uint64) {
 		}
 	}
 
-	free = (pagesFree + pagesInactive) * pageSize / (1024 * 1024)
-
-	swapTotal, swapFree = probeSwap(ctx)
+	free := (pagesFree + pagesInactive) * pageSize / (1024 * 1024)
+	swapTotal, swapFree := probeSwap(ctx)
 
 	return free, swapTotal, swapFree
 }
@@ -139,7 +138,7 @@ func parsePagesLine(line string) uint64 {
 
 var swapRe = regexp.MustCompile(`total = (\d+\.?\d*)M.*used = (\d+\.?\d*)M.*free = (\d+\.?\d*)M`) //nolint:gochecknoglobals
 
-func probeSwap(ctx context.Context) (total, free uint64) {
+func probeSwap(ctx context.Context) (uint64, uint64) {
 	out, err := run(ctx, "sysctl", "-n", "vm.swapusage")
 	if err != nil {
 		return 0, 0
@@ -192,7 +191,12 @@ func probeUptime(ctx context.Context) uint64 {
 		return 0
 	}
 
-	return uint64(nowSec - boot)
+	diff := nowSec - boot
+	if diff < 0 {
+		return 0
+	}
+
+	return uint64(diff)
 }
 
 func probeIsVirtual(ctx context.Context) bool {
@@ -227,7 +231,7 @@ func probeTimeMachine(ctx context.Context) bool {
 	return strings.Contains(string(out), "Running = 1")
 }
 
-func probeHardwareIdentity(ctx context.Context) (modelID, chip string) {
+func probeHardwareIdentity(ctx context.Context) (string, string) {
 	systemProfilerMu.Lock()
 	defer systemProfilerMu.Unlock()
 

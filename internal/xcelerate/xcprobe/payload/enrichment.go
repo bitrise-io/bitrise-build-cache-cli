@@ -45,21 +45,21 @@ type HostSnapshot struct {
 // BuildSettingsSnapshot holds the small set of build settings the Phase 0
 // collector plucks from `xcodebuild -showBuildSettings -json`.
 type BuildSettingsSnapshot struct {
-	SwiftOptimizationLevel        string `json:"swiftOptimizationLevel,omitempty"`
-	SwiftCompilationMode          string `json:"swiftCompilationMode,omitempty"`
-	SwiftWholeModuleOptimization  string `json:"swiftWholeModuleOptimization,omitempty"`
-	GCCOptimizationLevel          string `json:"gccOptimizationLevel,omitempty"`
-	EnableBitcode                 string `json:"enableBitcode,omitempty"`
-	DebugInformationFormat        string `json:"debugInformationFormat,omitempty"`
-	DeploymentTarget              string `json:"deploymentTarget,omitempty"`
-	Archs                         string `json:"archs,omitempty"`
-	ValidArchs                    string `json:"validArchs,omitempty"`
+	SwiftOptimizationLevel       string `json:"swiftOptimizationLevel,omitempty"`
+	SwiftCompilationMode         string `json:"swiftCompilationMode,omitempty"`
+	SwiftWholeModuleOptimization string `json:"swiftWholeModuleOptimization,omitempty"`
+	GCCOptimizationLevel         string `json:"gccOptimizationLevel,omitempty"`
+	EnableBitcode                string `json:"enableBitcode,omitempty"`
+	DebugInformationFormat       string `json:"debugInformationFormat,omitempty"`
+	DeploymentTarget             string `json:"deploymentTarget,omitempty"`
+	Archs                        string `json:"archs,omitempty"`
+	ValidArchs                   string `json:"validArchs,omitempty"`
 }
 
 // BuildTimingBucket is one row of the xcodebuild -showBuildTimingSummary tail.
 type BuildTimingBucket struct {
-	Count         int     `json:"count"`
-	TotalSeconds  float64 `json:"totalSeconds"`
+	Count        int     `json:"count"`
+	TotalSeconds float64 `json:"totalSeconds"`
 }
 
 // BuildTimingHistogram is keyed by xcodebuild task type (CompileSwift,
