@@ -12,7 +12,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/slf"
 )
 
 const xcodeRecentBuildWindow = 1 * time.Hour
@@ -87,13 +87,13 @@ func diagnoseXcodeRecentBuild(derivedDataRoots []string, now time.Time) Result {
 		return Result{State: StateOK, Detail: fmt.Sprintf("stat %s: %s", newest, statErr)}
 	}
 
-	metrics, err := xcactivitylog.ReadCompilationCacheMetrics(newest)
+	metrics, err := slf.ReadCompilationCacheMetrics(newest)
 	if err != nil {
 		return Result{State: StateOK, Detail: fmt.Sprintf("read xcactivitylog %s: %s", newest, err)}
 	}
 
 	switch metrics.Outcome {
-	case xcactivitylog.OutcomeOK:
+	case slf.OutcomeOK:
 		pct := 0
 		if metrics.Total > 0 {
 			pct = int(100.0 * float64(metrics.Hits) / float64(metrics.Total))
@@ -104,11 +104,11 @@ func diagnoseXcodeRecentBuild(derivedDataRoots []string, now time.Time) Result {
 			Detail: fmt.Sprintf("recent xcode build: %d/%d hits (%d%%) at %s, project %s, path %s",
 				metrics.Hits, metrics.Total, pct, info.ModTime().UTC().Format(time.RFC3339), project, newest),
 		}
-	case xcactivitylog.OutcomeEmpty:
+	case slf.OutcomeEmpty:
 		return Result{State: StateOK, Detail: fmt.Sprintf("recent xcode build at %s (project %s): activity log empty", info.ModTime().UTC().Format(time.RFC3339), project)}
-	case xcactivitylog.OutcomeUnparsed:
+	case slf.OutcomeUnparsed:
 		return Result{State: StateOK, Detail: fmt.Sprintf("recent xcode build at %s (project %s): no CompilationCacheMetrics line (regex drift?)", info.ModTime().UTC().Format(time.RFC3339), project)}
-	case xcactivitylog.OutcomeFileMissing, xcactivitylog.OutcomeReadError:
+	case slf.OutcomeFileMissing, slf.OutcomeReadError:
 		return Result{State: StateOK, Detail: fmt.Sprintf("recent xcode build at %s (project %s): activity log unreadable", info.ModTime().UTC().Format(time.RFC3339), project)}
 	default:
 		return Result{State: StateOK, Detail: fmt.Sprintf("recent xcode build at %s (project %s): unknown reader outcome", info.ModTime().UTC().Format(time.RFC3339), project)}

@@ -695,14 +695,17 @@ func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
 
 func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
 	s := newEnrichSetup(t)
-	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 10 cacheable tasks (10%)\n"))
+	// Real SLF fixture: 65 Swift cache hits / 0 misses → hit rate 1.0.
+	// Sidecar blob reports 70% (7 hits / 3 misses) — the log-parsed value
+	// must still win when the SLF read returns an OK outcome.
+	copyFixtureLog(t, s.manifestDir, s.logName)
 
 	snap := blobSnapshotWith(7, 3, 4)
 	s.enricher.SidecarReader = &fakeSidecarReader{found: true, blob: snap}
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.InDelta(t, float32(0.1), s.captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
+	assert.InDelta(t, float32(1.0), s.captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
 	require.NotNil(t, s.captured.CacheBlobStats)
 	assert.Equal(t, int64(7), s.captured.CacheBlobStats.Download.OpCount)
 	assert.Equal(t, int64(3), s.captured.CacheBlobStats.Download.MissCount)

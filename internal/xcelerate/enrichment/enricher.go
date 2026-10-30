@@ -15,9 +15,9 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcprobe/slf"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
@@ -148,7 +148,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
+	if sidecarFound && hitRateOutcome != slf.OutcomeOK && sidecarBlob != nil {
 		if total := sidecarBlob.Download.OpCount + sidecarBlob.Download.MissCount; total > 0 {
 			hitRate = float32(sidecarBlob.Download.OpCount) / float32(total)
 		}
@@ -365,39 +365,39 @@ func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
 // readLogHitRate returns 0 on any non-OK outcome. The log lands on disk before
 // the manifest (Xcode writes the manifest last), so no bounded wait is needed —
 // the reader's ENOENT path handles the vanishing race.
-func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) (float32, xcactivitylog.Outcome) {
+func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) (float32, slf.Outcome) {
 	logger := logOr(e.Logger)
 
 	if manifestPath == "" {
-		return 0, xcactivitylog.OutcomeFileMissing
+		return 0, slf.OutcomeFileMissing
 	}
 
 	primary := group.Primary()
 	if primary.FileName == "" {
-		return 0, xcactivitylog.OutcomeFileMissing
+		return 0, slf.OutcomeFileMissing
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
 
-	metrics, err := xcactivitylog.ReadCompilationCacheMetricsWithLogger(logPath, logger)
+	metrics, err := slf.ReadCompilationCacheMetricsWithLogger(logPath, logger)
 	if err != nil {
 		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
 	}
 
 	switch metrics.Outcome {
-	case xcactivitylog.OutcomeOK:
+	case slf.OutcomeOK:
 		return metrics.HitRate, metrics.Outcome
-	case xcactivitylog.OutcomeFileMissing:
+	case slf.OutcomeFileMissing:
 		logger.Debugf("xcactivitylog missing at %s", logPath)
-	case xcactivitylog.OutcomeEmpty:
+	case slf.OutcomeEmpty:
 		logger.Debugf("xcactivitylog empty at %s", logPath)
-	case xcactivitylog.OutcomeUnparsed:
+	case slf.OutcomeUnparsed:
 		size := int64(-1)
 		if st, statErr := os.Stat(logPath); statErr == nil {
 			size = st.Size()
 		}
 		logger.Warnf("xcactivitylog unparsed at %s (xcode=%s size=%d): no CompilationCacheMetrics match", logPath, e.XcodeVersion, size)
-	case xcactivitylog.OutcomeReadError:
+	case slf.OutcomeReadError:
 	}
 
 	return 0, metrics.Outcome

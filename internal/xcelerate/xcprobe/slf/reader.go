@@ -35,7 +35,7 @@ type lexResult struct {
 // Tokenize decompresses r (gzip) and returns the SLF version and the full
 // token slice. Memory peak = decompressed size, matching the pre-existing
 // regex reader's cost model.
-func Tokenize(r io.Reader) (version uint64, tokens []Token, err error) {
+func Tokenize(r io.Reader) (uint64, []Token, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return 0, nil, fmt.Errorf("slf: gzip open: %w", err)

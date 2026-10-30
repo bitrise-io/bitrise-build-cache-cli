@@ -157,6 +157,8 @@ func (d *decoder) parseString() (string, error) {
 		return t.StringValue, nil
 	case TokenNull:
 		return "", nil
+	case TokenInt, TokenClassName, TokenClassNameRef, TokenDouble, TokenList, TokenJSON:
+		return "", fmt.Errorf("slf: expected string, got %s", t)
 	}
 
 	return "", fmt.Errorf("slf: expected string, got %s", t)
@@ -184,6 +186,8 @@ func (d *decoder) parseListHeader() (int, error) {
 		return 0, nil
 	case TokenList:
 		return t.ListCount, nil
+	case TokenInt, TokenClassName, TokenClassNameRef, TokenString, TokenDouble, TokenJSON:
+		return 0, fmt.Errorf("slf: expected list header, got %s", t)
 	}
 
 	return 0, fmt.Errorf("slf: expected list header, got %s", t)
@@ -254,6 +258,8 @@ func (d *decoder) resolveClassRef(t Token) (string, bool, error) {
 		return next.StringValue, true, nil
 	case TokenClassNameRef:
 		return t.StringValue, true, nil
+	case TokenInt, TokenString, TokenDouble, TokenList, TokenJSON:
+		return "", false, fmt.Errorf("slf: expected class-ref, got %s", t)
 	}
 
 	return "", false, fmt.Errorf("slf: expected class-ref, got %s", t)
@@ -275,7 +281,7 @@ func (d *decoder) parseLogSection(className string) (*BuildStep, error) {
 		return nil, err
 	}
 
-	bs.SectionType = int(sectionType)
+	bs.SectionType = int(sectionType) //nolint:gosec // SectionType is 0/1/2 in practice; log is corrupt long before overflow matters
 
 	if bs.DomainType, err = d.parseString(); err != nil {
 		return nil, err
@@ -455,7 +461,7 @@ func (d *decoder) parseSections() ([]*BuildStep, error) {
 
 	out := make([]*BuildStep, 0, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		s, err := d.parseSection()
 		if err != nil {
 			return nil, fmt.Errorf("sub-section %d/%d: %w", i, n, err)
@@ -480,7 +486,7 @@ func (d *decoder) parseMessages() ([]Message, error) {
 
 	out := make([]Message, 0, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		m, err := d.parseMessage()
 		if err != nil {
 			return nil, fmt.Errorf("message %d/%d: %w", i, n, err)
@@ -533,7 +539,7 @@ func (d *decoder) parseMessage() (Message, error) {
 		return Message{}, err
 	}
 
-	m.Severity = int(sev)
+	m.Severity = int(sev) //nolint:gosec // severity is a small enum (0..3) in practice
 
 	if m.Type, err = d.parseString(); err != nil {
 		return Message{}, err
@@ -555,48 +561,63 @@ func (d *decoder) parseMessage() (Message, error) {
 		return Message{}, err
 	}
 
-	// Subclass tails.
-	switch className {
-	case "IDEActivityLogAnalyzerResultMessage":
-		// resultType string, keyEventIndex int.
-		if _, err := d.parseString(); err != nil {
-			return Message{}, err
-		}
-
-		if _, err := d.parseInt(); err != nil {
-			return Message{}, err
-		}
-	case "IDEActivityLogAnalyzerEventStepMessage":
-		if _, err := d.parseInt(); err != nil {
-			return Message{}, err
-		}
-
-		if _, err := d.parseString(); err != nil {
-			return Message{}, err
-		}
-
-		if _, err := d.parseInt(); err != nil {
-			return Message{}, err
-		}
-	case "IDEActivityLogAnalyzerControlFlowStepMessage":
-		if _, err := d.parseInt(); err != nil {
-			return Message{}, err
-		}
-
-		if _, err := d.parseDocumentLocation(); err != nil {
-			return Message{}, err
-		}
-
-		if err := d.skipControlFlowEdges(); err != nil {
-			return Message{}, err
-		}
-	case "IDEActivityLogActionMessage":
-		if _, err := d.parseString(); err != nil {
-			return Message{}, err
-		}
+	if err := d.skipMessageSubclassTail(className); err != nil {
+		return Message{}, err
 	}
 
 	return m, nil
+}
+
+// skipMessageSubclassTail consumes the extra fields a Message subclass adds
+// after the base IDEActivityLogMessage property block. We drop them because
+// the collector surfaces don't yet project any Analyzer / Action message
+// subshapes.
+func (d *decoder) skipMessageSubclassTail(className string) error {
+	switch className {
+	case "IDEActivityLogAnalyzerResultMessage":
+		return d.skipFields(parseAsString, parseAsInt)
+	case "IDEActivityLogAnalyzerEventStepMessage":
+		return d.skipFields(parseAsInt, parseAsString, parseAsInt)
+	case "IDEActivityLogAnalyzerControlFlowStepMessage":
+		if err := d.skipFields(parseAsInt); err != nil {
+			return err
+		}
+
+		if _, err := d.parseDocumentLocation(); err != nil {
+			return err
+		}
+
+		return d.skipControlFlowEdges()
+	case "IDEActivityLogActionMessage":
+		return d.skipFields(parseAsString)
+	}
+
+	return nil
+}
+
+// skipFieldKind picks which primitive parser skipFields consumes next.
+type skipFieldKind int
+
+const (
+	parseAsInt skipFieldKind = iota
+	parseAsString
+)
+
+func (d *decoder) skipFields(kinds ...skipFieldKind) error {
+	for _, k := range kinds {
+		switch k {
+		case parseAsInt:
+			if _, err := d.parseInt(); err != nil {
+				return err
+			}
+		case parseAsString:
+			if _, err := d.parseString(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (d *decoder) skipControlFlowEdges() error {
@@ -654,62 +675,77 @@ func (d *decoder) parseDocumentLocation() (DocumentLocation, error) {
 		return DocumentLocation{}, err
 	}
 
-	switch className {
-	case "DVTTextDocumentLocation":
-		if loc.StartingLineNumber, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if loc.StartingColumnNumber, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if loc.EndingLineNumber, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if loc.EndingColumnNumber, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if loc.CharacterRangeEnd, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if loc.CharacterRangeStart, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if loc.LocationEncoding, err = d.parseInt(); err != nil {
-			return DocumentLocation{}, err
-		}
-	case "DVTMemberDocumentLocation":
-		if loc.Member, err = d.parseString(); err != nil {
-			return DocumentLocation{}, err
-		}
-	case "IBDocumentMemberLocation":
-		// memberIdentifier IBMemberID { memberIdentifier string },
-		// attributeSearchLocation IBAttributeSearchLocation? (we skip)
-		cn, ok, err := d.classRef()
-		if err != nil {
-			return DocumentLocation{}, err
-		}
-
-		if ok && cn == "IBMemberID" {
-			if _, err := d.parseString(); err != nil {
-				return DocumentLocation{}, err
-			}
-		}
-
-		// Expect a null terminator for the search location.
-		if t, err := d.next(); err == nil && t.Type != TokenNull {
-			d.rewind()
-		}
-	case "DVTDocumentLocation", "Xcode3ProjectDocumentLocation", "IDELogDocumentLocation":
-		// Base class — fields already consumed.
+	if err := d.readLocationSubclass(className, &loc); err != nil {
+		return DocumentLocation{}, err
 	}
 
 	return loc, nil
+}
+
+func (d *decoder) readLocationSubclass(className string, loc *DocumentLocation) error {
+	switch className {
+	case "DVTTextDocumentLocation":
+		return d.readTextLocation(loc)
+	case "DVTMemberDocumentLocation":
+		member, err := d.parseString()
+		if err != nil {
+			return err
+		}
+
+		loc.Member = member
+
+		return nil
+	case "IBDocumentMemberLocation":
+		return d.readIBMemberLocation()
+	case "DVTDocumentLocation", "Xcode3ProjectDocumentLocation", "IDELogDocumentLocation":
+		// Base class — fields already consumed.
+		return nil
+	}
+
+	return nil
+}
+
+func (d *decoder) readTextLocation(loc *DocumentLocation) error {
+	fields := []*uint64{
+		&loc.StartingLineNumber,
+		&loc.StartingColumnNumber,
+		&loc.EndingLineNumber,
+		&loc.EndingColumnNumber,
+		&loc.CharacterRangeEnd,
+		&loc.CharacterRangeStart,
+		&loc.LocationEncoding,
+	}
+
+	for _, dst := range fields {
+		v, err := d.parseInt()
+		if err != nil {
+			return err
+		}
+
+		*dst = v
+	}
+
+	return nil
+}
+
+func (d *decoder) readIBMemberLocation() error {
+	cn, ok, err := d.classRef()
+	if err != nil {
+		return err
+	}
+
+	if ok && cn == "IBMemberID" {
+		if _, err := d.parseString(); err != nil {
+			return err
+		}
+	}
+
+	// Expect a null terminator for the attributeSearchLocation.
+	if t, err := d.next(); err == nil && t.Type != TokenNull {
+		d.rewind()
+	}
+
+	return nil
 }
 
 func (d *decoder) parseDocumentLocations() ([]DocumentLocation, error) {
@@ -724,7 +760,7 @@ func (d *decoder) parseDocumentLocations() ([]DocumentLocation, error) {
 
 	out := make([]DocumentLocation, 0, n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		loc, err := d.parseDocumentLocation()
 		if err != nil {
 			return nil, err
@@ -750,7 +786,7 @@ func (d *decoder) parseAttachments() ([]Attachment, error) {
 
 	out := make([]Attachment, 0, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		att, err := d.parseAttachment()
 		if err != nil {
 			return nil, fmt.Errorf("attachment %d/%d: %w", i, n, err)
@@ -804,6 +840,8 @@ func (d *decoder) parseAttachment() (Attachment, error) {
 		att.Payload = []byte(tok.StringValue)
 	case TokenNull:
 		// nothing to decode
+	case TokenInt, TokenClassName, TokenClassNameRef, TokenString, TokenDouble, TokenList:
+		return Attachment{}, fmt.Errorf("slf: expected JSON attachment payload, got %s", tok)
 	default:
 		return Attachment{}, fmt.Errorf("slf: expected JSON attachment payload, got %s", tok)
 	}

@@ -1,5 +1,23 @@
 package slf
 
+// ClassIDEActivityLogCommandInvocationSection is the className Xcode emits
+// for every leaf command (compile / link / codesign / copy / script-run).
+const ClassIDEActivityLogCommandInvocationSection = "IDEActivityLogCommandInvocationSection"
+
+// DetailStepType return values. Public so collectors can switch on them.
+const (
+	DetailSwiftCompilation           = "swiftCompilation"
+	DetailSwiftAggregatedCompilation = "swiftAggregatedCompilation"
+	DetailCCompilation               = "cCompilation"
+	DetailLinker                     = "linker"
+	DetailMergeSwiftModule           = "mergeSwiftModule"
+	DetailCopyResourceFile           = "copyResourceFile"
+	DetailCopySwiftLibs              = "copySwiftLibs"
+	DetailCompileAssetsCatalog       = "compileAssetsCatalog"
+	DetailCompileStoryboard          = "compileStoryboard"
+	DetailOther                      = "other"
+)
+
 // SectionType mirrors Xcode's IDEActivityLogSection.sectionType enum.
 // Only three values are documented and in practice we see 0/1/2.
 type SectionType int
@@ -19,18 +37,18 @@ type BuildStep struct {
 
 	SubSteps []*BuildStep
 
-	Text               string
-	Messages           []Message
-	WasCancelled       bool
-	IsQuiet            bool
-	WasFetchedFromCache bool
-	Subtitle            string
-	Location            DocumentLocation
-	CommandDetailDesc   string
-	UniqueIdentifier    string
+	Text                  string
+	Messages              []Message
+	WasCancelled          bool
+	IsQuiet               bool
+	WasFetchedFromCache   bool
+	Subtitle              string
+	Location              DocumentLocation
+	CommandDetailDesc     string
+	UniqueIdentifier      string
 	LocalizedResultString string
-	XcbuildSignature    string
-	Attachments         []Attachment
+	XcbuildSignature      string
+	Attachments           []Attachment
 
 	// ClassName of the originating IDEFoundation class — one of
 	// IDEActivityLogSection, IDEActivityLogMajorGroupSection,
@@ -60,17 +78,17 @@ type Message struct {
 // IBDocumentMember subclasses. Fields not populated by a given subclass stay
 // zero.
 type DocumentLocation struct {
-	ClassName           string
-	DocumentURLString   string
-	Timestamp           float64
-	StartingLineNumber  uint64
+	ClassName            string
+	DocumentURLString    string
+	Timestamp            float64
+	StartingLineNumber   uint64
 	StartingColumnNumber uint64
-	EndingLineNumber    uint64
-	EndingColumnNumber  uint64
-	CharacterRangeEnd   uint64
-	CharacterRangeStart uint64
-	LocationEncoding    uint64
-	Member              string
+	EndingLineNumber     uint64
+	EndingColumnNumber   uint64
+	CharacterRangeEnd    uint64
+	CharacterRangeStart  uint64
+	LocationEncoding     uint64
+	Member               string
 }
 
 // Duration in seconds.
@@ -121,7 +139,7 @@ func (b BuildStep) DetailStepType() string {
 	case hasPrefix(b.Signature, "CompileC "):
 		return "cCompilation"
 	case hasPrefix(b.Signature, "CompileSwift "):
-		return "swiftCompilation"
+		return DetailSwiftCompilation
 	case hasPrefix(b.Signature, "CompileSwiftSources "):
 		return "swiftAggregatedCompilation"
 	case hasPrefix(b.Signature, "Ld "):
@@ -155,11 +173,11 @@ func (b BuildStep) DetailStepType() string {
 
 	// Xcode 26.x command name shapes.
 	case hasPrefix(b.Signature, "SwiftCompile "):
-		return "swiftCompilation"
+		return DetailSwiftCompilation
 	case hasPrefix(b.Signature, "SwiftDriver "), hasPrefix(b.Signature, "SwiftDriverJobDiscovery "), hasPrefix(b.Signature, "SwiftDriver\\"):
 		return "swiftAggregatedCompilation"
 	case hasPrefix(b.Signature, "SwiftEmitModule "):
-		return "swiftCompilation"
+		return DetailSwiftCompilation
 	case hasPrefix(b.Signature, "SwiftMergeGeneratedHeaders "):
 		return "mergeSwiftModule"
 	case hasPrefix(b.Signature, "CodeSign "):

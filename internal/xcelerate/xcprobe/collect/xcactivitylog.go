@@ -206,7 +206,7 @@ func countDetailSteps(b *slf.BuildStep) int {
 	n := 0
 
 	for _, s := range b.SubSteps {
-		if s.ClassName == "IDEActivityLogCommandInvocationSection" {
+		if s.ClassName == slf.ClassIDEActivityLogCommandInvocationSection {
 			n++
 		}
 
@@ -256,7 +256,7 @@ func buildStepTypeHistogram(root *slf.BuildStep) []payload.StepTypeBucket {
 
 	var walk func(b *slf.BuildStep)
 	walk = func(b *slf.BuildStep) {
-		if b.ClassName == "IDEActivityLogCommandInvocationSection" {
+		if b.ClassName == slf.ClassIDEActivityLogCommandInvocationSection {
 			stepType := b.DetailStepType()
 
 			bucket, ok := totals[stepType]
@@ -300,7 +300,7 @@ func extractTopSteps(root *slf.BuildStep, stepTopN int) []payload.StepRow {
 			currentTarget = cleanTargetName(b.Title)
 		}
 
-		if b.ClassName == "IDEActivityLogCommandInvocationSection" {
+		if b.ClassName == slf.ClassIDEActivityLogCommandInvocationSection {
 			rows = append(rows, payload.StepRow{
 				Type:       b.DetailStepType(),
 				Title:      truncate(b.Title, 240),

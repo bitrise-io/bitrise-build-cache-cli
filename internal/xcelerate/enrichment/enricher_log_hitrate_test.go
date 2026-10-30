@@ -94,11 +94,21 @@ func newEnrichSetup(t *testing.T) *enrichSetup {
 
 func TestEnricher_LogHitRate_ActivityLog(t *testing.T) {
 	s := newEnrichSetup(t)
-	writeLog(t, s.manifestDir, s.logName, []byte("header\nnote: 7 hits / 10 cacheable tasks (70%)\n"))
+	// Copy the real SLF v13 fixture — 65 Swift hits, 0 misses.
+	copyFixtureLog(t, s.manifestDir, s.logName)
 
 	s.enricher.Enrich(s.manifestPath, s.group)
 
-	assert.InDelta(t, float32(0.7), s.captured.HitRate, 0.001)
+	// Fixture is a cache-saturated build so hit-rate rounds to 1.0.
+	assert.InDelta(t, float32(1.0), s.captured.HitRate, 0.001)
+}
+
+func copyFixtureLog(t *testing.T, dir, name string) {
+	t.Helper()
+
+	body, err := os.ReadFile(filepath.Join("..", "xcprobe", "slf", "testdata", "sample.xcactivitylog"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), body, 0o644))
 }
 
 func TestEnricher_LogHitRate_LogMissing_NoWarn(t *testing.T) {

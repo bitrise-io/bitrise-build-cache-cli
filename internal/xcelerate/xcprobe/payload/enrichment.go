@@ -41,13 +41,13 @@ type EnrichmentPayload struct {
 // `Xcode.IDEActivityLogDomainType.target`. The cache-fetch bit mirrors
 // `wasFetchedFromCache` on the underlying section.
 type TargetRow struct {
-	Name                  string  `json:"name"`
-	DurationMs            int64   `json:"durationMs"`
-	CompilationDurationMs int64   `json:"compilationDurationMs,omitempty"`
-	FetchedFromCache      bool    `json:"fetchedFromCache,omitempty"`
-	Warnings              int     `json:"warnings,omitempty"`
-	Errors                int     `json:"errors,omitempty"`
-	StepCount             int     `json:"stepCount,omitempty"`
+	Name                  string `json:"name"`
+	DurationMs            int64  `json:"durationMs"`
+	CompilationDurationMs int64  `json:"compilationDurationMs,omitempty"`
+	FetchedFromCache      bool   `json:"fetchedFromCache,omitempty"`
+	Warnings              int    `json:"warnings,omitempty"`
+	Errors                int    `json:"errors,omitempty"`
+	StepCount             int    `json:"stepCount,omitempty"`
 }
 
 // StepTypeBucket is one row of the per-DetailStepType histogram.
