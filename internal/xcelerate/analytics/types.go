@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
@@ -79,6 +80,9 @@ type Invocation struct {
 	// Populated from `xcrun xcresulttool get build-results` on the wrapper self-enrich path.
 	Targets  []TargetSummary  `json:"targets,omitempty"`
 	Failures []FailureSummary `json:"failures,omitempty"`
+	// Enrichment carries xcprobe EnrichmentPayload bytes. json.RawMessage keeps
+	// this a one-way edge (payload -> analytics) with zero typed import.
+	Enrichment json.RawMessage `json:"enrichment,omitempty"`
 }
 
 type TargetSummary struct {
