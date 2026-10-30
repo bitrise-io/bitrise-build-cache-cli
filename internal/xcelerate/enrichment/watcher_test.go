@@ -269,3 +269,172 @@ func TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID(t *testing.T) {
 	}
 	assert.Positive(t, matched, "manifest path must emit under the sidecar-provided sharedID — this is what the dedup set keys on")
 }
+
+func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *testing.T) {
+	home := t.TempDir()
+	sidecarsDir := filepath.Join(home, "sessions")
+	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
+
+	// Fixture manifest lives in the default DerivedData path.
+	derived := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-ide/Logs/Build")
+	require.NoError(t, os.MkdirAll(derived, 0o755))
+	fixture, err := os.ReadFile("testdata/LogStoreManifest.plist")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(derived, "LogStoreManifest.plist"), fixture, 0o644))
+
+	// Fixture entries span CFAbsoluteTime 762345688..762345698 → ~2025-02-27 10:41 UTC.
+	// Pin now a few minutes past so the age gate treats them as recent.
+	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
+	const derivedID = "ide-derived-invocation-id"
+
+	type sidecarFixtureFile struct {
+		SchemaVersion  int               `json:"schema_version"`
+		SidecarUUID    string            `json:"sidecar_uuid"`
+		PeerAncestry   []string          `json:"peer_ancestry"`
+		AcceptedAt     time.Time         `json:"accepted_at"`
+		ClosedAt       time.Time         `json:"closed_at"`
+		WrapperSession map[string]string `json:"wrapper_session"`
+		BlobStats      *blobstatsFixture `json:"blobStats"`
+	}
+
+	// Sidecar window covers the manifest entries so Has/Lookup overlap returns true.
+	flushSidecar := func() {
+		body, err := json.Marshal(sidecarFixtureFile{
+			SchemaVersion:  2,
+			SidecarUUID:    "sidecar-ide",
+			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
+			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
+			ClosedAt:       time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC),
+			WrapperSession: map[string]string{"invocation_id": derivedID},
+			BlobStats:      &blobstatsFixture{Download: directionFixture{OpCount: 2, MissCount: 1}},
+		})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(sidecarsDir, "a.json"), body, 0o600))
+	}
+
+	var captured []analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = append(captured, inv)
+
+			return nil
+		},
+	}
+
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: enrichment.NewSidecarIndex(sidecarsDir, nil),
+		Now:           func() time.Time { return fixtureNow },
+	}
+
+	w := &enrichment.Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return fixtureNow },
+		SidecarReader:         e.SidecarReader,
+		Handle:                e.Enrich,
+		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+	}
+	e.OnEmit = w.RecordEmittedInvocationID
+
+	// Tick N: manifest on disk, no sidecar yet. canCorrelate → false; retry-bucket opens.
+	w.ScanOnce()
+	assert.Empty(t, captured, "no sidecar yet, no MatchProbe signal — group must sit in retry bucket, not emit")
+
+	// Between ticks: proxy's intermediate flush writes the sidecar carrying derivedID.
+	flushSidecar()
+
+	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
+	w.ScanOnce()
+
+	require.Len(t, captured, 1, "exactly one PUT must fire — the retry bucket resolves on sidecar presence")
+	assert.Contains(t, []string{"AAAA-BBBB-BUILD", "CCCC-DDDD-TEST"}, captured[0].InvocationID,
+		"PUT must adopt the manifest UUID of the overlapping group")
+	assert.NotEqual(t, derivedID, captured[0].InvocationID,
+		"sidecar InvocationID must NOT dictate identity when the manifest UUID is present")
+}
+
+func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
+	home := t.TempDir()
+	sidecarsDir := filepath.Join(home, "sessions")
+	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
+
+	derived := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-ide/Logs/Build")
+	require.NoError(t, os.MkdirAll(derived, 0o755))
+	fixture, err := os.ReadFile("testdata/LogStoreManifest.plist")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(derived, "LogStoreManifest.plist"), fixture, 0o644))
+
+	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
+	const derivedID = "ide-derived-invocation-nil-stats"
+
+	type sidecarFixtureFile struct {
+		SchemaVersion  int               `json:"schema_version"`
+		SidecarUUID    string            `json:"sidecar_uuid"`
+		PeerAncestry   []string          `json:"peer_ancestry"`
+		AcceptedAt     time.Time         `json:"accepted_at"`
+		ClosedAt       time.Time         `json:"closed_at"`
+		WrapperSession map[string]string `json:"wrapper_session"`
+		BlobStats      *blobstatsFixture `json:"blobStats,omitempty"`
+	}
+
+	// Empty-stat anchored-aged flush shape: no BlobStats, derived InvocationID only.
+	flushNilStatsSidecar := func() {
+		body, err := json.Marshal(sidecarFixtureFile{
+			SchemaVersion:  2,
+			SidecarUUID:    "sidecar-ide-nil",
+			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
+			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
+			ClosedAt:       time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC),
+			WrapperSession: map[string]string{"invocation_id": derivedID},
+			BlobStats:      nil,
+		})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(sidecarsDir, "a.json"), body, 0o600))
+	}
+
+	var captured []analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = append(captured, inv)
+
+			return nil
+		},
+	}
+
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: enrichment.NewSidecarIndex(sidecarsDir, nil),
+		Now:           func() time.Time { return fixtureNow },
+	}
+
+	w := &enrichment.Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return fixtureNow },
+		SidecarReader:         e.SidecarReader,
+		Handle:                e.Enrich,
+		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+	}
+	e.OnEmit = w.RecordEmittedInvocationID
+
+	// Tick N: manifest on disk, no sidecar yet. Group sits in the retry bucket.
+	w.ScanOnce()
+	assert.Empty(t, captured, "no sidecar yet — group must sit in retry bucket")
+
+	// Between ticks: proxy's empty-stat anchored-aged flush writes the sidecar.
+	flushNilStatsSidecar()
+
+	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
+	w.ScanOnce()
+
+	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
+	assert.Contains(t, []string{"AAAA-BBBB-BUILD", "CCCC-DDDD-TEST"}, captured[0].InvocationID,
+		"PUT must adopt the manifest UUID")
+	assert.NotEqual(t, derivedID, captured[0].InvocationID,
+		"nil-BlobStats sidecar's derived InvocationID must NOT dictate identity when manifest UUID is present")
+}
