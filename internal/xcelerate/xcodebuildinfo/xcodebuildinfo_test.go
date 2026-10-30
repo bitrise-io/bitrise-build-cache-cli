@@ -3,6 +3,9 @@
 package xcodebuildinfo
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -242,6 +245,67 @@ Available destinations for the "App" scheme:
 	def, ok := DefaultDestination(dests)
 	require.True(t, ok)
 	assert.Equal(t, "platform=iOS Simulator,name=iPhone 15 Pro Max", def.Canonical)
+}
+
+func Test_ShowBuildSettings_passesSchemeAndProject(t *testing.T) {
+	original := showBuildSettingsRunner
+	t.Cleanup(func() { showBuildSettingsRunner = original })
+
+	var (
+		gotWorkDir string
+		gotArgs    []string
+	)
+	showBuildSettingsRunner = func(_ context.Context, workDir string, args ...string) ([]byte, error) {
+		gotWorkDir = workDir
+		gotArgs = args
+
+		return []byte(`[{"buildSettings":{"SWIFT_OPTIMIZATION_LEVEL":"-Onone"}}]`), nil
+	}
+
+	c := New("/tmp/proj")
+	out, err := c.ShowBuildSettings(context.Background(), "App", "App.xcodeproj")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/tmp/proj", gotWorkDir)
+	assert.Equal(t, []string{"-showBuildSettings", "-json", "-scheme", "App", "-project", "App.xcodeproj"}, gotArgs)
+
+	// Verify the raw JSON is parseable in the shape xcodebuild emits.
+	var decoded []struct {
+		BuildSettings map[string]string `json:"buildSettings"`
+	}
+	require.NoError(t, json.Unmarshal(out, &decoded))
+	require.Len(t, decoded, 1)
+	assert.Equal(t, "-Onone", decoded[0].BuildSettings["SWIFT_OPTIMIZATION_LEVEL"])
+}
+
+func Test_ShowBuildSettings_omitsProjectArgWhenEmpty(t *testing.T) {
+	original := showBuildSettingsRunner
+	t.Cleanup(func() { showBuildSettingsRunner = original })
+
+	var gotArgs []string
+	showBuildSettingsRunner = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = args
+
+		return []byte("[]"), nil
+	}
+
+	_, err := New("").ShowBuildSettings(context.Background(), "App", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"-showBuildSettings", "-json", "-scheme", "App"}, gotArgs)
+}
+
+func Test_ShowBuildSettings_wrapsErrorWithOutput(t *testing.T) {
+	original := showBuildSettingsRunner
+	t.Cleanup(func() { showBuildSettingsRunner = original })
+
+	showBuildSettingsRunner = func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return []byte("xcodebuild: error: scheme not found\n"), errors.New("exit 65")
+	}
+
+	_, err := New("").ShowBuildSettings(context.Background(), "Missing", "App.xcodeproj")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exit 65")
+	assert.Contains(t, err.Error(), "scheme not found")
 }
 
 func Test_parseShowDestinations_dedupKeepsHighestOS(t *testing.T) {

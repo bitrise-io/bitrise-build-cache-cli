@@ -59,6 +59,33 @@ func (c *Client) ListSchemesAndConfigurations(ctx context.Context, workspace, pr
 	return nil, nil, nil
 }
 
+// showBuildSettingsRunner is the exec seam for ShowBuildSettings; tests swap
+// it to avoid shelling out to a real xcodebuild.
+//
+//nolint:gochecknoglobals
+var showBuildSettingsRunner = func(ctx context.Context, workDir string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "xcodebuild", args...)
+	cmd.Dir = workDir
+
+	return cmd.CombinedOutput()
+}
+
+// ShowBuildSettings runs `xcodebuild -showBuildSettings -json` for the given
+// scheme and project and returns the raw JSON bytes. The caller unmarshals.
+func (c *Client) ShowBuildSettings(ctx context.Context, scheme, project string) ([]byte, error) {
+	args := []string{"-showBuildSettings", "-json", "-scheme", scheme}
+	if project != "" {
+		args = append(args, "-project", project)
+	}
+
+	out, err := showBuildSettingsRunner(ctx, c.WorkDir, args...)
+	if err != nil {
+		return nil, fmt.Errorf("xcodebuild -showBuildSettings -json: %w (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+
+	return out, nil
+}
+
 func (c *Client) ShowDestinations(ctx context.Context, workspace, project, scheme string) ([]Destination, error) {
 	args := []string{"-showdestinations", "-scheme", scheme}
 
