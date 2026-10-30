@@ -999,6 +999,13 @@ func (c *XcodebuildRunner) attachXcresultSummary(ctx context.Context, inv *analy
 		c.InvocationID, len(inv.Targets), len(inv.Failures))
 }
 
+// xcprobeRunFn is the aggregator entrypoint used by the wrapper hook site.
+// Package-level var so hook-site tests can swap it for a fake that neither
+// shells out nor talks to the network.
+//
+//nolint:gochecknoglobals
+var xcprobeRunFn = xcprobe.Run
+
 // attachEnrichment runs the opt-in xcprobe collectors and attaches the
 // resulting EnrichmentPayload onto inv.Enrichment. Gated on
 // opts.AnyEnabled() so a disabled-by-default EnrichmentOptions is zero cost.
@@ -1018,7 +1025,7 @@ func (c *XcodebuildRunner) attachEnrichment(ctx context.Context, inv *analytics.
 		BenchmarkPhase:  c.Metadata.BenchmarkPhase,
 	}
 
-	out := xcprobe.Run(ctx, opts, in, c.Logger)
+	out := xcprobeRunFn(ctx, opts, in, c.Logger)
 	if err := payload.AttachToInvocation(inv, out); err != nil {
 		c.Logger.Warnf("Failed to attach xcprobe enrichment to invocation %s: %v", c.InvocationID, err)
 	}

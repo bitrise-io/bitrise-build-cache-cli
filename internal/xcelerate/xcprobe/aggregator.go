@@ -1,7 +1,7 @@
-// Package xcprobe is the opt-in enrichment collector tree. aggregator.go is
-// the single hook that reads EnrichmentOptions and runs the enabled-set of
-// collectors concurrently; everything downstream (collect, payload, host) is
-// config-agnostic.
+// Package xcprobe is the opt-in enrichment collector tree. Everything
+// downstream (collect, payload, host) is config-agnostic; this package owns
+// the one hook that reads EnrichmentOptions and runs the enabled-set of
+// collectors concurrently.
 package xcprobe
 
 import (
@@ -24,14 +24,20 @@ import (
 //
 // A nil logger is tolerated; errors still surface on CollectorErrors.
 func Run(ctx context.Context, opts xceleratconfig.EnrichmentOptions, in collect.Input, logger log.Logger) payload.EnrichmentPayload {
+	return runWith(ctx, opts.PerCollectorTimeout, enabledCollectors(opts), in, logger)
+}
+
+// runWith is the pure core: given a concrete list of collectors, run them
+// under a per-collector timeout and merge outputs into one payload. Exposed
+// to the package so tests can inject fakes without wiring real collectors.
+func runWith(ctx context.Context, perTimeout time.Duration, collectors []collect.Collector, in collect.Input, logger log.Logger) payload.EnrichmentPayload {
 	out := payload.EnrichmentPayload{SchemaVersion: payload.EnrichmentPayloadSchemaVersion}
 
-	collectors := enabledCollectors(opts)
 	if len(collectors) == 0 {
 		return out
 	}
 
-	timeout := opts.PerCollectorTimeout
+	timeout := perTimeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
