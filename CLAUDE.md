@@ -225,7 +225,7 @@ The `bump-prefix` workflow (also chained after `verify-release`, parallel to `bu
 
 Script: `scripts/prefix_pr_bump.sh`. It bumps `staging` first, then `production`: one PR per branch, merged as the Infrabot once the PR's checks pass (unlike the deployments repo, internal-platform-services has CI on PRs, so the script waits for it). It asserts the diff is exactly `+3/-3` on the pin file, skips a branch where the file does not exist yet or is already at the tag, and leaves the PR open if checks fail. Terraform applies the ConfigMap on merge and Reloader rolls the instance-manager pods; VMs already booted keep their version.
 
-Required Bitrise secret: `IPS_BOT_TOKEN` (GH PAT for `Bitrise Infrabot` on `bitrise-io/internal-platform-services`: `contents:write` + `pull_requests:write`, bypass actor on the `staging` and `production` branch rules). Slack-alerts on failure; safe to retry without re-cutting the tag.
+Required Bitrise secret: the existing `PREBOOTING_BOT_TOKEN` (the workflow maps it to `IPS_BOT_TOKEN`). The Infrabot PAT behind it must also cover `bitrise-io/internal-platform-services` (`contents:write` + `pull_requests:write`), and the bot must be a bypass actor on the `staging` and `production` branch rules. Slack-alerts on failure; safe to retry without re-cutting the tag.
 
 ## Comments in code
 

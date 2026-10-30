@@ -9,7 +9,8 @@
 # Required env:
 #   BITRISE_GIT_TAG   — release tag (e.g. "v3.18.0"); the pin holds bare semver.
 #   IPS_BOT_TOKEN     — GH PAT for Bitrise Infrabot on bitrise-io/internal-platform-services: contents:write,
-#                       pull_requests:write, and a bypass actor on the staging and production branch rules.
+#                       pull_requests:write, and a bypass actor on the staging and production branch rules
+#                       (the workflow reuses PREBOOTING_BOT_TOKEN, so that PAT must cover this repo too).
 # Optional env:
 #   IPS_BUMP_BRANCHES — space-separated, default "staging production".
 #   IPS_CHECKS_TIMEOUT — seconds to wait for a PR's checks, default 1500.
