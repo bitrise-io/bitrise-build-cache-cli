@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Bump the pinned bitrise-build-cache CLI version + sha256 in the instance-manager startup-script prefix
 # (bitrise-io/internal-platform-services, systems/instance-management/nomad_startup_script_prefix_build_cache.sh),
-# one PR per branch: staging first, then production. Each PR is merged as the Bitrise Infrabot once its checks pass;
+# one PR per branch: staging first, then production. Each PR is merged as bitrise-ip-bot once its checks pass;
 # Terraform applies the ConfigMap on merge and Reloader rolls the instance-manager pods.
 #
 # Run AFTER verify-release so a bump never points at a broken release. Retry-safe: a branch already at the tag is skipped.
 #
 # Required env:
 #   BITRISE_GIT_TAG   — release tag (e.g. "v3.18.0"); the pin holds bare semver.
-#   IPS_BOT_TOKEN     — GH PAT for Bitrise Infrabot on bitrise-io/internal-platform-services: contents:write,
-#                       pull_requests:write, and a bypass actor on the staging and production branch rules
-#                       (the workflow reuses PREBOOTING_BOT_TOKEN, so that PAT must cover this repo too).
+#   IPS_BOT_TOKEN     — GH PAT for bitrise-ip-bot on bitrise-io/internal-platform-services: contents:write,
+#                       pull_requests:write, and a bypass actor on the staging and production branch rules.
 # Optional env:
 #   IPS_BUMP_BRANCHES — space-separated, default "staging production".
 #   IPS_CHECKS_TIMEOUT — seconds to wait for a PR's checks, default 1500.
@@ -64,7 +63,7 @@ bump_branch() {
   echo "=== ${base} ==="
   git clone --depth=1 --branch "$base" "$GIT_URL" "$clone_dir"
   pushd "$clone_dir" >/dev/null
-  git config user.name "Bitrise Infrabot"
+  git config user.name "bitrise-ip-bot"
   git config user.email "infra@bitrise.io"
 
   if [[ ! -f "$PIN_FILE" ]]; then

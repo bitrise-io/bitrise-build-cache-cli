@@ -269,7 +269,7 @@ workflows:
       ConfigMap on merge. Chained after verify-release, independent of
       bump-prebooting. Safe to retry: a branch already at the tag is skipped.
     envs:
-    - IPS_BOT_TOKEN: $PREBOOTING_BOT_TOKEN
+    - IPS_BOT_TOKEN: $IPS_BOT_TOKEN
     meta:
       bitrise.io:
         machine_type_id: g2.linux.medium
