@@ -5,6 +5,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcode_app"
 )
 
 const (
@@ -66,4 +67,23 @@ func ResolveProxySocketPath(override string, envs map[string]string, osProxy uti
 	}
 
 	return paths.FromHome("").ProxySocketPath(osProxy.TempDir())
+}
+
+// EnvCASPluginPath overrides the CAS plugin dylib path when set.
+// Aliased to xcode_app.EnvCASPluginPath so toolchain install and IDE xcconfig
+// read the same env var — they MUST stay in lockstep.
+const EnvCASPluginPath = xcode_app.EnvCASPluginPath
+
+// ResolveCASPluginPath returns the CAS plugin dylib path:
+// BITRISE_XCODE_CAS_PLUGIN_PATH env var → anchor-rooted (follows xcode-select -s)
+// when Lstat on /var/db/xcode_select_link succeeds → derived from developerDir.
+func ResolveCASPluginPath(envs map[string]string, developerDir string, osProxy utils.OsProxy) string {
+	if env := envs[EnvCASPluginPath]; env != "" {
+		return env
+	}
+	if _, err := osProxy.Lstat(paths.XcodeSelectLinkPath); err == nil {
+		return paths.XcodeSelectLinkCASPluginPath()
+	}
+
+	return filepath.Join(developerDir, paths.AppleCASPluginRelative)
 }

@@ -7,6 +7,9 @@ import (
 	"github.com/bitrise-io/go-utils/v2/pathutil"
 )
 
+// DarwinGOOS is the runtime.GOOS value for macOS.
+const DarwinGOOS = "darwin"
+
 //go:generate moq -out mocks/os_proxy_mock.go -pkg mocks . OsProxy
 //nolint:interfacebloat
 type OsProxy interface {
@@ -15,9 +18,11 @@ type OsProxy interface {
 	FindProcess(pid int) (*os.Process, error)
 	Getwd() (string, error)
 	Hostname() (string, error)
+	Lstat(name string) (os.FileInfo, error)
 	MkdirAll(name string, mode os.FileMode) error
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	ReadDir(name string) ([]os.DirEntry, error)
+	Readlink(name string) (string, error)
 	ReadFileIfExists(name string) (string, bool, error)
 	Remove(name string) error
 	Rename(oldpath, newpath string) error
@@ -84,6 +89,14 @@ func (d DefaultOsProxy) Executable() (string, error) {
 
 func (d DefaultOsProxy) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Lstat(name string) (os.FileInfo, error) {
+	return os.Lstat(name) //nolint:wrapcheck
+}
+
+func (d DefaultOsProxy) Readlink(name string) (string, error) {
+	return os.Readlink(name) //nolint:wrapcheck
 }
 
 func (d DefaultOsProxy) Getwd() (string, error) {

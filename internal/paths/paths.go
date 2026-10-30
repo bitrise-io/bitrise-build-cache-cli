@@ -27,6 +27,28 @@ const (
 	// XcelerateRootRelative is the per-user Xcelerate config root (~/.bitrise-xcelerate).
 	XcelerateRootRelative = ".bitrise-xcelerate"
 
+	// XcodeAppOverrideXCConfigFileName is the override xcconfig under XcelerateRoot
+	// written by `activate xcode` and consumed by `xcode link`.
+	XcodeAppOverrideXCConfigFileName = "xcode-app.xcconfig"
+
+	// XcodeToolchainBundleID doubles as the TOOLCHAINS xcconfig value.
+	XcodeToolchainBundleID = "io.bitrise.cas.xctoolchain"
+
+	xcodeToolchainSubdir = "toolchain"
+
+	// XcodeToolchainsLinkDirRelative is the per-user dir Xcode scans for toolchain bundles.
+	XcodeToolchainsLinkDirRelative = "Library/Developer/Toolchains"
+
+	// XcodeSelectLinkPath is the active-Xcode anchor symlink `xcode-select -s` maintains.
+	XcodeSelectLinkPath = "/var/db/xcode_select_link"
+
+	// AppleCASPluginRelative is the stock CAS plugin's position inside a developer dir.
+	AppleCASPluginRelative = "usr/lib/libToolchainCASPlugin.dylib"
+
+	// XcodeAppSiblingXCConfigFileName is the xcconfig `xcode link` writes next to a
+	// .xcodeproj when a build configuration has no baseConfigurationReference.
+	XcodeAppSiblingXCConfigFileName = ".bitrise-build-cache.xcconfig"
+
 	// BitriseBuildCacheDirRelative is the repo-local config dir committed alongside the source
 	// tree, holding files such as the persisted xcode-{build,test}.json invocation specs.
 	BitriseBuildCacheDirRelative = ".bitrise-build-cache"
@@ -229,6 +251,21 @@ func (p Paths) XcelerateBinFile(name string) string {
 	return filepath.Join(p.XcelerateBinDir(), name)
 }
 
+// XcodeAppOverrideXCConfigFile returns ~/.bitrise-xcelerate/xcode-app.xcconfig.
+func (p Paths) XcodeAppOverrideXCConfigFile() string {
+	return filepath.Join(p.XcelerateRoot(), XcodeAppOverrideXCConfigFileName)
+}
+
+// XcodeToolchainBundleDir is the install path (~/.bitrise-xcelerate/toolchain/<id>).
+func (p Paths) XcodeToolchainBundleDir() string {
+	return filepath.Join(p.XcelerateRoot(), xcodeToolchainSubdir, XcodeToolchainBundleID)
+}
+
+// XcodeToolchainsLinkPath is the discovery symlink (~/Library/Developer/Toolchains/<id>).
+func (p Paths) XcodeToolchainsLinkPath() string {
+	return filepath.Join(p.Home, XcodeToolchainsLinkDirRelative, XcodeToolchainBundleID)
+}
+
 // ProxySocketPath returns the xcelerate proxy unix-socket path under the supplied temp dir.
 func (p Paths) ProxySocketPath(tempDir string) string {
 	return filepath.Join(tempDir, ProxySocketName)
@@ -295,6 +332,13 @@ func (p Paths) XcodeManagedProjectTempDir(workspaceSHA string) string {
 // RepoLocalConfigPath returns <repoRoot>/.bitrise-build-cache/<filename>. Repo-rooted, not $HOME-rooted.
 func RepoLocalConfigPath(repoRoot, filename string) string {
 	return filepath.Join(repoRoot, BitriseBuildCacheDirRelative, filename)
+}
+
+// XcodeSelectLinkCASPluginPath returns the CAS plugin dylib rooted at the
+// xcode-select active-Xcode anchor. Independent of $HOME, so it is package-level
+// rather than a Paths method.
+func XcodeSelectLinkCASPluginPath() string {
+	return filepath.Join(XcodeSelectLinkPath, AppleCASPluginRelative)
 }
 
 // DirMaker is the subset of utils.OsProxy that EnsureDir needs.
