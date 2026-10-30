@@ -487,7 +487,7 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsOneGroup(t *testing.T) {
 	assert.Len(t, w.seen, 3, "every UUID in the emitted group is marked seen")
 }
 
-func TestWatcher_scan_AppendingUUIDToExistingGroup_EmitsOnceMore(t *testing.T) {
+func TestWatcher_scan_AppendingNonPrimaryUUID_DoesNotReemit(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-append")
 	writeMultiEntryManifest(t, derivedRoot, "u1", "u2")
@@ -509,11 +509,107 @@ func TestWatcher_scan_AppendingUUIDToExistingGroup_EmitsOnceMore(t *testing.T) {
 	require.Equal(t, 1, handleCalls, "initial scan emits one group")
 	assert.ElementsMatch(t, []string{"u1", "u2"}, lastUUIDs)
 
+	// writeMultiEntryManifest stamps every entry with the same signature
+	// ("Build SharedScheme"), so Primary tie-breaks on earliest Start → u1
+	// stays Primary when u3 is appended at a later Start.
 	writeMultiEntryManifest(t, derivedRoot, "u1", "u2", "u3")
 
 	w.scan(false, false)
-	require.Equal(t, 2, handleCalls, "appending a new UUID to the same scheme re-emits the group")
-	assert.ElementsMatch(t, []string{"u1", "u2", "u3"}, lastUUIDs, "re-emitted group carries the enlarged UUID set (all entries, so upstream sees complete aggregation)")
+	require.Equal(t, 1, handleCalls, "appending a late non-Primary UUID (same build, post-build indexing) must NOT re-emit — gate is Primary-UUID based so the row's durationMs stays anchored to the primary build action")
+}
+
+// writeManifestWithEntries lets a test specify each entry's UUID / signature /
+// start offset / stop offset in seconds — needed for primary-change scenarios
+// where writeMultiEntryManifest's uniform "Build SharedScheme" fixture can't
+// shift Primary.
+type manifestEntryFixture struct {
+	UUID         string
+	Signature    string
+	StartOffset  float64
+	StopOffset   float64
+	FileNameUUID string
+}
+
+func writeManifestWithEntries(t *testing.T, derivedRoot string, entries []manifestEntryFixture) {
+	t.Helper()
+
+	dir := filepath.Join(derivedRoot, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logs</key>
+	<dict>
+`)
+
+	base := 762345900.0
+	for _, e := range entries {
+		fileUUID := e.FileNameUUID
+		if fileUUID == "" {
+			fileUUID = e.UUID
+		}
+		b.WriteString(`		<key>` + e.UUID + `</key>
+		<dict>
+			<key>fileName</key><string>` + fileUUID + `.xcactivitylog</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>schemeIdentifier-schemeName</key><string>SharedScheme</string>
+			<key>signature</key><string>` + e.Signature + `</string>
+			<key>timeStartedRecording</key><real>` + fmt.Sprintf("%f", base+e.StartOffset) + `</real>
+			<key>timeStoppedRecording</key><real>` + fmt.Sprintf("%f", base+e.StopOffset) + `</real>
+		</dict>
+`)
+	}
+
+	b.WriteString(`	</dict>
+</dict>
+</plist>`)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "LogStoreManifest.plist"), []byte(b.String()), 0o644))
+}
+
+// TestWatcher_scan_NewPrimaryTriggersReemit covers the opposite side of the
+// Primary-UUID gate from TestWatcher_scan_AppendingNonPrimaryUUID_DoesNotReemit:
+// when a new entry outranks the existing Primary (test > build), the group's
+// identity changed, so the row must re-emit under the new ManifestUUID.
+func TestWatcher_scan_NewPrimaryTriggersReemit(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-primary-change")
+
+	writeManifestWithEntries(t, derivedRoot, []manifestEntryFixture{
+		{UUID: "u-build", Signature: "Build SharedScheme", StartOffset: 0, StopOffset: 10},
+	})
+
+	var handleCalls int
+	var lastPrimaryUUID string
+	w := &Watcher{
+		Now:     func() time.Time { return fixtureNow },
+		HomeDir: home,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			handleCalls++
+			lastPrimaryUUID = g.Primary().UUID
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+	require.Equal(t, 1, handleCalls, "initial scan emits build-anchored group")
+	require.Equal(t, "u-build", lastPrimaryUUID)
+
+	// Add a Test entry (rank 3 > Build rank 1) within the TimeGap — Primary
+	// shifts from u-build to u-test, so the group's ManifestUUID changes and
+	// the gate must re-open.
+	writeManifestWithEntries(t, derivedRoot, []manifestEntryFixture{
+		{UUID: "u-build", Signature: "Build SharedScheme", StartOffset: 0, StopOffset: 10},
+		{UUID: "u-test", Signature: "Test SharedScheme", StartOffset: 20, StopOffset: 40},
+	})
+
+	w.scan(false, false)
+	require.Equal(t, 2, handleCalls, "new higher-rank Primary changes group identity → re-emit under the new ManifestUUID")
+	assert.Equal(t, "u-test", lastPrimaryUUID, "re-emitted group's Primary is the new test entry")
 }
 
 func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {

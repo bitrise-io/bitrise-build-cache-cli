@@ -135,7 +135,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	runStats := analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
-		Duration:         group.Duration().Milliseconds(),
+		Duration:         group.PrimarySpan().Milliseconds(),
 		Command:          command,
 		FullCommand:      group.FullCommand(),
 		Success:          group.Success(),

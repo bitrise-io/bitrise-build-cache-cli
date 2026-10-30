@@ -232,6 +232,19 @@ func (g ManifestEntryGroup) Duration() time.Duration {
 	return stop.Sub(start)
 }
 
+// PrimarySpan is the time span of Primary() alone — the invocation anchor's
+// own build-action window, not the wider cluster that includes post-build
+// indexing / preview compiles. Used by the BE row payload so durationMs
+// reflects the build, not the aggregate cluster.
+func (g ManifestEntryGroup) PrimarySpan() time.Duration {
+	p := g.Primary()
+	if p.Start.IsZero() || p.Stop.IsZero() {
+		return 0
+	}
+
+	return p.Stop.Sub(p.Start)
+}
+
 // ErrorMessage returns the first non-empty entry message so a mixed-status
 // group surfaces failure signal while mirroring Success()'s AND semantics.
 func (g ManifestEntryGroup) ErrorMessage() string {
