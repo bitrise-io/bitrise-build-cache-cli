@@ -412,7 +412,7 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 
 	assert.Equal(t, "test [S]", captured.Command, "aggregate command uses the primary (test > build) plus scheme")
 	assert.Equal(t, "Test S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
-	assert.Equal(t, int64(45_000), captured.DurationMs, "aggregate duration = max(Stop) − min(Start)")
+	assert.Equal(t, int64(30_000), captured.DurationMs, "duration = PrimarySpan (Primary.Stop − Primary.Start), not the wide cluster span")
 	assert.True(t, captured.Success)
 	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")
 }
@@ -913,4 +913,36 @@ func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
 	require.Len(t, ids, 2)
 	assert.Equal(t, ids[0], ids[1])
 	assert.Equal(t, "aaa", ids[0])
+}
+
+// TestEnricher_UsesPrimarySpanForDuration_NotWideClusterSpan locks in the
+// Option-C fix: wrapperless BE rows reflect the Primary build-action window,
+// not the aggregate span that grows as late non-Primary entries (post-build
+// indexing, preview compiles) join the 60s cluster.
+func TestEnricher_UsesPrimarySpanForDuration_NotWideClusterSpan(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		// Primary: Build (highest known rank), 10s window.
+		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		// Late post-build entry (unknown command rank) joining the cluster, 50s window.
+		{UUID: "u-late", SchemeName: "S", Signature: "Indexing S", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(70 * time.Second)},
+	}}
+	e.Enrich("", group)
+
+	assert.Equal(t, int64(10_000), captured.DurationMs,
+		"durationMs comes from PrimarySpan — not the 70s wide cluster span inflated by the late indexing entry")
 }

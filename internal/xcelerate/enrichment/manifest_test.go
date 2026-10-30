@@ -396,3 +396,19 @@ func TestManifestEntryGroup_ManifestUUID_ReturnsPrimaryForManifestSourced(t *tes
 
 	assert.Equal(t, "u-primary", g.ManifestUUID())
 }
+
+// TestManifestEntryGroup_PrimarySpan_UsesPrimaryEntryOnly guards the split
+// between the row-side (PrimarySpan — anchor's own window) and correlation-side
+// (Duration — wide cluster span including post-build indexing / preview compiles).
+func TestManifestEntryGroup_PrimarySpan_UsesPrimaryEntryOnly(t *testing.T) {
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		// Primary: Build (rank 1), 10s window.
+		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		// Late non-Primary: unknown command (rank -1), 50s window joining the cluster.
+		{UUID: "u-late", SchemeName: "S", Signature: "Indexing S", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(70 * time.Second)},
+	}}
+
+	assert.Equal(t, 10*time.Second, g.PrimarySpan(), "PrimarySpan is anchored to Primary().Stop-Primary().Start")
+	assert.Equal(t, 70*time.Second, g.Duration(), "Duration stays as the wide cluster span used by correlation")
+}
