@@ -1230,9 +1230,9 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 
 // TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention: IDE flow
 // mints the manifest-orphan in tick N and flushes the sidecar in tick N+1 —
-// the late pseudo-group must NOT PUT. Watcher-owned emittedUnderID retains the
-// manifest ID across the tick boundary, so the late pseudo-group's partial
-// stats can't clobber the authoritative manifest row.
+// the late pseudo-group must NOT PUT. Watcher-owned recentEmissions retains
+// the manifest ID across the tick boundary, so the late pseudo-group's
+// partial stats can't clobber the authoritative manifest row.
 func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T) {
 	home := t.TempDir()
 	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-cross-tick")
@@ -1284,7 +1284,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	w.scan(false, false)
 
 	require.Len(t, handled, 1,
-		"tick N+1: late-wave pseudo-group must be skipped — emittedUnderID retains the manifest ID across ticks so its partial stats don't clobber the manifest row")
+		"tick N+1: late-wave pseudo-group must be skipped — recentEmissions retains the manifest ID across ticks so its partial stats don't clobber the manifest row")
 }
 
 // TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention: an
@@ -1331,38 +1331,11 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	w.scan(false, false)
 
 	require.Len(t, handled, 2,
-		"tick N+1: pseudo-group must emit — stale emittedUnderID entry was pruned at scan start so the skip gate no longer trips")
+		"tick N+1: pseudo-group must emit — stale recentEmissions entry was pruned at scan start so the skip gate no longer trips")
 	pseudo := handled[1]
 	require.True(t, strings.HasPrefix(pseudo.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix))
 	assert.Empty(t, pseudo.OverrideInvocationID(),
 		"stale manifest emission must be pruned at scan start — pseudo-group falls back to its own InvocationID")
-}
-
-// TestWatcher_emittedUnderID_PrunedAfterRetention verifies the field is pruned
-// on the same cadence as recentEmissions. The Watcher internals rely on both
-// to age out together; divergence would leave stale skip gates after
-// recentEmissions no longer carries the overlap context.
-func TestWatcher_emittedUnderID_PrunedAfterRetention(t *testing.T) {
-	now := fixtureNow
-	w := &Watcher{
-		Now:             func() time.Time { return now },
-		recentEmissions: map[string]emissionRecord{},
-		emittedUnderID:  map[string]time.Time{},
-	}
-
-	// Record an emission at t=now; both maps carry the ID.
-	w.RecordEmittedInvocationID("manifest-id-X", ManifestEntryGroup{})
-	require.Contains(t, w.emittedUnderID, "manifest-id-X")
-	require.Contains(t, w.recentEmissions, "manifest-id-X")
-
-	// Advance past the retention window and prune.
-	now = fixtureNow.Add(RecentEmissionsRetention + time.Minute)
-	w.pruneRecentEmissions()
-
-	assert.NotContains(t, w.emittedUnderID, "manifest-id-X",
-		"stale emittedUnderID entry must be pruned so a later orphan sidecar for the same ID is not perpetually skipped")
-	assert.NotContains(t, w.recentEmissions, "manifest-id-X",
-		"recentEmissions must prune on the same cadence to keep the two maps in sync")
 }
 
 // stagedReader returns a different group map per invocation of
