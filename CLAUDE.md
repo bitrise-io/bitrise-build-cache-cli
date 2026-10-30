@@ -219,6 +219,14 @@ After sed-bumping the constants, the script asserts the working tree shows **exa
 
 Required Bitrise secret: `PREBOOTING_BOT_TOKEN` (GH PAT for `Bitrise Infrabot`, scoped to `bitrise-io/build-prebooting-deployments`: `contents:write` + `pull_requests:write`). Slack-alerts on failure; safe to retry the workflow without re-cutting the tag.
 
+### Automated VM startup-prefix bump
+
+The `bump-prefix` workflow (also chained after `verify-release`, parallel to `bump-prebooting`) opens PRs against `bitrise-io/internal-platform-services` bumping the pinned `BITRISE_BUILD_CACHE_CLI_VERSION` and the linux_amd64 / darwin_arm64 sha256 in `systems/instance-management/nomad_startup_script_prefix_build_cache.sh`. That file is the CLI section of the instance-manager startup prefix (ConfigMap key `prefix-build-cache.sh`, mounted by the Build Hub pool-controller).
+
+Script: `scripts/prefix_pr_bump.sh`. It bumps `staging` first, then `production`: one PR per branch, merged as `bitrise-ip-bot` once the PR's checks pass (unlike the deployments repo, internal-platform-services has CI on PRs, so the script waits for it). It asserts the diff is exactly `+3/-3` on the pin file, skips a branch where the file does not exist yet or is already at the tag, and leaves the PR open if checks fail. Terraform applies the ConfigMap on merge and Reloader rolls the instance-manager pods; VMs already booted keep their version.
+
+Required Bitrise secret: `IPS_BOT_TOKEN` (GH PAT for the `bitrise-ip-bot` user on `bitrise-io/internal-platform-services`: `contents:write` + `pull_requests:write`, and admin on the repo: `production` requires 1 review that admins may bypass, so the script merges with `gh pr merge --admin`). Slack-alerts on failure; safe to retry without re-cutting the tag.
+
 ## Comments in code
 
 Avoid commenting obvious code flows. Avoid adding long comments, be precise and include only what's not obvious from the surrounding context. Avoid bloating existing code with new comments.
