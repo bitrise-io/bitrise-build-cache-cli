@@ -73,11 +73,11 @@ const (
 	// Collector tokens accepted on the env list / --enrich flag. Mirror the
 	// field names on EnrichmentOptions (lower-kebab) so the user wire format
 	// stays stable across phases.
-	collectorHostSnap       = "hostsnap"
-	collectorBuildTiming    = "buildtiming"
-	collectorBuildSettings  = "buildsettings"
-	collectorAll            = "all"
-	collectorNone           = "none"
+	collectorHostSnap      = "hostsnap"
+	collectorBuildTiming   = "buildtiming"
+	collectorBuildSettings = "buildsettings"
+	collectorAll           = "all"
+	collectorNone          = "none"
 )
 
 // LoadEnrichmentOptions resolves EnrichmentOptions from the three sources,
