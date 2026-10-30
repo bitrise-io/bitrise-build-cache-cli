@@ -1,22 +1,9 @@
 package xcelerate
 
-import "time"
-
-// EnrichmentFlags carries the --enrich / --enrich-all / --enrich-none CLI
-// flag values. Zero value = no CLI override; env/file win by default.
-type EnrichmentFlags struct {
-	Enabled []string
-	All     bool
-	None    bool
-}
-
-// LoadEnrichmentOptions returns a zero-value EnrichmentOptions until the
-// full precedence loader lands (file < env < flags). Hook sites can safely
-// call this today — AnyEnabled() stays false, so neither the wrapper nor
-// the enricher pays any runtime cost.
-func LoadEnrichmentOptions(_ *Config, _ func(string) string, _ EnrichmentFlags) EnrichmentOptions {
-	return EnrichmentOptions{}
-}
+import (
+	"strings"
+	"time"
+)
 
 // EnrichmentOptions declares which xcprobe collectors run and under what
 // bounds. Zero value = all collectors off. CLI > env > file precedence is
@@ -63,4 +50,128 @@ func (o EnrichmentOptions) AnyEnabled() bool {
 		o.ClangTimeTrace ||
 		o.LinkerStats ||
 		o.BuildDB
+}
+
+// EnrichmentFlags carries the --enrich / --enrich-all / --enrich-none CLI
+// flag values. Zero value = no CLI override; env/file win.
+type EnrichmentFlags struct {
+	Enabled []string
+	All     bool
+	None    bool
+}
+
+const (
+	// EnvEnrichmentCollectors enables individual collectors via a
+	// comma-separated list, e.g.
+	// BITRISE_BUILD_CACHE_ENRICH=hostsnap,buildtiming,buildsettings
+	EnvEnrichmentCollectors = "BITRISE_BUILD_CACHE_ENRICH"
+	// EnvEnrichmentAll turns every collector on (short-circuits individual).
+	EnvEnrichmentAll = "BITRISE_BUILD_CACHE_ENRICH_ALL"
+	// EnvEnrichmentNone forces every collector off, overriding any other setting.
+	EnvEnrichmentNone = "BITRISE_BUILD_CACHE_ENRICH_NONE"
+
+	// Collector tokens accepted on the env list / --enrich flag. Mirror the
+	// field names on EnrichmentOptions (lower-kebab) so the user wire format
+	// stays stable across phases.
+	collectorHostSnap       = "hostsnap"
+	collectorBuildTiming    = "buildtiming"
+	collectorBuildSettings  = "buildsettings"
+	collectorAll            = "all"
+	collectorNone           = "none"
+)
+
+// LoadEnrichmentOptions resolves EnrichmentOptions from the three sources,
+// lowest precedence first: xcelerate config file (not read in Phase 0 —
+// reserved for a later phase that persists collector preferences), env, CLI
+// flags. CLI --enrich-none wins over everything; env ENRICH_NONE wins over
+// env ENRICH_ALL / ENRICH; a bare --enrich-all turns everything on.
+//
+// env=nil is tolerated (treated as a function returning ""); the Phase 0
+// hook sites pass os.Getenv.
+func LoadEnrichmentOptions(_ *Config, env func(string) string, flags EnrichmentFlags) EnrichmentOptions {
+	if env == nil {
+		env = func(string) string { return "" }
+	}
+
+	opts := EnrichmentOptions{
+		PerCollectorTimeout: 10 * time.Second,
+		FailOpen:            true,
+	}
+
+	// env layer.
+	applyCollectorList(&opts, parseCollectorList(env(EnvEnrichmentCollectors)))
+
+	if truthy(env(EnvEnrichmentAll)) {
+		setAllPhase0(&opts, true)
+	}
+
+	if truthy(env(EnvEnrichmentNone)) {
+		setAllPhase0(&opts, false)
+	}
+
+	// flag layer — CLI wins over env.
+	applyCollectorList(&opts, flags.Enabled)
+
+	if flags.All {
+		setAllPhase0(&opts, true)
+	}
+
+	if flags.None {
+		setAllPhase0(&opts, false)
+	}
+
+	return opts
+}
+
+func parseCollectorList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+
+	for _, p := range parts {
+		p = strings.TrimSpace(strings.ToLower(p))
+		if p == "" {
+			continue
+		}
+
+		out = append(out, p)
+	}
+
+	return out
+}
+
+func applyCollectorList(opts *EnrichmentOptions, list []string) {
+	for _, name := range list {
+		switch name {
+		case collectorHostSnap:
+			opts.HostSnapshot = true
+		case collectorBuildTiming:
+			opts.BuildTimingSummary = true
+		case collectorBuildSettings:
+			opts.BuildSettings = true
+		case collectorAll:
+			setAllPhase0(opts, true)
+		case collectorNone:
+			setAllPhase0(opts, false)
+		}
+	}
+}
+
+func setAllPhase0(opts *EnrichmentOptions, on bool) {
+	opts.HostSnapshot = on
+	opts.BuildTimingSummary = on
+	opts.BuildSettings = on
+}
+
+func truthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+
+	return false
 }
