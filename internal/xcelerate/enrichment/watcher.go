@@ -547,14 +547,17 @@ func (w *Watcher) canCorrelate(group ManifestEntryGroup) bool {
 	return false
 }
 
-// groupFullySeen returns false the moment a new UUID appears, so late-arriving
-// entries force a re-emit of the enlarged aggregate instead of being dropped.
+// groupFullySeen gates on Primary().UUID so the gate agrees with the PUT-side
+// identity (ManifestUUID → Primary().UUID). A late non-Primary entry joining
+// the cluster (post-build indexing, preview compile) does NOT re-open the
+// gate; a new Primary (new build action with higher command rank or earlier
+// Start) does, because it changes the group's identity.
 func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
-	for _, uuid := range group.UUIDs() {
-		if _, ok := w.seen[uuid]; !ok {
-			return false
-		}
+	if len(group.Entries) == 0 {
+		return false
 	}
 
-	return len(group.Entries) > 0
+	_, ok := w.seen[group.Primary().UUID]
+
+	return ok
 }
