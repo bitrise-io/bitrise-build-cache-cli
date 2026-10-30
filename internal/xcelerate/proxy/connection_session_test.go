@@ -382,7 +382,7 @@ func TestFlushIdle_IntermediateSidecarMarkedNonTerminal(t *testing.T) {
 	cs.activityMu.Unlock()
 	registry.put(cs)
 
-	h.flushIdle(time.Now(), 15*time.Second)
+	h.flushIdle(time.Now(), perConnIdleThreshold)
 
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
@@ -391,4 +391,48 @@ func TestFlushIdle_IntermediateSidecarMarkedNonTerminal(t *testing.T) {
 	body, err := os.ReadFile(dir + "/" + entries[0].Name())
 	require.NoError(t, err)
 	assert.Contains(t, string(body), `"terminal":false`, "intermediate flush writes terminal=false")
+}
+
+// TestFlushIdle_PromotesDerivedIDEvenWhenStatsEmpty pins the convergence
+// contract: a connection with zero cache ops but a non-empty derivedInvocationID
+// that has aged past (perConnIdleThreshold × derivedIDFlushMultiplier) must
+// still flush an intermediate sidecar, so the enricher's SidecarReader.Has
+// probe can short-circuit orphan-mint for quiet IDE connections.
+func TestFlushIdle_PromotesDerivedIDEvenWhenStatsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	registry := newSessionRegistry()
+	h := &sidecarStatsHandler{
+		writer:   newSidecarWriter(dir, nil),
+		registry: registry,
+	}
+
+	// Connection has NO recorded blob ops but carries a derived InvocationID.
+	cs := newConnectionSession("k-anchored", 42, time.Unix(0, 0))
+	cs.derivedInvocationID = "derived-abc"
+	cs.markActivity()
+	// Backdate past (perConnIdleThreshold × 3) so the anchoredAndAged branch fires.
+	cs.activityMu.Lock()
+	cs.lastActivityAt = time.Now().Add(-1 * time.Hour)
+	cs.activityMu.Unlock()
+	registry.put(cs)
+
+	// Control: another anchored connection whose last activity is fresh — must skip.
+	fresh := newConnectionSession("k-fresh-anchored", 43, time.Unix(0, 0))
+	fresh.derivedInvocationID = "derived-fresh"
+	fresh.markActivity()
+	registry.put(fresh)
+
+	// Control: aged but no derived ID — must skip (empty-stat guard holds).
+	unanchored := newConnectionSession("k-unanchored", 44, time.Unix(0, 0))
+	unanchored.markActivity()
+	unanchored.activityMu.Lock()
+	unanchored.lastActivityAt = time.Now().Add(-1 * time.Hour)
+	unanchored.activityMu.Unlock()
+	registry.put(unanchored)
+
+	h.flushIdle(time.Now(), perConnIdleThreshold)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the aged + derived-ID connection must flush")
 }
