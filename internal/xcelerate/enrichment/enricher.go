@@ -182,9 +182,8 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	e.attachXcresultSummary(manifestPath, group, inv)
 
 	// Phase 0 enrichment hook. Symmetric with the wrapper site in
-	// cmd/xcode/xcodebuild.go. DerivedData / window are provisional on the
-	// IDE path until PR 594 lands the canonical plumbing. Branch root today:
-	// fix/aci-5623-manifest-sidecar-convergence.
+	// cmd/xcode/xcodebuild.go. DerivedData / window are provisional until
+	// the canonical plumbing lands — swap once PR 594 ships.
 	if e.EnrichmentHook != nil {
 		e.EnrichmentHook(context.Background(), manifestPath, group, e.Metadata.HostMetadata, e.Metadata.BenchmarkPhase, inv)
 	}
