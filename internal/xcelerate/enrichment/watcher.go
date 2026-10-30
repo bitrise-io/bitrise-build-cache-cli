@@ -324,7 +324,7 @@ func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, recentEmi
 
 	for id, rec := range recentEmissions {
 		g := rec.group
-		if !overlaps(sidecarStart, sidecarStop, g.Start(), g.Stop()) {
+		if !overlapsClosed(sidecarStart, sidecarStop, g.Start(), g.Stop()) {
 			continue
 		}
 
