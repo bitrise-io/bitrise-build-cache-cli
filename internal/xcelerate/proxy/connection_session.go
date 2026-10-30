@@ -15,8 +15,13 @@ import (
 // perConnIdleThreshold is the per-connection inactivity window after which an
 // intermediate sidecar is flushed. The wrapper's own inactivity timer sits on
 // top of SetSession; this one runs independently and covers the IDE plugin
-// case where ConnEnd only fires when Xcode fully quits.
+// case where ConnEnd only fires when Xcode fully quits. Under the manifest-
+// anchored InvocationID scheme the sidecar no longer dictates identity, so
+// the 15s window is enough to keep intermediate flushes rare on a quiet IDE.
 const perConnIdleThreshold = 15 * time.Second
+
+// derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush path so quiet derived-ID connections surface on disk.
+const derivedIDFlushMultiplier = 3
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
 // Per-conn accounting runs additively alongside the global p.sessionState,
@@ -346,11 +351,10 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 			continue
 		}
 
-		// Skip-empty check runs BEFORE the swap so a connection that only
-		// saw hadActivity-flipping health traffic (markActivity set, no op
-		// recorded yet) keeps its counters across the next tick instead of
-		// draining to an empty intermediate.
-		if cs.state.Load().getStats().blobStats.IsEmpty() {
+		hasActivity := !cs.state.Load().getStats().blobStats.IsEmpty()
+		anchoredAndAged := cs.derivedInvocationID != "" &&
+			!cs.hadActivityWithin(threshold*derivedIDFlushMultiplier, now)
+		if !hasActivity && !anchoredAndAged {
 			continue
 		}
 
