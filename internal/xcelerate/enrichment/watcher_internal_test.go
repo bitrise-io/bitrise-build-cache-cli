@@ -547,6 +547,8 @@ func (s *sidecarReaderStub) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []s
 	return nil, nil, "", false
 }
 
+func (s *sidecarReaderStub) Has(ManifestEntryGroup) bool { return false }
+
 func (s *sidecarReaderStub) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]SidecarGroup {
 	return nil
 }
@@ -993,6 +995,8 @@ func (s *stubReader) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, 
 	return nil, nil, "", false
 }
 
+func (s *stubReader) Has(ManifestEntryGroup) bool { return false }
+
 func (s *stubReader) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {
 	s.calls = append(s.calls, stubReaderCall{now: now, minAge: minAge})
 
@@ -1265,6 +1269,8 @@ func (s *stagedReader) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string
 	return nil, nil, "", false
 }
 
+func (s *stagedReader) Has(ManifestEntryGroup) bool { return false }
+
 func (s *stagedReader) OrphanSidecarsGroupedByInvocation(time.Time, time.Duration) map[string]SidecarGroup {
 	idx := s.calls
 	if idx >= len(s.stages) {
@@ -1299,4 +1305,162 @@ func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	w.ScanOnce()
 
 	assert.Equal(t, before, handled, "subsequent ScanOnce must not re-emit already-seen uuids")
+}
+
+// hasControllingStub is a SidecarReader whose Has response is driven by a
+// per-scan atomic — tests flip the flag between scans to simulate a sidecar
+// materialising mid-retry-bucket.
+type hasControllingStub struct {
+	hasFn func() bool
+}
+
+func (s *hasControllingStub) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+	return nil, nil, "", false
+}
+
+func (s *hasControllingStub) Has(ManifestEntryGroup) bool {
+	if s.hasFn == nil {
+		return false
+	}
+
+	return s.hasFn()
+}
+
+func (s *hasControllingStub) OrphanSidecarsGroupedByInvocation(time.Time, time.Duration) map[string]SidecarGroup {
+	return nil
+}
+
+func (s *hasControllingStub) PendingDerivedDataPaths() []string { return nil }
+func (s *hasControllingStub) PendingCount() int                 { return 0 }
+
+// TestWatcher_RetryBucket_FiresEarlyWhenSidecarArrives pins the convergence
+// contract: a group buckets for retry on tick 1 (no sidecar yet, MatchProbe
+// unmatched). Between ticks a sidecar flushes to disk. On the next scan tick
+// Has returns true, and the retry-bucket resolves early via SidecarReader.Has
+// — before MaxCorrelationRetries exhausts and the orphan mint fires.
+func TestWatcher_RetryBucket_FiresEarlyWhenSidecarArrives(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	var sidecarPresent bool
+	reader := &hasControllingStub{hasFn: func() bool { return sidecarPresent }}
+
+	var handled []string
+	w := &Watcher{
+		Now:           func() time.Time { return fixtureNow },
+		HomeDir:       home,
+		SidecarReader: reader,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			if groupContainsUUID(g, uuid) {
+				handled = append(handled, uuid)
+			}
+		},
+		// Pending-record probe never matches — only the sidecar signal can resolve.
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	// Tick 1 — manifest fresh, no sidecar yet. Buckets for retry.
+	w.scan(false, false)
+	assert.Empty(t, handled, "first scan buckets the group (no sidecar yet)")
+	assert.NotEmpty(t, w.retries, "retry bucket must contain the held group")
+
+	// Tick 2 — still no sidecar. Decrements.
+	w.scan(false, false)
+	assert.Empty(t, handled, "second scan still held")
+
+	// Sidecar materialises on disk between ticks 2 and 3.
+	sidecarPresent = true
+
+	// Tick 3 — Has returns true; retry bucket must resolve this tick, well
+	// before MaxCorrelationRetries exhausts.
+	w.scan(false, false)
+	assert.Equal(t, []string{uuid}, handled,
+		"sidecar presence must resolve the retry bucket on the first tick after it lands")
+	assert.Contains(t, w.seen, uuid)
+}
+
+// TestWatcher_FirstPass_FiresWhenSidecarAlreadyPresent pins the fast path:
+// sidecar is on disk BEFORE the manifest surfaces, so the first-pass
+// canCorrelate call succeeds and the group fires without ever opening the
+// retry bucket.
+func TestWatcher_FirstPass_FiresWhenSidecarAlreadyPresent(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	// Sidecar sits on disk already — Has returns true on the first probe.
+	reader := &hasControllingStub{hasFn: func() bool { return true }}
+
+	var handled []string
+	w := &Watcher{
+		Now:                   func() time.Time { return fixtureNow },
+		HomeDir:               home,
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 6,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			if groupContainsUUID(g, uuid) {
+				handled = append(handled, uuid)
+			}
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	assert.Equal(t, []string{uuid}, handled, "first-pass must fire immediately when sidecar is already present")
+	assert.Empty(t, w.retries, "no retry bucket when first-pass canCorrelate succeeds")
+	assert.Contains(t, w.seen, uuid)
+}
+
+func TestCanCorrelate_BothWiredBothFalse(t *testing.T) {
+	w := &Watcher{
+		MatchProbe:    func(ManifestEntryGroup) bool { return false },
+		SidecarReader: &hasControllingStub{hasFn: func() bool { return false }},
+	}
+
+	assert.False(t, w.canCorrelate(ManifestEntryGroup{}))
+}
+
+// TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil guards against
+// hasCorrelationSignal() regressing the wrapper flow when MatchProbe alone owns the row.
+func TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	var probeMatches bool
+
+	var handled []string
+	w := &Watcher{
+		Now:                   func() time.Time { return fixtureNow },
+		HomeDir:               home,
+		SidecarReader:         nil,
+		MatchProbe:            func(ManifestEntryGroup) bool { return probeMatches },
+		MaxCorrelationRetries: 6,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			if groupContainsUUID(g, uuid) {
+				handled = append(handled, uuid)
+			}
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	// Tick 1 — probe unmatched. Retry bucket opens on MatchProbe signal (nil SidecarReader
+	// must not block hasCorrelationSignal).
+	w.scan(false, false)
+	assert.Empty(t, handled, "first scan buckets the group (probe not matched yet)")
+	require.NotEmpty(t, w.retries, "retry bucket must open on MatchProbe signal even with nil SidecarReader")
+
+	// Tick 2 — probe matches. Retry bucket resolves via MatchProbe alone.
+	probeMatches = true
+	w.scan(false, false)
+	assert.Equal(t, []string{uuid}, handled, "MatchProbe must resolve retry bucket when SidecarReader is nil")
+	assert.Contains(t, w.seen, uuid)
 }

@@ -36,6 +36,12 @@ var acceptedAncestors = map[string]struct{}{
 type SidecarReader interface {
 	Lookup(group ManifestEntryGroup) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
 
+	// Has returns true when a sidecar overlapping the group's time window exists
+	// on disk with a non-empty WrapperSession.InvocationID. Side-effect free —
+	// used by the watcher's retry bucket to short-circuit orphan-mint without
+	// consuming sidecar paths.
+	Has(group ManifestEntryGroup) bool
+
 	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
 	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
 	// Ignores manifest correlation entirely — the result is "orphan-eligible":
@@ -75,6 +81,14 @@ type sidecarIndex struct {
 // per Lookup; no caching.
 func NewSidecarIndex(dir string, logger log.Logger) SidecarReader {
 	return &sidecarIndex{dir: dir, logger: logger}
+}
+
+func invocationIDOf(s sessions.Sidecar) string {
+	if s.WrapperSession == nil {
+		return ""
+	}
+
+	return s.WrapperSession.InvocationID
 }
 
 func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
@@ -118,16 +132,18 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 			continue
 		}
 
+		// Prefer-stats-bearing: stats-winner InvocationID always wins; nil-BlobStats first-seen is the fallback.
+		sidecarInvocation := invocationIDOf(s)
+
 		if blob := s.BlobStats; blob != nil {
 			total := blob.Download.OpCount + blob.Download.MissCount + blob.Upload.OpCount
 			if best == nil || total > bestBlobTotal {
 				best = blob
 				bestBlobTotal = total
-				bestInvocation = ""
-				if s.WrapperSession != nil {
-					bestInvocation = s.WrapperSession.InvocationID
-				}
+				bestInvocation = sidecarInvocation
 			}
+		} else if best == nil && bestInvocation == "" && sidecarInvocation != "" {
+			bestInvocation = sidecarInvocation
 		}
 
 		consumedPaths = append(consumedPaths, path)
@@ -138,6 +154,50 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 	}
 
 	return best, consumedPaths, bestInvocation, true
+}
+
+// Has walks i.dir once and returns true on the first sidecar whose
+// AcceptedAt/ClosedAt window overlaps the group AND whose
+// WrapperSession.InvocationID is non-empty. No file is unlinked or recorded.
+func (i *sidecarIndex) Has(group ManifestEntryGroup) bool {
+	logger := logOr(i.logger)
+
+	if i.dir == "" {
+		return false
+	}
+
+	entries, err := os.ReadDir(i.dir)
+	if err != nil {
+		logger.Debugf("Sidecar index read %s for Has: %s", i.dir, err)
+
+		return false
+	}
+
+	groupStart := group.Start()
+	groupStop := group.Stop()
+
+	var versionSkipped bool
+	for _, de := range entries {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+			continue
+		}
+
+		path := filepath.Join(i.dir, de.Name())
+		s, ok := loadSidecar(path, logger, &versionSkipped)
+		if !ok {
+			continue
+		}
+		if !overlaps(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
+			continue
+		}
+		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+			continue
+		}
+
+		return true
+	}
+
+	return false
 }
 
 func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {

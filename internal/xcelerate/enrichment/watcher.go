@@ -483,7 +483,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 	key := groupKey(group)
 
-	if synthetic || w.Handle == nil || w.MatchProbe == nil || w.MaxCorrelationRetries == 0 {
+	if synthetic || w.Handle == nil || w.MaxCorrelationRetries == 0 || !w.hasCorrelationSignal() {
 		if w.Handle != nil {
 			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
 			w.Handle(manifestPath, group)
@@ -495,7 +495,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 	if _, pending := w.retries[key]; pending {
 		switch {
-		case w.MatchProbe(group):
+		case w.canCorrelate(group):
 			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
 			w.Handle(manifestPath, group)
 			w.markGroupHandled(group)
@@ -513,7 +513,10 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 		return
 	}
 
-	if w.MatchProbe(group) {
+	// First-pass also consults the sidecar reader so a fast-flushing sidecar
+	// (IDE flow: manifest lands, sidecar flushed on next idle beat) can
+	// short-circuit the retry setup entirely.
+	if w.canCorrelate(group) {
 		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
 		w.Handle(manifestPath, group)
 		w.markGroupHandled(group)
@@ -523,6 +526,25 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 	w.retries[key] = w.MaxCorrelationRetries
 	logger.Debugf("Watcher: unmatched, opening retry bucket scheme=%s attempts_left=%d", group.SchemeName(), w.MaxCorrelationRetries)
+}
+
+// hasCorrelationSignal is true when at least one of {MatchProbe, SidecarReader}
+// could possibly answer "yes" to canCorrelate. Neither wired → the retry bucket
+// has no signal to resolve on, so skip it and fire-and-mark immediately.
+func (w *Watcher) hasCorrelationSignal() bool {
+	return w.MatchProbe != nil || w.SidecarReader != nil
+}
+
+// canCorrelate: pending-record probe matches OR a sidecar overlapping the window is on disk. Side-effect free (Lookup consumes later).
+func (w *Watcher) canCorrelate(group ManifestEntryGroup) bool {
+	if w.MatchProbe != nil && w.MatchProbe(group) {
+		return true
+	}
+	if w.SidecarReader != nil && w.SidecarReader.Has(group) {
+		return true
+	}
+
+	return false
 }
 
 // groupFullySeen returns false the moment a new UUID appears, so late-arriving

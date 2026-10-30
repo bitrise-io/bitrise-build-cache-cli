@@ -172,6 +172,99 @@ func TestSidecarIndex_WrapperLinkInvocationIDSurfaced(t *testing.T) {
 	assert.Equal(t, "deadbeef-1111-4222-8333-444455556666", invocationID, "WrapperLink.InvocationID must be surfaced to callers")
 }
 
+// TestSidecarIndex_Lookup_SurfacesInvocationIDFromNilBlobStatsSidecar pins the
+// ACI-5623 regression: the empty-stat anchored-aged flush writes a sidecar with
+// BlobStats=nil but a populated WrapperSession.InvocationID. Lookup must still
+// surface that InvocationID so the enricher doesn't fall through to a minted
+// orphan UUID.
+func TestSidecarIndex_Lookup_SurfacesInvocationIDFromNilBlobStatsSidecar(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	path := writeSidecar(t, dir, "nil-stats.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"Xcode", "SWBBuildService"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      nil,
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-ide-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)))
+	require.True(t, ok, "overlapping sidecar must be found even when BlobStats is nil")
+	assert.Nil(t, snap, "no stats-bearing sidecar overlapped — snapshot stays nil")
+	assert.Equal(t, []string{path}, paths)
+	assert.Equal(t, "derived-ide-id", invocationID,
+		"InvocationID must surface from a nil-BlobStats sidecar — this is what closes the orphan-mint fallthrough")
+}
+
+// TestSidecarIndex_Lookup_StatsBearingWinsInvocationIDOverNilBlobStats pins the
+// prefer-stats-bearing tie-break: when a stats-bearing sidecar and a
+// nil-BlobStats sidecar both overlap, the stats-winner's InvocationID is
+// returned.
+func TestSidecarIndex_Lookup_StatsBearingWinsInvocationIDOverNilBlobStats(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	writeSidecar(t, dir, "nil-stats.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      nil,
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "nil-id"},
+	})
+	writeSidecar(t, dir, "stats.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(time.Second),
+		ClosedAt:       base.Add(6 * time.Second),
+		BlobStats:      blob(5, 1, 2),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "stats-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)))
+	require.True(t, ok)
+	assert.Len(t, paths, 2, "both overlapping sidecars must be consumed")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(5), snap.Download.OpCount, "stats-bearing sidecar wins the snapshot")
+	assert.Equal(t, "stats-id", invocationID,
+		"stats-winner's InvocationID beats the nil-BlobStats sidecar's InvocationID")
+}
+
+// TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats pins the
+// fallback tie-break: when no sidecar has stats, the first-seen InvocationID
+// wins. Directory iteration order is lexical, so "a.json" lands before
+// "b.json" regardless of filesystem quirks.
+func TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      nil,
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "first-id"},
+	})
+	writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(time.Second),
+		ClosedAt:       base.Add(6 * time.Second),
+		BlobStats:      nil,
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "second-id"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)))
+	require.True(t, ok)
+	assert.Len(t, paths, 2)
+	assert.Nil(t, snap, "no sidecar carried stats")
+	assert.Equal(t, "first-id", invocationID,
+		"first-seen (lexical) nil-BlobStats sidecar's InvocationID wins when nothing has stats")
+}
+
 func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
@@ -447,4 +540,83 @@ func TestSidecarIndex_PendingDerivedDataPaths_DedupedAndSkipsEmpty(t *testing.T)
 func TestSidecarIndex_PendingDerivedDataPaths_EmptyDirReturnsNil(t *testing.T) {
 	idx := enrichment.NewSidecarIndex(t.TempDir(), nil)
 	assert.Empty(t, idx.PendingDerivedDataPaths())
+}
+
+func TestSidecarIndex_Has_ReturnsTrueOnOverlap(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "overlap.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second))),
+		"overlapping sidecar with anchored InvocationID must register as Has=true")
+}
+
+func TestSidecarIndex_Has_ReturnsFalseWhenNoOverlap(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.False(t, idx.Has(groupFor(base.Add(10*time.Second), base.Add(20*time.Second))),
+		"non-overlapping group must register as Has=false")
+}
+
+func TestSidecarIndex_Has_ReturnsFalseWhenInvocationIDBlank(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	// WrapperSession present but InvocationID blank — proxy ancestry gate
+	// failed; sidecar carries no correlatable identity, so Has must say no.
+	writeSidecar(t, dir, "blank.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: ""},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	assert.False(t, idx.Has(groupFor(base, base.Add(5*time.Second))),
+		"sidecar with blank InvocationID must not satisfy Has — nothing to correlate on")
+}
+
+func TestSidecarIndex_Has_DoesNotConsume(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+	path := writeSidecar(t, dir, "pinned.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second))))
+
+	// Call again — same answer, file still on disk, no side effect anywhere.
+	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second))))
+
+	_, err := os.Stat(path)
+	assert.NoError(t, err, "Has must be side-effect free; sidecar file must remain for a later Lookup")
 }
