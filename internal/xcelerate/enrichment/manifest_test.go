@@ -340,3 +340,65 @@ func TestSyntheticManifestGroup_StampsOverrideInvocationID(t *testing.T) {
 
 	assert.Equal(t, "override-id", g.OverrideInvocationID())
 }
+
+// TestManifestEntryGroup_Primary_StableAcrossShuffledInput pins the UUID
+// tie-break on Primary(). LoadManifest iterates the plist's Logs map in
+// random Go-map order; the previous rank+Start tie-break would then return
+// different Primary entries across scans of the same manifest, which breaks
+// the "manifest UUID == BE InvocationID" convergence promise. Lex-UUID
+// tie-break makes the choice deterministic regardless of input order.
+func TestManifestEntryGroup_Primary_StableAcrossShuffledInput(t *testing.T) {
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+
+	// Three entries at identical rank (all build) + identical Start — only UUID
+	// differs. Any Primary() tiebreak that doesn't consult UUID can land on
+	// whichever entry appears first in the slice.
+	entries := []enrichment.ManifestEntry{
+		{UUID: "mmm-middle", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "aaa-first", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "zzz-last", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+	}
+
+	orderings := [][]enrichment.ManifestEntry{
+		{entries[0], entries[1], entries[2]},
+		{entries[1], entries[2], entries[0]},
+		{entries[2], entries[0], entries[1]},
+		{entries[1], entries[0], entries[2]},
+		{entries[2], entries[1], entries[0]},
+		{entries[0], entries[2], entries[1]},
+	}
+
+	var picks []string
+	for _, order := range orderings {
+		g := enrichment.ManifestEntryGroup{Entries: append([]enrichment.ManifestEntry(nil), order...)}
+		picks = append(picks, g.Primary().UUID)
+	}
+
+	for _, p := range picks {
+		assert.Equal(t, "aaa-first", p,
+			"Primary() must pick the lex-smallest UUID at tied rank+Start regardless of input order")
+	}
+}
+
+// TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic ensures the sentinel-
+// prefixed pseudo-group UUID does not accidentally land as a BE InvocationID.
+func TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic(t *testing.T) {
+	start := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(10 * time.Second)
+	g := enrichment.SyntheticManifestGroup("sidecar-xyz", start, stop, "", "", "")
+
+	assert.Empty(t, g.ManifestUUID(),
+		"synthetic pseudo-group UUIDs carry the sentinel prefix; ManifestUUID must return empty so the enricher falls through to override/sidecar")
+}
+
+// TestManifestEntryGroup_ManifestUUID_ReturnsPrimaryForManifestSourced is the
+// happy-path mirror of the synthetic-group check: real manifest-sourced groups
+// expose Primary().UUID as the authoritative BE identity.
+func TestManifestEntryGroup_ManifestUUID_ReturnsPrimaryForManifestSourced(t *testing.T) {
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+	}}
+
+	assert.Equal(t, "u-primary", g.ManifestUUID())
+}

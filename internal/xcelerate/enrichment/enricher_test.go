@@ -3,12 +3,14 @@
 package enrichment_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -66,7 +68,7 @@ func TestEnricher_MatchedPendingSkipsPUTAndPrunesRecord(t *testing.T) {
 	assert.Empty(t, remaining, "matched pending entry must be pruned")
 }
 
-func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
+func TestEnricher_NoMatchPutsUnderManifestUUID(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
 
@@ -82,7 +84,7 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	entry := enrichment.ManifestEntry{
-		UUID:      "orphan",
+		UUID:      "manifest-anchor-uuid",
 		Signature: "Archive MyScheme",
 		Status:    "E",
 		Start:     time.Now(),
@@ -90,7 +92,7 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 	}
 	e.Enrich("", singleEntryGroup(entry))
 
-	assert.NotEmpty(t, captured.InvocationID)
+	assert.Equal(t, "manifest-anchor-uuid", captured.InvocationID, "manifest UUID anchors the BE identity")
 	assert.False(t, captured.Success)
 }
 
@@ -159,6 +161,7 @@ func TestEnricher_MetadataForwarded(t *testing.T) {
 	}
 
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-meta",
 		Signature: "Build S",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
@@ -186,6 +189,7 @@ func TestEnricher_UpdatesHealth_OnSuccess(t *testing.T) {
 	}
 
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-health-ok",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -217,6 +221,7 @@ func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
 	}
 
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-health-fail",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -261,7 +266,7 @@ func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
 	assert.Equal(t, now, loaded[0].FirstAttempt.UTC())
 }
 
-func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
+func TestEnricher_UnmatchedPutsUnderManifestUUID(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -275,12 +280,14 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "manifest-anchor-uuid",
 		Signature: "Archive S",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
 	}))
 
-	assert.NotEmpty(t, captured.InvocationID, "orphan path must mint an ID and PUT")
+	assert.Equal(t, "manifest-anchor-uuid", captured.InvocationID,
+		"unmatched (no pending) path still PUTs — now anchored by the manifest UUID, not a fresh UUID")
 }
 
 func TestEnricher_MatchedSkip_DoesNotTickHealth(t *testing.T) {
@@ -341,6 +348,7 @@ func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
 	}
 
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-unmatched-success",
 		Signature: "Archive S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -369,6 +377,7 @@ func TestEnricher_OrphanDurationIsFromManifest(t *testing.T) {
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-orphan-duration",
 		Signature: "Build S",
 		Status:    "S",
 		Start:     base.Add(1 * time.Second),
@@ -515,6 +524,7 @@ func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-sidecar-blob",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -526,7 +536,7 @@ func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
 	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
 }
 
-func TestEnricher_SidecarInvocationIDWinsOverFreshUUID(t *testing.T) {
+func TestEnricher_ManifestUUIDWinsOverSidecarInvocationID(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -538,21 +548,23 @@ func TestEnricher_SidecarInvocationIDWinsOverFreshUUID(t *testing.T) {
 		},
 	}
 
-	const derivedID = "deadbeef-1111-4222-8333-444455556666"
+	const sidecarID = "deadbeef-1111-4222-8333-444455556666"
 	e := &enrichment.Enricher{
 		Store:         store,
 		Client:        mock,
-		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: derivedID},
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: sidecarID},
 	}
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "manifest-anchor",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Equal(t, derivedID, captured.InvocationID, "sidecar-provided InvocationID must win over the fresh UUID fallback")
+	assert.Equal(t, "manifest-anchor", captured.InvocationID,
+		"manifest UUID is the authoritative BE identity; sidecar InvocationID is a lookup-only fallback")
 }
 
 func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
@@ -571,6 +583,7 @@ func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-no-sidecar",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -599,6 +612,7 @@ func TestEnricher_SidecarDerivesHitRateWhenLogMissing(t *testing.T) {
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-sidecar-hitrate",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -631,6 +645,7 @@ func TestEnricher_SidecarPathsUnlinkedOnSuccessfulPut(t *testing.T) {
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-unlink-success",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -664,6 +679,7 @@ func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-unlink-pending",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -700,24 +716,25 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
 	}
 
-	const derivedID = "deadbeef-1111-4222-8333-444455556666"
 	var emitted []string
 	e := &enrichment.Enricher{
 		Store:         store,
 		Client:        mock,
-		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: derivedID},
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: "sidecar-id"},
 		OnEmit:        func(id string, _ enrichment.ManifestEntryGroup) { emitted = append(emitted, id) },
 	}
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "manifest-anchor",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
 
 	require.Len(t, emitted, 1, "OnEmit must fire exactly once after a successful PUT")
-	assert.Equal(t, derivedID, emitted[0], "OnEmit must receive the InvocationID actually sent to the backend")
+	assert.Equal(t, "manifest-anchor", emitted[0],
+		"OnEmit must receive the InvocationID actually sent — the manifest UUID anchors it, sidecar ID is ignored when manifest UUID is present")
 }
 
 func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
@@ -736,6 +753,7 @@ func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
 
 	now := time.Now()
 	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "u-onemit-fail",
 		Signature: "Build S",
 		Start:     now,
 		Stop:      now.Add(time.Second),
@@ -761,4 +779,162 @@ func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	e.Enrich("", enrichment.ManifestEntryGroup{})
 
 	assert.Zero(t, puts)
+}
+
+// TestEnricher_PutsUnderManifestUUID_WhenManifestPresent pins the primary rung
+// of the ID ladder: manifest UUID beats sidecar InvocationID when both exist.
+func TestEnricher_PutsUnderManifestUUID_WhenManifestPresent(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: "sidecar-id"},
+	}
+
+	now := time.Now()
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "manifest-uuid",
+		Signature: "Build S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	assert.Equal(t, "manifest-uuid", captured.InvocationID)
+}
+
+// TestEnricher_FallsBackToOverride_WhenSyntheticGroup pins rung 2: pseudo-groups
+// synthesized from orphan sidecars carry a sentinel-prefixed UUID that
+// ManifestUUID() returns empty for, so the OverrideInvocationID stamped by
+// SyntheticManifestGroup anchors the PUT.
+func TestEnricher_FallsBackToOverride_WhenSyntheticGroup(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	now := time.Now()
+	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "override-id")
+	e.Enrich("", g)
+
+	assert.Equal(t, "override-id", captured.InvocationID,
+		"synthetic groups fall through ManifestUUID() == '' and land on the override rung")
+}
+
+// TestEnricher_FallsBackToSidecarLookup_WhenNoManifestNoOverride pins rung 3:
+// a synthetic group with no override still gets an identity from the sidecar
+// lookup, so a sidecar-landed-but-no-manifest flow still emits.
+func TestEnricher_FallsBackToSidecarLookup_WhenNoManifestNoOverride(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: "sidecar-id"},
+	}
+
+	now := time.Now()
+	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "")
+	e.Enrich("", g)
+
+	assert.Equal(t, "sidecar-id", captured.InvocationID,
+		"synthetic group + no override + sidecar lookup hit → sidecar InvocationID anchors the PUT")
+}
+
+// TestEnricher_DropsAndWarns_WhenNoIdentitySource covers the retired
+// uuid.NewString() branch — the enricher now drops and warns instead of
+// minting a stray UUID that could never be correlated back.
+func TestEnricher_DropsAndWarns_WhenNoIdentitySource(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	puts := 0
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error {
+			puts++
+
+			return nil
+		},
+	}
+
+	logBuf := &bytes.Buffer{}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Logger: log.NewLogger(log.WithOutput(logBuf)),
+	}
+
+	now := time.Now()
+	// Synthetic group with no override + no sidecar reader → every rung empty.
+	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "")
+	e.Enrich("", g)
+
+	assert.Zero(t, puts, "no identity source must drop the PUT")
+	assert.Contains(t, logBuf.String(), "no InvocationID source",
+		"drop must surface a warn so an operator can diagnose the stall")
+}
+
+// TestEnricher_DeterministicReputs_ProduceSameInvocationID simulates two scans
+// of the same manifest content and verifies the enricher PUTs under the same
+// InvocationID — the convergence promise that lets BE merge re-PUTs on
+// identity.
+func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var ids []string
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			ids = append(ids, inv.InvocationID)
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	// Scan 1: entries in natural order.
+	g1 := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "aaa", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "bbb", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+	}}
+	// Scan 2: shuffled — Go map iteration simulated.
+	g2 := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "bbb", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "aaa", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+	}}
+
+	e.Enrich("", g1)
+	e.Enrich("", g2)
+
+	require.Len(t, ids, 2)
+	assert.Equal(t, ids[0], ids[1],
+		"same manifest content, shuffled input → same BE InvocationID (BE merges re-PUTs on identity)")
+	assert.Equal(t, "aaa", ids[0],
+		"deterministic choice is the lex-smallest UUID at tied rank+Start")
 }

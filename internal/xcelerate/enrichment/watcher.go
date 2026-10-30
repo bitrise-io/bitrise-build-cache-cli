@@ -535,10 +535,14 @@ func (w *Watcher) hasCorrelationSignal() bool {
 	return w.MatchProbe != nil || w.SidecarReader != nil
 }
 
-// canCorrelate reports whether a group can be enriched without orphan-minting:
-// either the pending-record probe matches a wrapper claim, or a sidecar
-// overlapping the group's window is already on disk. The sidecar check is
-// side-effect free — Lookup's consumption still happens later inside Enrich.
+// canCorrelate reports whether a manifest group can be enriched with sidecar
+// stats without needing to mint a stray InvocationID: either the pending-record
+// probe matches a wrapper claim, or a sidecar overlapping the group's window
+// is already on disk. Under the manifest-anchored scheme the group's own
+// ManifestUUID is still used as the BE identity even when no sidecar lands —
+// this probe exists to decide whether to open a retry bucket (wait for sidecar
+// stats) or fire-and-mark immediately. The sidecar check is side-effect free —
+// Lookup's consumption still happens later inside Enrich.
 func (w *Watcher) canCorrelate(group ManifestEntryGroup) bool {
 	if w.MatchProbe != nil && w.MatchProbe(group) {
 		return true

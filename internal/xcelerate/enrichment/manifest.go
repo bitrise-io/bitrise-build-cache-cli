@@ -279,7 +279,13 @@ func commandRank(c Command) int {
 }
 
 // Primary picks the outermost entry by command rank (test > archive > build >
-// clean > unknown). Ties are broken by earliest Start.
+// clean > unknown). Ties are broken by earliest Start, then by lexicographic
+// UUID. The UUID tie-break is load-bearing: LoadManifest iterates the plist
+// map in random Go-map order, and GroupManifestEntries sorts by Start with
+// sort.SliceStable — stable sort does not reorder ties, so two scans with
+// equal-ms Start would otherwise return different Primary entries. Equal
+// UUID is impossible within one manifest (plist keys are unique), so this
+// pins the choice.
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
@@ -290,13 +296,32 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 
 	for _, e := range g.Entries[1:] {
 		r := commandRank(e.Command())
-		if r > bestRank || (r == bestRank && e.Start.Before(best.Start)) {
+		switch {
+		case r > bestRank:
 			best = e
 			bestRank = r
+		case r == bestRank && e.Start.Before(best.Start):
+			best = e
+		case r == bestRank && e.Start.Equal(best.Start) && e.UUID < best.UUID:
+			best = e
 		}
 	}
 
 	return best
+}
+
+// ManifestUUID returns the UUID of the primary entry when the group is backed
+// by a real LogStoreManifest.plist row; empty when the group is a synthetic
+// pseudo-group minted from orphan sidecars (SyntheticManifestGroup). Callers
+// use this as the BE InvocationID identity source: a non-empty value anchors
+// the row across re-PUTs (same manifest content → same ID).
+func (g ManifestEntryGroup) ManifestUUID() string {
+	uuid := g.Primary().UUID
+	if strings.HasPrefix(uuid, SyntheticManifestGroupUUIDPrefix) {
+		return ""
+	}
+
+	return uuid
 }
 
 // Command returns empty when the primary is unknown so the caller skips PUT.

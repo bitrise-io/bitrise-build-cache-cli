@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
@@ -118,12 +117,22 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	invocationID := group.OverrideInvocationID()
+	// Identity ladder: manifest UUID > OverrideInvocationID > sidecar lookup.
+	// Steps 1 and 2 are mutually exclusive by construction (manifest groups
+	// have no override, synthetic groups return "" from ManifestUUID), but
+	// kept separate for readability — do not collapse. If all three return
+	// empty we drop and warn: there is no identity source to PUT under.
+	invocationID := group.ManifestUUID()
+	if invocationID == "" {
+		invocationID = group.OverrideInvocationID()
+	}
 	if invocationID == "" {
 		invocationID = sidecarInvocationID
 	}
 	if invocationID == "" {
-		invocationID = uuid.NewString()
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
+
+		return
 	}
 
 	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
