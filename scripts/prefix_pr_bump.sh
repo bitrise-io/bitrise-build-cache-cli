@@ -9,7 +9,8 @@
 # Required env:
 #   BITRISE_GIT_TAG   — release tag (e.g. "v3.18.0"); the pin holds bare semver.
 #   IPS_BOT_TOKEN     — GH PAT for bitrise-ip-bot on bitrise-io/internal-platform-services: contents:write,
-#                       pull_requests:write, and a bypass actor on the staging and production branch rules.
+#                       pull_requests:write, and admin on the repo: production requires 1 review, which
+#                       admins may bypass (enforce_admins is off), hence `gh pr merge --admin`.
 # Optional env:
 #   IPS_BUMP_BRANCHES — space-separated, default "staging production".
 #   IPS_CHECKS_TIMEOUT — seconds to wait for a PR's checks, default 1500.
@@ -127,7 +128,7 @@ EOF
   done
   timeout "$CHECKS_TIMEOUT" gh pr checks "$branch" --repo "$REPO" --watch --fail-fast --interval 20 \
     || { echo "Checks did not pass for the ${base} bump PR; leaving it open." >&2; exit 1; }
-  gh pr merge "$branch" --repo "$REPO" --squash --delete-branch
+  gh pr merge "$branch" --repo "$REPO" --squash --delete-branch --admin
   popd >/dev/null
   echo "Merged the ${base} prefix bump PR for ${tag_v}."
 }

@@ -128,7 +128,7 @@ The `release-and-verify` pipeline chains a `bump-prebooting` workflow after `ver
 The `release-and-verify` pipeline also chains `bump-prefix` after `verify-release`, in parallel with `bump-prebooting`. `scripts/prefix_pr_bump.sh` opens a PR in `bitrise-io/internal-platform-services` bumping the three pinned lines (`BITRISE_BUILD_CACHE_CLI_VERSION` and the linux_amd64 / darwin_arm64 sha256) in `systems/instance-management/nomad_startup_script_prefix_build_cache.sh`, first against `staging`, then against `production`. Each PR is merged as `bitrise-ip-bot` once its checks pass; Terraform applies the ConfigMap on merge and Reloader rolls the instance-manager pods.
 
 - **Confirm both PRs MERGED.** A branch where the pin file does not exist yet is skipped with a message, and a branch already at the tag is skipped; a failing check leaves the PR open and the workflow red (Slack alert). Retry the workflow after fixing, no need to re-cut the tag.
-- Needs the `IPS_BOT_TOKEN` secret (PAT for the `bitrise-ip-bot` user on internal-platform-services; the bot must be a bypass actor on the `staging` and `production` branch rules).
+- Needs the `IPS_BOT_TOKEN` secret (PAT for the `bitrise-ip-bot` user on internal-platform-services; the bot is a repo admin; `production` requires 1 review that admins may bypass, so the script merges with `--admin`).
 
 ### 7. Wait for step auto-update PRs
 

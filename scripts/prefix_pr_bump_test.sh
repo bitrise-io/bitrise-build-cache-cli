@@ -44,7 +44,7 @@ show() { git --git-dir="$T/remote.git" show "$1:$PIN"; }
 echo "== bump staging then production"
 out="$(run)"; 
 check "PRs created for both bases in order" "[ \"\$(grep -c '^gh pr create' $T/gh.log)\" = 2 ] && grep '^gh pr create' $T/gh.log | head -1 | grep -q -- '--base staging' && grep '^gh pr create' $T/gh.log | tail -1 | grep -q -- '--base production'"
-check "both PRs merged after checks" "[ \"\$(grep -c '^gh pr merge' $T/gh.log)\" = 2 ] && grep -q 'pr checks .*--watch' $T/gh.log"
+check "both PRs merged with --admin after checks" "[ \"\$(grep -c '^gh pr merge.*--admin' $T/gh.log)\" = 2 ] && grep -q 'pr checks .*--watch' $T/gh.log"
 check "pushed branches carry the bump" "for b in chore/bump-bitrise-build-cache-cli-9.9.9-staging chore/bump-bitrise-build-cache-cli-9.9.9-production; do git --git-dir=$T/remote.git show \$b:$PIN | grep -q 'CLI_VERSION=\"9.9.9\"' && git --git-dir=$T/remote.git show \$b:$PIN | grep -q 'LINUX_AMD64_SHASUM=\"aaaa1111\"' && git --git-dir=$T/remote.git show \$b:$PIN | grep -q 'DARWIN_ARM64_SHASUM=\"bbbb2222\"' || exit 1; done"
 check "only the three pinned lines changed" "[ \"\$(git --git-dir=$T/remote.git diff --numstat staging chore/bump-bitrise-build-cache-cli-9.9.9-staging)\" = \"\$(printf '3\t3\t%s' $PIN)\" ]"
 
