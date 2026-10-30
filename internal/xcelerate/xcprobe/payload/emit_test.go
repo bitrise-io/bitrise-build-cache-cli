@@ -88,3 +88,52 @@ func TestAttachToInvocation_nilInvocation_errors(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil invocation")
 }
+
+// TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize documents the
+// current contract from AttachToInvocation's docstring: at most one sub-row
+// is dropped, and the attach step then succeeds even if the remainder is
+// still over SoftCapBytes. The payload is "at-cap-or-over" after retry.
+func TestAttachToInvocation_twoLargeSubRows_neverFailsOnSize(t *testing.T) {
+	inv := &analytics.Invocation{}
+
+	bigBuckets := map[string]BuildTimingBucket{}
+	for i := 0; i < 1500; i++ {
+		key := fmt.Sprintf("task-type-%s-%06d", strings.Repeat("x", 30), i)
+		bigBuckets[key] = BuildTimingBucket{Count: i, TotalSeconds: float64(i)}
+	}
+
+	// Host is forced "large" via a long thermalPressure value so the
+	// post-drop payload still exceeds SoftCapBytes after buildTimings is
+	// evicted.
+	bigHost := &host.Snapshot{
+		HostMetadata:    configcommon.HostMetadata{OS: "Darwin"},
+		ThermalPressure: strings.Repeat("y", SoftCapBytes+1024),
+	}
+
+	p := EnrichmentPayload{
+		SchemaVersion: EnrichmentPayloadSchemaVersion,
+		Host:          bigHost,
+		BuildTimings:  &BuildTimingHistogram{Buckets: bigBuckets},
+	}
+
+	require.NoError(t, AttachToInvocation(inv, p), "attach must never fail solely on size")
+	require.NotEmpty(t, inv.Enrichment, "payload must land on inv.Enrichment even when still over cap")
+
+	var round EnrichmentPayload
+	require.NoError(t, json.Unmarshal(inv.Enrichment, &round))
+
+	// One sub-row (the larger) is dropped; the other survives even though it
+	// alone exceeds the soft cap.
+	droppedCount := 0
+	if round.Host == nil {
+		droppedCount++
+	}
+	if round.BuildTimings == nil {
+		droppedCount++
+	}
+	assert.Equal(t, 1, droppedCount, "exactly one sub-row must be dropped per the single-pass contract")
+
+	assert.Greater(t, len(inv.Enrichment), SoftCapBytes,
+		"the surviving sub-row alone exceeds the soft cap; attach still succeeds")
+	require.NotNil(t, round.CollectorErrors)
+}
