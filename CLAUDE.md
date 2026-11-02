@@ -207,21 +207,9 @@ The R2 bucket is the **origin** for the preboot host-VM cache proxy, served on e
 
 Idempotency follows the same describe-or-upload rule (`aws s3api head-object` skip-if-present). R2's S3 API rejects AWS CLI v2's default flexible checksums, so the upload script forces `AWS_REQUEST_CHECKSUM_CALCULATION=when_required` / `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`.
 
-### Automated preboot startup-script bump
-
-The `bump-prebooting` workflow (chained after `verify-release` in the `release-and-verify` pipeline) opens an auto-merging PR against `bitrise-io/build-prebooting-deployments`, bumping `BITRISE_BUILD_CACHE_CLI_VERSION` and the per-arch sha256 in both startup-script extensions (`preboot-reconciler/startup_script_extension_{linux,macos}_bitvirt.sh`). Only `linux_amd64` and `darwin_arm64` are bumped — those are the only preboot VM architectures.
-
-Script: `scripts/prebooting_pr_bump.sh`. After pushing the branch, the script explicitly merges the PR with `gh pr merge --squash --delete-branch`. The Bitrise Infrabot is a bypass actor on the `production` rule, so the explicit merge clears required-review gates at merge time. GitHub's `--auto` merge mode is intentionally NOT used — auto-merge is a background process that does not honour bypass actors and would block on any required reviewer.
-
-The deployments repo has **no CI on PRs** (no GitHub Actions workflows; the Bitrise GitHub app's check-suites stay `queued` forever with zero check-runs). Any `gh pr checks --watch` would either block on phantom queued suites or exit non-zero on "no checks reported", so the script does not wait for CI. Bypass-merge is the only gate.
-
-After sed-bumping the constants, the script asserts the working tree shows **exactly** `+2/-2` per startup script and no other files modified — defensive check against a loose regex matching unintended lines.
-
-Required Bitrise secret: `PREBOOTING_BOT_TOKEN` (GH PAT for `Bitrise Infrabot`, scoped to `bitrise-io/build-prebooting-deployments`: `contents:write` + `pull_requests:write`). Slack-alerts on failure; safe to retry the workflow without re-cutting the tag.
-
 ### Automated VM startup-prefix bump
 
-The `bump-prefix` workflow (also chained after `verify-release`, parallel to `bump-prebooting`) opens PRs against `bitrise-io/internal-platform-services` bumping the pinned `BITRISE_BUILD_CACHE_CLI_VERSION` and the linux_amd64 / darwin_arm64 sha256 in `systems/instance-management/nomad_startup_script_prefix_build_cache.sh`. That file is the CLI section of the instance-manager startup prefix (ConfigMap key `prefix-build-cache.sh`, mounted by the Build Hub pool-controller).
+The `bump-prefix` workflow (chained after `verify-release` in the `release-and-verify` pipeline) opens PRs against `bitrise-io/internal-platform-services` bumping the pinned `BITRISE_BUILD_CACHE_CLI_VERSION` and the linux_amd64 / darwin_arm64 sha256 in `systems/instance-management/nomad_startup_script_prefix_build_cache.sh`. That file is the CLI section of the instance-manager startup prefix (ConfigMap key `prefix-build-cache.sh`, mounted by the pool-controller, internal-api and api).
 
 Script: `scripts/prefix_pr_bump.sh`. It bumps `staging` first, then `production`: one PR per branch, merged as `bitrise-ip-bot` once the PR's checks pass (unlike the deployments repo, internal-platform-services has CI on PRs, so the script waits for it). It asserts the diff is exactly `+3/-3` on the pin file, skips a branch where the file does not exist yet or is already at the tag, and leaves the PR open if checks fail. Terraform applies the ConfigMap on merge and Reloader rolls the instance-manager pods; VMs already booted keep their version.
 
