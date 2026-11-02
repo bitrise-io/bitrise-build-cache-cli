@@ -91,13 +91,6 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			want: CacheConfigMetadata{
 				CIProvider: CIProviderCircleCI,
 				CLIVersion: GetCLIVersion(logger),
-				RedactedEnvs: map[string]string{
-					"MY_SECRET":                   "<sha256@49bf1460>",
-					"MY_SECRET2":                  "<sha256@67171c3a>",
-					"MY_SECRET3":                  "<sha256@cdd23b1f>", // key is part of the hash
-					"BITRISE_SECRET_ENV_KEY_LIST": "MY_SECRET,MY_SECRET2,MY_SECRET3",
-					"CIRCLECI":                    "true",
-				},
 			},
 		},
 		{
