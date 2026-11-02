@@ -128,16 +128,18 @@ Breaks only if Apple renames `XcodeDefault.xctoolchain`, drops the
 over the lifetime of this feature; adjust in `internal/config/xcelerate/toolchain.go`
 and `internal/xcode_app/toolchain.go` if they ever change.
 
-### SPM caveat
+### SPM targets
 
-**IDE remote-CAS coverage is partial.** `xcode link` propagates the override to
-Xcode-native targets but **not** to Swift Package Manager package targets: their
-build settings resolve in a scope that does not pick up a sibling xcconfig or a
-`baseConfigurationReference` from the pbxproj. SPM package targets in an IDE build
-hit only the local compilation cache.
+The sibling xcconfig + `baseConfigurationReference` alone do not reach Swift
+Package Manager package targets — those build settings resolve in a scope that
+does not pick up a project-level xcconfig include. The toolchain bundle's
+`OverrideBuildSettings` carries the CAS keys instead, so when `activate xcode`
+installs the toolchain AND `xcode link` sets `TOOLCHAINS = com.bitrise.toolchain`
+in the sibling xcconfig, SPM targets engage remote CAS the same as native
+targets.
 
-For CI-style `xcodebuild` invocations there is no gap — command-line `KEY=VAL`
-overrides reach SPM package scope, and the wrapper adds them automatically.
+If toolchain install fails or is skipped (non-darwin, link not run), SPM targets
+in an IDE build fall back to the local compilation cache.
 
 ### Verifying
 
@@ -173,8 +175,9 @@ bitrise-build-cache deactivate xcode                 # removes override xcconfig
 
 `unlink` strips the marker block from every xcconfig `link` touched and removes a
 sibling file whose only remaining content was the marker. `baseConfigurationReference`
-set by `link` is left in place — pbxproj offers no way to tell "user had it" from
-"we set it".
+entries pointing to the sibling xcconfig are removed; pre-existing ones pointing to
+non-sibling xcconfigs are left in place — pbxproj offers no way to tell "user had it"
+from "we set it".
 
 ### Troubleshooting
 
@@ -183,6 +186,8 @@ set by `link` is left in place — pbxproj offers no way to tell "user had it" f
 - **Proxy not running** — `activate xcode` does not start it. Run
   `bitrise-build-cache xcelerate start-proxy`.
 - **Metrics report 0 hits / 0 cacheable tasks** — settings didn't reach the target
-  scope. For SPM package targets this is expected (see caveat). For Xcode-native
-  targets, re-run `xcode link <path>` and confirm the sibling or base xcconfig
-  contains the marker-fenced `#include?` line.
+  scope. For Xcode-native targets, re-run `xcode link <path>` and confirm the
+  sibling or base xcconfig contains the marker-fenced `#include?` line. For SPM
+  package targets, confirm the toolchain bundle installed (see "SPM targets") —
+  re-run `activate xcode` and check that `TOOLCHAINS = com.bitrise.toolchain`
+  appears in the sibling xcconfig.
