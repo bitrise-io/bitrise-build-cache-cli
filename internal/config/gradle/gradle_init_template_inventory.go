@@ -11,7 +11,6 @@ var (
 
 type CacheTemplateInventory struct {
 	Usage               UsageLevel
-	Version             string
 	EndpointURLWithPort string
 	IsPushEnabled       bool
 	ValidationLevel     string
@@ -19,7 +18,6 @@ type CacheTemplateInventory struct {
 
 type AnalyticsTemplateInventory struct {
 	Usage        UsageLevel
-	Version      string
 	Endpoint     string
 	Port         int
 	HTTPEndpoint string
@@ -28,7 +26,6 @@ type AnalyticsTemplateInventory struct {
 
 type TestDistroTemplateInventory struct {
 	Usage           UsageLevel
-	Version         string
 	Endpoint        string
 	KvEndpoint      string
 	Port            int
@@ -43,7 +40,6 @@ type PluginCommonTemplateInventory struct {
 	Debug      bool
 	AppSlug    string
 	CIProvider string
-	Version    string
 
 	CLIPath string
 

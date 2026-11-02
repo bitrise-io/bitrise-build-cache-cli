@@ -56,12 +56,20 @@ func Activate(
 
 			return string(output), err
 		}, utils.DefaultOsProxy{}, logger)
+
+	exporter := envexport.New(envProvider, logger)
+
+	// CI gate removed — plugin version env vars must be set in local-dev too, otherwise the init
+	// script hits error(...).
+	exportVersionEnv(exporter, logger)
+
 	if configcommon.IsCI(envProvider, utils.DefaultOsProxy{}) {
-		exporter := envexport.New(envProvider, logger)
+		//nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+		exporter.ExportCLIPath()
+
 		if metadata.CIProvider != "" {
 			ApplyBenchmarkPhase(&params, logger, benchmarkClient, metadata, exporter)
 		}
-		exporter.ExportCLIPath() //nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
 	}
 
 	templateInventory, err := templateInventoryProvider(ctx, logger, envProvider, debugLogging, benchmarkClient, utils.DefaultOsProxy{})
@@ -78,4 +86,15 @@ func Activate(
 	}
 
 	return nil
+}
+
+//nolint:contextcheck // envman export is fire-and-forget, EnvExporter takes no context
+func exportVersionEnv(exporter *envexport.EnvExporter, logger log.Logger) {
+	exporter.ExportCLIVersion(configcommon.GetCLIVersion(logger))
+	exporter.ExportGradlePluginVersions(
+		consts.GradleCommonPluginDepVersion,
+		consts.GradleAnalyticsPluginDepVersion,
+		consts.GradleRemoteBuildCachePluginDepVersion,
+		consts.GradleTestDistributionPluginDepVersion,
+	)
 }

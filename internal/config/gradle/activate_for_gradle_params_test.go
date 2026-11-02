@@ -83,7 +83,6 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
@@ -121,21 +120,17 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
-					Usage:   UsageLevelDependency,
-					Version: consts.GradleRemoteBuildCachePluginDepVersion,
+					Usage: UsageLevelDependency,
 				},
 				Analytics: AnalyticsTemplateInventory{
-					Usage:   UsageLevelDependency,
-					Version: consts.GradleAnalyticsPluginDepVersion,
+					Usage: UsageLevelDependency,
 				},
 				TestDistro: TestDistroTemplateInventory{
-					Usage:   UsageLevelDependency,
-					Version: consts.GradleTestDistributionPluginDepVersion,
+					Usage: UsageLevelDependency,
 				},
 			},
 		},
@@ -163,13 +158,11 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
-					Version:             consts.GradleRemoteBuildCachePluginDepVersion,
 					EndpointURLWithPort: "EndpointValue",
 					IsPushEnabled:       true,
 					ValidationLevel:     string(CacheValidationLevelError),
@@ -205,13 +198,11 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
-					Version:             consts.GradleRemoteBuildCachePluginDepVersion,
 					EndpointURLWithPort: "EndpointValue",
 					IsPushEnabled:       true,
 					ValidationLevel:     string(CacheValidationLevelWarning),
@@ -267,7 +258,6 @@ func Test_activateGradleParams(t *testing.T) {
 			want: TemplateInventory{
 				Common: PluginCommonTemplateInventory{
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
@@ -276,7 +266,6 @@ func Test_activateGradleParams(t *testing.T) {
 				},
 				Analytics: AnalyticsTemplateInventory{
 					Usage:        UsageLevelEnabled,
-					Version:      consts.GradleAnalyticsPluginDepVersion,
 					Endpoint:     consts.GradleAnalyticsEndpoint,
 					Port:         consts.GradleAnalyticsPort,
 					HTTPEndpoint: consts.GradleAnalyticsHTTPEndpoint,
@@ -315,7 +304,6 @@ func Test_activateGradleParams(t *testing.T) {
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
 					AppSlug:     "AppSlugValue",
 					CIProvider:  "bitrise",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
@@ -327,7 +315,6 @@ func Test_activateGradleParams(t *testing.T) {
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage:      UsageLevelEnabled,
-					Version:    consts.GradleTestDistributionPluginDepVersion,
 					Endpoint:   consts.GradleTestDistributionEndpoint,
 					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 					Port:       consts.GradleTestDistributionPort,
@@ -397,7 +384,6 @@ func Test_activateGradleParams(t *testing.T) {
 					AuthToken:   "WorkspaceIDValue:AuthTokenValue",
 					AppSlug:     "AppSlugValue",
 					CIProvider:  "bitrise",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
@@ -409,7 +395,6 @@ func Test_activateGradleParams(t *testing.T) {
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage:      UsageLevelEnabled,
-					Version:    consts.GradleTestDistributionPluginDepVersion,
 					Endpoint:   consts.GradleTestDistributionEndpoint,
 					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 					Port:       consts.GradleTestDistributionPort,
@@ -448,7 +433,6 @@ func Test_activateGradleParams(t *testing.T) {
 					Debug:       true,
 					AppSlug:     "AppSlugValue",
 					CIProvider:  "bitrise",
-					Version:     consts.GradleCommonPluginDepVersion,
 					CLIPath:     "bitrise-build-cache",
 					ProjectMode: "always",
 				},
@@ -460,7 +444,6 @@ func Test_activateGradleParams(t *testing.T) {
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage:      UsageLevelEnabled,
-					Version:    consts.GradleTestDistributionPluginDepVersion,
 					Endpoint:   consts.GradleTestDistributionEndpoint,
 					KvEndpoint: consts.GradleTestDistributionKvEndpoint,
 					Port:       consts.GradleTestDistributionPort,

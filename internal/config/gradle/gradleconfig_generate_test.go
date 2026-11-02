@@ -22,7 +22,6 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
-					Version:    "CommonVersionValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage: UsageLevelNone,
@@ -45,19 +44,15 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
-					Version:    "CommonVersionValue",
 				},
 				Cache: CacheTemplateInventory{
-					Usage:   UsageLevelDependency,
-					Version: "CacheVersionValue",
+					Usage: UsageLevelDependency,
 				},
 				Analytics: AnalyticsTemplateInventory{
-					Usage:   UsageLevelDependency,
-					Version: "AnalyticsVersionValue",
+					Usage: UsageLevelDependency,
 				},
 				TestDistro: TestDistroTemplateInventory{
-					Usage:   UsageLevelDependency,
-					Version: "TestDistroVersionValue",
+					Usage: UsageLevelDependency,
 				},
 			},
 			want:    expectedDepOnlyPlugins,
@@ -71,19 +66,16 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "CIProviderValue",
-					Version:    "CommonVersionValue",
 					CLIPath:    "CLIPathValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
-					Version:             "CacheVersionValue",
 					EndpointURLWithPort: "CacheEndpointURLValue",
 					IsPushEnabled:       true,
 					ValidationLevel:     "ValidationLevelValue",
 				},
 				Analytics: AnalyticsTemplateInventory{
 					Usage:        UsageLevelEnabled,
-					Version:      "AnalyticsVersionValue",
 					Endpoint:     "AnalyticsEndpointURLValue",
 					Port:         123,
 					HTTPEndpoint: "AnalyticsHttpEndpointValue",
@@ -91,7 +83,6 @@ func Test_GenerateInitGradle(t *testing.T) {
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage:           UsageLevelEnabled,
-					Version:         "TestDistroVersionValue",
 					Endpoint:        "TestDistroEndpointValue",
 					KvEndpoint:      "TestDistroKvEndpointValue",
 					Port:            321,
@@ -112,19 +103,16 @@ func Test_GenerateInitGradle(t *testing.T) {
 					Debug:      true,
 					AppSlug:    "AppSlugValue",
 					CIProvider: "",
-					Version:    "CommonVersionValue",
 					CLIPath:    "CLIPathValue",
 				},
 				Cache: CacheTemplateInventory{
 					Usage:               UsageLevelEnabled,
-					Version:             "CacheVersionValue",
 					EndpointURLWithPort: "CacheEndpointURLValue",
 					IsPushEnabled:       true,
 					ValidationLevel:     "ValidationLevelValue",
 				},
 				Analytics: AnalyticsTemplateInventory{
 					Usage:        UsageLevelEnabled,
-					Version:      "AnalyticsVersionValue",
 					Endpoint:     "AnalyticsEndpointURLValue",
 					Port:         123,
 					HTTPEndpoint: "AnalyticsHttpEndpointValue",
@@ -132,7 +120,6 @@ func Test_GenerateInitGradle(t *testing.T) {
 				},
 				TestDistro: TestDistroTemplateInventory{
 					Usage:           UsageLevelEnabled,
-					Version:         "TestDistroVersionValue",
 					Endpoint:        "TestDistroEndpointValue",
 					KvEndpoint:      "TestDistroKvEndpointValue",
 					Port:            321,
@@ -165,11 +152,9 @@ func Test_GenerateInitGradle_ProjectModeOptInInjectsScopeCheck(t *testing.T) {
 			ProjectMode: "opt-in",
 			CIProvider:  "",
 			CLIPath:     "bitrise-build-cache",
-			Version:     "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
 			Usage:               UsageLevelEnabled,
-			Version:             "CacheVersionValue",
 			EndpointURLWithPort: "CacheEndpointURLValue",
 			IsPushEnabled:       true,
 			ValidationLevel:     "ValidationLevelValue",
@@ -191,11 +176,9 @@ func Test_GenerateInitGradle_ProjectModeOptInOnCIOmitsScopeCheck(t *testing.T) {
 		Common: PluginCommonTemplateInventory{
 			ProjectMode: "opt-in",
 			CIProvider:  "bitrise",
-			Version:     "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
 			Usage:               UsageLevelEnabled,
-			Version:             "CacheVersionValue",
 			EndpointURLWithPort: "CacheEndpointURLValue",
 			IsPushEnabled:       true,
 			ValidationLevel:     "ValidationLevelValue",
@@ -214,13 +197,11 @@ func Test_GenerateInitGradle_TestDistroDependencyOmitsPoolName(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: PluginCommonTemplateInventory{
 			CIProvider: "bitrise",
-			Version:    "CommonVersionValue",
 		},
 		Cache:     CacheTemplateInventory{Usage: UsageLevelNone},
 		Analytics: AnalyticsTemplateInventory{Usage: UsageLevelNone},
 		TestDistro: TestDistroTemplateInventory{
-			Usage:   UsageLevelDependency,
-			Version: "TestDistroVersionValue",
+			Usage: UsageLevelDependency,
 			// PoolName intentionally set to prove the guard: even a non-empty
 			// value must not leak into a non-enabled render.
 			PoolName: "TestDistroPoolNameValue",
@@ -237,11 +218,9 @@ func Test_GenerateInitGradle_ProjectModeAlwaysOmitsScopeCheck(t *testing.T) {
 		Common: PluginCommonTemplateInventory{
 			ProjectMode: "always",
 			CIProvider:  "",
-			Version:     "CommonVersionValue",
 		},
 		Cache: CacheTemplateInventory{
 			Usage:               UsageLevelEnabled,
-			Version:             "CacheVersionValue",
 			EndpointURLWithPort: "CacheEndpointURLValue",
 			IsPushEnabled:       true,
 			ValidationLevel:     "ValidationLevelValue",
@@ -275,10 +254,10 @@ const expectedRepositories = `    repositories {
     }`
 
 const expectedDependencies = `    dependencies {
-        classpath("io.bitrise.gradle:common:CommonVersionValue")
-        classpath("io.bitrise.gradle:gradle-analytics:AnalyticsVersionValue")
-        classpath("io.bitrise.gradle:remote-cache:CacheVersionValue")
-        classpath("io.bitrise.gradle:test-distribution:TestDistroVersionValue")
+        classpath("io.bitrise.gradle:common:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_COMMON_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_COMMON_PLUGIN_VERSION not set — run ` + "`bitrise-build-cache activate gradle`" + `")}")
+        classpath("io.bitrise.gradle:gradle-analytics:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_ANALYTICS_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_ANALYTICS_PLUGIN_VERSION not set — run ` + "`bitrise-build-cache activate gradle`" + `")}")
+        classpath("io.bitrise.gradle:remote-cache:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_REMOTE_CACHE_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_REMOTE_CACHE_PLUGIN_VERSION not set — run ` + "`bitrise-build-cache activate gradle`" + `")}")
+        classpath("io.bitrise.gradle:test-distribution:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_TEST_DISTRIBUTION_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_TEST_DISTRIBUTION_PLUGIN_VERSION not set — run ` + "`bitrise-build-cache activate gradle`" + `")}")
     }`
 
 const expectedNoPluginActivated = "initscript {\n" + expectedRepositories + "\n}"

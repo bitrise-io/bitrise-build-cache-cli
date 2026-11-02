@@ -96,6 +96,32 @@ func (e *EnvExporter) ExportCLIPath() {
 	e.Export(consts.EnvCLIPath, exe)
 }
 
+// ExportCLIVersion publishes the resolved CLI version as BITRISE_BUILD_CACHE_CLI_VERSION so the
+// Gradle init scripts can read it at build time via System.getenv. Keeping the version out of
+// the init script body is what makes it byte-stable across CLI releases — a save-shard rendering
+// vN and a restore-shard rendering vN+1 produce identical init-script bytes, so Gradle's
+// configuration-cache fingerprint stays valid.
+func (e *EnvExporter) ExportCLIVersion(version string) {
+	e.Export(consts.EnvCLIVersion, version)
+}
+
+// ExportGradlePluginVersions publishes the four Gradle plugin version pins as env vars, so the
+// init script reads them at build time via System.getenv instead of baking them in. Same rationale
+// as ExportCLIVersion: keeps the init-script bytes stable across CLI releases where only the
+// pinned plugin versions move.
+func (e *EnvExporter) ExportGradlePluginVersions(common, analytics, remoteCache, testDistribution string) {
+	for _, p := range []struct {
+		key, value string
+	}{
+		{consts.EnvGradleCommonPluginVersion, common},
+		{consts.EnvGradleAnalyticsPluginVersion, analytics},
+		{consts.EnvGradleRemoteCachePluginVersion, remoteCache},
+		{consts.EnvGradleTestDistributionPluginVersion, testDistribution},
+	} {
+		e.Export(p.key, p.value)
+	}
+}
+
 // ExportToShellRC writes an export statement to ~/.bashrc and ~/.zshrc using a marker block.
 // The blockName identifies the block in the file (e.g. "Bitrise Build Cache").
 // The content is the raw shell content to write (e.g. "export KEY=VALUE").

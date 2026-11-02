@@ -75,15 +75,15 @@ initscript {
     }
     {{- if hasDependencies . }}
     dependencies {
-        classpath("io.bitrise.gradle:common:{{ .Common.Version }}")
+        classpath("io.bitrise.gradle:common:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_COMMON_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_COMMON_PLUGIN_VERSION not set — run `bitrise-build-cache activate gradle`")}")
         {{- if eq .Analytics.Usage "dependency" "enabled" }}
-        classpath("io.bitrise.gradle:gradle-analytics:{{ .Analytics.Version }}")
+        classpath("io.bitrise.gradle:gradle-analytics:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_ANALYTICS_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_ANALYTICS_PLUGIN_VERSION not set — run `bitrise-build-cache activate gradle`")}")
         {{- end }}
         {{- if eq .Cache.Usage "dependency" "enabled" }}
-        classpath("io.bitrise.gradle:remote-cache:{{ .Cache.Version }}")
+        classpath("io.bitrise.gradle:remote-cache:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_REMOTE_CACHE_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_REMOTE_CACHE_PLUGIN_VERSION not set — run `bitrise-build-cache activate gradle`")}")
         {{- end }}
         {{- if eq .TestDistro.Usage "dependency" "enabled" }}
-        classpath("io.bitrise.gradle:test-distribution:{{ .TestDistro.Version }}")
+        classpath("io.bitrise.gradle:test-distribution:${System.getenv("BITRISE_BUILD_CACHE_GRADLE_TEST_DISTRIBUTION_PLUGIN_VERSION") ?: error("BITRISE_BUILD_CACHE_GRADLE_TEST_DISTRIBUTION_PLUGIN_VERSION not set — run `bitrise-build-cache activate gradle`")}")
         {{- end }}
     }
     {{- end }}

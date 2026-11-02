@@ -25,7 +25,12 @@ const (
 	GradleAnalyticsHTTPEndpoint     = "https://gradle-sink.services.bitrise.io"
 	GradleAnalyticsGRPCEndpoint     = "grpcs://gradle-analytics.services.bitrise.io:444"
 
-	EnvCLIPath = "BITRISE_BUILD_CACHE_CLI"
+	EnvCLIPath                             = "BITRISE_BUILD_CACHE_CLI"
+	EnvCLIVersion                          = "BITRISE_BUILD_CACHE_CLI_VERSION"
+	EnvGradleCommonPluginVersion           = "BITRISE_BUILD_CACHE_GRADLE_COMMON_PLUGIN_VERSION"
+	EnvGradleAnalyticsPluginVersion        = "BITRISE_BUILD_CACHE_GRADLE_ANALYTICS_PLUGIN_VERSION"
+	EnvGradleRemoteCachePluginVersion      = "BITRISE_BUILD_CACHE_GRADLE_REMOTE_CACHE_PLUGIN_VERSION"
+	EnvGradleTestDistributionPluginVersion = "BITRISE_BUILD_CACHE_GRADLE_TEST_DISTRIBUTION_PLUGIN_VERSION"
 
 	// Gradle Common Plugin version
 	GradleCommonPluginDepVersion = "1.2.0"
