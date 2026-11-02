@@ -727,19 +727,45 @@ func TestEnricher_SidecarPathsUnlinkedOnPendingFailure(t *testing.T) {
 }
 
 func TestEnricher_SidecarDoesNotOverrideParsedLogHitRate(t *testing.T) {
-	s := newEnrichSetup(t)
-	writeLog(t, s.manifestDir, s.logName, []byte("note: 1 hits / 10 cacheable tasks (10%)\n"))
+	dir := t.TempDir()
+	manifestDir := filepath.Join(dir, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(manifestDir, 0o755))
+
+	logName := "AAAA-BBBB.xcactivitylog"
+	writeLog(t, manifestDir, logName, []byte("note: 1 hits / 10 cacheable tasks (10%)\n"))
+
+	captured := &analytics.Invocation{}
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			*captured = inv
+
+			return nil
+		},
+	}
 
 	snap := blobSnapshotWith(7, 3, 4)
-	s.enricher.SidecarReader = &fakeSidecarReader{found: true, blob: snap}
+	e := &enrichment.Enricher{
+		Store:         &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")},
+		Client:        mock,
+		Logger:        log.NewLogger(log.WithOutput(&bytes.Buffer{})),
+		SidecarReader: &fakeSidecarReader{found: true, blob: snap},
+	}
 
-	s.enricher.Enrich(s.manifestPath, s.group)
+	now := time.Now()
+	e.Enrich(filepath.Join(manifestDir, "LogStoreManifest.plist"), singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "wrapperless",
+		Signature: "Build MyScheme",
+		FileName:  logName,
+		Status:    "S",
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
 
-	assert.InDelta(t, float32(0.1), s.captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
-	require.NotNil(t, s.captured.CacheBlobStats)
-	assert.Equal(t, int64(7), s.captured.CacheBlobStats.Download.OpCount)
-	assert.Equal(t, int64(3), s.captured.CacheBlobStats.Download.MissCount)
-	assert.Equal(t, int64(4), s.captured.CacheBlobStats.Upload.OpCount)
+	assert.InDelta(t, float32(0.1), captured.HitRate, 0.001, "log-parsed hit rate must win when outcome is OK")
+	require.NotNil(t, captured.CacheBlobStats)
+	assert.Equal(t, int64(7), captured.CacheBlobStats.Download.OpCount)
+	assert.Equal(t, int64(3), captured.CacheBlobStats.Download.MissCount)
+	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
 }
 
 func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
