@@ -350,13 +350,11 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *t
 	w.ScanOnce()
 
 	require.Len(t, captured, 1, "exactly one PUT must fire — the retry bucket resolves on sidecar presence")
-	assert.Contains(t, []string{"AAAA-BBBB-BUILD", "CCCC-DDDD-TEST"}, captured[0].InvocationID,
-		"PUT must adopt the manifest UUID of the overlapping group")
-	assert.NotEqual(t, derivedID, captured[0].InvocationID,
-		"sidecar InvocationID must NOT dictate identity when the manifest UUID is present")
+	assert.Equal(t, derivedID, captured[0].InvocationID,
+		"PUT must adopt the sidecar-stamped InvocationID so BE DataTransfer rows (keyed by the proxy's gRPC-tagged ID) join")
 }
 
-func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
+func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderSidecarID(t *testing.T) {
 	home := t.TempDir()
 	sidecarsDir := filepath.Join(home, "sessions")
 	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
@@ -433,8 +431,6 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	w.ScanOnce()
 
 	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
-	assert.Contains(t, []string{"AAAA-BBBB-BUILD", "CCCC-DDDD-TEST"}, captured[0].InvocationID,
-		"PUT must adopt the manifest UUID")
-	assert.NotEqual(t, derivedID, captured[0].InvocationID,
-		"nil-BlobStats sidecar's derived InvocationID must NOT dictate identity when manifest UUID is present")
+	assert.Equal(t, derivedID, captured[0].InvocationID,
+		"PUT must adopt the sidecar's derived InvocationID even when BlobStats are nil — proxy-stamped ID joins DataTransfer rows")
 }
