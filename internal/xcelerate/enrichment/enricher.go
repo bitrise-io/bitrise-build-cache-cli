@@ -108,15 +108,15 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	invocationID := group.ManifestUUID()
+	invocationID := sidecarInvocationID
 	if invocationID == "" {
 		invocationID = group.OverrideInvocationID()
 	}
 	if invocationID == "" {
-		invocationID = sidecarInvocationID
+		invocationID = group.ManifestUUID()
 	}
 	if invocationID == "" {
-		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (sidecar / override / manifest all empty)", group.SchemeName(), command)
 
 		return
 	}
