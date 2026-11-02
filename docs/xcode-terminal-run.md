@@ -108,6 +108,26 @@ references are skipped. Idempotent — re-run after a path change picks up clean
 If Xcode.app has the project loaded already, quit and relaunch — the include is
 not re-read for an already-loaded project.
 
+### Multi-Xcode support
+
+`activate xcode` installs a thin toolchain bundle that symlinks into the default
+Xcode toolchain, so `xcode-select -s` to a different Xcode version keeps working
+without a re-activate. The default toolchain path is resolved as follows:
+
+1. If `xcodebuild` is already discovered as `<DeveloperDir>/usr/bin/xcodebuild`,
+   `<DeveloperDir>` is taken from that path.
+2. Otherwise fall back to `xcode-select -p`.
+3. The default toolchain is `<DeveloperDir>/Toolchains/XcodeDefault.xctoolchain`.
+
+Binary names inside the toolchain's `usr/bin/` are not hardcoded — we enumerate
+and symlink whatever's there, so Apple adding or renaming tools inside the bundle
+is transparent.
+
+Breaks only if Apple renames `XcodeDefault.xctoolchain`, drops the
+`Toolchains/` convention, or `xcode-select` itself breaks. All three are unlikely
+over the lifetime of this feature; adjust in `internal/config/xcelerate/toolchain.go`
+and `internal/xcode_app/toolchain.go` if they ever change.
+
 ### SPM caveat
 
 **IDE remote-CAS coverage is partial.** `xcode link` propagates the override to
