@@ -5,6 +5,7 @@ package xcelerate
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,6 +47,12 @@ func TestResolveCASPluginPath(t *testing.T) {
 			lstat:        anchorMissing,
 			want:         "/Applications/Xcode.app/Contents/Developer/usr/lib/libToolchainCASPlugin.dylib",
 		},
+		{
+			name:         "developer-dir empty + anchor missing returns anchor-rooted literal",
+			developerDir: "",
+			lstat:        anchorMissing,
+			want:         "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -66,4 +73,20 @@ func TestResolveCASPluginPath_lstatArbitraryErrorFallsThrough(t *testing.T) {
 	}
 	got := ResolveCASPluginPath(nil, "/dev-dir", osProxy)
 	assert.Equal(t, "/dev-dir/usr/lib/libToolchainCASPlugin.dylib", got)
+}
+
+func TestResolveCASPluginPath_ReturnsAbsolutePath_WhenDeveloperDirEmpty_AndNoEnvOverride_AndAnchorMissing(t *testing.T) {
+	// Regression guard: resolveDeveloperDir may fail (empty string) and the anchor
+	// may be absent. The returned path still has to be absolute — a relative
+	// "usr/lib/libToolchainCASPlugin.dylib" would silently land in the IDE
+	// override xcconfig and poison the toolchain lookup.
+	osProxy := &mocks.OsProxyMock{LstatFunc: anchorMissing}
+	got := ResolveCASPluginPath(nil, "", osProxy)
+	assert.True(t, filepath.IsAbs(got), "expected absolute path, got %q", got)
+}
+
+func TestResolveCASPluginPath_ReturnsAnchorRooted_WhenDeveloperDirEmpty(t *testing.T) {
+	osProxy := &mocks.OsProxyMock{LstatFunc: anchorMissing}
+	got := ResolveCASPluginPath(nil, "", osProxy)
+	assert.Equal(t, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib", got)
 }
