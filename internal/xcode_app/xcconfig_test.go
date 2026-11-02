@@ -75,21 +75,13 @@ func TestRender_honorsCASPluginPathOverride(t *testing.T) {
 	assert.Contains(t, got, "COMPILATION_CACHE_PLUGIN_PATH = /opt/custom/libToolchainCASPlugin.dylib")
 }
 
-func TestResolveCASPluginPath_envWins(t *testing.T) {
-	got := ResolveCASPluginPath(map[string]string{EnvCASPluginPath: "/opt/custom/libToolchainCASPlugin.dylib"})
-	assert.Equal(t, "/opt/custom/libToolchainCASPlugin.dylib", got)
-}
-
-func TestResolveCASPluginPath_defaultAnchorRooted(t *testing.T) {
-	got := ResolveCASPluginPath(nil)
-	assert.Equal(t, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib", got)
-}
+const testPluginPath = "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib"
 
 func TestWriteOverrideXCConfig_happyPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock"))
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock", testPluginPath))
 
 	path := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
 	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
@@ -97,12 +89,11 @@ func TestWriteOverrideXCConfig_happyPath(t *testing.T) {
 	assert.Contains(t, string(body), "COMPILATION_CACHE_REMOTE_SERVICE_PATH = /tmp/xcelerate-proxy.sock")
 }
 
-func TestWriteOverrideXCConfig_honorsCASPluginPathEnv(t *testing.T) {
+func TestWriteOverrideXCConfig_honorsCASPluginPathArg(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	envs := map[string]string{EnvCASPluginPath: "/opt/custom/libToolchainCASPlugin.dylib"}
-	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, envs, "/tmp/xcelerate-proxy.sock"))
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock", "/opt/custom/libToolchainCASPlugin.dylib"))
 
 	path := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
 	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
@@ -118,7 +109,7 @@ func TestWriteOverrideXCConfig_honorsEnvOverride(t *testing.T) {
 	overridePath := filepath.Join(overrideDir, "custom", "xcode-app.xcconfig")
 	envs := map[string]string{EnvOverrideXCConfigPath: overridePath}
 
-	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, envs, "/tmp/xcelerate-proxy.sock"))
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, envs, "/tmp/xcelerate-proxy.sock", testPluginPath))
 
 	body, err := os.ReadFile(overridePath) //nolint:gosec // test-controlled path
 	require.NoError(t, err)
@@ -138,7 +129,7 @@ func TestWriteOverrideXCConfig_SkipsIncludeWhenToolchainMissing(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock"))
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock", testPluginPath))
 
 	path := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
 	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
@@ -173,7 +164,7 @@ func TestWriteOverrideXCConfig_IncludesToolchainWhenInstalled(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(linkPath), 0o755))
 	require.NoError(t, os.Symlink(installPath, linkPath))
 
-	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock"))
+	require.NoError(t, WriteOverrideXCConfig(utils.DefaultOsProxy{}, nil, "/tmp/xcelerate-proxy.sock", testPluginPath))
 
 	path := filepath.Join(home, ".bitrise-xcelerate", "xcode-app.xcconfig")
 	body, err := os.ReadFile(path) //nolint:gosec // test-controlled path
@@ -189,7 +180,7 @@ func TestWriteOverrideXCConfig_mkdirErrorPropagates(t *testing.T) {
 		MkdirAllFunc:    func(string, os.FileMode) error { return &fs.PathError{Op: "mkdir", Path: home, Err: errors.New("boom")} },
 	}
 
-	err := WriteOverrideXCConfig(osProxy, nil, "/tmp/x.sock")
+	err := WriteOverrideXCConfig(osProxy, nil, "/tmp/x.sock", testPluginPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mkdir")
 }

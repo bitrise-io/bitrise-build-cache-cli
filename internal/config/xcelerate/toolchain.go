@@ -17,13 +17,13 @@ import (
 // installXcodeToolchain installs the toolchain bundle and links it under
 // ~/Library/Developer/Toolchains. Best-effort: failures just mean SPM targets
 // miss the CAS wiring.
+//
+// developerDir and pluginPath are resolved by the caller so the toolchain
+// install and the IDE xcconfig stay in lockstep on the plugin dylib path.
 func installXcodeToolchain(
-	ctx context.Context,
 	logger log.Logger,
 	osProxy utils.OsProxy,
-	cmdFunc utils.CommandFunc,
-	envs map[string]string,
-	proxySocketPath, originalXcodebuildPath string,
+	proxySocketPath, developerDir, pluginPath string,
 ) {
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
@@ -32,18 +32,10 @@ func installXcodeToolchain(
 		return
 	}
 
-	developerDir, err := resolveDeveloperDir(ctx, cmdFunc, originalXcodebuildPath)
-	if err != nil {
-		logger.Warnf("Could not resolve Xcode developer dir for toolchain install: %s", err)
-
-		return
-	}
-
 	p := paths.FromHome(home)
 	installPath := p.XcodeToolchainBundleDir()
 	linkPath := p.XcodeToolchainsLinkPath()
 	defaultToolchainPath := filepath.Join(developerDir, "Toolchains", "XcodeDefault.xctoolchain")
-	pluginPath := ResolveCASPluginPath(envs, developerDir, osProxy)
 
 	if err := xcode_app.InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath); err != nil {
 		logger.Warnf("Could not install Xcode toolchain bundle: %s", err)
