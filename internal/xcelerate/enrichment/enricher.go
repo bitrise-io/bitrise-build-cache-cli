@@ -88,7 +88,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := uuid.NewString()
 
-	hitRate, _ := e.readLogHitRate(manifestPath, group)
+	hitRate, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
 
 	var runErr error
 	if !group.Success() {
@@ -223,45 +223,4 @@ func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
 	base := strings.TrimSuffix(primary.FileName, filepath.Ext(primary.FileName))
 
 	return filepath.Join(filepath.Dir(manifestPath), base+".xcresult")
-}
-
-// readLogHitRate returns 0 on any non-OK outcome. The log lands on disk before
-// the manifest (Xcode writes the manifest last), so no bounded wait is needed —
-// the reader's ENOENT path handles the vanishing race.
-func (e *Enricher) readLogHitRate(manifestPath string, group ManifestEntryGroup) (float32, xcactivitylog.Outcome) {
-	logger := logOr(e.Logger)
-
-	if manifestPath == "" {
-		return 0, xcactivitylog.OutcomeFileMissing
-	}
-
-	primary := group.Primary()
-	if primary.FileName == "" {
-		return 0, xcactivitylog.OutcomeFileMissing
-	}
-
-	logPath := filepath.Join(filepath.Dir(manifestPath), primary.FileName)
-
-	metrics, err := xcactivitylog.ReadCompilationCacheMetricsWithLogger(logPath, logger)
-	if err != nil {
-		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
-	}
-
-	switch metrics.Outcome {
-	case xcactivitylog.OutcomeOK:
-		return metrics.HitRate, metrics.Outcome
-	case xcactivitylog.OutcomeFileMissing:
-		logger.Debugf("xcactivitylog missing at %s", logPath)
-	case xcactivitylog.OutcomeEmpty:
-		logger.Debugf("xcactivitylog empty at %s", logPath)
-	case xcactivitylog.OutcomeUnparsed:
-		size := int64(-1)
-		if st, statErr := os.Stat(logPath); statErr == nil {
-			size = st.Size()
-		}
-		logger.Warnf("xcactivitylog unparsed at %s (xcode=%s size=%d): no CompilationCacheMetrics match", logPath, e.XcodeVersion, size)
-	case xcactivitylog.OutcomeReadError:
-	}
-
-	return 0, metrics.Outcome
 }

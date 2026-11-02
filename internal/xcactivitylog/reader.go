@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 
@@ -113,4 +114,44 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 	}
 
 	return Metrics{Outcome: OutcomeUnparsed}, nil
+}
+
+// ReadHitRateFromManifest resolves the sibling log path from manifestPath +
+// logFileName, reads CompilationCacheMetrics, and logs non-OK outcomes via
+// logger (debug for missing/empty, warn for unparsed with size hint, warn for
+// read errors). Returns 0 on any non-OK outcome. Empty inputs short-circuit as
+// OutcomeFileMissing without reading.
+func ReadHitRateFromManifest(manifestPath, logFileName string, logger log.Logger) (float32, Outcome) {
+	if manifestPath == "" || logFileName == "" {
+		return 0, OutcomeFileMissing
+	}
+
+	logPath := filepath.Join(filepath.Dir(manifestPath), logFileName)
+
+	metrics, err := ReadCompilationCacheMetricsWithLogger(logPath, logger)
+	if err != nil && logger != nil {
+		logger.Warnf("xcactivitylog read failed for %s: %s", logPath, err)
+	}
+
+	if logger != nil {
+		switch metrics.Outcome {
+		case OutcomeOK, OutcomeReadError:
+		case OutcomeFileMissing:
+			logger.Debugf("xcactivitylog missing at %s", logPath)
+		case OutcomeEmpty:
+			logger.Debugf("xcactivitylog empty at %s", logPath)
+		case OutcomeUnparsed:
+			size := int64(-1)
+			if st, statErr := os.Stat(logPath); statErr == nil {
+				size = st.Size()
+			}
+			logger.Warnf("xcactivitylog unparsed at %s (size=%d): no CompilationCacheMetrics match", logPath, size)
+		}
+	}
+
+	if metrics.Outcome == OutcomeOK {
+		return metrics.HitRate, OutcomeOK
+	}
+
+	return 0, metrics.Outcome
 }
