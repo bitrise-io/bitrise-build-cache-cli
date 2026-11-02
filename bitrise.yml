@@ -217,57 +217,13 @@ workflows:
         title: Send slack if failed
         run_if: ".IsBuildFailed"
 
-  bump-prebooting:
-    description: |
-      Open a PR against bitrise-io/build-prebooting-deployments bumping the
-      bitrise-build-cache CLI version + per-arch sha256 in the preboot
-      startup-script extensions (linux_amd64 + darwin_arm64), watch the
-      deployments repo's CI, then merge it as the Bitrise Infrabot (a bypass
-      actor on `production`). Chained after verify-release so we never ship
-      a bump pointing at a broken release. Runs on Linux: GNU sed + cheaper
-      machine. GH `--auto` merge is intentionally not used because it does
-      not honour bypass actors (ACI-5007).
-    envs:
-    - PREBOOTING_BOT_TOKEN: $PREBOOTING_BOT_TOKEN
-    meta:
-      bitrise.io:
-        machine_type_id: g2.linux.medium
-        stack: linux-docker-android-22.04
-    steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - script:
-        title: Open prebooting bump PR
-        inputs:
-        - content: |
-            #!/usr/bin/env bash
-            set -e
-            ./scripts/prebooting_pr_bump.sh
-    - slack@4:
-        inputs:
-          - channel: "#team-advanced-ci-alerts-website"
-          - text: |-
-              Preboot startup-script bump FAILED for $BITRISE_GIT_TAG! :rotating_light:
-
-              Could not open / merge bump PR to bitrise-io/build-prebooting-deployments.
-              Check build: $BITRISE_BUILD_URL
-
-              The release itself succeeded — retry this workflow once the issue is fixed (no need to re-cut the tag).
-          - emoji: ":rotating_light:"
-          - color: "#ee003b"
-          - webhook_url: "$SLACK_WEBHOOK_ALERTS"
-        title: Send slack if failed
-        run_if: ".IsBuildFailed"
-
   bump-prefix:
     description: |
       Open PRs against bitrise-io/internal-platform-services bumping the pinned
       bitrise-build-cache CLI version + per-arch sha256 in the instance-manager
       VM startup prefix (staging first, then production), wait for each PR's
       checks and merge it as the Bitrise Infrabot. Terraform applies the
-      ConfigMap on merge. Chained after verify-release, independent of
-      bump-prebooting. Safe to retry: a branch already at the tag is skipped.
+      ConfigMap on merge. Chained after verify-release. Safe to retry: a branch already at the tag is skipped.
     envs:
     - IPS_BOT_TOKEN: $IPS_BOT_TOKEN
     meta:
@@ -2813,9 +2769,8 @@ pipelines:
   release-and-verify:
     # Tag-triggered. Runs the `release` workflow (build + publish + GAR
     # and R2 mirrors), then `verify-release` (end-to-end smoke against
-    # the just-published artifacts + GAR fallback), then `bump-prebooting`
-    # (opens + bypass-merges a PR to build-prebooting-deployments) and
-    # `bump-prefix` (staging then production PRs to internal-platform-services).
+    # the just-published artifacts + GAR fallback), then `bump-prefix`
+    # (staging then production PRs to internal-platform-services).
     # Each workflow is an independent build so they can be re-run individually
     # without re-cutting the tag.
     workflows:
@@ -2823,9 +2778,6 @@ pipelines:
       verify-release:
         depends_on:
         - release
-      bump-prebooting:
-        depends_on:
-        - verify-release
       bump-prefix:
         depends_on:
         - verify-release
