@@ -150,12 +150,15 @@ type linkContext struct {
 
 func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, error) {
 	if cfg.BaseConfigRefID != "" {
-		ref, ok := c.fileRefs[cfg.BaseConfigRefID]
-		if !ok {
-			return "", nil
+		if ref, ok := c.fileRefs[cfg.BaseConfigRefID]; ok {
+			return filepath.Join(c.projDir, ref.Path), nil
 		}
 
-		return filepath.Join(c.projDir, ref.Path), nil
+		// Dangling pointer: a previous activate (or a hand-edit) left a
+		// baseConfigurationReference whose target PBXFileReference is gone.
+		// Strip the stale line so the fall-through re-attaches a fresh ref
+		// to the live sibling instead of stacking a duplicate alongside it.
+		c.updatedPbx = detachBaseConfigReference(c.updatedPbx, cfg.ID)
 	}
 
 	if c.siblingFileRef == "" {
@@ -329,7 +332,10 @@ func detachBaseConfigReference(content, cfgID string) string {
 	return content[:bodyStart] + stripped + content[bodyEnd:]
 }
 
-var baseConfigLineRe = regexp.MustCompile(`(?m)^\s*baseConfigurationReference\s*=\s*` + pbxObjectIDPattern + `\s*/\*[^*]*\*/\s*;\s*\n`)
+// Horizontal-only leading whitespace: `\s` includes `\n`, which would eat the
+// terminating newline of the preceding `isa = XCBuildConfiguration;` line and
+// collapse the next line onto it.
+var baseConfigLineRe = regexp.MustCompile(`(?m)^[ \t]*baseConfigurationReference\s*=\s*` + pbxObjectIDPattern + `\s*/\*[^*]*\*/\s*;[ \t]*\n`)
 
 // removeFileReferenceEntry drops the single-line PBXFileReference entry whose
 // object id is refID. The regex matches both the sibling-insertion shape and

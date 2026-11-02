@@ -378,10 +378,12 @@ func TestLink_acceptsLegacyAndLowercaseObjectIDs(t *testing.T) {
 	}
 }
 
-// TestLink_missingBaseConfigRefSkipsSilently pins the dangling-ref behavior:
-// an XCBuildConfiguration whose baseConfigurationReference id no PBXFileReference
-// defines is skipped silently — the pbxproj is malformed in a way we won't repair.
-func TestLink_missingBaseConfigRefSkipsSilently(t *testing.T) {
+// TestLinkOneProject_ReplacesStaleBaseConfigRef_WhenConfigsChange pins the
+// stale-ref recovery: when a previous activate (or hand-edit) left a
+// baseConfigurationReference whose PBXFileReference target is gone, Link()
+// strips the stale line and attaches a fresh ref to a freshly-minted sibling
+// — never leaves the pbxproj with a dangling pointer, never stacks a duplicate.
+func TestLinkOneProject_ReplacesStaleBaseConfigRef_WhenConfigsChange(t *testing.T) {
 	tmp := t.TempDir()
 	pbx := `// !$*UTF8*$!
 {
@@ -409,12 +411,16 @@ func TestLink_missingBaseConfigRefSkipsSilently(t *testing.T) {
 		OverrideXCConfigPath: override,
 	})
 	require.NoError(t, err)
-	assert.Empty(t, result.ModifiedXCConfigs, "missing-ref branch must not touch any xcconfig")
-	assert.Empty(t, result.CreatedSiblings, "missing-ref branch must not create a sibling either")
+	require.Len(t, result.CreatedSiblings, 1, "stale-ref branch must mint a fresh sibling")
 
 	pbxAfter, err := os.ReadFile(filepath.Join(projPath, "project.pbxproj"))
 	require.NoError(t, err)
-	assert.Equal(t, pbx, string(pbxAfter), "pbxproj must be byte-identical when nothing resolved")
+	assert.NotContains(t, string(pbxAfter), "DEADBEEFDEADBEEFDEADBEEF",
+		"stale baseConfigurationReference line must be gone")
+	assert.Equal(t, 1, strings.Count(string(pbxAfter), "baseConfigurationReference = "),
+		"exactly one baseConfigurationReference line, pointing at the fresh sibling")
+	assert.Contains(t, string(pbxAfter), paths.XcodeAppSiblingXCConfigFileName,
+		"fresh sibling PBXFileReference must be present")
 }
 
 // TestLink_workspaceDedupesDuplicateProjectRefs pins the seen-map in
