@@ -491,6 +491,41 @@ func TestRedactBitriseEnvs_tokenValuePrefixSafetyNet(t *testing.T) {
 	assert.Equal(t, "plain-value", envs["UNRELATED"], "non-token values must be passed through")
 }
 
+func TestRedactBitriseEnvs_RedactsBitpatValue_RegardlessOfKey(t *testing.T) {
+	t.Parallel()
+
+	// Key name carries no secret-indicating keyword (no TOKEN/SECRET/KEY/PASSWORD/CREDENTIAL),
+	// and the value shape is not a URL / JWT / AWS key either — so the only signature that can
+	// catch this leak is the local bitpat_ contents override.
+	envs := map[string]string{
+		"MY_UPSTREAM_URL": "bitpat_ABCDEF123456",
+	}
+
+	redactBitriseEnvs(envs)
+
+	assert.NotContains(t, envs["MY_UPSTREAM_URL"], "bitpat_ABCDEF123456",
+		"raw bitpat_ value must not survive redaction")
+	assert.Contains(t, envs["MY_UPSTREAM_URL"], "<sha256@",
+		"bitpat_ value prefix must be replaced with sha256 placeholder")
+}
+
+func TestRedactBitriseEnvs_RedactsBitwatValue_RegardlessOfKey(t *testing.T) {
+	t.Parallel()
+
+	// Same shape as the bitpat_ test above: key name is non-indicating, value is a bare
+	// bitwat_ token, so only the local contents override can catch it.
+	envs := map[string]string{
+		"MY_UPSTREAM_URL": "bitwat_XYZ789abcDEF",
+	}
+
+	redactBitriseEnvs(envs)
+
+	assert.NotContains(t, envs["MY_UPSTREAM_URL"], "bitwat_XYZ789abcDEF",
+		"raw bitwat_ value must not survive redaction")
+	assert.Contains(t, envs["MY_UPSTREAM_URL"], "<sha256@",
+		"bitwat_ value prefix must be replaced with sha256 placeholder")
+}
+
 func TestRedactBitriseEnvs_secretKeyListStillHonoured(t *testing.T) {
 	t.Parallel()
 
