@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"maps"
 	"os"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -182,36 +181,11 @@ func redactBitriseEnvs(envs map[string]string) {
 		return
 	}
 
-	cfg.Signatures = append(cfg.Signatures, bitriseValuePrefixSignatures()...)
-
 	sess := redactor.New(nil, cfg).NewSession()
 	sess.AddSecretsFromEnvs(envs)
 
 	for k, v := range envs {
 		envs[k] = sess.RedactKeyValue(k, v)
-	}
-}
-
-// bitriseValuePrefixSignatures returns contents signatures for the Bitrise-specific
-// bitpat_ (Personal Access Token) and bitwat_ (Workspace Access Token) value prefixes.
-// The shared default config covers generic prefix shapes (JWT, AWS keys) and name-based
-// signatures (TOKEN, _KEY$); these two are a local override so a weird-named env var
-// that happens to carry a Bitrise PAT or WAT still gets masked. Drop this override if
-// the shared signature set absorbs these upstream later.
-func bitriseValuePrefixSignatures() []redactor.Signature {
-	return []redactor.Signature{
-		{
-			Name:          "Bitrise PAT",
-			Part:          "contents",
-			Regex:         `bitpat_[A-Za-z0-9_-]+`,
-			CompiledRegex: regexp.MustCompile(`bitpat_[A-Za-z0-9_-]+`),
-		},
-		{
-			Name:          "Bitrise WAT",
-			Part:          "contents",
-			Regex:         `bitwat_[A-Za-z0-9_-]+`,
-			CompiledRegex: regexp.MustCompile(`bitwat_[A-Za-z0-9_-]+`),
-		},
 	}
 }
 
