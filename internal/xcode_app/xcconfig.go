@@ -88,29 +88,22 @@ func ResolveOverrideXCConfigPath(override string, envs map[string]string, osProx
 	return paths.FromHome(home).XcodeAppOverrideXCConfigFile(), nil
 }
 
-// ResolveCASPluginPath returns the plugin dylib path emitted into the override
-// xcconfig: BITRISE_XCODE_CAS_PLUGIN_PATH when set, anchor-rooted otherwise
-// (`/var/db/xcode_select_link/...`, so `xcode-select -s` auto-corrects).
-func ResolveCASPluginPath(envs map[string]string) string {
-	if env := envs[EnvCASPluginPath]; env != "" {
-		return env
-	}
-
-	return paths.XcodeSelectLinkCASPluginPath()
-}
-
 // WriteOverrideXCConfig renders and persists the IDE override xcconfig. The
 // toolchain probe runs here (not inside Render) because the writer knows the
 // user's home dir and so can resolve the install/link paths; Render stays a
 // pure string builder.
-func WriteOverrideXCConfig(osProxy utils.OsProxy, envs map[string]string, proxySocketPath string) error {
+//
+// casPluginPath is injected by the caller so the IDE xcconfig and the toolchain
+// bundle's OverrideBuildSettings resolve the plugin path through the same
+// resolver — see internal/config/xcelerate.ResolveCASPluginPath.
+func WriteOverrideXCConfig(osProxy utils.OsProxy, envs map[string]string, proxySocketPath, casPluginPath string) error {
 	home, err := osProxy.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("resolve home dir: %w", err)
 	}
 	p := paths.FromHome(home)
 
-	body, err := Render(proxySocketPath, ResolveCASPluginPath(envs), ToolchainInstalled(p.XcodeToolchainBundleDir(), p.XcodeToolchainsLinkPath()))
+	body, err := Render(proxySocketPath, casPluginPath, ToolchainInstalled(p.XcodeToolchainBundleDir(), p.XcodeToolchainsLinkPath()))
 	if err != nil {
 		return fmt.Errorf("render override xcconfig: %w", err)
 	}

@@ -26,17 +26,13 @@ func TestInstallXcodeToolchain_endToEnd(t *testing.T) {
 	home := t.TempDir()
 	fakeDeveloperDir := filepath.Join(t.TempDir(), "Developer")
 	seedFakeDeveloperDir(t, fakeDeveloperDir)
-	// Pass a path shaped like <developer>/usr/bin/xcodebuild so
-	// devdir.FromXcodebuildPath resolves without needing xcode-select.
-	fakeXcodebuild := filepath.Join(fakeDeveloperDir, "usr", "bin", "xcodebuild")
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorMissing,
 	}
 
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
-		nil, "/tmp/proxy.sock", fakeXcodebuild)
+	installXcodeToolchain(log.NewLogger(), osProxy,
+		"/tmp/proxy.sock", fakeDeveloperDir, "/anchor/plugin.dylib")
 
 	p := paths.FromHome(home)
 	assert.FileExists(t, filepath.Join(p.XcodeToolchainBundleDir(), "ToolchainInfo.plist"))
@@ -45,7 +41,7 @@ func TestInstallXcodeToolchain_endToEnd(t *testing.T) {
 	assert.Equal(t, p.XcodeToolchainBundleDir(), target)
 }
 
-func TestInstallXcodeToolchain_fallsBackToXcodeSelect(t *testing.T) {
+func TestInstallXcodeToolchain_writesPluginPathIntoPlist(t *testing.T) {
 	skipIfNonUnix(t)
 
 	home := t.TempDir()
@@ -54,130 +50,14 @@ func TestInstallXcodeToolchain_fallsBackToXcodeSelect(t *testing.T) {
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorMissing,
 	}
 
-	called := false
-	cmdFunc := func(_ context.Context, cmd string, args ...string) utils.Command {
-		if cmd == "xcode-select" && len(args) > 0 && args[0] == "-p" {
-			called = true
-
-			return &utilsMocks.CommandMock{
-				CombinedOutputFunc: func() ([]byte, error) {
-					return []byte(fakeDeveloperDir + "\n"), nil
-				},
-			}
-		}
-
-		t.Fatalf("unexpected command %s %v", cmd, args)
-
-		return nil
-	}
-
-	// Pass a path that doesn't match <developer>/usr/bin/xcodebuild so
-	// devdir.FromXcodebuildPath returns "" and the fallback kicks in.
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, cmdFunc,
-		nil, "/tmp/proxy.sock", "/opt/xcode-wrapper/xcodebuild")
-
-	assert.True(t, called, "xcode-select fallback should run when the xcodebuild path shape doesn't match")
-
-	p := paths.FromHome(home)
-	assert.FileExists(t, filepath.Join(p.XcodeToolchainBundleDir(), "ToolchainInfo.plist"))
-}
-
-func TestInstallXcodeToolchain_isNonFatalOnBrokenDeveloperDir(t *testing.T) {
-	skipIfNonUnix(t)
-
-	home := t.TempDir()
-	osProxy := &utilsMocks.OsProxyMock{
-		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorMissing,
-	}
-
-	cmdFunc := func(_ context.Context, _ string, _ ...string) utils.Command {
-		return &utilsMocks.CommandMock{
-			CombinedOutputFunc: func() ([]byte, error) {
-				return nil, errors.New("xcode-select missing")
-			},
-		}
-	}
-
-	// Must not panic / propagate an error — toolchain install is best-effort.
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, cmdFunc,
-		nil, "/tmp/proxy.sock", "/opt/not-matching/path")
-
-	// Nothing created.
-	_, err := os.Stat(paths.FromHome(home).XcodeToolchainBundleDir())
-	assert.True(t, errors.Is(err, fs.ErrNotExist))
-}
-
-func TestInstallXcodeToolchain_pluginPathAnchoredWhenAnchorLive(t *testing.T) {
-	skipIfNonUnix(t)
-
-	home := t.TempDir()
-	xcodeA := filepath.Join(t.TempDir(), "xcode-a", "Developer")
-	seedFakeDeveloperDir(t, xcodeA)
-	fakeXcodebuild := filepath.Join(xcodeA, "usr", "bin", "xcodebuild")
-
-	osProxy := &utilsMocks.OsProxyMock{
-		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorPresent,
-	}
-
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
-		nil, "/tmp/proxy.sock", fakeXcodebuild)
-
-	body := readToolchainPlist(t, home)
-	assert.Contains(t, body, "<string>/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib</string>",
-		"plist should carry anchor-rooted plugin path when anchor is live")
-	assert.NotContains(t, body, filepath.Join(xcodeA, "usr", "lib", "libToolchainCASPlugin.dylib"),
-		"anchor-live branch must not fall back to the developer-dir path")
-}
-
-func TestInstallXcodeToolchain_pluginPathDerivedWhenAnchorAbsent(t *testing.T) {
-	skipIfNonUnix(t)
-
-	home := t.TempDir()
-	xcodeA := filepath.Join(t.TempDir(), "xcode-a", "Developer")
-	seedFakeDeveloperDir(t, xcodeA)
-	fakeXcodebuild := filepath.Join(xcodeA, "usr", "bin", "xcodebuild")
-
-	osProxy := &utilsMocks.OsProxyMock{
-		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorMissing,
-	}
-
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
-		nil, "/tmp/proxy.sock", fakeXcodebuild)
-
-	body := readToolchainPlist(t, home)
-	derived := filepath.Join(xcodeA, "usr", "lib", "libToolchainCASPlugin.dylib")
-	assert.Contains(t, body, "<string>"+derived+"</string>",
-		"plist should carry developer-dir-derived plugin path when anchor is absent")
-	assert.NotContains(t, body, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib")
-}
-
-func TestInstallXcodeToolchain_pluginPathEnvOverrideBeatsAnchor(t *testing.T) {
-	skipIfNonUnix(t)
-
-	home := t.TempDir()
-	xcodeA := filepath.Join(t.TempDir(), "xcode-a", "Developer")
-	seedFakeDeveloperDir(t, xcodeA)
-	fakeXcodebuild := filepath.Join(xcodeA, "usr", "bin", "xcodebuild")
-
-	osProxy := &utilsMocks.OsProxyMock{
-		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorPresent,
-	}
-
-	envs := map[string]string{EnvCASPluginPath: "/opt/custom/libToolchainCASPlugin.dylib"}
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
-		envs, "/tmp/proxy.sock", fakeXcodebuild)
+	installXcodeToolchain(log.NewLogger(), osProxy,
+		"/tmp/proxy.sock", fakeDeveloperDir, "/opt/custom/libToolchainCASPlugin.dylib")
 
 	body := readToolchainPlist(t, home)
 	assert.Contains(t, body, "<string>/opt/custom/libToolchainCASPlugin.dylib</string>",
-		"env override must beat the live anchor")
-	assert.NotContains(t, body, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib")
+		"caller-supplied plugin path must reach the plist verbatim")
 }
 
 func TestUninstallXcodeToolchain_removesBundleAndSymlink(t *testing.T) {
@@ -186,15 +66,13 @@ func TestUninstallXcodeToolchain_removesBundleAndSymlink(t *testing.T) {
 	home := t.TempDir()
 	fakeDeveloperDir := filepath.Join(t.TempDir(), "Developer")
 	seedFakeDeveloperDir(t, fakeDeveloperDir)
-	fakeXcodebuild := filepath.Join(fakeDeveloperDir, "usr", "bin", "xcodebuild")
 
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
-		LstatFunc:       anchorMissing,
 	}
 
-	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy, failingCmdFunc(t),
-		nil, "/tmp/proxy.sock", fakeXcodebuild)
+	installXcodeToolchain(log.NewLogger(), osProxy,
+		"/tmp/proxy.sock", fakeDeveloperDir, "/anchor/plugin.dylib")
 	uninstallXcodeToolchain(log.NewLogger(), osProxy)
 
 	p := paths.FromHome(home)
