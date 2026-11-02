@@ -20,7 +20,12 @@ const EnvCASPluginPath = "BITRISE_XCODE_CAS_PLUGIN_PATH"
 // SwiftBuild's CompilationCachingConfigFileTaskProducer bails (`return nil`)
 // when both REMOTE_SERVICE_PATH and SUPPORTED_LANGUAGES are set, so no
 // `.cas-config` is written and remote never engages.
-func Render(proxySocketPath, pluginPath string) (string, error) {
+//
+// toolchainInstalled gates the `TOOLCHAINS = <id>` line: install is
+// best-effort, and emitting the setting when the bundle is missing (or was
+// removed by the user) would make Xcode fail to resolve the toolchain for SPM
+// package targets.
+func Render(proxySocketPath, pluginPath string, toolchainInstalled bool) (string, error) {
 	if strings.TrimSpace(proxySocketPath) == "" {
 		return "", errors.New("proxy socket path is empty")
 	}
@@ -36,8 +41,10 @@ func Render(proxySocketPath, pluginPath string) (string, error) {
 		"COMPILATION_CACHE_PLUGIN_PATH":         pluginPath,
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
+	}
+	if toolchainInstalled {
 		// Bundle's OverrideBuildSettings is the only reach we have into SPM package targets.
-		"TOOLCHAINS": ToolchainID,
+		settings["TOOLCHAINS"] = ToolchainID
 	}
 
 	keys := make([]string, 0, len(settings))
@@ -50,6 +57,9 @@ func Render(proxySocketPath, pluginPath string) (string, error) {
 	b.WriteString("// Bitrise Build Cache — Xcode.app IDE override\n")
 	b.WriteString("// Written by `bitrise-build-cache activate xcode`. Removed by `deactivate xcode`.\n")
 	b.WriteString("// Do not edit by hand.\n\n")
+	if !toolchainInstalled {
+		b.WriteString("// TOOLCHAINS = " + ToolchainID + " omitted: toolchain bundle not installed; SPM targets will miss the CAS wiring.\n\n")
+	}
 
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s = %s\n", k, settings[k])
@@ -89,8 +99,18 @@ func ResolveCASPluginPath(envs map[string]string) string {
 	return paths.XcodeSelectLinkCASPluginPath()
 }
 
+// WriteOverrideXCConfig renders and persists the IDE override xcconfig. The
+// toolchain probe runs here (not inside Render) because the writer knows the
+// user's home dir and so can resolve the install/link paths; Render stays a
+// pure string builder.
 func WriteOverrideXCConfig(osProxy utils.OsProxy, envs map[string]string, proxySocketPath string) error {
-	body, err := Render(proxySocketPath, ResolveCASPluginPath(envs))
+	home, err := osProxy.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home dir: %w", err)
+	}
+	p := paths.FromHome(home)
+
+	body, err := Render(proxySocketPath, ResolveCASPluginPath(envs), ToolchainInstalled(p.XcodeToolchainBundleDir(), p.XcodeToolchainsLinkPath()))
 	if err != nil {
 		return fmt.Errorf("render override xcconfig: %w", err)
 	}

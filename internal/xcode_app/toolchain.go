@@ -128,6 +128,27 @@ func UninstallToolchain(installPath, toolchainsLinkPath string) error {
 	return nil
 }
 
+// ToolchainInstalled reports whether a usable toolchain bundle is in place:
+// the discovery symlink points at the install path AND the install path
+// carries a ToolchainInfo.plist. Either absent → not installed. Used by the
+// xcconfig writer to decide whether `TOOLCHAINS = <id>` is safe to emit.
+func ToolchainInstalled(installPath, toolchainsLinkPath string) bool {
+	if installPath == "" || toolchainsLinkPath == "" {
+		return false
+	}
+
+	target, err := os.Readlink(toolchainsLinkPath)
+	if err != nil || target != installPath {
+		return false
+	}
+
+	if _, err := os.Stat(filepath.Join(installPath, ToolchainInfoPlistFile)); err != nil {
+		return false
+	}
+
+	return true
+}
+
 // LinkToolchain creates the discovery symlink. Replaces an existing symlink
 // (stale pointer); refuses to clobber a non-symlink the user put there.
 func LinkToolchain(installPath, toolchainsLinkPath string) error {

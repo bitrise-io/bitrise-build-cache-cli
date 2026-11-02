@@ -93,14 +93,18 @@ func Activate(
 	}
 
 	if runtime.GOOS == "darwin" {
+		// Install the toolchain BEFORE writing the override xcconfig: the writer
+		// probes install state and omits `TOOLCHAINS = <id>` when the bundle is
+		// missing, which otherwise would make Xcode fail to resolve the toolchain
+		// for SPM package targets.
+		installXcodeToolchain(ctx, logger, osProxy, commandFunc, envs, config.ProxySocketPath, config.OriginalXcodebuildPath)
+
 		// Failure is non-fatal: the override is only consumed by the IDE flow.
 		if err := xcode_app.WriteOverrideXCConfig(osProxy, envs, config.ProxySocketPath); err != nil {
 			logger.Warnf("Could not write Xcode.app override xcconfig: %s", err)
 		} else {
 			logger.Debugf("Wrote Xcode.app override xcconfig")
 		}
-
-		installXcodeToolchain(ctx, logger, osProxy, commandFunc, envs, config.ProxySocketPath, config.OriginalXcodebuildPath)
 	}
 
 	ensureLogDir(logger, osProxy)
