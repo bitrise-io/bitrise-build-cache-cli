@@ -77,11 +77,17 @@ const EnvCASPluginPath = xcode_app.EnvCASPluginPath
 // ResolveCASPluginPath returns the CAS plugin dylib path:
 // BITRISE_XCODE_CAS_PLUGIN_PATH env var → anchor-rooted (follows xcode-select -s)
 // when Lstat on /var/db/xcode_select_link succeeds → derived from developerDir.
+// When developerDir is empty (resolveDeveloperDir failed), falls through to the
+// anchor-rooted literal so the result is always absolute — relative xcconfig
+// entries are invalid and would silently poison the IDE override write.
 func ResolveCASPluginPath(envs map[string]string, developerDir string, osProxy utils.OsProxy) string {
 	if env := envs[EnvCASPluginPath]; env != "" {
 		return env
 	}
 	if _, err := osProxy.Lstat(paths.XcodeSelectLinkPath); err == nil {
+		return paths.XcodeSelectLinkCASPluginPath()
+	}
+	if developerDir == "" {
 		return paths.XcodeSelectLinkCASPluginPath()
 	}
 
