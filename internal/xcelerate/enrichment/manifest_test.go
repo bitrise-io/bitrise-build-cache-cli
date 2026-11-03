@@ -113,8 +113,8 @@ func TestGroupManifestEntries_MultiEntrySameSchemeWithinGap(t *testing.T) {
 	assert.Equal(t, base, groups[0].Start())
 	assert.Equal(t, base.Add(55*time.Second), groups[0].Stop())
 	assert.Equal(t, 55*time.Second, groups[0].Duration())
-	assert.Equal(t, "test [S]", groups[0].Command(), "Test outranks Build as primary")
-	assert.Equal(t, "Test S", groups[0].FullCommand())
+	assert.Equal(t, "build [S]", groups[0].Command(), "Build outranks Test as primary")
+	assert.Equal(t, "Build S", groups[0].FullCommand())
 	assert.True(t, groups[0].Success())
 }
 
@@ -159,6 +159,22 @@ func TestGroupManifestEntries_MixedSuccessFailsGroup(t *testing.T) {
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
 	assert.False(t, groups[0].Success(), "group Success is AND across entries")
+}
+
+// build-for-testing + test share a scheme and cluster into one group. The
+// test-without-building log always reports hitRate=0 (no compile-cache
+// events), so Primary() must pick the build entry for hit-rate attribution.
+func TestPrimary_PrefersBuildForTestingOverTest_InSameSchemeGroup(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "build-for-testing", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(30 * time.Second)},
+		{UUID: "test-without-building", SchemeName: "S", Signature: "Test S", Status: "S", Start: base.Add(35 * time.Second), Stop: base.Add(60 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "build-for-testing", groups[0].Primary().UUID, "Build must outrank Test so hit rate reads from the build log")
+	assert.Equal(t, enrichment.CommandBuild, groups[0].Primary().Command())
 }
 
 func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {

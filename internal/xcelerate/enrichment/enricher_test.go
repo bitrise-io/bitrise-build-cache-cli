@@ -400,8 +400,8 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 	}}
 	e.Enrich("", group)
 
-	assert.Equal(t, "test [S]", captured.Command, "aggregate command uses the primary (test > build) plus scheme")
-	assert.Equal(t, "Test S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
+	assert.Equal(t, "build [S]", captured.Command, "aggregate command uses the primary (build > test) plus scheme")
+	assert.Equal(t, "Build S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
 	assert.Equal(t, int64(45_000), captured.DurationMs, "aggregate duration = max(Stop) − min(Start)")
 	assert.True(t, captured.Success)
 	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")

@@ -240,8 +240,13 @@ func (g ManifestEntryGroup) Success() bool {
 	return true
 }
 
-// Primary picks the outermost entry by command rank (test > archive > build >
+// Primary picks the outermost entry by command rank (archive > build > test >
 // unknown). Ties are broken by earliest Start.
+//
+// Build outranks Test because build-for-testing and test share a scheme and
+// cluster into one group, and the test-without-building log never carries
+// compile-cache events — reading hit rate off the test entry pins the group
+// at 0 even when build-for-testing hit the cache.
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
@@ -249,11 +254,11 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 
 	rank := func(c Command) int {
 		switch c {
-		case CommandTest:
-			return 3
 		case CommandArchive:
-			return 2
+			return 3
 		case CommandBuild:
+			return 2
+		case CommandTest:
 			return 1
 		case CommandUnknown:
 			return 0
