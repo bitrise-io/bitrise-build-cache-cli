@@ -68,6 +68,12 @@ func RenderToolchainInfoPlist(proxySocketPath, pluginPath string) ([]byte, error
 // InstallToolchain writes a thin toolchain bundle that shadows
 // defaultToolchainPath via symlinks and carries CAS OverrideBuildSettings.
 // Idempotent.
+//
+// defaultToolchainPath is the resolved Xcode path used only to enumerate
+// entries at install time. The symlink targets are rooted at the xcode-select
+// anchor (`/var/db/xcode_select_link/Toolchains/XcodeDefault.xctoolchain`), so
+// `xcode-select -s` to a different Xcode after activate retargets our
+// toolchain automatically.
 func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, pluginPath string) error {
 	if installPath == "" {
 		return errors.New("install path is empty")
@@ -92,13 +98,15 @@ func InstallToolchain(installPath, defaultToolchainPath, proxySocketPath, plugin
 		return fmt.Errorf("write %s: %w", plistPath, err)
 	}
 
-	if err := installUsrBinEntries(installPath, defaultToolchainPath); err != nil {
+	anchorToolchainPath := paths.XcodeSelectLinkDefaultToolchainPath()
+
+	if err := installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath); err != nil {
 		return err
 	}
-	if err := symlinkTopLevelUsrDirs(installPath, defaultToolchainPath); err != nil {
+	if err := symlinkTopLevelUsrDirs(installPath, defaultToolchainPath, anchorToolchainPath); err != nil {
 		return err
 	}
-	if err := symlinkDeveloperDir(installPath, defaultToolchainPath); err != nil {
+	if err := symlinkDeveloperDir(installPath, defaultToolchainPath, anchorToolchainPath); err != nil {
 		return err
 	}
 
@@ -179,8 +187,9 @@ func LinkToolchain(installPath, toolchainsLinkPath string) error {
 	return nil
 }
 
-func installUsrBinEntries(installPath, defaultToolchainPath string) error {
+func installUsrBinEntries(installPath, defaultToolchainPath, anchorToolchainPath string) error {
 	srcBin := filepath.Join(defaultToolchainPath, "usr", "bin")
+	anchorBin := filepath.Join(anchorToolchainPath, "usr", "bin")
 	dstBin := filepath.Join(installPath, "usr", "bin")
 
 	if err := os.MkdirAll(dstBin, 0o755); err != nil {
@@ -193,7 +202,7 @@ func installUsrBinEntries(installPath, defaultToolchainPath string) error {
 	}
 
 	for _, e := range entries {
-		src := filepath.Join(srcBin, e.Name())
+		src := filepath.Join(anchorBin, e.Name())
 		dst := filepath.Join(dstBin, e.Name())
 		if err := os.Symlink(src, dst); err != nil {
 			return fmt.Errorf("symlink %s -> %s: %w", dst, src, err)
@@ -203,7 +212,7 @@ func installUsrBinEntries(installPath, defaultToolchainPath string) error {
 	return nil
 }
 
-func symlinkTopLevelUsrDirs(installPath, defaultToolchainPath string) error {
+func symlinkTopLevelUsrDirs(installPath, defaultToolchainPath, anchorToolchainPath string) error {
 	for _, name := range toolchainSymlinkedUsrDirs {
 		src := filepath.Join(defaultToolchainPath, "usr", name)
 		if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
@@ -214,23 +223,25 @@ func symlinkTopLevelUsrDirs(installPath, defaultToolchainPath string) error {
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return fmt.Errorf("create %s: %w", filepath.Dir(dst), err)
 		}
-		if err := os.Symlink(src, dst); err != nil {
-			return fmt.Errorf("symlink %s -> %s: %w", dst, src, err)
+		anchorSrc := filepath.Join(anchorToolchainPath, "usr", name)
+		if err := os.Symlink(anchorSrc, dst); err != nil {
+			return fmt.Errorf("symlink %s -> %s: %w", dst, anchorSrc, err)
 		}
 	}
 
 	return nil
 }
 
-func symlinkDeveloperDir(installPath, defaultToolchainPath string) error {
+func symlinkDeveloperDir(installPath, defaultToolchainPath, anchorToolchainPath string) error {
 	src := filepath.Join(defaultToolchainPath, "Developer")
 	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 
 	dst := filepath.Join(installPath, "Developer")
-	if err := os.Symlink(src, dst); err != nil {
-		return fmt.Errorf("symlink %s -> %s: %w", dst, src, err)
+	anchorSrc := filepath.Join(anchorToolchainPath, "Developer")
+	if err := os.Symlink(anchorSrc, dst); err != nil {
+		return fmt.Errorf("symlink %s -> %s: %w", dst, anchorSrc, err)
 	}
 
 	return nil

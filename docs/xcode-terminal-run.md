@@ -110,9 +110,14 @@ not re-read for an already-loaded project.
 
 ### Multi-Xcode support
 
-`activate xcode` installs a thin toolchain bundle that symlinks into the default
-Xcode toolchain, so `xcode-select -s` to a different Xcode version keeps working
-without a re-activate. The default toolchain path is resolved as follows:
+`activate xcode` installs a thin toolchain bundle whose entries symlink into
+the active Xcode toolchain through the `xcode-select` anchor
+(`/var/db/xcode_select_link/Toolchains/XcodeDefault.xctoolchain`), so
+`xcode-select -s` to a different Xcode version keeps working without a
+re-activate — the symlinks follow whichever Xcode is active.
+
+Entries are enumerated at install time from the resolved default toolchain,
+which is derived as follows:
 
 1. If `xcodebuild` is already discovered as `<DeveloperDir>/usr/bin/xcodebuild`,
    `<DeveloperDir>` is taken from that path.

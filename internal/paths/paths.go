@@ -341,6 +341,12 @@ func XcodeSelectLinkCASPluginPath() string {
 	return filepath.Join(XcodeSelectLinkPath, AppleCASPluginRelative)
 }
 
+// XcodeSelectLinkDefaultToolchainPath returns the default toolchain rooted at
+// the xcode-select anchor so symlinks and references follow `xcode-select -s`.
+func XcodeSelectLinkDefaultToolchainPath() string {
+	return filepath.Join(XcodeSelectLinkPath, "Toolchains", "XcodeDefault.xctoolchain")
+}
+
 // DirMaker is the subset of utils.OsProxy that EnsureDir needs.
 type DirMaker interface {
 	MkdirAll(path string, perm os.FileMode) error

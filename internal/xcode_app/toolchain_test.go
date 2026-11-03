@@ -11,10 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
 func TestRenderToolchainInfoPlist_containsAllRequiredKeys(t *testing.T) {
@@ -84,19 +87,21 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(plistBody), "<key>Identifier</key>")
 
-	// usr/bin entries mirrored as symlinks.
+	anchorTC := paths.XcodeSelectLinkDefaultToolchainPath()
+
+	// usr/bin entries mirrored as symlinks rooted at the xcode-select anchor.
 	for _, name := range []string{"swiftc", "clang"} {
 		linkPath := filepath.Join(installPath, "usr", "bin", name)
 		target, err := os.Readlink(linkPath)
 		require.NoError(t, err, "symlink %s missing", linkPath)
-		assert.Equal(t, filepath.Join(defaultTC, "usr", "bin", name), target)
+		assert.Equal(t, filepath.Join(anchorTC, "usr", "bin", name), target)
 	}
 
 	// Top-level usr dirs symlinked (lib exists in seed, libexec doesn't → absent).
 	libLink := filepath.Join(installPath, "usr", "lib")
 	target, err := os.Readlink(libLink)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(defaultTC, "usr", "lib"), target)
+	assert.Equal(t, filepath.Join(anchorTC, "usr", "lib"), target)
 	_, err = os.Lstat(filepath.Join(installPath, "usr", "libexec"))
 	assert.True(t, errors.Is(err, fs.ErrNotExist))
 
@@ -104,7 +109,49 @@ func TestInstallToolchain_producesExpectedBundleLayout(t *testing.T) {
 	devLink := filepath.Join(installPath, "Developer")
 	target, err = os.Readlink(devLink)
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(defaultTC, "Developer"), target)
+	assert.Equal(t, filepath.Join(anchorTC, "Developer"), target)
+}
+
+func TestInstallUsrBinEntries_UsesAnchorRootedTargets(t *testing.T) {
+	skipIfNonUnix(t)
+
+	tmp := t.TempDir()
+	defaultTC := filepath.Join(tmp, "XcodeDefault.xctoolchain")
+	installPath := filepath.Join(tmp, "install", ToolchainID)
+	seedFakeDefaultToolchain(t, defaultTC)
+
+	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/dev/null"))
+
+	anchorBin := filepath.Join(paths.XcodeSelectLinkDefaultToolchainPath(), "usr", "bin")
+
+	for _, name := range []string{"swiftc", "clang"} {
+		linkPath := filepath.Join(installPath, "usr", "bin", name)
+		target, err := os.Readlink(linkPath)
+		require.NoError(t, err, "symlink %s missing", linkPath)
+		assert.True(t, strings.HasPrefix(target, anchorBin+string(filepath.Separator)),
+			"symlink %s target %q should be rooted at %q", linkPath, target, anchorBin)
+		assert.NotContains(t, target, defaultTC,
+			"symlink target must not bake the resolved Xcode path %q", defaultTC)
+	}
+}
+
+func TestSymlinkDeveloperDir_UsesAnchorRootedTarget(t *testing.T) {
+	skipIfNonUnix(t)
+
+	tmp := t.TempDir()
+	defaultTC := filepath.Join(tmp, "XcodeDefault.xctoolchain")
+	installPath := filepath.Join(tmp, "install", ToolchainID)
+	seedFakeDefaultToolchain(t, defaultTC)
+
+	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/dev/null"))
+
+	anchorDev := filepath.Join(paths.XcodeSelectLinkDefaultToolchainPath(), "Developer")
+	devLink := filepath.Join(installPath, "Developer")
+	target, err := os.Readlink(devLink)
+	require.NoError(t, err)
+	assert.Equal(t, anchorDev, target)
+	assert.NotContains(t, target, defaultTC,
+		"Developer symlink target must not bake the resolved Xcode path %q", defaultTC)
 }
 
 func TestInstallToolchain_isIdempotent(t *testing.T) {
