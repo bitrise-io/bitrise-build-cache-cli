@@ -251,7 +251,7 @@ func TestActivate_NoExportWhenSkipped(t *testing.T) {
 	err := mirrors.Activate(log.NewLogger(), utils.DefaultOsProxy{}, mirrors.Params{
 		GradleHome: tmpDir,
 		Mirrors:    mirrors.KnownMirrors,
-		Datacenter: "ATL1", // unsupported region
+		Datacenter: "ATL1", // unsupported datacenter
 		Enabled:    true,
 		Exporter:   exp,
 	})
@@ -259,29 +259,20 @@ func TestActivate_NoExportWhenSkipped(t *testing.T) {
 	assert.Empty(t, exp.exported, "no env vars should be exported when activation skips")
 }
 
-func TestDatacenterToRegion(t *testing.T) {
-	cases := map[string]string{
-		"AMS1": "ams",
-		"IAD1": "iad",
-		"ORD1": "ord",
-		"":     "",
-	}
-
-	for in, want := range cases {
-		assert.Equal(t, want, mirrors.DatacenterToRegion(in), "input=%q", in)
-	}
-}
-
-func TestIsSupportedRegion(t *testing.T) {
+func TestIsSupportedDatacenter(t *testing.T) {
 	cases := map[string]bool{
-		"iad": true,
-		"ord": true,
-		"ams": true,
-		"atl": false,
-		"":    false,
+		"IAD1":     true,
+		"ORD1":     true,
+		"AMS1":     true,
+		"iad1":     true, // case-insensitive
+		"ATL1":     false,
+		"IAD2":     false, // not deployed; add explicitly when it comes online
+		"US_EAST4": false, // customer-private GCP, no mirror deployment
+		"US_EAST1": false, // distinct GCP region from US_EAST4
+		"":         false,
 	}
 
 	for in, want := range cases {
-		assert.Equal(t, want, mirrors.IsSupportedRegion(in), "input=%q", in)
+		assert.Equal(t, want, mirrors.IsSupportedDatacenter(in), "input=%q", in)
 	}
 }

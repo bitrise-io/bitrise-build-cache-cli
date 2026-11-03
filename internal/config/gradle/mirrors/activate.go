@@ -76,9 +76,8 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 		return nil
 	}
 
-	region := DatacenterToRegion(params.Datacenter)
-	if !IsSupportedRegion(region) {
-		logger.Infof("Datacenter %q (region %q) has no Bitrise mirror deployment, skipping Gradle mirror activation", params.Datacenter, region)
+	if !IsSupportedDatacenter(params.Datacenter) {
+		logger.Infof("Datacenter %q has no Bitrise mirror deployment, skipping Gradle mirror activation", params.Datacenter)
 
 		return nil
 	}
@@ -93,7 +92,7 @@ func Activate(logger log.Logger, osProxy utils.OsProxy, params Params) error {
 			ApplyToPluginManagement: m.ApplyToPluginManagement,
 			UseAsRobolectricRepo:    m.UseAsRobolectricRepo,
 		})
-		logger.Debugf("Mirror %s: region=%s, URL=%s", m.FlagName, region, url)
+		logger.Debugf("Mirror %s: datacenter=%s, URL=%s", m.FlagName, params.Datacenter, url)
 	}
 
 	tmpl, err := template.New("gradle-mirrors").Parse(initTemplate)

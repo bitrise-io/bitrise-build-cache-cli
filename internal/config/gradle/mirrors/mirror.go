@@ -5,7 +5,6 @@ package mirrors
 import (
 	_ "embed"
 	"strings"
-	"unicode"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -69,23 +68,19 @@ func FilterByFlagNames(names []string) []RepoMirror {
 	return selected
 }
 
-// DatacenterToRegion converts a datacenter env value (e.g. "AMS1", "IAD1", "ORD1")
-// to the mirror region slug by lowercasing and stripping trailing digits.
-func DatacenterToRegion(dc string) string {
-	lower := strings.ToLower(dc)
+// SupportedDatacenters lists the datacenter identifiers (BITRISE_DEN_VM_DATACENTER
+// values) that have a Bitrise mirror deployed. Matching is case-insensitive.
+// Datacenters outside this set are skipped during activation.
+//
+// To enable a new datacenter: verify a Bitrise mirror is deployed and reachable
+// from it (see repository-manager-deployments), then add the identifier here.
+var SupportedDatacenters = []string{"IAD1", "ORD1", "AMS1"} //nolint:gochecknoglobals
 
-	return strings.TrimRightFunc(lower, unicode.IsDigit)
-}
-
-// SupportedRegions lists the datacenter region slugs that have a Bitrise mirror
-// deployed. Datacenters outside this set are skipped during activation.
-var SupportedRegions = []string{"iad", "ord", "ams"} //nolint:gochecknoglobals
-
-// IsSupportedRegion reports whether the given region slug (e.g. "iad") has a
-// Bitrise mirror deployment.
-func IsSupportedRegion(region string) bool {
-	for _, r := range SupportedRegions {
-		if r == region {
+// IsSupportedDatacenter reports whether the given datacenter identifier has a
+// Bitrise mirror deployment. Comparison is case-insensitive.
+func IsSupportedDatacenter(dc string) bool {
+	for _, d := range SupportedDatacenters {
+		if strings.EqualFold(d, dc) {
 			return true
 		}
 	}

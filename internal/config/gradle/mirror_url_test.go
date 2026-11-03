@@ -35,6 +35,10 @@ func TestGradlePluginsMirrorURL(t *testing.T) {
 			envs: map[string]string{MirrorEnabledEnvKey: "true", MirrorDatacenterEnvKey: "US_EAST4"},
 			want: "",
 		},
+		"unsupported IAD2 (not in allowlist)": {
+			envs: map[string]string{MirrorEnabledEnvKey: "true", MirrorDatacenterEnvKey: "IAD2"},
+			want: "",
+		},
 	}
 
 	for name, tc := range cases {

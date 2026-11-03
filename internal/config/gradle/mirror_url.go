@@ -9,7 +9,7 @@ import (
 const (
 	// MirrorEnabledEnvKey gates Bitrise-hosted Maven mirror usage. Must equal "true" to enable.
 	MirrorEnabledEnvKey = "BITRISE_MAVENCENTRAL_PROXY_ENABLED"
-	// MirrorDatacenterEnvKey identifies the datacenter, used to build the mirror region slug.
+	// MirrorDatacenterEnvKey identifies the datacenter the build runs in.
 	MirrorDatacenterEnvKey = "BITRISE_DEN_VM_DATACENTER"
 
 	mirrorURLPattern           = "https://repository-manager.services.bitrise.io:8090/maven/%s"
@@ -19,8 +19,8 @@ const (
 // GradlePluginsMirrorURL returns the Bitrise-hosted gradle-plugins mirror URL
 // (proxying https://plugins.gradle.org/m2/) for the current datacenter, or ""
 // when the mirror is disabled, no datacenter is set (e.g. local dev), or the
-// datacenter is outside the regions where a Bitrise mirror is deployed
-// (e.g. customer-private GCP envs like US_EAST4).
+// datacenter has no Bitrise mirror deployment (e.g. customer-private GCP envs
+// like US_EAST4).
 func GradlePluginsMirrorURL(envs map[string]string) string {
 	if envs[MirrorEnabledEnvKey] != "true" {
 		return ""
@@ -31,8 +31,7 @@ func GradlePluginsMirrorURL(envs map[string]string) string {
 		return ""
 	}
 
-	region := mirrors.DatacenterToRegion(dc)
-	if !mirrors.IsSupportedRegion(region) {
+	if !mirrors.IsSupportedDatacenter(dc) {
 		return ""
 	}
 
