@@ -118,7 +118,7 @@ func TestInstallUsrBinEntries_UsesAnchorRootedTargets(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
 
 	anchorBin := filepath.Join(paths.XcodeSelectLinkDefaultToolchainPath(), "usr", "bin")
 
@@ -141,7 +141,7 @@ func TestSymlinkDeveloperDir_UsesAnchorRootedTarget(t *testing.T) {
 	installPath := filepath.Join(tmp, "install", ToolchainID)
 	seedFakeDefaultToolchain(t, defaultTC)
 
-	require.NoError(t, InstallToolchain(installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
+	require.NoError(t, InstallToolchain(context.Background(), installPath, defaultTC, "/tmp/proxy.sock", "/dev/null", ""))
 
 	anchorDev := filepath.Join(paths.XcodeSelectLinkDefaultToolchainPath(), "Developer")
 	devLink := filepath.Join(installPath, "Developer")
