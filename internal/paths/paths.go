@@ -122,6 +122,20 @@ const (
 	// XcodeManagedDerivedDataManifestGlobRelative is the HOME-relative glob matching
 	// LogStoreManifest.plist under every wrapper-owned DerivedData workspace-sha.
 	XcodeManagedDerivedDataManifestGlobRelative = BitriseRootRelative + "/" + bitriseCacheSubdir + "/" + xcodeManagedDerivedDataTool + "/*/Logs/*/LogStoreManifest.plist"
+
+	// XcodeBuildRequestHashGlobRelative is the DD-interior glob matching the
+	// per-build-request `<32-hex>.xcbuilddata` dirs Xcode writes under a
+	// DerivedData workspace root. Each ⌘B creates a new entry whose basename
+	// (minus suffix) is the build-request hash; the proxy watches these so it
+	// can reseat the derived InvocationID per IDE ⌘B.
+	XcodeBuildRequestHashGlobRelative = "Build/Intermediates.noindex/XCBuildData/*.xcbuilddata"
+
+	// XcodeIndexBuildRequestHashGlobRelative is the index-store sibling of
+	// XcodeBuildRequestHashGlobRelative; the live-index build Xcode runs as the
+	// user types writes its own XCBuildData dirs under Index.noindex. Watched
+	// alongside the build glob so an index-only rebuild still mints a fresh
+	// InvocationID.
+	XcodeIndexBuildRequestHashGlobRelative = "Index.noindex/Build/Intermediates.noindex/XCBuildData/*.xcbuilddata"
 )
 
 // CLIBinaryName is the on-disk name of the CLI executable.
