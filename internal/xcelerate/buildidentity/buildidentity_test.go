@@ -19,6 +19,30 @@ func TestDerive_IsStableForFixedAnchor(t *testing.T) {
 	assert.Regexp(t, regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`), got1)
 }
 
+// TestDerive_EmptyBuildRequestHex_MatchesPreReseatOutput pins the exact UUID for a
+// fixed anchor with no BuildRequestHex. Any accidental change to the hash input
+// (ordering, delimiter, formatting) breaks the regression — a CLI/wrapper that
+// used to get this ID would silently reseat onto a different one on upgrade.
+func TestDerive_EmptyBuildRequestHex_MatchesPreReseatOutput(t *testing.T) {
+	a := Anchor{Hostname: "host", PID: 1234, StartTimeMS: 1_700_000_000_000}
+
+	assert.Equal(t, "341748f8-face-4b9c-8040-b322884fb995", Derive(a))
+}
+
+// TestDerive_BuildRequestHex_ChangesOutput proves the per-⌘B salt reaches the
+// hash input: same (hostname, pid, start-ms) but a non-empty BuildRequestHex
+// must yield a different ID, and must be stable for that same hex.
+func TestDerive_BuildRequestHex_ChangesOutput(t *testing.T) {
+	base := Anchor{Hostname: "host", PID: 1234, StartTimeMS: 1_700_000_000_000}
+
+	withHex := base
+	withHex.BuildRequestHex = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+
+	assert.NotEqual(t, Derive(base), Derive(withHex), "BuildRequestHex must change the derived ID")
+	assert.Equal(t, "ef8a7d18-2b74-4e88-a892-febc8096ebee", Derive(withHex))
+	assert.Equal(t, Derive(withHex), Derive(withHex), "same hex yields the same ID")
+}
+
 func TestDerive_DifferentAnchorsDifferIDs(t *testing.T) {
 	base := Anchor{Hostname: "host", PID: 1234, StartTimeMS: 1_700_000_000_000}
 

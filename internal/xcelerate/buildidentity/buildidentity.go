@@ -12,11 +12,15 @@ import (
 )
 
 // Anchor is the (hostname, pid, start-ms) triple that identifies a long-lived
-// xcodebuild/Xcode/SWBBuildService process.
+// xcodebuild/Xcode/SWBBuildService process. BuildRequestHex, when non-empty,
+// additionally scopes the derived ID to a single ⌘B — Xcode's SWBBuildService
+// stays alive across many builds, so without a per-request salt every ⌘B
+// collapses onto the same BE row.
 type Anchor struct {
-	Hostname    string
-	PID         int
-	StartTimeMS int64
+	Hostname        string
+	PID             int
+	StartTimeMS     int64
+	BuildRequestHex string
 }
 
 // AncestryEntry is one step of a peer process's ancestry: (pid, exe basename,
@@ -39,9 +43,13 @@ var anchorableNames = map[string]struct{}{
 }
 
 // Derive returns a UUIDv4-shaped InvocationID from the anchor. sha256 is
-// hashed over hostname||pid||start-ms; the first 16 bytes are formatted into
-// 8-4-4-4-12 hex with the version/variant nibbles stamped so it round-trips
-// through parsers that insist on v4. v4+variant nibbles cost 6 bits of input, leaving 122 effective bits of entropy.
+// hashed over hostname||pid||start-ms (||build-request-hex when non-empty);
+// the first 16 bytes are formatted into 8-4-4-4-12 hex with the version/variant
+// nibbles stamped so it round-trips through parsers that insist on v4.
+// v4+variant nibbles cost 6 bits of input, leaving 122 effective bits of entropy.
+//
+// Empty BuildRequestHex yields byte-identical hash input to the pre-reseat
+// behaviour — CLI/wrapper IDs stay stable.
 func Derive(a Anchor) string {
 	h := sha256.New()
 	h.Write([]byte(a.Hostname))
@@ -49,6 +57,11 @@ func Derive(a Anchor) string {
 	h.Write([]byte(strconv.Itoa(a.PID)))
 	h.Write([]byte{'|'})
 	h.Write([]byte(strconv.FormatInt(a.StartTimeMS, 10)))
+
+	if a.BuildRequestHex != "" {
+		h.Write([]byte{'|'})
+		h.Write([]byte(a.BuildRequestHex))
+	}
 
 	sum := h.Sum(nil)
 	buf := sum[:16]
