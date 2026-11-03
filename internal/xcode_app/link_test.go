@@ -459,3 +459,202 @@ func TestLink_workspaceDedupesDuplicateProjectRefs(t *testing.T) {
 	require.Len(t, result.ModifiedXCConfigs, 2)
 	assert.Equal(t, 1, strings.Count(strings.Join(result.ModifiedXCConfigs, "\n"), filepath.Join(tmp, "Base.xcconfig")))
 }
+
+// TestResolveXCConfigForConfig_ResolvesPathThroughGroupHierarchy pins Bug 1 — a
+// `baseConfigurationReference` fileref nested inside a `PBXGroup` chain with its
+// own `path` attribute must resolve to the composed on-disk location, not the
+// bare `ref.Path` under projDir.
+func TestResolveXCConfigForConfig_ResolvesPathThroughGroupHierarchy(t *testing.T) {
+	tmp := t.TempDir()
+	// Shared/Configs/Base.xcconfig: fileref inside group "Configs" inside group
+	// "Shared"; both groups have `path` attributes and sourceTree=`"<group>"`.
+	pbx := `// !$*UTF8*$!
+{
+	objects = {
+/* Begin PBXFileReference section */
+		AAAAAAAAAAAAAAAAAAAAAAAA /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Base.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+/* Begin PBXGroup section */
+		C0C0C0C0C0C0C0C0C0C0C0C0 /* Configs */ = {
+			isa = PBXGroup;
+			children = (
+				AAAAAAAAAAAAAAAAAAAAAAAA /* Base.xcconfig */,
+			);
+			path = "Configs";
+			sourceTree = "<group>";
+		};
+		D0D0D0D0D0D0D0D0D0D0D0D0 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				C0C0C0C0C0C0C0C0C0C0C0C0 /* Configs */,
+			);
+			path = "Shared";
+			sourceTree = "<group>";
+		};
+		E0E0E0E0E0E0E0E0E0E0E0E0 /* main */ = {
+			isa = PBXGroup;
+			children = (
+				D0D0D0D0D0D0D0D0D0D0D0D0 /* Shared */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+/* Begin XCBuildConfiguration section */
+		BBBBBBBBBBBBBBBBBBBBBBBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AAAAAAAAAAAAAAAAAAAAAAAA /* Base.xcconfig */;
+			buildSettings = {};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+	};
+}
+`
+	projPath := writeProject(t, tmp, "Nested.xcodeproj", pbx, map[string]string{
+		"Shared/Configs/Base.xcconfig": "FOO = BAR\n",
+	})
+
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath:          projPath,
+		OverrideXCConfigPath: override,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.ModifiedXCConfigs, 1,
+		"must resolve the nested xcconfig, not fall back to minting a sibling")
+	assert.Equal(t, filepath.Join(tmp, "Shared", "Configs", "Base.xcconfig"), result.ModifiedXCConfigs[0],
+		"resolved path must prepend both ancestor group paths")
+
+	body, err := os.ReadFile(result.ModifiedXCConfigs[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `#include? "`+override+`"`)
+	assert.Contains(t, string(body), "FOO = BAR", "existing content preserved")
+}
+
+// TestResolveXCConfigForConfig_HonorsSOURCE_ROOTSourceTree pins the sourceTree
+// branch: when a fileref opts out of the group chain via sourceTree=SOURCE_ROOT,
+// the ancestor path chain must be ignored and the ref.Path treated as relative
+// to projDir.
+func TestResolveXCConfigForConfig_HonorsSOURCE_ROOTSourceTree(t *testing.T) {
+	tmp := t.TempDir()
+	pbx := `// !$*UTF8*$!
+{
+	objects = {
+/* Begin PBXFileReference section */
+		AAAAAAAAAAAAAAAAAAAAAAAA /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Base.xcconfig"; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+/* Begin PBXGroup section */
+		C0C0C0C0C0C0C0C0C0C0C0C0 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				AAAAAAAAAAAAAAAAAAAAAAAA /* Base.xcconfig */,
+			);
+			path = "Shared";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+/* Begin XCBuildConfiguration section */
+		BBBBBBBBBBBBBBBBBBBBBBBB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AAAAAAAAAAAAAAAAAAAAAAAA /* Base.xcconfig */;
+			buildSettings = {};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+	};
+}
+`
+	projPath := writeProject(t, tmp, "SourceRoot.xcodeproj", pbx, map[string]string{
+		// SOURCE_ROOT ignores the group chain → file lives at project root.
+		"Base.xcconfig": "FOO = BAR\n",
+	})
+
+	override := filepath.Join(tmp, "override.xcconfig")
+	require.NoError(t, os.WriteFile(override, []byte("// override\n"), 0o644))
+
+	result, err := Link(utils.DefaultOsProxy{}, LinkParams{
+		ProjectPath:          projPath,
+		OverrideXCConfigPath: override,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.ModifiedXCConfigs, 1)
+	assert.Equal(t, filepath.Join(tmp, "Base.xcconfig"), result.ModifiedXCConfigs[0],
+		"SOURCE_ROOT sourceTree must bypass the ancestor group path chain")
+}
+
+// TestCollectWorkspaceRefs_PrependsGroupLocation pins Bug 2 — a FileRef inside
+// a workspace Group with `location="group:SubProject"` must resolve relative
+// to the composed `SubProject/<ref>` path, not the bare ref.
+func TestCollectWorkspaceRefs_PrependsGroupLocation(t *testing.T) {
+	refs := collectWorkspaceRefs(nil, []workspaceGroup{
+		{
+			Location: "group:SubProject",
+			FileRefs: []workspaceFileRef{
+				{Location: "container:App.xcodeproj"},
+			},
+		},
+	}, "")
+	require.Len(t, refs, 1)
+	assert.Equal(t, "container:SubProject/App.xcodeproj", refs[0],
+		"group's own location must be prepended to the child FileRef")
+}
+
+// TestCollectWorkspaceRefs_AbsoluteGroupReplacesPrefix pins the absolute-group
+// branch: a child FileRef inside a group with `location="absolute:/tmp/foo"`
+// resolves against the absolute parent path, not the workspace parent dir.
+func TestCollectWorkspaceRefs_AbsoluteGroupReplacesPrefix(t *testing.T) {
+	refs := collectWorkspaceRefs(nil, []workspaceGroup{
+		{
+			Location: "absolute:/tmp/foo",
+			FileRefs: []workspaceFileRef{
+				{Location: "container:App.xcodeproj"},
+			},
+		},
+	}, "")
+	require.Len(t, refs, 1)
+	assert.Equal(t, "absolute:/tmp/foo/App.xcodeproj", refs[0],
+		"absolute parent group must reroot the relative child ref")
+
+	resolved, ok := resolveWorkspaceRef("/does-not-matter/App.xcworkspace", refs[0])
+	require.True(t, ok)
+	assert.Equal(t, "/tmp/foo/App.xcodeproj", resolved,
+		"absolute composed location resolves to the absolute path verbatim")
+}
+
+// TestCollectWorkspaceRefs_NestedGroupsCompose pins the recursive composition:
+// group within group within workspace must concatenate both group locations
+// before the FileRef's own path.
+func TestCollectWorkspaceRefs_NestedGroupsCompose(t *testing.T) {
+	refs := collectWorkspaceRefs(nil, []workspaceGroup{
+		{
+			Location: "group:Outer",
+			Groups: []workspaceGroup{
+				{
+					Location: "group:Inner",
+					FileRefs: []workspaceFileRef{
+						{Location: "container:App.xcodeproj"},
+					},
+				},
+			},
+		},
+	}, "")
+	require.Len(t, refs, 1)
+	assert.Equal(t, "container:Outer/Inner/App.xcodeproj", refs[0])
+}
+
+// TestCollectWorkspaceRefs_AbsoluteChildOverridesParent pins the opposite
+// precedence: a FileRef with `absolute:` ignores any parent-group prefix.
+func TestCollectWorkspaceRefs_AbsoluteChildOverridesParent(t *testing.T) {
+	refs := collectWorkspaceRefs(nil, []workspaceGroup{
+		{
+			Location: "group:Shared",
+			FileRefs: []workspaceFileRef{
+				{Location: "absolute:/elsewhere/App.xcodeproj"},
+			},
+		},
+	}, "")
+	require.Len(t, refs, 1)
+	assert.Equal(t, "absolute:/elsewhere/App.xcodeproj", refs[0])
+}

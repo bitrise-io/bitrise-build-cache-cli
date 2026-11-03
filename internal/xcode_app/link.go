@@ -90,10 +90,14 @@ func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, res
 	projDir := filepath.Dir(projectPath)
 	fileRefs := parseFileReferences(content)
 	configs := parseBuildConfigurations(content)
+	groups := parseGroups(content)
+	parentOf := buildGroupParentMap(groups)
 
 	ctx := linkContext{
 		projDir:         projDir,
 		fileRefs:        fileRefs,
+		groups:          groups,
+		parentOf:        parentOf,
 		siblingPath:     filepath.Join(projDir, paths.XcodeAppSiblingXCConfigFileName),
 		siblingFileRef:  findExistingSiblingFileRef(fileRefs),
 		touchedXCConfig: map[string]struct{}{},
@@ -141,6 +145,8 @@ func linkOneProject(osProxy utils.OsProxy, projectPath, overridePath string, res
 type linkContext struct {
 	projDir         string
 	fileRefs        map[string]pbxFileRef
+	groups          map[string]pbxGroup
+	parentOf        map[string]string
 	siblingPath     string
 	siblingFileRef  string
 	touchedXCConfig map[string]struct{}
@@ -151,7 +157,7 @@ type linkContext struct {
 func (c *linkContext) resolveXCConfigForConfig(cfg pbxBuildConfig) (string, error) {
 	if cfg.BaseConfigRefID != "" {
 		if ref, ok := c.fileRefs[cfg.BaseConfigRefID]; ok {
-			return filepath.Join(c.projDir, ref.Path), nil
+			return resolveFileRefPath(c.projDir, ref, c.groups, c.parentOf), nil
 		}
 
 		// Dangling pointer: a previous activate (or a hand-edit) left a
@@ -223,9 +229,12 @@ func unlinkOneProject(osProxy utils.OsProxy, projectPath string, result *UnlinkR
 	}
 
 	projDir := filepath.Dir(projectPath)
+	groups := parseGroups(content)
 	ctx := unlinkContext{
 		projDir:       projDir,
 		fileRefs:      parseFileReferences(content),
+		groups:        groups,
+		parentOf:      buildGroupParentMap(groups),
 		siblingPath:   filepath.Join(projDir, paths.XcodeAppSiblingXCConfigFileName),
 		updatedPbx:    content,
 		siblingRefIDs: map[string]struct{}{},
@@ -255,6 +264,8 @@ func unlinkOneProject(osProxy utils.OsProxy, projectPath string, result *UnlinkR
 type unlinkContext struct {
 	projDir       string
 	fileRefs      map[string]pbxFileRef
+	groups        map[string]pbxGroup
+	parentOf      map[string]string
 	siblingPath   string
 	updatedPbx    string
 	siblingRefIDs map[string]struct{}
@@ -270,7 +281,7 @@ func (c *unlinkContext) processConfig(osProxy utils.OsProxy, cfg pbxBuildConfig,
 	if !ok {
 		return nil
 	}
-	xcconfigPath := filepath.Join(c.projDir, ref.Path)
+	xcconfigPath := resolveFileRefPath(c.projDir, ref, c.groups, c.parentOf)
 	isSibling := xcconfigPath == c.siblingPath
 
 	if isSibling {
@@ -396,8 +407,15 @@ type pbxBuildConfig struct {
 }
 
 type pbxFileRef struct {
-	ID   string
-	Path string
+	ID         string
+	Path       string
+	SourceTree string
+}
+
+type pbxGroup struct {
+	ID       string
+	Path     string
+	Children []string
 }
 
 // pbxObjectIDPattern matches both the legacy 12-char and modern 24-char
@@ -408,7 +426,24 @@ var buildConfigBlockRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `
 
 var baseConfigRefRe = regexp.MustCompile(`baseConfigurationReference\s*=\s*(` + pbxObjectIDPattern + `)\s*/\*`)
 
-var fileRefRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*/\*[^*]*\*/\s*=\s*\{isa\s*=\s*PBXFileReference;[^}]*lastKnownFileType\s*=\s*text\.xcconfig;[^}]*path\s*=\s*"?([^";]+)"?[^}]*\};`)
+var fileRefRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*/\*[^*]*\*/\s*=\s*\{isa\s*=\s*PBXFileReference;[^}]*lastKnownFileType\s*=\s*text\.xcconfig;[^}]*\};`)
+
+// Attribute extractors run against the matched PBXFileReference body so we can
+// read `path`, `sourceTree`, etc. independently of attribute ordering — the
+// pbxproj format has no guaranteed key order.
+var (
+	pbxPathAttrRe       = regexp.MustCompile(`path\s*=\s*(?:"([^"]+)"|([^;\s]+))\s*;`)
+	pbxSourceTreeAttrRe = regexp.MustCompile(`sourceTree\s*=\s*(?:"([^"]*)"|([^;\s]+))\s*;`)
+)
+
+// groupBlockRe matches a PBXGroup block including its `children` and optional
+// `path`/`sourceTree` attributes. The body ([\s\S]*?) is dispatched to attribute
+// regexes rather than one monolithic pattern.
+var groupBlockRe = regexp.MustCompile(`(?m)^\s*(` + pbxObjectIDPattern + `)\s*(?:/\*[^*]*\*/\s*)?=\s*\{\s*\n\s*isa\s*=\s*PBXGroup;([\s\S]*?)\n\s*\};`)
+
+var groupChildrenRe = regexp.MustCompile(`children\s*=\s*\(([\s\S]*?)\)\s*;`)
+
+var groupChildIDRe = regexp.MustCompile(`(` + pbxObjectIDPattern + `)`)
 
 func parseBuildConfigurations(content string) []pbxBuildConfig {
 	matches := buildConfigBlockRe.FindAllStringSubmatch(content, -1)
@@ -428,10 +463,100 @@ func parseFileReferences(content string) map[string]pbxFileRef {
 	matches := fileRefRe.FindAllStringSubmatch(content, -1)
 	out := make(map[string]pbxFileRef, len(matches))
 	for _, m := range matches {
-		out[m[1]] = pbxFileRef{ID: m[1], Path: m[2]}
+		id := m[1]
+		body := m[0]
+		ref := pbxFileRef{ID: id}
+		if p := pbxPathAttrRe.FindStringSubmatch(body); len(p) == 3 {
+			if p[1] != "" {
+				ref.Path = p[1]
+			} else {
+				ref.Path = p[2]
+			}
+		}
+		if st := pbxSourceTreeAttrRe.FindStringSubmatch(body); len(st) == 3 {
+			if st[1] != "" {
+				ref.SourceTree = st[1]
+			} else {
+				ref.SourceTree = st[2]
+			}
+		}
+		out[id] = ref
 	}
 
 	return out
+}
+
+// parseGroups extracts every PBXGroup entry's id, path (may be empty), and
+// child object ids. Child ids may point at other groups or at file refs; the
+// caller composes the parent chain via buildGroupParentMap.
+func parseGroups(content string) map[string]pbxGroup {
+	matches := groupBlockRe.FindAllStringSubmatch(content, -1)
+	out := make(map[string]pbxGroup, len(matches))
+	for _, m := range matches {
+		id := m[1]
+		body := m[2]
+		g := pbxGroup{ID: id}
+		if p := pbxPathAttrRe.FindStringSubmatch(body); len(p) == 3 {
+			if p[1] != "" {
+				g.Path = p[1]
+			} else {
+				g.Path = p[2]
+			}
+		}
+		if ch := groupChildrenRe.FindStringSubmatch(body); len(ch) == 2 {
+			for _, idm := range groupChildIDRe.FindAllStringSubmatch(ch[1], -1) {
+				g.Children = append(g.Children, idm[1])
+			}
+		}
+		out[id] = g
+	}
+
+	return out
+}
+
+// buildGroupParentMap returns a childID → parentGroupID index covering every
+// group's listed children (both nested groups and file refs). A child missing
+// from the map has no containing group (lives at the project root).
+func buildGroupParentMap(groups map[string]pbxGroup) map[string]string {
+	out := make(map[string]string, len(groups))
+	for parentID, g := range groups {
+		for _, childID := range g.Children {
+			out[childID] = parentID
+		}
+	}
+
+	return out
+}
+
+// resolveFileRefPath returns the absolute on-disk path of a PBXFileReference,
+// honouring its sourceTree and (for `<group>`) the ancestral PBXGroup path chain.
+// Unknown sourceTree values fall back to the historical "join under projDir"
+// behaviour so we never worsen a path that was already correct enough.
+func resolveFileRefPath(projDir string, ref pbxFileRef, groups map[string]pbxGroup, parentOf map[string]string) string {
+	switch ref.SourceTree {
+	case "<absolute>":
+		return ref.Path
+	case "SOURCE_ROOT", "":
+		return filepath.Join(projDir, ref.Path)
+	case "<group>":
+		segments := []string{ref.Path}
+		for id := parentOf[ref.ID]; id != ""; id = parentOf[id] {
+			g, ok := groups[id]
+			if !ok {
+				break
+			}
+			if g.Path != "" {
+				segments = append([]string{g.Path}, segments...)
+			}
+		}
+
+		return filepath.Join(append([]string{projDir}, segments...)...)
+	default:
+		// Rare: BUILT_PRODUCTS_DIR / DEVELOPER_DIR / SDKROOT. An xcconfig under
+		// these is pathological; keep the legacy behaviour so we at least match
+		// what the previous code did instead of silently returning a bad path.
+		return filepath.Join(projDir, ref.Path)
+	}
 }
 
 func insertSiblingFileReference(content, refID, siblingName string) (string, error) {
@@ -559,7 +684,7 @@ func resolveWorkspace(osProxy utils.OsProxy, workspacePath string) ([]string, er
 		return nil, fmt.Errorf("parse %s: %w", contentsPath, err)
 	}
 
-	refs := collectWorkspaceRefs(ws.FileRefs, ws.Groups)
+	refs := collectWorkspaceRefs(ws.FileRefs, ws.Groups, "")
 
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(refs))
@@ -588,30 +713,70 @@ func resolveWorkspace(osProxy utils.OsProxy, workspacePath string) ([]string, er
 	return out, nil
 }
 
-func collectWorkspaceRefs(refs []workspaceFileRef, groups []workspaceGroup) []string {
+// collectWorkspaceRefs walks the workspace tree, composing each leaf FileRef's
+// location with the accumulated group-location prefix so a `container:` or
+// `group:` ref inside a `location="group:SubProject"` group resolves to
+// `SubProject/<ref>` instead of being silently flattened to the ref alone.
+// Caller passes `parentPrefix=""` at the root.
+func collectWorkspaceRefs(refs []workspaceFileRef, groups []workspaceGroup, parentPrefix string) []string {
 	out := make([]string, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, r.Location)
+		out = append(out, composeWorkspaceLocation(parentPrefix, r.Location))
 	}
 	for _, g := range groups {
-		out = append(out, collectWorkspaceRefs(g.FileRefs, g.Groups)...)
+		childPrefix := composeWorkspaceLocation(parentPrefix, g.Location)
+		out = append(out, collectWorkspaceRefs(g.FileRefs, g.Groups, childPrefix)...)
 	}
 
 	return out
 }
 
-func resolveWorkspaceRef(workspacePath, location string) (string, bool) {
+const workspaceSchemeAbsolute = "absolute"
+
+// composeWorkspaceLocation returns the canonical `scheme:rest` location of a
+// child entry inside a parent group. `absolute:` on either side wins (child
+// replaces parent; parent reroots relative child). Empty parent is a no-op.
+func composeWorkspaceLocation(parent, child string) string {
+	childScheme, childRest := splitWorkspaceLocation(child)
+	if childScheme == workspaceSchemeAbsolute || parent == "" {
+		return child
+	}
+	parentScheme, parentRest := splitWorkspaceLocation(parent)
+	if parentScheme == "" {
+		return child
+	}
+	joined := filepath.Join(parentRest, childRest)
+	// Child scheme is relative (`group`/`container`/`self`); for workspace
+	// FileRefs both `group` and `container` resolve against the workspace
+	// parent dir, so parent `absolute` reroots the chain while any relative
+	// parent carries the child scheme forward.
+	if parentScheme == workspaceSchemeAbsolute {
+		return workspaceSchemeAbsolute + ":" + joined
+	}
+
+	return childScheme + ":" + joined
+}
+
+func splitWorkspaceLocation(location string) (string, string) {
 	idx := strings.Index(location, ":")
 	if idx < 0 {
+		return "", location
+	}
+
+	return location[:idx], location[idx+1:]
+}
+
+func resolveWorkspaceRef(workspacePath, location string) (string, bool) {
+	scheme, rest := splitWorkspaceLocation(location)
+	if scheme == "" {
 		return "", false
 	}
-	scheme, rest := location[:idx], location[idx+1:]
 	switch scheme {
 	case "self":
 		return workspacePath, true
 	case "group", "container":
 		return filepath.Join(filepath.Dir(workspacePath), rest), true
-	case "absolute":
+	case workspaceSchemeAbsolute:
 		return rest, true
 	default:
 		return "", false
