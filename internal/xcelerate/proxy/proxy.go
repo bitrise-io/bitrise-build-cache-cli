@@ -77,6 +77,17 @@ type Proxy struct {
 	// one sits on top of SetSession, this one covers the IDE plugin flow
 	// where ConnEnd only fires when Xcode fully quits.
 	perConnFlushTimer *time.Timer
+
+	// BuildRequestResolver, when set, drives the per-⌘B InvocationID reseat
+	// for IDE peers (nil-safe: CLI/wrapper flow does not require it). Wired
+	// at NewProxyWithOptions time via SidecarOptions.
+	BuildRequestResolver BuildRequestResolver
+
+	// buildRequestPollTimer self-reschedules every buildRequestPollInterval
+	// while the proxy serves. Independent of perConnFlushTimer because the
+	// cadences differ (1s poll vs 15s flush) and keeping them separate
+	// lets a fast ⌘B reseat land before the next idle flush.
+	buildRequestPollTimer *time.Timer
 }
 
 // SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
@@ -86,6 +97,11 @@ type SidecarOptions struct {
 	// Listener is the *PeerListener wrapper the proxy serves on. Required
 	// when Dir is set.
 	Listener *PeerListener
+	// BuildRequestResolver, when non-nil, enables the per-⌘B InvocationID
+	// reseat for IDE peers. The resolver is called every
+	// buildRequestPollInterval under the registry's existing lock; it must
+	// return quickly or the tick stalls.
+	BuildRequestResolver BuildRequestResolver
 }
 
 const defaultInactivityTimeout = 5 * time.Minute
@@ -138,6 +154,12 @@ func NewProxyWithOptions(
 				return nil, err
 			}
 
+			// Re-tag ctx with the per-conn session's current derivedInvocationID
+			// so a mid-connection reseat (ResolveAndMaybeReseat) is picked up by
+			// the KV layer on the next RPC. TagConn only sets the ID once at
+			// connection start.
+			ctx = rewrapInvocationID(ctx)
+
 			resp, err := handler(ctx, req)
 			if !isSessionServiceMethod(info.FullMethod) {
 				proxy.touchSession() //nolint:contextcheck // timer callback fires after RPC ctx is done
@@ -171,6 +193,7 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 
 	p.sessionRegistry = newSessionRegistry()
 	ancestry := buildidentity.NewAncestryCache()
+	p.BuildRequestResolver = opts.BuildRequestResolver
 	p.sidecarStats = &sidecarStatsHandler{
 		listener:                   opts.Listener,
 		registry:                   p.sessionRegistry,
@@ -178,9 +201,26 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		peerAncestryEntries:        ancestry.ResolveAncestryEntries,
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
+		buildRequestResolver:       opts.BuildRequestResolver,
 	}
 
 	p.perConnFlushTimer = time.AfterFunc(perConnIdleThreshold, p.firePerConnFlush)
+	if opts.BuildRequestResolver != nil {
+		p.buildRequestPollTimer = time.AfterFunc(buildRequestPollInterval, p.fireBuildRequestPoll)
+	}
+}
+
+// fireBuildRequestPoll is the per-⌘B reseat timer callback. Self-reschedules
+// so one AfterFunc covers the proxy lifetime; stopped on GracefulStop so no
+// late fire races shutdown.
+func (p *Proxy) fireBuildRequestPoll() {
+	if p.sidecarStats != nil {
+		p.sidecarStats.pollAllForReseat()
+	}
+
+	if p.buildRequestPollTimer != nil {
+		p.buildRequestPollTimer.Reset(buildRequestPollInterval)
+	}
 }
 
 // firePerConnFlush is the per-conn flush timer callback. Self-reschedules so
@@ -255,6 +295,9 @@ func (p *Proxy) Serve(l net.Listener) error {
 func (p *Proxy) GracefulStop() {
 	if p.perConnFlushTimer != nil {
 		p.perConnFlushTimer.Stop()
+	}
+	if p.buildRequestPollTimer != nil {
+		p.buildRequestPollTimer.Stop()
 	}
 	p.grpcServer.GracefulStop()
 	p.flushOutstandingSidecars()

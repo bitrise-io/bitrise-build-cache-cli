@@ -111,7 +111,7 @@ func TestDerivePeerInvocationID_PeerAncestryGate(t *testing.T) {
 	}
 
 	entries := []AncestryEntry{{PID: 100, Name: "someRandomProbe", StartTimeMS: 1}}
-	assert.Empty(t, h.derivePeerInvocationID(entries), "no anchorable ancestor must yield empty InvocationID")
+	assert.Empty(t, h.derivePeerInvocationID(entries, ""), "no anchorable ancestor must yield empty InvocationID")
 }
 
 func TestDerivePeerInvocationID_WrapperSessionWins(t *testing.T) {
@@ -120,7 +120,7 @@ func TestDerivePeerInvocationID_WrapperSessionWins(t *testing.T) {
 	}
 
 	entries := []AncestryEntry{{PID: 101, Name: "xcodebuild", StartTimeMS: 2}}
-	assert.Empty(t, h.derivePeerInvocationID(entries), "wrapper-owned session must suppress derivation")
+	assert.Empty(t, h.derivePeerInvocationID(entries, ""), "wrapper-owned session must suppress derivation")
 }
 
 func TestDerivePeerInvocationID_ReturnsDeterministicIDOnAnchor(t *testing.T) {
@@ -129,8 +129,8 @@ func TestDerivePeerInvocationID_ReturnsDeterministicIDOnAnchor(t *testing.T) {
 	}
 
 	entries := []AncestryEntry{{PID: 101, Name: "xcodebuild", StartTimeMS: 1_700_000_000_000}}
-	first := h.derivePeerInvocationID(entries)
-	second := h.derivePeerInvocationID(entries)
+	first := h.derivePeerInvocationID(entries, "")
+	second := h.derivePeerInvocationID(entries, "")
 	assert.NotEmpty(t, first)
 	assert.Equal(t, first, second)
 }
@@ -147,7 +147,7 @@ func TestTagConn_PopulatesDerivedInvocationID(t *testing.T) {
 
 	cs := newConnectionSession("k", 42, time.Now())
 	cs.ancestryEntries = h.resolveEntries(42)
-	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries)
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
 	cs.markActivity()
 	h.flushTerminal(cs)
 
@@ -233,7 +233,7 @@ func TestTagConn_WrapperSessionGate_SetAfterAccept(t *testing.T) {
 	// Phase 1: TagConn-equivalent — wrapper not yet active, derivation runs.
 	cs := newConnectionSession("k", 42, time.Now())
 	cs.ancestryEntries = h.resolveEntries(42)
-	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries)
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
 	require.NotEmpty(t, cs.derivedInvocationID, "derivation must run when wrapper not yet active")
 	derived := cs.derivedInvocationID
 

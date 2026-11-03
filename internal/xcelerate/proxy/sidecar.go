@@ -86,8 +86,8 @@ func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt ti
 	stats := state.getStats().toPublic()
 
 	var link *sessions.WrapperLink
-	if conn.derivedInvocationID != "" {
-		link = &sessions.WrapperLink{InvocationID: conn.derivedInvocationID}
+	if id := conn.invocationID(); id != "" {
+		link = &sessions.WrapperLink{InvocationID: id}
 	}
 
 	return sessions.Sidecar{

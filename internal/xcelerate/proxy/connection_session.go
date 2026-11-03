@@ -43,7 +43,15 @@ type connectionSession struct {
 	// derivedInvocationID is set by TagConn when the peer's ancestry anchors to
 	// an xcodebuild/Xcode/SWBBuildService ancestor and no wrapper session is
 	// active. Empty when the wrapper owns the session or no anchor was found.
+	// For IDE peers it is re-derived every tick ResolveAndMaybeReseat sees a
+	// new <hex>.xcbuilddata edge, so each ⌘B lands on its own BE row.
 	derivedInvocationID string
+
+	// buildRequestHex is the last-observed <32-hex>.xcbuilddata stem for an
+	// IDE peer. Empty on CLI / wrapper peers (reseat skips them) and until the
+	// first poll tick that locates a build-request dir. Compared under
+	// activityMu to the newly-polled hex to decide whether to reseat.
+	buildRequestHex string
 
 	// derivedDataPath is the -derivedDataPath value parsed off the first
 	// "xcodebuild" ancestor's cmdline, resolved against that process's cwd.
@@ -74,6 +82,39 @@ func (c *connectionSession) markActivity() {
 	defer c.activityMu.Unlock()
 
 	c.lastActivityAt = time.Now()
+}
+
+// invocationID returns the current derivedInvocationID under the activity mutex
+// so a concurrent ResolveAndMaybeReseat cannot tear the read.
+func (c *connectionSession) invocationID() string {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	return c.derivedInvocationID
+}
+
+// setInvocationID stores the derived InvocationID under the activity mutex.
+// Called at TagConn time (once) and by ResolveAndMaybeReseat on every ⌘B edge.
+func (c *connectionSession) setInvocationID(id string) {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	c.derivedInvocationID = id
+}
+
+// swapBuildRequestHex atomically compares-and-updates buildRequestHex,
+// returning true when the hex changed (fresh edge → caller reseats).
+func (c *connectionSession) swapBuildRequestHex(next string) bool {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	if c.buildRequestHex == next {
+		return false
+	}
+
+	c.buildRequestHex = next
+
+	return true
 }
 
 func (c *connectionSession) hadActivity() bool {
@@ -129,6 +170,25 @@ func contextWithSession(ctx context.Context, cs *connectionSession) context.Cont
 	ctx = context.WithValue(ctx, connSessionCtxKey{}, cs)
 
 	return kv.WithInvocationID(ctx, cs.derivedInvocationID)
+}
+
+// rewrapInvocationID re-stamps the KV InvocationID on ctx from the per-conn
+// session's current derivedInvocationID. Used by the unary interceptor so a
+// mid-connection reseat (ResolveAndMaybeReseat) reaches the KV layer on the
+// next RPC without re-running TagConn. ctx without a per-conn session passes
+// through unchanged.
+func rewrapInvocationID(ctx context.Context) context.Context {
+	cs := sessionFromContext(ctx)
+	if cs == nil {
+		return ctx
+	}
+
+	id := cs.invocationID()
+	if id == "" {
+		return ctx
+	}
+
+	return kv.WithInvocationID(ctx, id)
 }
 
 // recorder mirrors every record call to the global sessionState and, when
@@ -216,7 +276,20 @@ type sidecarStatsHandler struct {
 	// TagConn time; derivation skips in that case because the wrapper already
 	// owns the InvocationID.
 	wrapperSessionActive func() bool
+
+	// buildRequestResolver returns the newest build-request hash scoped to a
+	// peer's DD root. nil disables the per-⌘B reseat path; CLI/wrapper peers
+	// also skip even when it is set (see ResolveAndMaybeReseat for the gate).
+	// Injectable so the tick cadence and plist/glob I/O can be tested
+	// synchronously without a filesystem.
+	buildRequestResolver BuildRequestResolver
 }
+
+// BuildRequestResolver returns the newest <32-hex>.xcbuilddata stem scoped to
+// a peer's DerivedData. Returns ("", false) when no entry is found. The
+// resolver takes the per-conn session so an implementation can read the
+// cached derivedDataPath / ancestry without extra wiring.
+type BuildRequestResolver func(cs *connectionSession) (string, bool)
 
 var _ grpcstats.Handler = (*sidecarStatsHandler)(nil)
 
@@ -243,7 +316,7 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 
 	cs := newConnectionSession(key, pc.peerPID, pc.acceptedAt)
 	cs.ancestryEntries = h.resolveEntries(pc.peerPID)
-	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries)
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
 	cs.derivedDataPath = h.resolveDerivedDataPath(cs.ancestryEntries)
 	h.registry.put(cs)
 
@@ -273,11 +346,15 @@ func (h *sidecarStatsHandler) resolveDerivedDataPath(entries []AncestryEntry) st
 }
 
 // derivePeerInvocationID returns a deterministic InvocationID derived from
-// the peer's first anchorable ancestor. Returns "" when:
+// the peer's first anchorable ancestor, optionally salted by a build-request
+// hex. Returns "" when:
 //   - the wrapper owns the current session (its ID wins),
 //   - the peer ancestry lacks an anchorable name (health probe / unrelated),
 //   - the resolver was not wired (bufconn tests).
-func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry) string {
+//
+// Empty buildRequestHex yields byte-identical output to the pre-reseat
+// Derive — CLI/wrapper paths keep their old IDs.
+func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry, buildRequestHex string) string {
 	if h.wrapperSessionActive != nil && h.wrapperSessionActive() {
 		return ""
 	}
@@ -290,7 +367,61 @@ func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry) st
 		return ""
 	}
 
+	anchor.BuildRequestHex = buildRequestHex
+
 	return buildidentity.Derive(anchor)
+}
+
+// isIDEAncestry reports whether the peer's ancestry roots in Xcode.app rather
+// than an xcodebuild CLI run. Xcode's own ancestry contains "Xcode" and/or
+// "SWBBuildService" but NOT "xcodebuild"; a CLI run contains "xcodebuild"
+// (optionally wrapped by shells/launchers). The per-⌘B reseat path only
+// applies to IDE peers — CLI peers have a stable InvocationID per process
+// and reseating them would split their rows apart for no gain.
+func isIDEAncestry(entries []AncestryEntry) bool {
+	hasIDE := false
+	for _, e := range entries {
+		if e.Name == "xcodebuild" {
+			return false
+		}
+		if e.Name == "Xcode" || e.Name == "SWBBuildService" {
+			hasIDE = true
+		}
+	}
+
+	return hasIDE
+}
+
+// ResolveAndMaybeReseat is called by the per-conn flush timer (same cadence,
+// coalesced into one tick). For an IDE peer with a changed build-request hex
+// it re-derives the InvocationID so subsequent RPCs land on a fresh BE row;
+// CLI/wrapper peers and peers lacking the resolver pass through unchanged.
+//
+// Returns true when the ID was reseated. Exposed on the handler so a test can
+// drive one tick without spinning the timer.
+func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool {
+	if h == nil || h.buildRequestResolver == nil || cs == nil {
+		return false
+	}
+	if h.wrapperSessionActive != nil && h.wrapperSessionActive() {
+		return false
+	}
+	if !isIDEAncestry(cs.ancestryEntries) {
+		return false
+	}
+
+	hex, ok := h.buildRequestResolver(cs)
+	if !ok || hex == "" {
+		return false
+	}
+
+	if !cs.swapBuildRequestHex(hex) {
+		return false
+	}
+
+	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, hex))
+
+	return true
 }
 
 // HandleConn flushes the per-conn sidecar on *grpcstats.ConnEnd. ConnBegin is
