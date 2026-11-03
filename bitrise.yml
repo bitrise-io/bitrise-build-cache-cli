@@ -1914,6 +1914,40 @@ workflows:
               echo "  if the toolchain OverrideBuildSettings no longer reach SwiftBuild CLI, update docs/xcode-caching.md + internal/xcode_app/toolchain.go"
               exit 1
             fi
+    - script:
+        title: 'Assert the wrapperless invocation reached the BE'
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+
+            source ../scripts/assert_xcode_invocation_fields.sh
+
+            # Wrapperless path has no "Invocation saved. Visit 👉" line (that's wrapper-only).
+            # The enricher's retry bucket (6 retries × 5s poll) finalizes an unmatched
+            # group ~30s after the manifest lands and logs
+            # "Enriched invocation PUT <uuid> (wrapperless scheme=…)".
+            # 60s absorbs CI jitter plus the PUT.
+            echo "Sleeping 60s for the enricher's retry bucket to mint the wrapperless orphan…"
+            sleep 60
+
+            # Refresh proxy.log + per-invocation xcelerate logs so the enriched line
+            # (written after the step above copied proxy.log) is on disk here.
+            cp "$CHECKOUT_NATIVE_DIR/proxy.log" "$BITRISE_DEPLOY_DIR/proxy.log"
+            cp ~/.local/state/xcelerate/logs/* "$BITRISE_DEPLOY_DIR" 2>/dev/null || true
+
+            INVOCATION_ID=$(cat "$BITRISE_DEPLOY_DIR/proxy.log" ~/.local/state/xcelerate/logs/* 2>/dev/null \
+              | grep -oE 'Enriched invocation PUT [a-fA-F0-9-]+ \(wrapperless' \
+              | awk '{print $4}' | tail -n 1)
+            if [[ -z "$INVOCATION_ID" ]]; then
+              echo "FAIL: no wrapperless enriched invocation ID found in proxy.log or xcelerate logs"
+              echo "--- tail of proxy.log ---"
+              tail -200 "$BITRISE_DEPLOY_DIR/proxy.log" >&2 || true
+              exit 1
+            fi
+
+            echo "Wrapperless invocation ID: $INVOCATION_ID"
+            assert_xcode_invocation_enriched "$INVOCATION_ID"
     - deploy-to-bitrise-io: {}
 
   e2e-xcode-cas-key-stable:
