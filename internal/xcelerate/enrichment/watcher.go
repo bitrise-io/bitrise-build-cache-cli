@@ -298,49 +298,6 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	w.logStalledIfSuspicious(logger, totalMatches, len(targets))
 }
 
-// findOverlappingManifestGroup picks the manifest-emitted group that overlaps
-// [sidecarStart, sidecarStop) and whose Primary().Command() has the highest
-// commandRank. Equal-rank ties resolve to the longer-duration group. nil when
-// no candidate overlaps.
-//
-// Not reusing Correlate(GroupCorrelationSpan(pseudo), pending): candidate shape
-// here is an ID→group map (recentEmissions) and we need rank-based tie-break
-// on overlap, which Correlate's []PendingRecord contract doesn't carry.
-func findOverlappingManifestGroup(sidecarStart, sidecarStop time.Time, recentEmissions map[string]emissionRecord) (string, *ManifestEntryGroup) {
-	var (
-		bestID   string
-		bestGrp  ManifestEntryGroup
-		bestRank = -2
-		bestDur  time.Duration
-		found    bool
-	)
-
-	for id, rec := range recentEmissions {
-		g := rec.group
-		if !overlapsClosed(sidecarStart, sidecarStop, g.Start(), g.Stop()) {
-			continue
-		}
-
-		r := commandRank(g.Primary().Command())
-		d := g.Duration()
-
-		switch {
-		case !found:
-			bestID, bestGrp, bestRank, bestDur, found = id, g, r, d, true
-		case r > bestRank:
-			bestID, bestGrp, bestRank, bestDur = id, g, r, d
-		case r == bestRank && d > bestDur:
-			bestID, bestGrp, bestDur = id, g, d
-		}
-	}
-
-	if !found {
-		return "", nil
-	}
-
-	return bestID, &bestGrp
-}
-
 // scanOrphanSidecars synthesizes pseudo-groups from aged orphan sidecars whose
 // WrapperSession.InvocationID is populated and was NOT already emitted via the
 // manifest path this tick. forceSynthesize drops the minAge gate — used by the
@@ -382,8 +339,8 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 		// must land under its own InvocationID, not fold into whatever
 		// manifest-orphan happened to fire this scan.
 		if !forceSynthesize {
-			if overrideKey, _ := findOverlappingManifestGroup(group.Start, group.Stop, w.recentEmissions); overrideKey != "" {
-				logger.Debugf("Watcher: skip pseudo-group — manifest row already PUT under InvocationID %s (late sidecar wave would clobber hitRate)", overrideKey)
+			if _, prior := w.recentEmissions[invocationID]; prior {
+				logger.Debugf("Watcher: skip pseudo-group — invocation %s already emitted this retention window (same ⌘B late sidecar)", invocationID)
 
 				continue
 			}

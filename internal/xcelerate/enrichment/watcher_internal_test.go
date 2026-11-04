@@ -1105,23 +1105,23 @@ func (s *stubReader) PendingDerivedDataPaths() []string { return nil }
 func (s *stubReader) PendingCount() int { return 0 }
 
 // TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedUnderSameInvocationID
-// pins the clobber-safe path: a pseudo-group that overlaps a prior manifest
-// emission must NOT PUT. BE is last-write-wins, so a late-wave pseudo-group's
-// partial hitRate would overwrite the authoritative manifest row.
+// pins the clobber-safe path: a pseudo-group under the SAME InvocationID a
+// prior manifest emission already PUT must NOT re-PUT. BE is last-write-wins,
+// so a late-wave pseudo-group's partial hitRate would overwrite the
+// authoritative manifest row for the same build.
 func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedUnderSameInvocationID(t *testing.T) {
 	home := t.TempDir()
-	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-overlap-dedup")
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-id-dedup")
 	writeMultiEntryManifest(t, derivedRoot, "u-build")
 
-	// The fixture spans ~762345900..762345905 CFAbsoluteTime (2025-02-27-ish),
-	// so the orphan sidecar's window must straddle those entries to overlap.
-	// fixtureNow (2025-02-27 12:00 UTC) is well past HandledManifestMaxAge
-	// trigger, so entries render ~10:45 UTC — within window.
 	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
 	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
 
+	// The sidecar's InvocationID matches the one the manifest-orphan will PUT.
+	const sharedID = "build-manifest-orphan"
+
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"sidecar-anchored-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}},
+		sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}},
 	}}
 
 	var handled []ManifestEntryGroup
@@ -1135,22 +1135,73 @@ func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedU
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	const buildOrphanID = "build-manifest-orphan"
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		// Only the real manifest group feeds the dedup set — the pseudo-group
 		// that comes later must not re-populate it.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(buildOrphanID, g)
+			w.RecordEmittedInvocationID(sharedID, g)
 		}
 	}
 
 	w.scan(false, false)
 
 	require.Len(t, handled, 1,
-		"only the real manifest group must emit — the overlapping pseudo-group is skipped so its partial stats don't clobber the manifest row")
+		"only the real manifest group must emit — the same-ID pseudo-group is skipped so its partial stats don't clobber the manifest row")
 	assert.False(t, strings.HasPrefix(handled[0].Entries[0].UUID, SyntheticManifestGroupUUIDPrefix),
 		"the single emission must be the real manifest group, not a pseudo-group")
+}
+
+// TestWatcher_scanOrphanSidecars_FreshInvocationID_EmitsEvenOnTimeOverlap pins
+// the reseat-flow contract: when the proxy reseats under a new ⌘B the sidecar
+// carries a distinct InvocationID, and the pseudo-group must emit even if its
+// window overlaps the previously-emitted build's window. ID-match (not time
+// overlap) is the only clobber discriminator.
+func TestWatcher_scanOrphanSidecars_FreshInvocationID_EmitsEvenOnTimeOverlap(t *testing.T) {
+	home := t.TempDir()
+	derivedRoot := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-fresh-id")
+	writeMultiEntryManifest(t, derivedRoot, "u-build")
+
+	// The sidecar window falls inside the recentEmissions entry's window but the
+	// InvocationID differs — the proxy reseated on a fresh ⌘B.
+	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
+	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"new-build-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-new"}},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:               home,
+		Now:                   func() time.Time { return fixtureNow },
+		SidecarReader:         reader,
+		MatchProbe:            func(ManifestEntryGroup) bool { return false },
+		MaxCorrelationRetries: 0,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			// The previously-emitted build sits in recentEmissions under its OWN
+			// InvocationID, different from the sidecar's.
+			w.RecordEmittedInvocationID("old-build-id", g)
+		}
+	}
+
+	w.scan(false, false)
+
+	var synthetic []string
+	for _, g := range handled {
+		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
+			synthetic = append(synthetic, g.Entries[0].UUID)
+		}
+	}
+	require.Len(t, synthetic, 1,
+		"fresh InvocationID → pseudo-group emits even with time overlap (reseated ⌘B is a distinct BE row)")
+	assert.Equal(t, SyntheticManifestGroupUUIDPrefix+"sidecar-new", synthetic[0])
 }
 
 // TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap: a
@@ -1243,12 +1294,15 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
 	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
 
+	const sharedID = "build-manifest-orphan"
+
 	// stagedReader returns no sidecar groups on the first call (tick N) and the
 	// orphan group on subsequent calls (tick N+1) — simulating the IDE flow
-	// where sidecar flush is deferred past the manifest-orphan mint.
+	// where sidecar flush is deferred past the manifest-orphan mint. The late
+	// sidecar carries the SAME InvocationID the manifest already PUT.
 	reader := &stagedReader{stages: []map[string]SidecarGroup{
 		nil,
-		{"sidecar-anchored-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}}},
+		{sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}}},
 	}}
 
 	// Clock advances less than RecentEmissionsRetention between ticks.
@@ -1267,11 +1321,10 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	const buildOrphanID = "build-manifest-orphan"
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(buildOrphanID, g)
+			w.RecordEmittedInvocationID(sharedID, g)
 		}
 	}
 
@@ -1299,9 +1352,11 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	sidecarStart := time.Date(2025, 2, 27, 10, 45, 0, 0, time.UTC)
 	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
 
+	const sharedID = "stale-manifest-id"
+
 	reader := &stagedReader{stages: []map[string]SidecarGroup{
 		nil,
-		{"sidecar-anchored-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-late"}}},
+		{sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-late"}}},
 	}}
 
 	// Second tick lands past the retention window — the emission must be pruned.
@@ -1321,7 +1376,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID("stale-manifest-id", g)
+			w.RecordEmittedInvocationID(sharedID, g)
 		}
 	}
 

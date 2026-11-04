@@ -271,9 +271,8 @@ func (g ManifestEntryGroup) Success() bool {
 	return true
 }
 
-// commandRank orders Command values so the Primary picker and overlap tie-break
-// in findOverlappingManifestGroup agree: archive > build > test > clean >
-// unknown.
+// commandRank orders Command values so the Primary picker ranks them:
+// archive > build > test > clean > unknown.
 //
 // Build outranks Test because build-for-testing and test share a scheme and
 // cluster into one group, and the test-without-building log never carries
