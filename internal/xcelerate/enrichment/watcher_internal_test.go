@@ -949,7 +949,7 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 		handled = append(handled, g)
 		// Only the real manifest entries invoke the manifest-side side-effect; synthetic groups must not loop-feed the dedup set.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID("id-manifest", g)
+			w.RecordEmittedInvocationID("id-manifest", "", g)
 		}
 	}
 
@@ -1140,7 +1140,7 @@ func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedU
 		// Only the real manifest group feeds the dedup set — the pseudo-group
 		// that comes later must not re-populate it.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(sharedID, g)
+			w.RecordEmittedInvocationID(sharedID, "", g)
 		}
 	}
 
@@ -1187,7 +1187,7 @@ func TestWatcher_scanOrphanSidecars_FreshInvocationID_EmitsEvenOnTimeOverlap(t *
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			// The previously-emitted build sits in recentEmissions under its OWN
 			// InvocationID, different from the sidecar's.
-			w.RecordEmittedInvocationID("old-build-id", g)
+			w.RecordEmittedInvocationID("old-build-id", "", g)
 		}
 	}
 
@@ -1233,7 +1233,7 @@ func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testin
 		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			pseudo = &g
 		} else {
-			w.RecordEmittedInvocationID("build-orphan-elsewhere", g)
+			w.RecordEmittedInvocationID("build-orphan-elsewhere", "", g)
 		}
 	}
 
@@ -1269,7 +1269,7 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			pseudo = &g
 		} else {
-			w.RecordEmittedInvocationID("would-have-been-override", g)
+			w.RecordEmittedInvocationID("would-have-been-override", "", g)
 		}
 	}
 
@@ -1324,7 +1324,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(sharedID, g)
+			w.RecordEmittedInvocationID(sharedID, "", g)
 		}
 	}
 
@@ -1376,7 +1376,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(sharedID, g)
+			w.RecordEmittedInvocationID(sharedID, "", g)
 		}
 	}
 

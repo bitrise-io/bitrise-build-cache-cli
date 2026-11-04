@@ -38,14 +38,14 @@ type Enricher struct {
 	XcresultParser   xcresult.Parser
 	SidecarReader    SidecarReader
 
-	// OnEmit fires after a successful PutInvocation with the ID actually sent
-	// and the group whose PUT just succeeded. The watcher wires this to its
-	// per-tick dedup set so an aged orphan sidecar sharing the ID with a
-	// manifest emission does not re-emit as a synthetic pseudo-group — and so
-	// the orphan sweep can reuse the just-emitted group's InvocationID when
-	// a pseudo-group overlaps its window (dedup across the Clean+Build +
-	// pseudo-group triple).
-	OnEmit func(invocationID string, group ManifestEntryGroup)
+	// OnEmit fires after a successful PutInvocation with the ID actually sent,
+	// the manifest's build-description hash (empty if not extractable), and the
+	// group whose PUT just succeeded. The watcher wires this to its per-tick
+	// dedup set so an aged orphan sidecar sharing the ID with a manifest
+	// emission does not re-emit as a synthetic pseudo-group — and so the
+	// orphan sweep can bridge a pseudo-group back to the originating manifest
+	// via hex-exact match on buildDescriptionHash.
+	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup)
 }
 
 func (e *Enricher) now() time.Time {
@@ -96,7 +96,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	hitRate, hitRateOutcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
+	hitRate, hitRateOutcome, buildDescriptionHash := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
 
 	var (
 		sidecarBlob         *blobstats.Snapshot
@@ -179,7 +179,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	if e.OnEmit != nil {
-		e.OnEmit(invocationID, group)
+		e.OnEmit(invocationID, buildDescriptionHash, group)
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))

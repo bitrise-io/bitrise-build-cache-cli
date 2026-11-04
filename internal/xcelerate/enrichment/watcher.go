@@ -79,9 +79,12 @@ type Watcher struct {
 
 // emissionRecord pairs a manifest-emitted group with the time it was recorded
 // so Watcher.recentEmissions can age out stale entries beyond RecentEmissionsRetention.
+// BuildDescriptionHash lets scanOrphanSidecars key a hex-exact match against the
+// sidecar's recorded build-request hex.
 type emissionRecord struct {
-	group     ManifestEntryGroup
-	emittedAt time.Time
+	group                ManifestEntryGroup
+	emittedAt            time.Time
+	BuildDescriptionHash string
 }
 
 // RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
@@ -89,7 +92,8 @@ type emissionRecord struct {
 // just emitted via the manifest path must not re-emit as a pseudo-group. It
 // also stashes the emitted group in recentEmissions so scanOrphanSidecars can
 // find an overlapping manifest window and skip clobbering the authoritative row.
-func (w *Watcher) RecordEmittedInvocationID(invocationID string, group ManifestEntryGroup) {
+// buildDescriptionHash may be empty — hash extraction is best-effort.
+func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptionHash string, group ManifestEntryGroup) {
 	if invocationID == "" {
 		return
 	}
@@ -99,7 +103,7 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string, group ManifestE
 		w.tickEmittedIDs[invocationID] = struct{}{}
 	}
 	if w.recentEmissions != nil {
-		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: now}
+		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: now, BuildDescriptionHash: buildDescriptionHash}
 	}
 }
 
