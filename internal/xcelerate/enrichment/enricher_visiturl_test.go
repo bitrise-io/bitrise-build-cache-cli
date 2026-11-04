@@ -45,15 +45,17 @@ func TestEnricher_AppendsWrapperlessToLocalLog(t *testing.T) {
 		LocalLogAppender: appender,
 	}
 
+	manifestPath, logName := stageOKLog(t)
 	entry := enrichment.ManifestEntry{
 		UUID:      "wrapperless",
 		Signature: "Build MyScheme",
+		FileName:  logName,
 		Status:    "S",
 		Start:     time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC),
 		Stop:      time.Date(2026, 10, 8, 10, 0, 5, 0, time.UTC),
 	}
 
-	e.Enrich("", singleEntryGroup(entry))
+	e.Enrich(manifestPath, singleEntryGroup(entry))
 
 	require.Len(t, appender.records, 1, "successful wrapperless PUT must append exactly one local-log record")
 	rec := appender.records[0]
