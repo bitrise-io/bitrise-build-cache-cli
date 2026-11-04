@@ -39,12 +39,13 @@ type CommonTemplateInventory struct {
 	WebsiteBaseURL  string
 }
 
-func (i CommonTemplateInventory) CredentialHostPattern() string {
+// CredentialHostPatterns lists both domains on staging, as the cache and RBE defaults stay on bitrise.io.
+func (i CommonTemplateInventory) CredentialHostPatterns() []string {
 	if i.StagingServices {
-		return "*.services.bitrise.dev"
+		return []string{"*.services.bitrise.io", "*.services.bitrise.dev"}
 	}
 
-	return "*.services.bitrise.io"
+	return []string{"*.services.bitrise.io"}
 }
 
 func (i CommonTemplateInventory) BESResultsURL() string {

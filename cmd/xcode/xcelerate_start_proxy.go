@@ -235,7 +235,7 @@ func newAnalyticsBundle(
 
 		return authpkg.GradleToken(cred, origin)
 	}
-	client, err := analytics.NewClient(configcommon.XcodeAnalyticsURL(utils.AllEnvs()), tokenSupplier, logger)
+	client, err := analytics.NewClient(configcommon.XcodeAnalyticsURL(envProvider), tokenSupplier, logger)
 	if err != nil {
 		logger.Warnf("Xcode analytics disabled — client init failed: %s", err)
 

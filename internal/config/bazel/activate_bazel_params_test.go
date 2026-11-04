@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func Test_ActivateBazelParams(t *testing.T) {
@@ -274,4 +275,31 @@ func Test_BESEndpointFollowsTheServicesDomain(t *testing.T) {
 	assert.Equal(t, "grpcs://custom.example:443",
 		params.besTemplateInventory(mockLogger, map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev"}).EndpointURLWithPort,
 		"an explicit endpoint is the caller's own choice")
+}
+
+func Test_TemplateInventoryWiresTheStagingEnvsIntoTheRenderedBazelrc(t *testing.T) {
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+
+	params := DefaultActivateBazelParams()
+	params.CLIPath = "/usr/local/bin/bitrise-build-cache"
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":      "AuthTokenValue",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID":    "WorkspaceIDValue",
+		"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev",
+		"BITRISE_BUILD_CACHE_WEBSITE_URL":     "https://app-staging.bitrise.io",
+	}
+
+	inventory, err := params.TemplateInventory(context.Background(), mockLogger, envs,
+		func(_ string, _ ...string) (string, error) { return "", nil }, false)
+	require.NoError(t, err)
+
+	got, err := inventory.GenerateBazelrc(utils.DefaultTemplateProxy())
+	require.NoError(t, err)
+	assert.Contains(t, got, "build --credential_helper=*.services.bitrise.dev="+params.CLIPath+"\n")
+	assert.Contains(t, got, "build --bes_backend=grpcs://flare-bes.services.bitrise.dev:443\n")
+	assert.Contains(t, got, "build --bes_results_url=https://app-staging.bitrise.io/build-cache/invocations/bazel/\n")
 }

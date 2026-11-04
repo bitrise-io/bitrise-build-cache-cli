@@ -38,6 +38,8 @@ func NewClient(baseURL string, tokenSupplier func() string, logger log.Logger) (
 	}, nil
 }
 
+func (c *Client) BaseURL() string { return c.baseURL }
+
 func unwrapError(resp *http.Response) error {
 	errorResp, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -18,8 +18,9 @@ a helper that can't be spawned fails every build.
 */ -}}
 {{- $useHelper := .Common.CLIPath -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
-build --credential_helper={{ .Common.CredentialHostPattern }}={{ .Common.CLIPath }}
-{{ end }}
+{{ range .Common.CredentialHostPatterns -}}
+build --credential_helper={{ . }}={{ $.Common.CLIPath }}
+{{ end }}{{ end }}
 {{- if .Cache.Enabled -}}
 build --remote_cache={{ .Cache.EndpointURLWithPort }}
 build --remote_timeout=600s

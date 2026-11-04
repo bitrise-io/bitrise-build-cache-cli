@@ -578,15 +578,30 @@ func Test_Generate_StagingServicesScopeTheHelperAndLinkTheStagingWebsite(t *test
 			StagingServices: true,
 			WebsiteBaseURL:  "https://app-staging.bitrise.io",
 		},
-		Cache: CacheTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://build-cache-api.services.bitrise.dev"},
+		Cache: CacheTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://bitrise-accelerate.services.bitrise.io:443"},
 		BES:   BESTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.dev:443"},
 	}
 
 	got, err := inv.GenerateBazelrc(utils.DefaultTemplateProxy())
 
 	require.NoError(t, err)
-	assert.Contains(t, got, "build --credential_helper=*.services.bitrise.dev=/usr/local/bin/bitrise-build-cache\n")
+	assert.True(t, strings.HasPrefix(got,
+		"build --credential_helper=*.services.bitrise.io=/usr/local/bin/bitrise-build-cache\n"+
+			"build --credential_helper=*.services.bitrise.dev=/usr/local/bin/bitrise-build-cache\n"+
+			"build --remote_cache=grpcs://bitrise-accelerate.services.bitrise.io:443\n"), got)
 	assert.Contains(t, got, "build --bes_results_url=https://app-staging.bitrise.io/build-cache/invocations/bazel/\n")
-	assert.NotContains(t, got, "services.bitrise.io")
 	assert.NotContains(t, got, "https://app.bitrise.io")
+}
+
+func Test_Generate_ProductionScopesTheHelperToTheProductionDomainOnly(t *testing.T) {
+	inv := TemplateInventory{
+		Common: CommonTemplateInventory{CLIPath: "/usr/local/bin/bitrise-build-cache"},
+		Cache:  CacheTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443"},
+	}
+
+	got, err := inv.GenerateBazelrc(utils.DefaultTemplateProxy())
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(got, "--credential_helper="))
+	assert.NotContains(t, got, "bitrise.dev")
 }

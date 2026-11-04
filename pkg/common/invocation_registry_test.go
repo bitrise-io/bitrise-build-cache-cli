@@ -12,6 +12,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 )
 
 type stubInvocationsAPI struct {
@@ -177,4 +178,23 @@ func TestInvocationRegistry_ResolveFailure(t *testing.T) {
 
 	assert.Empty(t, stub.capturedInvocation.InvocationID)
 	assert.Empty(t, stub.capturedRelation.ParentInvocationID)
+}
+
+func TestInvocationRegistry_resolveAPIFollowsTheServicesDomain(t *testing.T) {
+	for _, tc := range []struct {
+		domain, want string
+	}{
+		{"", "https://multiplatform-analytics.services.bitrise.io"},
+		{"bitrise.dev", "https://multiplatform-analytics.services.bitrise.dev"},
+	} {
+		t.Run("domain="+tc.domain, func(t *testing.T) {
+			reg := newTestRegistry(map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": tc.domain})
+
+			api, err := reg.resolveAPI(auth.Credential{Token: "t"}, auth.Origin{})
+			require.NoError(t, err)
+			client, ok := api.(*ccacheanalytics.Client)
+			require.True(t, ok)
+			assert.Equal(t, tc.want, client.BaseURL())
+		})
+	}
 }
