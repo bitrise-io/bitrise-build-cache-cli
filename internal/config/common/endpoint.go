@@ -54,20 +54,20 @@ func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 // ServicesURL maps a production services URL onto the domain named by BITRISE_BUILD_CACHE_SERVICES_DOMAIN.
 // Only bitrise.dev is honoured; anything else keeps bitrise.io.
 func ServicesURL(prodURL string, envs map[string]string) string {
-	if !UsesStagingServices(envs) {
+	if !usesStagingServices(envs) {
 		return prodURL
 	}
 
 	return strings.Replace(prodURL, ".services.bitrise.io", ".services.bitrise.dev", 1)
 }
 
-func UsesStagingServices(envs map[string]string) bool {
+func usesStagingServices(envs map[string]string) bool {
 	return strings.ToLower(strings.TrimSpace(envs[consts.EnvServicesDomain])) == "bitrise.dev"
 }
 
 // BazelCredentialHostPatterns lists both domains on staging, as the cache and RBE defaults stay on bitrise.io.
 func BazelCredentialHostPatterns(envs map[string]string) []string {
-	if UsesStagingServices(envs) {
+	if usesStagingServices(envs) {
 		return []string{consts.BazelCredentialHostPattern, strings.Replace(consts.BazelCredentialHostPattern, ".bitrise.io", ".bitrise.dev", 1)}
 	}
 
