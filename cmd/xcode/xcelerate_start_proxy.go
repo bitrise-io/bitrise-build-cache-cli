@@ -460,7 +460,11 @@ func buildSidecarOptions(listener net.Listener, logger log.Logger) (proxy.Sideca
 
 	wrapped := proxy.NewPeerListener(listener)
 
-	return proxy.SidecarOptions{Dir: dir, Listener: wrapped}, wrapped
+	return proxy.SidecarOptions{
+		Dir:                  dir,
+		Listener:             wrapped,
+		BuildRequestResolver: proxy.NewDefaultBuildRequestResolver(logger),
+	}, wrapped
 }
 
 // resolveInactivityTimeout parses TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT off
