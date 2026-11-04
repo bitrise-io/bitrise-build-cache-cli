@@ -61,12 +61,10 @@ func ServicesURL(prodURL string, envs map[string]string) string {
 	return strings.Replace(prodURL, ".services.bitrise.io", ".services.bitrise.dev", 1)
 }
 
-// XcodeAnalyticsURL is the Xcode analytics service URL for the services domain in envs.
 func XcodeAnalyticsURL(envs map[string]string) string {
 	return ServicesURL(consts.XcodeAnalyticsServiceEndpoint, envs)
 }
 
-// MultiplatformAnalyticsURL is the multiplatform analytics service URL for the services domain in envs.
 func MultiplatformAnalyticsURL(envs map[string]string) string {
 	return ServicesURL(consts.MultiplatformAnalyticsServiceEndpoint, envs)
 }
