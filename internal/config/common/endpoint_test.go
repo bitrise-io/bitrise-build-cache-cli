@@ -64,3 +64,28 @@ func TestSelectRBEEndpointURL_EnvOverride(t *testing.T) {
 	assert.Equal(t, "grpcs://rbe.bitrise.io", common.SelectRBEEndpointURL("", map[string]string{key: "grpcs://rbe.bitrise.io"}))
 	assert.Equal(t, consts.BitriseAccelerate, common.SelectRBEEndpointURL("", map[string]string{key: "rbe.evil.example:443"}))
 }
+
+func TestServicesURL(t *testing.T) {
+	const sink = "https://gradle-sink.services.bitrise.io"
+
+	tests := []struct {
+		name string
+		envs map[string]string
+		in   string
+		want string
+	}{
+		{"production by default", map[string]string{}, sink, sink},
+		{"bitrise.dev moves a URL", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, sink, "https://gradle-sink.services.bitrise.dev"},
+		{"whitespace is dropped", map[string]string{consts.EnvServicesDomain: " bitrise.dev "}, sink, "https://gradle-sink.services.bitrise.dev"},
+		{"a bare host moves", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "gradle-analytics.services.bitrise.io", "gradle-analytics.services.bitrise.dev"},
+		{"a port is kept", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "grpcs://gradle-analytics.services.bitrise.io:444", "grpcs://gradle-analytics.services.bitrise.dev:444"},
+		{"another domain is ignored", map[string]string{consts.EnvServicesDomain: "evil.example"}, sink, sink},
+		{"explicit bitrise.io stays", map[string]string{consts.EnvServicesDomain: "bitrise.io"}, sink, sink},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, common.ServicesURL(tt.in, tt.envs))
+		})
+	}
+}

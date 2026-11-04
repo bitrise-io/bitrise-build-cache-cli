@@ -51,6 +51,16 @@ func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 	return consts.BitriseAccelerate
 }
 
+// ServicesURL maps a production services URL onto the domain named by BITRISE_BUILD_CACHE_SERVICES_DOMAIN.
+// Only bitrise.dev is honoured; anything else keeps bitrise.io.
+func ServicesURL(prodURL string, envs map[string]string) string {
+	if strings.TrimSpace(envs[consts.EnvServicesDomain]) != "bitrise.dev" {
+		return prodURL
+	}
+
+	return strings.Replace(prodURL, ".services.bitrise.io", ".services.bitrise.dev", 1)
+}
+
 // SelectWebsiteBaseURL returns the website base URL from the environment when it is an
 // https URL on a Bitrise domain, else production. The token is sent there.
 func SelectWebsiteBaseURL(envs map[string]string) string {

@@ -456,6 +456,10 @@ Roughly in order of how likely they are to matter.
     (`grpcs` for the cache, a bare `host:port` also for RBE) on `bitrise.io` or
     `bitrise.dev`, and otherwise uses the production default without a warning.
     An endpoint passed as an explicit flag is not checked.
+    `BITRISE_BUILD_CACHE_SERVICES_DOMAIN=bitrise.dev` moves the analytics services
+    (Gradle sink and analytics, Xcode, multiplatform) to their `.dev` hosts, so a
+    staging VM sends its staging token to staging analytics. Any other value keeps
+    `bitrise.io`.
 11. **Version skew.** Three components agree on an env contract: preboot, `bitrise`
     and the build cache CLI. A mismatch is a skipped activation, not a failure, so
     it is easy to miss. The pin handoff goes through a file in `/tmp` because the

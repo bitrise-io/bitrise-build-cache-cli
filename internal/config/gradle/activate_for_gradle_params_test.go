@@ -621,3 +621,34 @@ func Test_TemplateInventory_OptedOutDowngradesAnalyticsToNone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, UsageLevelNone, inv.Analytics.Usage)
 }
+
+func Test_TemplateInventory_AnalyticsFollowsTheServicesDomain(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+	t.Chdir(tempHome)
+
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything, mock.Anything).Return()
+
+	params := ActivateGradleParams{
+		Cache:      CacheParams{Enabled: false},
+		Analytics:  AnalyticsParams{Enabled: true},
+		TestDistro: TestDistroParams{Enabled: false},
+	}
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+		consts.EnvServicesDomain:           "bitrise.dev",
+	}
+
+	inv, err := params.TemplateInventory(context.Background(), mockLogger, envs, false, nil, utils.DefaultOsProxy{})
+	require.NoError(t, err)
+	assert.Equal(t, "gradle-analytics.services.bitrise.dev", inv.Analytics.Endpoint)
+	assert.Equal(t, "https://gradle-sink.services.bitrise.dev", inv.Analytics.HTTPEndpoint)
+	assert.Equal(t, "grpcs://gradle-analytics.services.bitrise.dev:444", inv.Analytics.GRPCEndpoint)
+}

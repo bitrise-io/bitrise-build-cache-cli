@@ -261,7 +261,7 @@ func (d *postRunDeps) resolveClientAndCred(ctx context.Context) (authpkg.Credent
 		return authpkg.Credential{}, nil, false
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), d.logger)
+	client, err := ccacheanalytics.NewClient(common.ServicesURL(consts.MultiplatformAnalyticsServiceEndpoint, utils.AllEnvs()), authpkg.GradleToken(cred, origin), d.logger)
 	if err != nil {
 		d.logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
