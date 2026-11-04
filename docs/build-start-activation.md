@@ -18,9 +18,9 @@ Three components, each doing one job.
  ----------------------            --------------------------           -------------------
  pins CLI version + sha256   --->  installs that version once:          activate all --auto
  exports the opt-in envs,          host VM cache, else GAR,             1. resolve the credential
- the org allowlist and the         verified against the sha256          2. org gate (fail closed)
- host cache URL                    runs activate gradle-mirrors         3. website decision (fail closed)
-                                   runs activate all --auto with the    4. activate each tool
+ the org allowlist, the host       verified against the sha256          2. org gate (fail closed)
+ cache URL and, on staging,        runs activate gradle-mirrors         3. website decision (fail closed)
+ the website URL                   runs activate all --auto with the    4. activate each tool
                                    build's cache envs, hands back       hands back envman exports
                                    its envman exports
 ```
@@ -116,6 +116,13 @@ starts each do their own once the gates have passed.
    workflow whose owner limited it. It runs after the org gate, so an unlisted
    workspace never reaches it, and it is asked once per `activate all`, not once per
    tool.
+   The request goes to `https://app.bitrise.io` unless
+   `BITRISE_BUILD_CACHE_WEBSITE_URL` names another website (a trailing slash is
+   dropped). A staging VM has to set it to `https://app-staging.bitrise.io`: its
+   services token is only valid there, so the production website answers `401`
+   and the gate, failing closed, activates nothing for any workspace. The
+   variable carries the `BITRISE_BUILD_CACHE_` prefix, so the `bitrise` hook
+   forwards it from the build envs as well as from the VM's environment.
 
 **Manual activation is not gated.** A person running `activate gradle|bazel|xcode|c++|react-native`,
 `activate all` without `--auto`, the interactive wizard, or an activate Step is
@@ -315,6 +322,9 @@ Not validated:
   asked it yet.
 - The website's "no" answers from a build: a workspace without Build Cache, and an
   outage. Per-workflow answers do not exist yet.
+- The website's "yes" from a staging build. Until the website URL override ships
+  and staging preboot exports it, every staging build asks production and gets
+  `401` (seen on 4 Nov 2026, workspace `f25226669641adb6`), so the gate says no.
 - An explicit activate Step on an auto-activated VM beyond Gradle and Xcode on
   macOS (Bazel, React Native, Linux).
 - Builds that use none of the activated tools, and Tuist or other callers of
@@ -360,8 +370,9 @@ script, later by the website endpoint. Each step limits what the next can break.
      pattern, published somewhere the pipeline does not watch. A `v`-prefixed
      semver prerelease tag does trigger it, and the pipeline chains into the
      automatic preboot bump.
-1. **Staging preboot** (done in a test form): export the opt-in, the allowlist and
-   the host cache URL, and hand over the pin. Validate every tool and OS on
+1. **Staging preboot** (done in a test form): export the opt-in, the allowlist,
+   the host cache URL and `BITRISE_BUILD_CACHE_WEBSITE_URL=https://app-staging.bitrise.io`,
+   and hand over the pin. Validate every tool and OS on
    staging, including the negative case: a build from a workspace not on the list
    must activate nothing and report no invocation. Also validate the Gradle
    mirrors from `bitrise run` with the boot-time phase removed: the init script
@@ -439,6 +450,12 @@ Roughly in order of how likely they are to matter.
 10. **Credential exposure surface.** The services token is handed to a child
     process. Only `BITRISE_BUILD_CACHE_*` and that token are passed, so the build's
     other secrets are not, and the CLI logs a hash instead of the token.
+    The `BITRISE_BUILD_CACHE_*` envs come from the build, so a URL among them could
+    redirect the token. The CLI therefore takes an endpoint override (website, cache,
+    RBE, Build Hub token URL, REST API, OIDC, OAuth issuer) only when it is `https`
+    (`grpcs` for the cache, a bare `host:port` also for RBE) on `bitrise.io` or
+    `bitrise.dev`, and otherwise uses the production default without a warning.
+    An endpoint passed as an explicit flag is not checked.
 11. **Version skew.** Three components agree on an env contract: preboot, `bitrise`
     and the build cache CLI. A mismatch is a skipped activation, not a failure, so
     it is easy to miss. The pin handoff goes through a file in `/tmp` because the

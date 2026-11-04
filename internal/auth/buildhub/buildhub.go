@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/trustedurl"
 )
 
 // tokenType selects the Build Cache token. It must match the VMTokenType enum
@@ -55,7 +56,11 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 	if !auth.OnBuildHub(envs) {
 		return nil, false
 	}
-	tokenURL, vmToken := envs[auth.EnvBuildHubVMTokenURL], envs[auth.EnvBuildHubVMToken]
+	// The VM token is sent to this URL, so one outside Bitrise's domains is not a broker.
+	tokenURL, vmToken := trustedurl.FromEnv(envs, auth.EnvBuildHubVMTokenURL, "https"), envs[auth.EnvBuildHubVMToken]
+	if tokenURL == "" {
+		return nil, false
+	}
 
 	return &Client{
 		tokenURL:    tokenURL,

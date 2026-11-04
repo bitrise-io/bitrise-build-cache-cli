@@ -47,7 +47,10 @@ func TestResolveAPIBaseURL(t *testing.T) {
 	if got := ResolveAPIBaseURL(nil); got != DefaultAPIBaseURL {
 		t.Fatalf("default = %q, want %q", got, DefaultAPIBaseURL)
 	}
-	if got := ResolveAPIBaseURL(map[string]string{"BITRISE_API_BASE_URL": "https://staging.example/v0.1"}); got != "https://staging.example/v0.1" {
+	if got := ResolveAPIBaseURL(map[string]string{"BITRISE_API_BASE_URL": "https://api-staging.bitrise.io/v0.1"}); got != "https://api-staging.bitrise.io/v0.1" {
 		t.Fatalf("override = %q", got)
+	}
+	if got := ResolveAPIBaseURL(map[string]string{"BITRISE_API_BASE_URL": "https://evil.example/v0.1"}); got != DefaultAPIBaseURL {
+		t.Fatalf("untrusted override = %q, want the default", got)
 	}
 }

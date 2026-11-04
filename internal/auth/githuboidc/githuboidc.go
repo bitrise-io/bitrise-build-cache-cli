@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/trustedurl"
 )
 
 // audience is the only one the Bitrise exchange accepts.
@@ -98,7 +99,7 @@ type settings struct {
 }
 
 func settingsFrom(envs map[string]string) settings {
-	endpoint := strings.TrimSpace(envs[auth.EnvOIDCTokenEndpoint])
+	endpoint := trustedurl.FromEnv(envs, auth.EnvOIDCTokenEndpoint, "https")
 	if endpoint == "" {
 		endpoint = auth.DefaultOIDCTokenEndpoint
 	}

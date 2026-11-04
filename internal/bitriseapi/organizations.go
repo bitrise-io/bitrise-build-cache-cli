@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/trustedurl"
 )
 
 // DefaultAPIBaseURL is the production Bitrise REST API base URL. Overridable
@@ -26,9 +28,10 @@ type Workspace struct {
 	Name string `json:"name"`
 }
 
-// ResolveAPIBaseURL returns the REST API base URL, honoring BITRISE_API_BASE_URL.
+// ResolveAPIBaseURL returns the REST API base URL, honoring BITRISE_API_BASE_URL
+// when it is an https URL on a Bitrise domain.
 func ResolveAPIBaseURL(envs map[string]string) string {
-	if v := envs["BITRISE_API_BASE_URL"]; v != "" {
+	if v := trustedurl.FromEnv(envs, "BITRISE_API_BASE_URL", "https"); v != "" {
 		return v
 	}
 

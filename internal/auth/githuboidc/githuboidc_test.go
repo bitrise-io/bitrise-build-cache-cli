@@ -322,7 +322,7 @@ func TestShared_KeysOnTheNormalizedConfiguration(t *testing.T) {
 		assert.Same(t, defaulted, c)
 	}
 
-	other, ok := Shared(spelled("policy-uuid", "https://staging.example.com/oidc/token"))
+	other, ok := Shared(spelled("policy-uuid", "https://staging.bitrise.io/oidc/token"))
 	require.True(t, ok)
 	assert.NotSame(t, defaulted, other)
 }
