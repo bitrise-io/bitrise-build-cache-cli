@@ -96,7 +96,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	hitRate, hitRateOutcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
+	hitRate, hitRateOutcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
 
 	var (
 		sidecarBlob         *blobstats.Snapshot
