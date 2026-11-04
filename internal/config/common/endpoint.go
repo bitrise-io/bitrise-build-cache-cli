@@ -54,7 +54,7 @@ func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 // ServicesURL maps a production services URL onto the domain named by BITRISE_BUILD_CACHE_SERVICES_DOMAIN.
 // Only bitrise.dev is honoured; anything else keeps bitrise.io.
 func ServicesURL(prodURL string, envs map[string]string) string {
-	if !strings.EqualFold(strings.TrimSpace(envs[consts.EnvServicesDomain]), "bitrise.dev") {
+	if strings.ToLower(strings.TrimSpace(envs[consts.EnvServicesDomain])) != "bitrise.dev" {
 		return prodURL
 	}
 

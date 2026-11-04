@@ -81,6 +81,7 @@ func TestServicesURL(t *testing.T) {
 		{"a port is kept", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "grpcs://gradle-analytics.services.bitrise.io:444", "grpcs://gradle-analytics.services.bitrise.dev:444"},
 		{"case is ignored", map[string]string{consts.EnvServicesDomain: "BITRISE.DEV"}, sink, "https://gradle-sink.services.bitrise.dev"},
 		{"a suffixed domain is ignored", map[string]string{consts.EnvServicesDomain: "bitrise.dev.evil.example"}, sink, sink},
+		{"a Unicode lookalike is ignored", map[string]string{consts.EnvServicesDomain: "bitri\u017fe.dev"}, sink, sink},
 		{"another domain is ignored", map[string]string{consts.EnvServicesDomain: "evil.example"}, sink, sink},
 		{"explicit bitrise.io stays", map[string]string{consts.EnvServicesDomain: "bitrise.io"}, sink, sink},
 	}
