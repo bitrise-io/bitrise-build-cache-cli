@@ -96,7 +96,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 		return false
 	}
 
-	hitRate, hitRateOutcome, buildDescriptionHash := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
+	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger)
 
 	var (
 		sidecarBlob         *blobstats.Snapshot
@@ -152,7 +152,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	runStats := analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
-		Duration:         group.PrimarySpan().Milliseconds(),
+		Duration:         group.Duration().Milliseconds(),
 		Command:          command,
 		FullCommand:      group.FullCommand(),
 		Success:          group.Success(),
@@ -248,57 +248,129 @@ func unlinkSidecars(paths []string, logger log.Logger) {
 	}
 }
 
-// attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
-// Xcode writes next to the activity log. Silent no-op when parser is unset,
-// bundle is absent, or the summary is empty.
+// attachXcresultSummary merges xcresult bundles across every manifest entry
+// with a non-empty FileName. Each entry owns its own sibling bundle; a
+// clean+build+test cluster writes three bundles that must fuse into one BE row.
+// Targets dedup on Name (take the longest BuildDurationMs so a test action
+// does not overwrite the build action's measurement); Failures dedup on the
+// (TargetName, Message) pair. Silent no-op when parser is unset or every
+// bundle is absent/empty.
 func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntryGroup, inv *analytics.Invocation) {
-	if e.XcresultParser == nil {
+	if e.XcresultParser == nil || manifestPath == "" {
 		return
 	}
 
-	bundlePath := xcresultBundlePath(manifestPath, group)
-	if bundlePath == "" {
-		return
-	}
-	if _, err := os.Stat(bundlePath); err != nil {
-		return
+	manifestDir := filepath.Dir(manifestPath)
+	seenTargets := make(map[string]int, len(group.Entries))
+	seenFailures := make(map[string]struct{}, len(group.Entries))
+
+	for _, entry := range group.Entries {
+		if entry.FileName == "" {
+			continue
+		}
+
+		bundlePath := filepath.Join(manifestDir, strings.TrimSuffix(entry.FileName, filepath.Ext(entry.FileName))+".xcresult")
+		if _, err := os.Stat(bundlePath); err != nil {
+			continue
+		}
+
+		summary := e.XcresultParser.Parse(context.Background(), bundlePath)
+
+		for _, t := range summary.Targets {
+			if idx, ok := seenTargets[t.Name]; ok {
+				if t.BuildDurationMs > inv.Targets[idx].BuildDurationMs {
+					inv.Targets[idx].BuildDurationMs = t.BuildDurationMs
+				}
+
+				continue
+			}
+
+			seenTargets[t.Name] = len(inv.Targets)
+			inv.Targets = append(inv.Targets, analytics.TargetSummary{
+				Name:            t.Name,
+				BuildDurationMs: t.BuildDurationMs,
+			})
+		}
+		for _, f := range summary.Failures {
+			key := f.TargetName + "\x00" + f.Message
+			if _, ok := seenFailures[key]; ok {
+				continue
+			}
+
+			seenFailures[key] = struct{}{}
+			inv.Failures = append(inv.Failures, analytics.FailureSummary{
+				TargetName: f.TargetName,
+				Message:    f.Message,
+			})
+		}
 	}
 
-	summary := e.XcresultParser.Parse(context.Background(), bundlePath)
-	if len(summary.Targets) == 0 && len(summary.Failures) == 0 {
+	if len(inv.Targets) == 0 && len(inv.Failures) == 0 {
 		return
-	}
-
-	for _, t := range summary.Targets {
-		inv.Targets = append(inv.Targets, analytics.TargetSummary{
-			Name:            t.Name,
-			BuildDurationMs: t.BuildDurationMs,
-		})
-	}
-	for _, f := range summary.Failures {
-		inv.Failures = append(inv.Failures, analytics.FailureSummary{
-			TargetName: f.TargetName,
-			Message:    f.Message,
-		})
 	}
 
 	logOr(e.Logger).Debugf("Attached xcresult summary to invocation %s (targets=%d, failures=%d)", inv.InvocationID, len(inv.Targets), len(inv.Failures))
 }
 
-// xcresultBundlePath derives the sibling xcresult bundle path from the manifest
-// group's primary activity-log entry: same directory as the manifest, same
-// basename as the .xcactivitylog with the extension swapped for .xcresult.
-func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
+// aggregateHitRate sums the compile-cache counters across every manifest entry
+// that carries a FileName and a known action. A clean+build+test cluster
+// reports 3 logs; only the build log carries CompilationCacheMetrics, so the
+// aggregate hit rate equals the build log's rate — but the helper stays
+// correct if future Xcode versions add cache events to the test log too.
+//
+// Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
+// last non-OK outcome so the existing gate in Enrich behaves as before.
+// BuildDescriptionHash is sourced from the first OK log (deterministic:
+// entries are iterated in Actions()-chronological order).
+func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger) (float32, xcactivitylog.Outcome, string) {
 	if manifestPath == "" {
-		return ""
+		return 0, xcactivitylog.OutcomeFileMissing, ""
 	}
 
-	primary := group.Primary()
-	if primary.FileName == "" {
-		return ""
+	var (
+		sumHits  int
+		sumTotal int
+		hash     string
+		anyOK    bool
+		lastBad  = xcactivitylog.OutcomeFileMissing
+		sawAny   bool
+	)
+
+	for _, entry := range group.Entries {
+		if entry.FileName == "" || entry.Command() == CommandUnknown {
+			continue
+		}
+
+		sawAny = true
+		m := xcactivitylog.ReadMetricsFromManifest(manifestPath, entry.FileName, logger)
+
+		if m.Outcome != xcactivitylog.OutcomeOK {
+			lastBad = m.Outcome
+
+			continue
+		}
+
+		anyOK = true
+		sumHits += m.Hits
+		sumTotal += m.Total
+
+		if hash == "" && m.BuildDescriptionHash != "" {
+			hash = m.BuildDescriptionHash
+		}
 	}
 
-	base := strings.TrimSuffix(primary.FileName, filepath.Ext(primary.FileName))
+	if !sawAny {
+		return 0, xcactivitylog.OutcomeFileMissing, ""
+	}
 
-	return filepath.Join(filepath.Dir(manifestPath), base+".xcresult")
+	if !anyOK {
+		return 0, lastBad, ""
+	}
+
+	var rate float32
+	if sumTotal > 0 {
+		rate = float32(sumHits) / float32(sumTotal)
+	}
+
+	return rate, xcactivitylog.OutcomeOK, hash
 }

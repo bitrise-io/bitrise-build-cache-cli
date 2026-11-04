@@ -137,8 +137,21 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 // read errors). Returns 0 rate + empty hash on any non-OK outcome. Empty
 // inputs short-circuit as OutcomeFileMissing without reading.
 func ReadHitRateFromManifest(manifestPath, logFileName string, logger log.Logger) (float32, Outcome, string) {
+	m := ReadMetricsFromManifest(manifestPath, logFileName, logger)
+	if m.Outcome == OutcomeOK {
+		return m.HitRate, OutcomeOK, m.BuildDescriptionHash
+	}
+
+	return 0, m.Outcome, ""
+}
+
+// ReadMetricsFromManifest is the raw-counters sibling of ReadHitRateFromManifest.
+// Multi-action clusters sum Hits/Total across every parseable entry's log, so
+// callers need the integer counters to compute a weighted aggregate hit rate
+// — not just the per-log rate.
+func ReadMetricsFromManifest(manifestPath, logFileName string, logger log.Logger) Metrics {
 	if manifestPath == "" || logFileName == "" {
-		return 0, OutcomeFileMissing, ""
+		return Metrics{Outcome: OutcomeFileMissing}
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), logFileName)
@@ -164,9 +177,5 @@ func ReadHitRateFromManifest(manifestPath, logFileName string, logger log.Logger
 		}
 	}
 
-	if metrics.Outcome == OutcomeOK {
-		return metrics.HitRate, OutcomeOK, metrics.BuildDescriptionHash
-	}
-
-	return 0, metrics.Outcome, ""
+	return metrics
 }

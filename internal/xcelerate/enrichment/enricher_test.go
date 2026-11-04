@@ -4,6 +4,7 @@ package enrichment_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,7 +20,22 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
+
+// fakeXcresultParser returns a canned Summary per bundle path; absent paths
+// fall through to the empty Summary.
+type fakeXcresultParser struct {
+	byPath map[string]xcresult.Summary
+}
+
+func (f *fakeXcresultParser) Parse(_ context.Context, bundlePath string) xcresult.Summary {
+	if f == nil {
+		return xcresult.Summary{}
+	}
+
+	return f.byPath[bundlePath]
+}
 
 func singleEntryGroup(e enrichment.ManifestEntry) enrichment.ManifestEntryGroup {
 	return enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{e}}
@@ -441,9 +457,12 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 	}}
 	e.Enrich(manifestPath, group)
 
-	assert.Equal(t, "build [S]", captured.Command, "aggregate command uses the primary (build > test) plus scheme")
-	assert.Equal(t, "Build S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
-	assert.Equal(t, int64(10_000), captured.DurationMs, "duration = PrimarySpan (Primary.Stop − Primary.Start), not the wide cluster span")
+	assert.Equal(t, "build test [S]", captured.Command,
+		"aggregate command renders every action chronologically with the shared scheme")
+	assert.Equal(t, "xcodebuild build test -scheme S", captured.FullCommand,
+		"aggregate FullCommand carries every action verb before the xcodebuild flags")
+	assert.Equal(t, int64(45_000), captured.DurationMs,
+		"duration = group.Duration() — the full min-Start → max-Stop span across all clustered actions")
 	assert.True(t, captured.Success)
 	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")
 }
@@ -1007,11 +1026,11 @@ func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
 	assert.Equal(t, "aaa", ids[0])
 }
 
-// TestEnricher_UsesPrimarySpanForDuration_NotWideClusterSpan locks in the
-// Option-C fix: wrapperless BE rows reflect the Primary build-action window,
-// not the aggregate span that grows as late non-Primary entries (post-build
-// indexing, preview compiles) join the 60s cluster.
-func TestEnricher_UsesPrimarySpanForDuration_NotWideClusterSpan(t *testing.T) {
+// TestEnricher_UsesWideClusterSpanForDuration locks in the multi-action
+// aggregation: durationMs must span the whole IDE interaction (e.g. ⌘⇧K + ⌘B),
+// not the primary entry's own window. A late non-primary entry joining the 60s
+// cluster is treated as part of the same user-visible wall clock.
+func TestEnricher_UsesWideClusterSpanForDuration(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
@@ -1036,6 +1055,163 @@ func TestEnricher_UsesPrimarySpanForDuration_NotWideClusterSpan(t *testing.T) {
 	}}
 	e.Enrich(manifestPath, group)
 
-	assert.Equal(t, int64(10_000), captured.DurationMs,
-		"durationMs comes from PrimarySpan — not the 70s wide cluster span inflated by the late indexing entry")
+	assert.Equal(t, int64(70_000), captured.DurationMs,
+		"durationMs = group.Duration() — the wide min-Start → max-Stop span across every clustered entry")
+}
+
+// TestEnricher_AggregatesHitRateAcrossActions pins the clustered-action
+// aggregation: a clean+build cluster whose Build log reports 7/10 and a second
+// build log (same cluster) reports 3/10 lands on the BE row as 10/20 = 0.5.
+func TestEnricher_AggregatesHitRateAcrossActions(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	dir := t.TempDir()
+	manifestDir := filepath.Join(dir, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(manifestDir, 0o755))
+
+	logA := "AAAA.xcactivitylog"
+	logB := "BBBB.xcactivitylog"
+	writeLog(t, manifestDir, logA, []byte("note: 7 hits / 10 cacheable tasks (70%)\n"))
+	writeLog(t, manifestDir, logB, []byte("note: 3 hits / 10 cacheable tasks (30%)\n"))
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u-a", SchemeName: "S", Signature: "Build S", FileName: logA, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u-b", SchemeName: "S", Signature: "Build S", FileName: logB, Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(30 * time.Second)},
+	}}
+	e.Enrich(filepath.Join(manifestDir, "LogStoreManifest.plist"), group)
+
+	assert.InDelta(t, float32(0.5), captured.HitRate, 0.0001,
+		"aggregate hit rate = Σhits/Σtotal across every parseable sibling log in the cluster (7+3)/(10+10)")
+}
+
+// TestEnricher_AggregatesHitRate_PartialOKFallsThroughOnlyOKEntries pins the
+// "skip missing, keep OK" rule: when one entry's log is OK and another's is
+// missing, the aggregate rate equals the OK entry's rate — the missing log
+// does NOT demote the outcome to zero.
+func TestEnricher_AggregatesHitRate_PartialOKFallsThroughOnlyOKEntries(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	dir := t.TempDir()
+	manifestDir := filepath.Join(dir, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(manifestDir, 0o755))
+
+	logA := "AAAA.xcactivitylog"
+	writeLog(t, manifestDir, logA, []byte("note: 6 hits / 10 cacheable tasks (60%)\n"))
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u-a", SchemeName: "S", Signature: "Build S", FileName: logA, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		// Missing sibling log → ReadMetricsFromManifest returns FileMissing, must be skipped.
+		{UUID: "u-b", SchemeName: "S", Signature: "Build S", FileName: "MISSING.xcactivitylog", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(30 * time.Second)},
+	}}
+	e.Enrich(filepath.Join(manifestDir, "LogStoreManifest.plist"), group)
+
+	require.Len(t, mock.PutInvocationCalls(), 1, "at least one OK log must let the PUT through")
+	assert.InDelta(t, float32(0.6), captured.HitRate, 0.0001,
+		"aggregate hit rate uses only the entry whose log parsed (6/10); the missing sibling is skipped, not counted as zero")
+}
+
+// TestEnricher_AggregatesXcresultSummaryAcrossActions pins the multi-bundle
+// xcresult merge: a clean+build+test cluster writes three sibling xcresult
+// bundles, and inv.Targets must carry the union deduped by Name (longest
+// build duration wins when the same target appears across bundles).
+func TestEnricher_AggregatesXcresultSummaryAcrossActions(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	dir := t.TempDir()
+	manifestDir := filepath.Join(dir, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(manifestDir, 0o755))
+
+	logBuild := "BUILD.xcactivitylog"
+	logTest := "TEST.xcactivitylog"
+	writeLog(t, manifestDir, logBuild, []byte("note: 0 hits / 1 cacheable tasks (0%)\n"))
+	writeLog(t, manifestDir, logTest, []byte("note: 0 hits / 1 cacheable tasks (0%)\n"))
+
+	bundleBuild := filepath.Join(manifestDir, "BUILD.xcresult")
+	bundleTest := filepath.Join(manifestDir, "TEST.xcresult")
+	require.NoError(t, os.MkdirAll(bundleBuild, 0o755))
+	require.NoError(t, os.MkdirAll(bundleTest, 0o755))
+
+	parser := &fakeXcresultParser{byPath: map[string]xcresult.Summary{
+		bundleBuild: {
+			Targets: []xcresult.TargetSummary{
+				{Name: "App", BuildDurationMs: 1200},
+				{Name: "Shared", BuildDurationMs: 300},
+			},
+			Failures: []xcresult.FailureSummary{{TargetName: "App", Message: "compile error"}},
+		},
+		bundleTest: {
+			Targets: []xcresult.TargetSummary{
+				{Name: "AppTests", BuildDurationMs: 500},
+				// Same target appears in both bundles — longest duration wins.
+				{Name: "Shared", BuildDurationMs: 800},
+			},
+			Failures: []xcresult.FailureSummary{
+				// Duplicate failure must dedup.
+				{TargetName: "App", Message: "compile error"},
+				{TargetName: "AppTests", Message: "test failed"},
+			},
+		},
+	}}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock, XcresultParser: parser}
+
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u-build", SchemeName: "S", Signature: "Build S", FileName: logBuild, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u-test", SchemeName: "S", Signature: "Test S", FileName: logTest, Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(40 * time.Second)},
+	}}
+	e.Enrich(filepath.Join(manifestDir, "LogStoreManifest.plist"), group)
+
+	targetByName := map[string]int64{}
+	for _, t := range captured.Targets {
+		targetByName[t.Name] = t.BuildDurationMs
+	}
+	assert.Equal(t, int64(1200), targetByName["App"])
+	assert.Equal(t, int64(500), targetByName["AppTests"])
+	assert.Equal(t, int64(800), targetByName["Shared"], "same-named target across bundles keeps the longest duration")
+	assert.Len(t, captured.Targets, 3, "targets dedup by name across the merged bundles")
+
+	require.Len(t, captured.Failures, 2, "failures dedup by (TargetName, Message) across the merged bundles")
+	failureKeys := map[string]struct{}{}
+	for _, f := range captured.Failures {
+		failureKeys[f.TargetName+"|"+f.Message] = struct{}{}
+	}
+	assert.Contains(t, failureKeys, "App|compile error")
+	assert.Contains(t, failureKeys, "AppTests|test failed")
 }

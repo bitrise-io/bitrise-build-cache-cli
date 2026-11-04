@@ -370,56 +370,137 @@ func (g ManifestEntryGroup) ManifestUUID() string {
 	return uuid
 }
 
-// Command returns empty when the primary is unknown so the caller skips PUT.
+// Actions returns the group's distinct xcodebuild actions in chronological
+// order (earliest Start first). Entries whose Command parses as Unknown are
+// skipped; duplicates collapse to the first occurrence. Used by Command() /
+// FullCommand() so a clean+build group renders "clean build …" instead of
+// just the Primary's verb.
+func (g ManifestEntryGroup) Actions() []Command {
+	if len(g.Entries) == 0 {
+		return nil
+	}
+
+	ordered := append([]ManifestEntry(nil), g.Entries...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Start.Before(ordered[j].Start)
+	})
+
+	seen := make(map[Command]struct{}, len(ordered))
+	out := make([]Command, 0, len(ordered))
+
+	for _, e := range ordered {
+		cmd := e.Command()
+		if cmd == CommandUnknown {
+			continue
+		}
+
+		if _, ok := seen[cmd]; ok {
+			continue
+		}
+
+		seen[cmd] = struct{}{}
+		out = append(out, cmd)
+	}
+
+	return out
+}
+
+// Command returns empty when the group carries no known action so the caller
+// skips PUT. Clustered actions render chronologically: a clean+build group
+// becomes "clean build [Scheme]".
 func (g ManifestEntryGroup) Command() string {
-	p := g.Primary()
-	if p.Command() == CommandUnknown {
+	actions := g.Actions()
+	if len(actions) == 0 {
 		return ""
 	}
 
-	parts := make([]string, 0, 2)
-	if p.SchemeName != "" {
-		parts = append(parts, p.SchemeName)
+	verbs := make([]string, 0, len(actions))
+	for _, a := range actions {
+		verbs = append(verbs, string(a))
 	}
 
-	if cfg := p.Configuration(); cfg != "" {
-		parts = append(parts, cfg)
+	joined := strings.Join(verbs, " ")
+
+	scheme := g.SchemeName()
+	if scheme == "" {
+		return joined
 	}
 
-	if len(parts) == 0 {
-		return string(p.Command())
-	}
-
-	return string(p.Command()) + " [" + strings.Join(parts, " / ") + "]"
+	return joined + " [" + scheme + "]"
 }
 
+// FullCommand renders an argv-shaped xcodebuild invocation stitched from the
+// group's actions and the first entry that surfaces each of -workspace /
+// -project / -scheme / -configuration. Clean entries carry project+config
+// while build entries often carry only the scheme, so a clean+build cluster
+// must fuse both to render a faithful argv — Primary alone is not enough.
+// Falls back to Primary().Signature verbatim when no action was recognized
+// and no ws/project/configuration could be parsed.
 func (g ManifestEntryGroup) FullCommand() string {
-	p := g.Primary()
-	ws := p.Workspace()
-	proj := p.Project()
-	cfg := p.Configuration()
+	actions := g.Actions()
 
-	if ws == "" && proj == "" && cfg == "" {
+	p := g.Primary()
+	ws, proj, cfg := g.firstNonEmptyTokens()
+
+	if len(actions) == 0 && ws == "" && proj == "" && cfg == "" {
 		return p.Signature
 	}
 
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 5)
+	parts = append(parts, "xcodebuild")
+
+	for _, a := range actions {
+		parts = append(parts, string(a))
+	}
+
 	switch {
 	case ws != "":
-		parts = append(parts, "-workspace "+ws)
+		parts = append(parts, "-workspace", ws)
 	case proj != "":
-		parts = append(parts, "-project "+proj)
+		parts = append(parts, "-project", proj)
 	}
 
 	if p.SchemeName != "" {
-		parts = append(parts, "-scheme "+p.SchemeName)
+		parts = append(parts, "-scheme", p.SchemeName)
 	}
 
 	if cfg != "" {
-		parts = append(parts, "-configuration "+cfg)
+		parts = append(parts, "-configuration", cfg)
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// firstNonEmptyTokens walks entries in Start order and picks the first
+// non-empty workspace, project, and configuration. Shared by FullCommand to
+// stitch clean+build clusters where each verb carries a different subset.
+func (g ManifestEntryGroup) firstNonEmptyTokens() (string, string, string) {
+	ordered := append([]ManifestEntry(nil), g.Entries...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Start.Before(ordered[j].Start)
+	})
+
+	var ws, proj, cfg string
+
+	for _, e := range ordered {
+		if ws == "" {
+			ws = e.Workspace()
+		}
+
+		if proj == "" {
+			proj = e.Project()
+		}
+
+		if cfg == "" {
+			cfg = e.Configuration()
+		}
+
+		if ws != "" && proj != "" && cfg != "" {
+			break
+		}
+	}
+
+	return ws, proj, cfg
 }
 
 // SyntheticManifestGroupUUIDPrefix tags pseudo-groups synthesized from aged
