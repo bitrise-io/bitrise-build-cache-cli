@@ -304,6 +304,38 @@ func TestProjectAndConfiguration_ParseBareSignature(t *testing.T) {
 	assert.Equal(t, "Debug", m.Configuration())
 }
 
+func TestWorkspace_ParsesWorkspaceSignature(t *testing.T) {
+	m := enrichment.ManifestEntry{
+		Signature: "Building workspace ComposableArchitecture with scheme ComposableArchitecture",
+	}
+	assert.Equal(t, "ComposableArchitecture", m.Workspace())
+	assert.Empty(t, m.Project())
+	assert.Empty(t, m.Configuration())
+}
+
+func TestFullCommand_WorkspaceSignatureRendersWorkspaceFlag(t *testing.T) {
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
+		SchemeName: "ComposableArchitecture",
+		Signature:  "Building workspace ComposableArchitecture with scheme ComposableArchitecture",
+	}}}
+	assert.Equal(t, "-workspace ComposableArchitecture -scheme ComposableArchitecture", g.FullCommand())
+}
+
+func TestFullCommand_ProjectSignatureRendersProjectFlag(t *testing.T) {
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
+		SchemeName: "Models",
+		Signature:  "Cleaning project IceCubesApp with scheme Models and configuration Debug",
+	}}}
+	assert.Equal(t, "-project IceCubesApp -scheme Models -configuration Debug", g.FullCommand())
+}
+
+func TestFullCommand_UnknownSignatureFallsBackVerbatim(t *testing.T) {
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
+		Signature: "Preparing build description",
+	}}}
+	assert.Equal(t, "Preparing build description", g.FullCommand())
+}
+
 func TestManifestEntryGroup_CleanCommandRendering(t *testing.T) {
 	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{

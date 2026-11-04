@@ -72,6 +72,7 @@ const manifestStatusError = "E"
 var (
 	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
 	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
+	workspaceFromSignature     = regexp.MustCompile(`(?i)\bworkspace\s+(\S+)`)
 )
 
 // Configuration parses the configuration name out of Xcode's Signature string.
@@ -86,6 +87,18 @@ func (m ManifestEntry) Configuration() string {
 // Project parses the project name out of Xcode's Signature string.
 func (m ManifestEntry) Project() string {
 	if match := projectFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
+		return match[1]
+	}
+
+	return ""
+}
+
+// Workspace parses the workspace name out of Xcode's Signature string.
+// Signatures from `xcodebuild -workspace Foo.xcworkspace -scheme Bar` land as
+// "Building workspace Foo with scheme Bar" and omit any project/configuration
+// token, so FullCommand needs the workspace to render an argv-shaped command.
+func (m ManifestEntry) Workspace() string {
+	if match := workspaceFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
 		return match[1]
 	}
 
@@ -357,15 +370,19 @@ func (g ManifestEntryGroup) Command() string {
 
 func (g ManifestEntryGroup) FullCommand() string {
 	p := g.Primary()
+	ws := p.Workspace()
 	proj := p.Project()
 	cfg := p.Configuration()
 
-	if proj == "" && cfg == "" {
+	if ws == "" && proj == "" && cfg == "" {
 		return p.Signature
 	}
 
 	parts := make([]string, 0, 3)
-	if proj != "" {
+	switch {
+	case ws != "":
+		parts = append(parts, "-workspace "+ws)
+	case proj != "":
 		parts = append(parts, "-project "+proj)
 	}
 
