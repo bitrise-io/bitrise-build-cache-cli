@@ -419,6 +419,18 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 		return false
 	}
 
+	// Flush whatever stats accumulated under the old ID BEFORE the swap, so the
+	// pre-reseat ⌘B's blobs land on its own BE row rather than folding into the
+	// freshly-derived ID the next RPC will use.
+	oldID := cs.invocationID()
+	if h.writer != nil {
+		old := cs.swapState()
+		if !old.getStats().blobStats.IsEmpty() {
+			sidecar := newSessionSidecar(cs, old, time.Now(), false, oldID)
+			h.writer.write(sidecar)
+		}
+	}
+
 	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, hex))
 
 	return true
@@ -450,7 +462,7 @@ func (h *sidecarStatsHandler) flushTerminal(cs *connectionSession) {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true)
+		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, cs.invocationID())
 		h.writer.write(sidecar)
 	})
 }
@@ -486,7 +498,7 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		}
 
 		old := cs.swapState()
-		sidecar := newSessionSidecar(cs, old, now, false)
+		sidecar := newSessionSidecar(cs, old, now, false, cs.invocationID())
 		h.writer.write(sidecar)
 	}
 }

@@ -82,12 +82,16 @@ func sidecarFilename(s sessions.Sidecar) string {
 // projected from the entries captured at TagConn time — walking ancestry
 // again at close time would race the peer PID's exit (proc gone → nil names
 // → `peer_ancestry` serialises as `null`).
-func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt time.Time, terminal bool) sessions.Sidecar {
+//
+// invocationID is the ID the sidecar is attributed to: the reseat-flush path
+// passes the pre-swap ID so the accumulated state lands on the old row rather
+// than the newly-derived one; idle/terminal paths pass the current ID.
+func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt time.Time, terminal bool, invocationID string) sessions.Sidecar {
 	stats := state.getStats().toPublic()
 
 	var link *sessions.WrapperLink
-	if id := conn.invocationID(); id != "" {
-		link = &sessions.WrapperLink{InvocationID: id}
+	if invocationID != "" {
+		link = &sessions.WrapperLink{InvocationID: invocationID}
 	}
 
 	return sessions.Sidecar{

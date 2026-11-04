@@ -4,6 +4,9 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
 )
 
 // ideAncestry returns an ancestry chain that passes isIDEAncestry: the IDE
@@ -223,6 +227,72 @@ func TestRewrapInvocationID_NoSessionPassThrough(t *testing.T) {
 	assert.Equal(t, ctx, got)
 	_, ok := kv.InvocationIDFromContext(got)
 	assert.False(t, ok)
+}
+
+// TestResolveAndMaybeReseat_FlushesOldInvocationIDSidecar pins the reseat
+// flush: before the swap, any accumulated stats under the old InvocationID
+// must land on a sidecar attributed to that old ID, and the per-conn state
+// must then be reset so the new ⌘B starts clean.
+func TestResolveAndMaybeReseat_FlushesOldInvocationIDSidecar(t *testing.T) {
+	dir := t.TempDir()
+	h := &sidecarStatsHandler{
+		writer:               newSidecarWriter(dir, nil),
+		wrapperSessionActive: func() bool { return false },
+		buildRequestResolver: func(*connectionSession) (string, bool) {
+			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		},
+	}
+
+	cs := newConnectionSession("k", 10, time.Now())
+	cs.ancestryEntries = ideAncestry()
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
+	oldID := cs.derivedInvocationID
+	require.NotEmpty(t, oldID)
+
+	cs.state.Load().recordDownload(opGet, 42, 0)
+	require.False(t, cs.state.Load().getStats().blobStats.IsEmpty(), "test precondition: state seeded with a download")
+
+	require.True(t, h.ResolveAndMaybeReseat(cs), "fresh hex triggers reseat")
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "reseat must write exactly one intermediate sidecar for the old ID")
+
+	body, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
+	require.NoError(t, err)
+
+	var sc sessions.Sidecar
+	require.NoError(t, json.Unmarshal(body, &sc))
+	require.NotNil(t, sc.WrapperSession)
+	assert.Equal(t, oldID, sc.WrapperSession.InvocationID, "sidecar carries the pre-reseat InvocationID, not the newly-derived one")
+	assert.False(t, sc.Terminal, "reseat flush is intermediate, not terminal")
+
+	assert.True(t, cs.state.Load().getStats().blobStats.IsEmpty(), "post-reseat state must be fresh so the new ⌘B starts clean")
+	assert.NotEqual(t, oldID, cs.invocationID(), "post-reseat InvocationID is the newly-derived one")
+}
+
+// TestResolveAndMaybeReseat_NoFlushWhenStateEmpty guards the empty-state
+// path: a reseat on a connection that never recorded anything must not
+// churn the disk with an empty sidecar.
+func TestResolveAndMaybeReseat_NoFlushWhenStateEmpty(t *testing.T) {
+	dir := t.TempDir()
+	h := &sidecarStatsHandler{
+		writer:               newSidecarWriter(dir, nil),
+		wrapperSessionActive: func() bool { return false },
+		buildRequestResolver: func(*connectionSession) (string, bool) {
+			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		},
+	}
+
+	cs := newConnectionSession("k", 10, time.Now())
+	cs.ancestryEntries = ideAncestry()
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
+
+	require.True(t, h.ResolveAndMaybeReseat(cs))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "empty-state reseat must not produce a sidecar file")
 }
 
 func TestPollAllForReseat_IteratesEveryRegisteredSession(t *testing.T) {
