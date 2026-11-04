@@ -117,6 +117,15 @@ func (c *connectionSession) swapBuildRequestHex(next string) bool {
 	return true
 }
 
+// buildRequestHexSnapshot returns the current buildRequestHex under the
+// activity mutex so a concurrent ResolveAndMaybeReseat cannot tear the read.
+func (c *connectionSession) buildRequestHexSnapshot() string {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	return c.buildRequestHex
+}
+
 func (c *connectionSession) hadActivity() bool {
 	c.activityMu.Lock()
 	defer c.activityMu.Unlock()
@@ -415,6 +424,12 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 		return false
 	}
 
+	// Snapshot the OLD identity BEFORE swapBuildRequestHex mutates state so the
+	// flushed sidecar carries the hex that generated its blob stats — the
+	// enricher keys on it to bridge pseudo-group PUTs back to the manifest row.
+	oldID := cs.invocationID()
+	oldHex := cs.buildRequestHexSnapshot()
+
 	if !cs.swapBuildRequestHex(hex) {
 		return false
 	}
@@ -422,11 +437,10 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	// Flush whatever stats accumulated under the old ID BEFORE the swap, so the
 	// pre-reseat ⌘B's blobs land on its own BE row rather than folding into the
 	// freshly-derived ID the next RPC will use.
-	oldID := cs.invocationID()
 	if h.writer != nil {
 		old := cs.swapState()
 		if !old.getStats().blobStats.IsEmpty() {
-			sidecar := newSessionSidecar(cs, old, time.Now(), false, oldID)
+			sidecar := newSessionSidecar(cs, old, time.Now(), false, sidecarIdentity{InvocationID: oldID, BuildRequestHex: oldHex})
 			h.writer.write(sidecar)
 		}
 	}
@@ -462,7 +476,7 @@ func (h *sidecarStatsHandler) flushTerminal(cs *connectionSession) {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, cs.invocationID())
+		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
 		h.writer.write(sidecar)
 	})
 }
@@ -498,7 +512,7 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		}
 
 		old := cs.swapState()
-		sidecar := newSessionSidecar(cs, old, now, false, cs.invocationID())
+		sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
 		h.writer.write(sidecar)
 	}
 }

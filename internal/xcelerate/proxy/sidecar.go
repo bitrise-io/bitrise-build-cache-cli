@@ -75,6 +75,16 @@ func sidecarFilename(s sessions.Sidecar) string {
 	return fmt.Sprintf("%d-%d-%s.json", s.PeerPID, s.ClosedAt.UnixNano(), s.SidecarUUID)
 }
 
+// sidecarIdentity bundles the attributes that identify the row the sidecar
+// contributes to: the InvocationID the BE row is keyed under and the
+// build-request hex that generated the accumulated blob stats. On reseat
+// both must snapshot the OLD values before the swap — otherwise the flushed
+// stats land on the freshly-derived ID / new hex.
+type sidecarIdentity struct {
+	InvocationID    string
+	BuildRequestHex string
+}
+
 // newSessionSidecar materialises a sidecar from a per-conn session plus the
 // state slice to serialise. The slice is passed explicitly (not read off conn)
 // so intermediate flushes can hand in the just-swapped-out state while the
@@ -83,15 +93,16 @@ func sidecarFilename(s sessions.Sidecar) string {
 // again at close time would race the peer PID's exit (proc gone → nil names
 // → `peer_ancestry` serialises as `null`).
 //
-// invocationID is the ID the sidecar is attributed to: the reseat-flush path
-// passes the pre-swap ID so the accumulated state lands on the old row rather
-// than the newly-derived one; idle/terminal paths pass the current ID.
-func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt time.Time, terminal bool, invocationID string) sessions.Sidecar {
+// identity is the (InvocationID, BuildRequestHex) tuple the sidecar is
+// attributed to: the reseat-flush path passes the pre-swap pair so the
+// accumulated state lands on the old row rather than the newly-derived one;
+// idle/terminal paths pass the current pair.
+func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt time.Time, terminal bool, identity sidecarIdentity) sessions.Sidecar {
 	stats := state.getStats().toPublic()
 
 	var link *sessions.WrapperLink
-	if invocationID != "" {
-		link = &sessions.WrapperLink{InvocationID: invocationID}
+	if identity.InvocationID != "" {
+		link = &sessions.WrapperLink{InvocationID: identity.InvocationID}
 	}
 
 	return sessions.Sidecar{
@@ -105,6 +116,7 @@ func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt ti
 		BlobStats:       stats.BlobStats,
 		WrapperSession:  link,
 		DerivedDataPath: conn.derivedDataPath,
+		BuildRequestHex: identity.BuildRequestHex,
 		Terminal:        terminal,
 	}
 }

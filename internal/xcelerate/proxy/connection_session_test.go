@@ -163,7 +163,7 @@ func TestNewSessionSidecar_PropagatesDerivedDataPath(t *testing.T) {
 	cs := newConnectionSession("k", 42, time.Unix(0, 0))
 	cs.derivedDataPath = "/tmp/projectDD"
 
-	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true, cs.invocationID())
+	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
 
 	assert.Equal(t, "/tmp/projectDD", sc.DerivedDataPath)
 	assert.True(t, sc.Terminal, "ConnEnd path marks the sidecar terminal")
@@ -180,7 +180,7 @@ func TestNewSessionSidecar_PeerAncestryFromCachedEntries(t *testing.T) {
 		{PID: 10, Name: "xcodebuild", StartTimeMS: 2},
 	}
 
-	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true, cs.invocationID())
+	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
 
 	assert.Equal(t, []string{"swiftc", "xcodebuild"}, sc.PeerAncestry)
 }
@@ -192,7 +192,7 @@ func TestNewSessionSidecar_PeerAncestryNilEntriesSerialisesEmpty(t *testing.T) {
 	cs := newConnectionSession("k", 42, time.Unix(0, 0))
 	cs.ancestryEntries = nil
 
-	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true, cs.invocationID())
+	sc := newSessionSidecar(cs, cs.state.Load(), time.Unix(1, 0), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
 
 	assert.Empty(t, sc.PeerAncestry)
 }

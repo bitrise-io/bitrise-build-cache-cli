@@ -35,6 +35,13 @@ type Sidecar struct {
 	// typed struct and ignore the field when absent — no SchemaVersion bump.
 	DerivedDataPath string `json:"derived_data_path,omitempty"`
 
+	// BuildRequestHex is the 32-hex `<hash>.xcbuilddata` stem the IDE handed
+	// the proxy at the time this sidecar's stats were accumulated. The reseat
+	// flush snapshots the OLD hex before swapBuildRequestHex mutates state so
+	// the flushed row keeps the hex that generated its blob stats. Additive to
+	// schema v2 like DerivedDataPath; no SchemaVersion bump needed.
+	BuildRequestHex string `json:"build_request_hex,omitempty"`
+
 	// Terminal reports whether this sidecar closes out the connection
 	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush.
 	// Additive to schema v2.

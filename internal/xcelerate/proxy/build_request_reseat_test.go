@@ -271,6 +271,47 @@ func TestResolveAndMaybeReseat_FlushesOldInvocationIDSidecar(t *testing.T) {
 	assert.NotEqual(t, oldID, cs.invocationID(), "post-reseat InvocationID is the newly-derived one")
 }
 
+// TestResolveAndMaybeReseat_FlushedSidecarCarriesOldHex pins the hex-bridge
+// prerequisite: after the swap, the flushed sidecar's BuildRequestHex must be
+// the pre-swap hex so the enricher can key an exact match against the
+// manifest row recorded under that hex. The newly-polled hex is for the NEXT
+// ⌘B — storing it on the old row would mis-attribute which manifest contains
+// which blob stats.
+func TestResolveAndMaybeReseat_FlushedSidecarCarriesOldHex(t *testing.T) {
+	dir := t.TempDir()
+	const oldHex = "11111111111111111111111111111111"
+	const newHex = "22222222222222222222222222222222"
+
+	h := &sidecarStatsHandler{
+		writer:               newSidecarWriter(dir, nil),
+		wrapperSessionActive: func() bool { return false },
+		buildRequestResolver: func(*connectionSession) (string, bool) {
+			return newHex, true
+		},
+	}
+
+	cs := newConnectionSession("k", 10, time.Now())
+	cs.ancestryEntries = ideAncestry()
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, oldHex)
+	cs.buildRequestHex = oldHex
+
+	cs.state.Load().recordDownload(opGet, 42, 0)
+
+	require.True(t, h.ResolveAndMaybeReseat(cs))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	body, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
+	require.NoError(t, err)
+
+	var sc sessions.Sidecar
+	require.NoError(t, json.Unmarshal(body, &sc))
+	assert.Equal(t, oldHex, sc.BuildRequestHex, "flushed sidecar must carry the pre-swap hex — the newly-polled one belongs to the next ⌘B")
+	assert.Equal(t, newHex, cs.buildRequestHexSnapshot(), "post-reseat current hex is the newly-polled one")
+}
+
 // TestResolveAndMaybeReseat_NoFlushWhenStateEmpty guards the empty-state
 // path: a reseat on a connection that never recorded anything must not
 // churn the disk with an empty sidecar.
