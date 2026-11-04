@@ -569,7 +569,7 @@ func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
 	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
 }
 
-func TestEnricher_SidecarInvocationIDWinsOverManifestUUID(t *testing.T) {
+func TestEnricher_ManifestUUIDWinsOverSidecarInvocationID(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -596,8 +596,8 @@ func TestEnricher_SidecarInvocationIDWinsOverManifestUUID(t *testing.T) {
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Equal(t, sidecarID, captured.InvocationID,
-		"proxy-stamped sidecar InvocationID is the authoritative BE identity; it joins DataTransfer rows the archive-service keyed by the gRPC-tagged ID")
+	assert.Equal(t, "manifest-anchor", captured.InvocationID,
+		"manifest's xcactivitylog UUID is the authoritative BE identity; sidecar blob stats attach to this row via Lookup, and the hex-bridge later re-PUTs under the same ID (ID-match guard then skips the duplicate)")
 }
 
 func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
@@ -792,8 +792,8 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 	}))
 
 	require.Len(t, emitted, 1, "OnEmit must fire exactly once after a successful PUT")
-	assert.Equal(t, "sidecar-id", emitted[0],
-		"OnEmit must receive the InvocationID actually sent — sidecar's proxy-stamped InvocationID wins so DataTransfer rows join")
+	assert.Equal(t, "manifest-anchor", emitted[0],
+		"OnEmit must receive the InvocationID actually sent — manifest UUID wins so the hex-bridge re-PUT lands on the same row")
 }
 
 func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
@@ -840,7 +840,7 @@ func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	assert.Zero(t, puts)
 }
 
-func TestEnricher_PutsUnderSidecarInvocationID_WhenSidecarPresent(t *testing.T) {
+func TestEnricher_PutsUnderManifestUUID_WhenManifestPresent(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -852,11 +852,10 @@ func TestEnricher_PutsUnderSidecarInvocationID_WhenSidecarPresent(t *testing.T) 
 		},
 	}
 
-	const sidecarID = "test-sidecar-id"
 	e := &enrichment.Enricher{
 		Store:         store,
 		Client:        mock,
-		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: sidecarID},
+		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: "test-sidecar-id"},
 	}
 
 	now := time.Now()
@@ -867,7 +866,7 @@ func TestEnricher_PutsUnderSidecarInvocationID_WhenSidecarPresent(t *testing.T) 
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Equal(t, sidecarID, captured.InvocationID)
+	assert.Equal(t, "manifest-uuid", captured.InvocationID)
 }
 
 func TestEnricher_FallsBackToManifestUUID_WhenNoSidecar(t *testing.T) {

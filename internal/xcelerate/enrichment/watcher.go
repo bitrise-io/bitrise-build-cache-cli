@@ -28,7 +28,13 @@ type Watcher struct {
 	Globs        []string
 	PollInterval time.Duration
 	// Handle receives manifestPath so the callback can resolve the sibling xcactivitylog.
-	Handle func(manifestPath string, group ManifestEntryGroup)
+	// Handle returns true when the group was emitted (OnEmit fired), false when
+	// Enrich skipped the PUT (outcome=3 + no sidecar, nil InvocationID, etc).
+	// markGroupHandled only runs on true so a prep-phase xcactivitylog whose PUT
+	// was skipped does not shadow the real build log that joins the cluster
+	// later (same scheme+timegap, same command rank → Primary picks the earlier
+	// prep UUID → groupFullySeen blocks the richer group).
+	Handle func(manifestPath string, group ManifestEntryGroup) bool
 	Logger log.Logger
 
 	// MatchProbe returns true when a pending record for the group
@@ -346,22 +352,8 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		// Hex-bridge: when the sidecar's build-request hex matches a recent
-		// manifest emission, re-PUT under the manifest's UUID with the sidecar
-		// blob stats merged in. BE last-write-wins means this overwrite carries
-		// a superset of Path A's manifest row. The manifest's UUID is already
-		// in w.seen from the Path A emission, so bypass handleGroup's seen gate
-		// and dispatch Handle directly.
-		if group.BuildRequestHex != "" {
-			if emission, ok := w.findEmissionByBuildRequestHex(group.BuildRequestHex, group.Start); ok {
-				clone := CloneManifestGroupWithSidecar(emission.group, group.Blob, group.Paths)
-				logger.Debugf("Watcher: hex-bridged pseudo-group — sidecar hex %s matched manifest UUID %s (InvocationID %s)", group.BuildRequestHex, emission.group.ManifestUUID(), invocationID)
-				if w.Handle != nil {
-					w.Handle("", clone)
-				}
-
-				continue
-			}
+		if w.tryHexBridgeClone(group, invocationID, logger) {
+			continue
 		}
 
 		// Shutdown sweep stays sidecar-anchored: a late-closing sidecar's data
@@ -379,6 +371,40 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}
+}
+
+// tryHexBridgeClone dispatches a manifest-UUID-anchored clone when the
+// sidecar's build-request hex matches a recent manifest emission AND that
+// manifest UUID has not yet been PUT. Returns true when a clone was
+// dispatched (caller must continue). Returns false when no match, or when
+// the match's manifest UUID is already in recentEmissions — in which case
+// the caller falls through to the slim pseudo-group path so residual
+// sidecars land under their proxy-derived InvocationID as post-build
+// activity, rather than clobbering Path A's blob stats under BE last-write-wins.
+func (w *Watcher) tryHexBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
+	if group.BuildRequestHex == "" {
+		return false
+	}
+
+	emission, ok := w.findEmissionByBuildRequestHex(group.BuildRequestHex, group.Start)
+	if !ok {
+		return false
+	}
+
+	manifestID := emission.group.ManifestUUID()
+	if _, alreadyPut := w.recentEmissions[manifestID]; alreadyPut {
+		logger.Debugf("Watcher: hex-bridge skipped — manifest UUID %s already PUT; routing residual sidecar to slim pseudo-group path", manifestID)
+
+		return false
+	}
+
+	clone := CloneManifestGroupWithSidecar(emission.group, group.Blob, group.Paths)
+	logger.Debugf("Watcher: hex-bridged pseudo-group — sidecar hex %s matched manifest UUID %s (InvocationID %s)", group.BuildRequestHex, manifestID, invocationID)
+	if w.Handle != nil {
+		w.Handle("", clone)
+	}
+
+	return true
 }
 
 // findEmissionByBuildRequestHex returns the recent emission whose stored
@@ -495,11 +521,16 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 	key := groupKey(group)
 
 	if synthetic || w.Handle == nil || w.MaxCorrelationRetries == 0 || !w.hasCorrelationSignal() {
+		handled := true
 		if w.Handle != nil {
 			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
-			w.Handle(manifestPath, group)
+			handled = w.Handle(manifestPath, group)
 		}
-		w.markGroupHandled(group)
+		if handled {
+			w.markGroupHandled(group)
+		} else {
+			logger.Debugf("Watcher: handle returned skip — leaving group unmarked scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+		}
 
 		return
 	}
@@ -508,16 +539,18 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 		switch {
 		case w.canCorrelate(group):
 			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
-			w.Handle(manifestPath, group)
-			w.markGroupHandled(group)
+			if w.Handle(manifestPath, group) {
+				w.markGroupHandled(group)
+			}
 			delete(w.retries, key)
 		case w.retries[key] > 0:
 			w.retries[key]--
 			logger.Debugf("Watcher: pending still unmatched, decrement scheme=%s attempts_left=%d", group.SchemeName(), w.retries[key])
 		default:
 			logger.Debugf("Watcher: pending retries exhausted, minting orphan scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-			w.Handle(manifestPath, group)
-			w.markGroupHandled(group)
+			if w.Handle(manifestPath, group) {
+				w.markGroupHandled(group)
+			}
 			delete(w.retries, key)
 		}
 
@@ -529,8 +562,9 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 	// short-circuit the retry setup entirely.
 	if w.canCorrelate(group) {
 		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-		w.Handle(manifestPath, group)
-		w.markGroupHandled(group)
+		if w.Handle(manifestPath, group) {
+			w.markGroupHandled(group)
+		}
 
 		return
 	}

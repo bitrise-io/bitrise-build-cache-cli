@@ -56,9 +56,10 @@ func TestWatcher_scan_MatchedEntry_FiresImmediately(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			calls++
 			uuids = append(uuids, g.UUIDs()...)
+			return true
 		},
 		MatchProbe:            func(ManifestEntryGroup) bool { return true },
 		MaxCorrelationRetries: 3,
@@ -83,10 +84,11 @@ func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 		MatchProbe: func(g ManifestEntryGroup) bool {
 			if !groupContainsUUID(g, uuid) {
@@ -133,10 +135,11 @@ func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T)
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 		MatchProbe: func(g ManifestEntryGroup) bool {
 			return !groupContainsUUID(g, uuid)
@@ -173,10 +176,11 @@ func TestWatcher_scan_ZeroRetries_MintsImmediately(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 		MatchProbe: func(ManifestEntryGroup) bool { return false },
 		// MaxCorrelationRetries = 0 → opt out; fires immediately.
@@ -199,10 +203,11 @@ func TestWatcher_scan_NilMatchProbe_FiresImmediately(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 		MatchProbe:            nil,
 		MaxCorrelationRetries: 6,
@@ -225,8 +230,9 @@ func TestWatcher_scan_SeedOnlyDoesNotPopulateRetries(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
@@ -249,7 +255,7 @@ func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
 	w := &Watcher{
 		Now:                   func() time.Time { return fixtureNow },
 		HomeDir:               home,
-		Handle:                func(string, ManifestEntryGroup) {},
+		Handle:                func(string, ManifestEntryGroup) bool { return true },
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
 	}
@@ -309,8 +315,9 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 			DefaultDerivedDataGlob,
 			".bitrise/cache/xcode-dd/*/Logs/*/LogStoreManifest.plist",
 		},
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -332,8 +339,9 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Globs:   nil,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -353,8 +361,9 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -381,8 +390,9 @@ func TestWatcher_scan_HydratesSeenFromHandledStoreOnStartup(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 		HandledStore: store,
 		PollInterval: time.Hour, // never tick; only startup block runs
@@ -407,7 +417,7 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 
 	w := &Watcher{
 		HomeDir:      home,
-		Handle:       func(string, ManifestEntryGroup) {},
+		Handle:       func(string, ManifestEntryGroup) bool { return true },
 		HandledStore: store,
 		Now:          func() time.Time { return fixtureNow },
 	}
@@ -473,8 +483,9 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsOneGroup(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			groups = append(groups, g)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -497,9 +508,10 @@ func TestWatcher_scan_AppendingNonPrimaryUUID_DoesNotReemit(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handleCalls++
 			lastUUIDs = g.UUIDs()
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -588,9 +600,10 @@ func TestWatcher_scan_NewPrimaryTriggersReemit(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handleCalls++
 			lastPrimaryUUID = g.Primary().UUID
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -621,7 +634,9 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 
 	w := &Watcher{
 		HomeDir: home,
-		Handle:  func(string, ManifestEntryGroup) { handles++ },
+		Handle:  func(string, ManifestEntryGroup) bool { handles++
+			return true
+		},
 		Now:     func() time.Time { return time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC) },
 	}
 	w.seen = map[string]struct{}{}
@@ -677,8 +692,9 @@ func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
 		Now:           func() time.Time { return fixtureNow },
 		HomeDir:       home,
 		SidecarReader: reader,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -721,7 +737,7 @@ func TestWatcher_scan_StalledDiagnostic_EmitsWhenZeroManifestsWithPendingSidecar
 		HomeDir:       home,
 		SidecarReader: &sidecarReaderStub{ddPaths: []string{"/project/DD"}, pendingCount: 3},
 		Logger:        logger,
-		Handle:        func(string, ManifestEntryGroup) {},
+		Handle:        func(string, ManifestEntryGroup) bool { return true },
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -747,7 +763,7 @@ func TestWatcher_scan_StalledDiagnostic_RateLimitedToOncePerMinute(t *testing.T)
 		HomeDir:       t.TempDir(),
 		SidecarReader: &sidecarReaderStub{ddPaths: []string{"/project/DD"}, pendingCount: 2},
 		Logger:        logger,
-		Handle:        func(string, ManifestEntryGroup) {},
+		Handle:        func(string, ManifestEntryGroup) bool { return true },
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -782,7 +798,7 @@ func TestWatcher_scan_StalledDiagnostic_SilentWhenNoSidecars(t *testing.T) {
 		HomeDir:       t.TempDir(),
 		SidecarReader: &sidecarReaderStub{}, // zero sidecars
 		Logger:        logger,
-		Handle:        func(string, ManifestEntryGroup) {},
+		Handle:        func(string, ManifestEntryGroup) bool { return true },
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -803,7 +819,7 @@ func TestWatcher_scan_SidecarAbsentOrEmpty_NoExtraGlobs(t *testing.T) {
 		Now:           func() time.Time { return fixtureNow },
 		HomeDir:       home,
 		SidecarReader: &sidecarReaderStub{ddPaths: nil}, // no hints
-		Handle:        func(string, ManifestEntryGroup) {},
+		Handle:        func(string, ManifestEntryGroup) bool { return true },
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -820,8 +836,9 @@ func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 	}
 
@@ -848,9 +865,10 @@ func TestWatcher_scanOrphanSidecars_FiresPseudoGroupForAgedOrphan(t *testing.T) 
 		SidecarReader:         reader,
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
-		Handle: func(path string, g ManifestEntryGroup) {
+		Handle: func(path string, g ManifestEntryGroup) bool {
 			assert.Equal(t, "", path, "synthetic path must be empty — no sibling xcactivitylog")
 			handled = append(handled, g)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -884,7 +902,7 @@ func TestWatcher_scanOrphanSidecars_ForceSynthesizeDropsAgeGate(t *testing.T) {
 		SidecarReader:         reader,
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
-		Handle:                func(string, ManifestEntryGroup) {},
+		Handle:                func(string, ManifestEntryGroup) bool { return true },
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -910,7 +928,9 @@ func TestWatcher_scanOrphanSidecars_SyntheticBypassesRetryBucket(t *testing.T) {
 		SidecarReader:         reader,
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
-		Handle:                func(string, ManifestEntryGroup) { handled++ },
+		Handle:                func(string, ManifestEntryGroup) bool { handled++
+			return true
+		},
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -935,8 +955,9 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 		HomeDir:       home,
 		Now:           func() time.Time { return fixtureNow },
 		SidecarReader: reader,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -945,12 +966,13 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 	// Simulate the manifest-emission side: the enricher's OnEmit hook will
 	// fire with "id-manifest" between the manifest loop and scanOrphanSidecars.
 	// Here we approximate that by wrapping Handle to call RecordEmittedInvocationID.
-	w.Handle = func(path string, g ManifestEntryGroup) {
+	w.Handle = func(path string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
 		// Only the real manifest entries invoke the manifest-side side-effect; synthetic groups must not loop-feed the dedup set.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			w.RecordEmittedInvocationID("id-manifest", "", g)
 		}
+		return true
 	}
 
 	w.scan(false, false)
@@ -1000,8 +1022,9 @@ func TestWatcher_scanOrphanSidecars_EmitsEvenWhenManifestWindowOverlaps(t *testi
 		HomeDir:       home,
 		Now:           func() time.Time { return fixtureNow.Add(10 * time.Minute) },
 		SidecarReader: reader,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g)
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -1051,10 +1074,11 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepIgnoresOverlapDefer(t *testing.
 		HomeDir:       home,
 		Now:           func() time.Time { return fixtureNow.Add(10 * time.Minute) },
 		SidecarReader: reader,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 				synthetic++
 			}
+			return true
 		},
 	}
 
@@ -1070,7 +1094,9 @@ func TestWatcher_scanOrphanSidecars_NoReaderNoSynthesis(t *testing.T) {
 	w := &Watcher{
 		HomeDir: home,
 		Now:     func() time.Time { return now },
-		Handle:  func(string, ManifestEntryGroup) { t.Fatal("no reader must produce no synthesis") },
+		Handle:  func(string, ManifestEntryGroup) bool { t.Fatal("no reader must produce no synthesis")
+			return true
+		},
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
@@ -1135,13 +1161,14 @@ func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedU
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
 		// Only the real manifest group feeds the dedup set — the pseudo-group
 		// that comes later must not re-populate it.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			w.RecordEmittedInvocationID(sharedID, "", g)
 		}
+		return true
 	}
 
 	w.scan(false, false)
@@ -1182,13 +1209,14 @@ func TestWatcher_scanOrphanSidecars_FreshInvocationID_EmitsEvenOnTimeOverlap(t *
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			// The previously-emitted build sits in recentEmissions under its OWN
 			// InvocationID, different from the sidecar's.
 			w.RecordEmittedInvocationID("old-build-id", "", g)
 		}
+		return true
 	}
 
 	w.scan(false, false)
@@ -1229,12 +1257,13 @@ func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testin
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			pseudo = &g
 		} else {
 			w.RecordEmittedInvocationID("build-orphan-elsewhere", "", g)
 		}
+		return true
 	}
 
 	w.scan(false, false)
@@ -1265,12 +1294,13 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 		Now:           func() time.Time { return fixtureNow },
 		SidecarReader: reader,
 	}
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			pseudo = &g
 		} else {
 			w.RecordEmittedInvocationID("would-have-been-override", "", g)
 		}
+		return true
 	}
 
 	w.ScanOnce()
@@ -1321,11 +1351,12 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			w.RecordEmittedInvocationID(sharedID, "", g)
 		}
+		return true
 	}
 
 	// Tick N: manifest-orphan mints; stubReader returns no sidecars.
@@ -1373,11 +1404,12 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	}
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			w.RecordEmittedInvocationID(sharedID, "", g)
 		}
+		return true
 	}
 
 	w.scan(false, false)
@@ -1430,8 +1462,9 @@ func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			handled = append(handled, g.UUIDs()...)
+			return true
 		},
 	}
 
@@ -1488,10 +1521,11 @@ func TestWatcher_RetryBucket_FiresEarlyWhenSidecarArrives(t *testing.T) {
 		Now:           func() time.Time { return fixtureNow },
 		HomeDir:       home,
 		SidecarReader: reader,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 		// Pending-record probe never matches — only the sidecar signal can resolve.
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
@@ -1539,10 +1573,11 @@ func TestWatcher_FirstPass_FiresWhenSidecarAlreadyPresent(t *testing.T) {
 		SidecarReader:         reader,
 		MatchProbe:            func(ManifestEntryGroup) bool { return false },
 		MaxCorrelationRetries: 6,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -1580,10 +1615,11 @@ func TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil(t *te
 		SidecarReader:         nil,
 		MatchProbe:            func(ManifestEntryGroup) bool { return probeMatches },
 		MaxCorrelationRetries: 6,
-		Handle: func(_ string, g ManifestEntryGroup) {
+		Handle: func(_ string, g ManifestEntryGroup) bool {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
+			return true
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -1636,8 +1672,9 @@ func TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 	w.recentEmissions = map[string]emissionRecord{}
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
+		return true
 	}
 
 	// Seed a recent manifest emission under manifestUUID with the matching hex.
@@ -1691,8 +1728,9 @@ func TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.retries = map[string]int{}
 	w.recentEmissions = map[string]emissionRecord{}
-	w.Handle = func(_ string, g ManifestEntryGroup) {
+	w.Handle = func(_ string, g ManifestEntryGroup) bool {
 		handled = append(handled, g)
+		return true
 	}
 
 	// Seed a recent emission with a DIFFERENT hex — no bridge.
@@ -1748,4 +1786,62 @@ func TestWatcher_findEmissionByBuildRequestHex_MultipleMatches_PicksClosestBySta
 	rec, ok := w.findEmissionByBuildRequestHex(hex, sidecarAcceptedAt)
 	require.True(t, ok)
 	assert.Equal(t, "manifest-near", rec.group.ManifestUUID(), "nearer Start must win the tie-break")
+}
+
+// TestWatcher_scanOrphanSidecars_HexMatch_SkipsCloneWhenManifestAlreadyPut
+// pins the post-ladder-swap behavior: when the manifest path has already
+// PUT under ManifestUUID (OnEmit populated recentEmissions[ManifestUUID]),
+// scanOrphan must NOT re-PUT a clone — BE last-write-wins would clobber
+// Path A's blob stats. Residual sidecars fall through to the slim
+// pseudo-group path under their proxy-derived InvocationID instead.
+func TestWatcher_scanOrphanSidecars_HexMatch_SkipsCloneWhenManifestAlreadyPut(t *testing.T) {
+	const hex = "ea6297e079ee1683905d008d83044b10"
+	const manifestUUID = "manifest-uuid-u1"
+	const proxyID = "proxy-derived-id"
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 5
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:           fixtureNow.Add(-5 * time.Minute),
+			Stop:            fixtureNow.Add(-4 * time.Minute),
+			SidecarUUIDs:    []string{"sidecar-residual"},
+			Paths:           []string{"/tmp/sidecar-residual.json"},
+			Blob:            sidecarBlob,
+			BuildRequestHex: hex,
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) bool { handled = append(handled, g)
+		return true
+	}
+
+	manifestGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       manifestUUID,
+			Signature:  "Build S",
+			SchemeName: "S",
+			Start:      fixtureNow.Add(-6 * time.Minute),
+			Stop:       fixtureNow.Add(-5 * time.Minute),
+		}},
+	}
+	// Post-ladder-swap: Enrich PUTs under ManifestUUID, OnEmit keys recentEmissions on ManifestUUID.
+	w.RecordEmittedInvocationID(manifestUUID, hex, manifestGroup)
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "residual sidecar must fall through to the slim pseudo-group path, not re-PUT a clone")
+	got := handled[0]
+	assert.True(t, strings.HasPrefix(got.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix), "fallback must be slim synthetic, not a manifest clone")
+	assert.Empty(t, got.ManifestUUID(), "fallback must NOT carry the manifest UUID — that would re-PUT under same ID")
 }

@@ -42,10 +42,11 @@ func TestWatcher_EmitsOnlyNewEntries(t *testing.T) {
 		HomeDir:      home,
 		PollInterval: 20 * time.Millisecond,
 		Now:          func() time.Time { return fixtureNow },
-		Handle: func(_ string, g enrichment.ManifestEntryGroup) {
+		Handle: func(_ string, g enrichment.ManifestEntryGroup) bool {
 			mu.Lock()
 			defer mu.Unlock()
 			collected = append(collected, g.UUIDs()...)
+			return true
 		},
 	}
 
@@ -270,7 +271,7 @@ func TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID(t *testing.T) {
 	assert.Positive(t, matched, "manifest path must emit under the sidecar-provided sharedID — this is what the dedup set keys on")
 }
 
-func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *testing.T) {
+func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
 	home := t.TempDir()
 	sidecarsDir := filepath.Join(home, "sessions")
 	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
@@ -349,12 +350,13 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderSidecarID(t *t
 	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
 	w.ScanOnce()
 
+	_ = derivedID
 	require.Len(t, captured, 1, "exactly one PUT must fire — the retry bucket resolves on sidecar presence")
-	assert.Equal(t, derivedID, captured[0].InvocationID,
-		"PUT must adopt the sidecar-stamped InvocationID so BE DataTransfer rows (keyed by the proxy's gRPC-tagged ID) join")
+	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
+		"PUT must adopt the manifest's xcactivitylog UUID; the hex-bridge later re-PUTs under the same ID (ID-match guard skips the duplicate)")
 }
 
-func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderSidecarID(t *testing.T) {
+func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
 	home := t.TempDir()
 	sidecarsDir := filepath.Join(home, "sessions")
 	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
@@ -430,7 +432,8 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderSi
 	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
 	w.ScanOnce()
 
+	_ = derivedID
 	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
-	assert.Equal(t, derivedID, captured[0].InvocationID,
-		"PUT must adopt the sidecar's derived InvocationID even when BlobStats are nil — proxy-stamped ID joins DataTransfer rows")
+	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
+		"PUT must adopt the manifest's xcactivitylog UUID; the sidecar's derived InvocationID is reserved for truly synthetic groups without a manifest sibling")
 }

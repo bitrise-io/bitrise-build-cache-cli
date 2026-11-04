@@ -58,11 +58,11 @@ func (e *Enricher) now() time.Time {
 
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
 // xcactivitylog read used to populate the wrapperless hit rate.
-func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
+func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	logger := logOr(e.Logger)
 
 	if len(group.Entries) == 0 {
-		return
+		return false
 	}
 
 	var (
@@ -81,7 +81,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if command == "" {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: side-effect only (uuids=%v)", group.SchemeName(), group.UUIDs())
 
-		return
+		return false
 	}
 
 	if pendingID, matched := Correlate(GroupCorrelationSpan(group), pending); matched {
@@ -93,7 +93,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 			}
 		}
 
-		return
+		return false
 	}
 
 	hitRate, hitRateOutcome, buildDescriptionHash := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
@@ -115,17 +115,17 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 
-	invocationID := sidecarInvocationID
+	invocationID := group.ManifestUUID()
 	if invocationID == "" {
 		invocationID = group.OverrideInvocationID()
 	}
 	if invocationID == "" {
-		invocationID = group.ManifestUUID()
+		invocationID = sidecarInvocationID
 	}
 	if invocationID == "" {
-		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (sidecar / override / manifest all empty)", group.SchemeName(), command)
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
 
-		return
+		return false
 	}
 
 	// Synthetic (sidecar-sourced) groups and override-anchored PUTs carry their
@@ -135,7 +135,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if hitRateOutcome != xcactivitylog.OutcomeOK && !hasAlternateDataSource {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar / override (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
 
-		return
+		return false
 	}
 
 	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
@@ -176,7 +176,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 			unlinkSidecars(consumedPaths, logger)
 		}
 
-		return
+		return false
 	}
 
 	unlinkSidecars(consumedPaths, logger)
@@ -190,6 +190,8 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
+
+	return true
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
