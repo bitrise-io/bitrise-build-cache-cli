@@ -71,8 +71,9 @@ func Test_BuildUserHeaderValue(t *testing.T) {
 func Test_Generate_BuildUserWithSpaceIsQuoted(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: CommonTemplateInventory{
-			CLIPath:      "/usr/local/bin/bitrise-build-cache",
-			HostMetadata: HostMetadataInventory{Username: "Jane Doe"},
+			CLIPath:                "/usr/local/bin/bitrise-build-cache",
+			CredentialHostPatterns: []string{"*.services.bitrise.io"},
+			HostMetadata:           HostMetadataInventory{Username: "Jane Doe"},
 		},
 		Cache: CacheTemplateInventory{
 			Enabled:             true,

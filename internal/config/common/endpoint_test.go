@@ -101,3 +101,14 @@ func TestAnalyticsURLs(t *testing.T) {
 	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.io", common.MultiplatformAnalyticsURL(map[string]string{}))
 	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.dev", common.MultiplatformAnalyticsURL(dev))
 }
+
+func TestBazelEndpoints(t *testing.T) {
+	staging := map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev", "BITRISE_BUILD_CACHE_WEBSITE_URL": "https://app-staging.bitrise.io"}
+
+	assert.Equal(t, []string{"*.services.bitrise.io"}, common.BazelCredentialHostPatterns(map[string]string{}))
+	assert.Equal(t, []string{"*.services.bitrise.io", "*.services.bitrise.dev"}, common.BazelCredentialHostPatterns(staging))
+	assert.Equal(t, "grpcs://flare-bes.services.bitrise.io:443", common.BazelBESEndpointURL(map[string]string{}))
+	assert.Equal(t, "grpcs://flare-bes.services.bitrise.dev:443", common.BazelBESEndpointURL(staging))
+	assert.Equal(t, "https://app.bitrise.io/build-cache/invocations/bazel/", common.BazelBESResultsURL(map[string]string{}))
+	assert.Equal(t, "https://app-staging.bitrise.io/build-cache/invocations/bazel/", common.BazelBESResultsURL(staging))
+}

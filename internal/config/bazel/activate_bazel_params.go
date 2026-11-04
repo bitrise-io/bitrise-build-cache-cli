@@ -121,8 +121,7 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		Timestamps:   params.Timestamps,
 		CLIPath:      credentialHelperPath(params.CLIPath),
 
-		StagingServices: common.UsesStagingServices(envs),
-		WebsiteBaseURL:  common.SelectWebsiteBaseURL(envs),
+		CredentialHostPatterns: common.BazelCredentialHostPatterns(envs),
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,
@@ -175,13 +174,14 @@ func (params ActivateBazelParams) besTemplateInventory(
 
 	besEndpoint := params.BES.Endpoint
 	if besEndpoint == "" {
-		besEndpoint = common.ServicesURL("grpcs://flare-bes.services.bitrise.io:443", envs)
+		besEndpoint = common.BazelBESEndpointURL(envs)
 	}
 	logger.Infof("(i) Build Event Service Endpoint URL: %s", besEndpoint)
 
 	return BESTemplateInventory{
 		Enabled:             true,
 		EndpointURLWithPort: besEndpoint,
+		ResultsURL:          common.BazelBESResultsURL(envs),
 	}
 }
 

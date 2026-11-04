@@ -1,10 +1,6 @@
 package bazelconfig
 
-import (
-	"strings"
-
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
-)
+import "strings"
 
 type HostMetadataInventory struct {
 	OS             string
@@ -32,29 +28,9 @@ type CommonTemplateInventory struct {
 	// `<CLIPath> get` per the EngFlow credential-helper spec) instead of being
 	// written literally into `~/.bazelrc`. Empty when the CLI is not reachable,
 	// which falls back to the literal `Bearer <token>` header.
-	CLIPath      string
-	HostMetadata HostMetadataInventory
-	// StagingServices and WebsiteBaseURL are empty for hand-built inventories, which render production values.
-	StagingServices bool
-	WebsiteBaseURL  string
-}
-
-// CredentialHostPatterns lists both domains on staging, as the cache and RBE defaults stay on bitrise.io.
-func (i CommonTemplateInventory) CredentialHostPatterns() []string {
-	if i.StagingServices {
-		return []string{"*.services.bitrise.io", "*.services.bitrise.dev"}
-	}
-
-	return []string{"*.services.bitrise.io"}
-}
-
-func (i CommonTemplateInventory) BESResultsURL() string {
-	base := i.WebsiteBaseURL
-	if base == "" {
-		base = consts.BitriseWebsiteBaseURL
-	}
-
-	return base + "/build-cache/invocations/bazel/"
+	CLIPath                string
+	HostMetadata           HostMetadataInventory
+	CredentialHostPatterns []string
 }
 
 type CacheTemplateInventory struct {
@@ -67,6 +43,7 @@ type BESTemplateInventory struct {
 	Enabled             bool
 	Version             string
 	EndpointURLWithPort string
+	ResultsURL          string
 }
 
 type RBETemplateInventory struct {

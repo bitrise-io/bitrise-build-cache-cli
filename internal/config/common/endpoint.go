@@ -65,6 +65,23 @@ func UsesStagingServices(envs map[string]string) bool {
 	return strings.ToLower(strings.TrimSpace(envs[consts.EnvServicesDomain])) == "bitrise.dev"
 }
 
+// BazelCredentialHostPatterns lists both domains on staging, as the cache and RBE defaults stay on bitrise.io.
+func BazelCredentialHostPatterns(envs map[string]string) []string {
+	if UsesStagingServices(envs) {
+		return []string{consts.BazelCredentialHostPattern, strings.Replace(consts.BazelCredentialHostPattern, ".bitrise.io", ".bitrise.dev", 1)}
+	}
+
+	return []string{consts.BazelCredentialHostPattern}
+}
+
+func BazelBESEndpointURL(envs map[string]string) string {
+	return ServicesURL(consts.BazelBESEndpoint, envs)
+}
+
+func BazelBESResultsURL(envs map[string]string) string {
+	return SelectWebsiteBaseURL(envs) + consts.BazelBESResultsPath
+}
+
 func XcodeAnalyticsURL(envs map[string]string) string {
 	return ServicesURL(consts.XcodeAnalyticsServiceEndpoint, envs)
 }

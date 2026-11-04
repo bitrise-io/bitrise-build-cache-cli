@@ -42,7 +42,7 @@ build --bes_backend={{ .BES.EndpointURLWithPort }}
 {{- if not $useHelper }}
 build --bes_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
-build --bes_results_url={{ .Common.BESResultsURL }}
+build --bes_results_url={{ .BES.ResultsURL }}
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
 build --build_event_publish_all_actions

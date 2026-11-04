@@ -10,6 +10,9 @@ const (
 	// More info: https://github.com/bitrise-io/build-prebooting-deployments/blob/production/preboot-reconciler/startup_script_extension_macos_bitvirt.sh#L72
 	BitriseAccelerate = "grpcs://bitrise-accelerate.services.bitrise.io"
 
+	BazelBESEndpoint                      = "grpcs://flare-bes.services.bitrise.io:443"
+	BazelCredentialHostPattern            = "*.services.bitrise.io"
+	BazelBESResultsPath                   = "/build-cache/invocations/bazel/"
 	XcodeAnalyticsServiceEndpoint         = "https://xcode-analytics.services.bitrise.io"
 	MultiplatformAnalyticsServiceEndpoint = "https://multiplatform-analytics.services.bitrise.io"
 

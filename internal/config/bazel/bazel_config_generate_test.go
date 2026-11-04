@@ -124,7 +124,8 @@ func Test_Generate_BasicPermutations(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
-					Enabled: false,
+					ResultsURL: "https://app.bitrise.io/build-cache/invocations/bazel/",
+					Enabled:    false,
 				},
 			},
 			want:    expectedNoBESConfig,
@@ -157,6 +158,7 @@ func Test_Generate_BasicPermutations(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -188,11 +190,12 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 			name: "Local dev with credential helper (CLIPath set, no CIProvider)",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:   "AuthTokenValue",
-					WorkspaceID: "WorkspaceIDValue",
-					AppSlug:     "AppSlugValue",
-					CIProvider:  "",
-					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+					AuthToken:              "AuthTokenValue",
+					WorkspaceID:            "WorkspaceIDValue",
+					AppSlug:                "AppSlugValue",
+					CIProvider:             "",
+					CLIPath:                "/usr/local/bin/bitrise-build-cache",
+					CredentialHostPatterns: []string{"*.services.bitrise.io"},
 					HostMetadata: HostMetadataInventory{
 						Username: "jane.doe",
 					},
@@ -203,6 +206,7 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -216,11 +220,12 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 			name: "Credential helper drops the resolved repo URL from the bazelrc",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:   "AuthTokenValue",
-					WorkspaceID: "WorkspaceIDValue",
-					AppSlug:     "AppSlugValue",
-					RepoURL:     "https://repo-url",
-					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+					AuthToken:              "AuthTokenValue",
+					WorkspaceID:            "WorkspaceIDValue",
+					AppSlug:                "AppSlugValue",
+					RepoURL:                "https://repo-url",
+					CLIPath:                "/usr/local/bin/bitrise-build-cache",
+					CredentialHostPatterns: []string{"*.services.bitrise.io"},
 					HostMetadata: HostMetadataInventory{
 						Username: "jane.doe",
 					},
@@ -231,6 +236,7 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -242,11 +248,12 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 			name: "Local dev with no CIProvider and no resolved Username emits empty builduser",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:   "AuthTokenValue",
-					WorkspaceID: "WorkspaceIDValue",
-					AppSlug:     "AppSlugValue",
-					CIProvider:  "",
-					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+					AuthToken:              "AuthTokenValue",
+					WorkspaceID:            "WorkspaceIDValue",
+					AppSlug:                "AppSlugValue",
+					CIProvider:             "",
+					CLIPath:                "/usr/local/bin/bitrise-build-cache",
+					CredentialHostPatterns: []string{"*.services.bitrise.io"},
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -254,6 +261,7 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -268,11 +276,12 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 			name: "Local dev with the bare binary name resolves the helper via $PATH",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:   "AuthTokenValue",
-					WorkspaceID: "WorkspaceIDValue",
-					AppSlug:     "AppSlugValue",
-					CIProvider:  "",
-					CLIPath:     "bitrise-build-cache",
+					AuthToken:              "AuthTokenValue",
+					WorkspaceID:            "WorkspaceIDValue",
+					AppSlug:                "AppSlugValue",
+					CIProvider:             "",
+					CLIPath:                "bitrise-build-cache",
+					CredentialHostPatterns: []string{"*.services.bitrise.io"},
 					HostMetadata: HostMetadataInventory{
 						Username: "jane.doe",
 					},
@@ -283,6 +292,7 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -294,13 +304,15 @@ func Test_Generate_LocalDevHelper(t *testing.T) {
 			name: "Local dev credential helper: cache disabled, BES enabled",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:  "AuthTokenValue",
-					AppSlug:    "AppSlugValue",
-					CIProvider: "",
-					CLIPath:    "/usr/local/bin/bitrise-build-cache",
+					AuthToken:              "AuthTokenValue",
+					AppSlug:                "AppSlugValue",
+					CIProvider:             "",
+					CLIPath:                "/usr/local/bin/bitrise-build-cache",
+					CredentialHostPatterns: []string{"*.services.bitrise.io"},
 				},
 				Cache: CacheTemplateInventory{Enabled: false},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -328,11 +340,12 @@ func Test_Generate_CI(t *testing.T) {
 			name: "CLIPath set on CI uses the credential helper too",
 			inventory: TemplateInventory{
 				Common: CommonTemplateInventory{
-					AuthToken:   "AuthTokenValue",
-					WorkspaceID: "WorkspaceIDValue",
-					AppSlug:     "AppSlugValue",
-					CIProvider:  "bitrise",
-					CLIPath:     "/usr/local/bin/bitrise-build-cache",
+					AuthToken:              "AuthTokenValue",
+					WorkspaceID:            "WorkspaceIDValue",
+					AppSlug:                "AppSlugValue",
+					CIProvider:             "bitrise",
+					CLIPath:                "/usr/local/bin/bitrise-build-cache",
+					CredentialHostPatterns: []string{"*.services.bitrise.io"},
 				},
 				Cache: CacheTemplateInventory{
 					Enabled:             true,
@@ -340,6 +353,7 @@ func Test_Generate_CI(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -363,6 +377,7 @@ func Test_Generate_CI(t *testing.T) {
 					IsPushEnabled:       true,
 				},
 				BES: BESTemplateInventory{
+					ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 					Enabled:             true,
 					EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 				},
@@ -571,15 +586,18 @@ func Test_Generate_ProjectMode_NotWrittenToBazelrc(t *testing.T) {
 	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MARKER")
 }
 
-func Test_Generate_StagingServicesScopeTheHelperAndLinkTheStagingWebsite(t *testing.T) {
+func Test_Generate_RendersEveryHelperScopeAndTheResultsURL(t *testing.T) {
 	inv := TemplateInventory{
 		Common: CommonTemplateInventory{
-			CLIPath:         "/usr/local/bin/bitrise-build-cache",
-			StagingServices: true,
-			WebsiteBaseURL:  "https://app-staging.bitrise.io",
+			CLIPath:                "/usr/local/bin/bitrise-build-cache",
+			CredentialHostPatterns: []string{"*.services.bitrise.io", "*.services.bitrise.dev"},
 		},
 		Cache: CacheTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://bitrise-accelerate.services.bitrise.io:443"},
-		BES:   BESTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.dev:443"},
+		BES: BESTemplateInventory{
+			Enabled:             true,
+			EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.dev:443",
+			ResultsURL:          "https://app-staging.bitrise.io/build-cache/invocations/bazel/",
+		},
 	}
 
 	got, err := inv.GenerateBazelrc(utils.DefaultTemplateProxy())
@@ -593,9 +611,9 @@ func Test_Generate_StagingServicesScopeTheHelperAndLinkTheStagingWebsite(t *test
 	assert.NotContains(t, got, "https://app.bitrise.io")
 }
 
-func Test_Generate_ProductionScopesTheHelperToTheProductionDomainOnly(t *testing.T) {
+func Test_Generate_RendersASingleHelperScope(t *testing.T) {
 	inv := TemplateInventory{
-		Common: CommonTemplateInventory{CLIPath: "/usr/local/bin/bitrise-build-cache"},
+		Common: CommonTemplateInventory{CLIPath: "/usr/local/bin/bitrise-build-cache", CredentialHostPatterns: []string{"*.services.bitrise.io"}},
 		Cache:  CacheTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://cache.services.bitrise.io:443"},
 	}
 
