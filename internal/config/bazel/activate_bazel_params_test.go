@@ -257,3 +257,21 @@ func Test_ActivateBazelParams(t *testing.T) {
 		assert.True(t, inventory.Common.Timestamps)
 	})
 }
+
+func Test_BESEndpointFollowsTheServicesDomain(t *testing.T) {
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+
+	params := DefaultActivateBazelParams()
+
+	assert.Equal(t, "grpcs://flare-bes.services.bitrise.io:443",
+		params.besTemplateInventory(mockLogger, map[string]string{}).EndpointURLWithPort)
+	assert.Equal(t, "grpcs://flare-bes.services.bitrise.dev:443",
+		params.besTemplateInventory(mockLogger, map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev"}).EndpointURLWithPort)
+
+	params.BES.Endpoint = "grpcs://custom.example:443"
+	assert.Equal(t, "grpcs://custom.example:443",
+		params.besTemplateInventory(mockLogger, map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev"}).EndpointURLWithPort,
+		"an explicit endpoint is the caller's own choice")
+}

@@ -16,7 +16,7 @@ const (
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
 	// EnvWebsiteBaseURL overrides BitriseWebsiteBaseURL, so a staging VM can ask its own website.
 	EnvWebsiteBaseURL = "BITRISE_BUILD_CACHE_WEBSITE_URL"
-	// EnvServicesDomain set to bitrise.dev moves the analytics services to their staging hosts.
+	// EnvServicesDomain set to bitrise.dev moves the analytics services and the default BES endpoint to their staging hosts.
 	EnvServicesDomain = "BITRISE_BUILD_CACHE_SERVICES_DOMAIN"
 
 	// Gradle Remote Build Cache related consts

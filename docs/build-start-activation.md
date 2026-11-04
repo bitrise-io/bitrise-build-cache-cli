@@ -457,10 +457,10 @@ Roughly in order of how likely they are to matter.
     `bitrise.dev`, and otherwise uses the production default without a warning.
     An endpoint passed as an explicit flag is not checked.
     `BITRISE_BUILD_CACHE_SERVICES_DOMAIN=bitrise.dev` moves the analytics services
-    (Gradle sink and analytics, Xcode, multiplatform) to their `.dev` hosts, so a
-    staging VM sends its staging token to staging analytics. Any other value keeps
-    `bitrise.io`. Analytics services only: the Bazel BES endpoint and test
-    distribution are not switched.
+    (Gradle sink and analytics, Xcode, multiplatform) and the default Bazel BES
+    endpoint to their `.dev` hosts, so a staging VM sends its staging token to
+    staging. Any other value keeps `bitrise.io`. Test distribution is not
+    switched, and an explicit BES endpoint is used as given.
 11. **Version skew.** Three components agree on an env contract: preboot, `bitrise`
     and the build cache CLI. A mismatch is a skipped activation, not a failure, so
     it is easy to miss. The pin handoff goes through a file in `/tmp` because the
