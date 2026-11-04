@@ -18,18 +18,9 @@ import (
 
 // MetricsLookup resolves an entry's xcactivitylog metrics. The Watcher wires
 // a per-tick cache so each log is gunzipped at most once per scan; nil
-// disables the lookup (grouping falls back to time-gap only; aggregateHitRate
-// reads directly).
+// disables the lookup (grouping falls back to one-group-per-entry;
+// aggregateHitRate reads directly).
 type MetricsLookup func(entry ManifestEntry) xcactivitylog.Metrics
-
-// CI writes many entries per xcodebuild invocation and timestamps them with
-// wall-clock skew, so the CI grouping window is wider than the local one.
-//
-//nolint:gochecknoglobals
-var (
-	LocalGroupTimeGap = 60 * time.Second
-	CIGroupTimeGap    = 5 * time.Minute
-)
 
 type ManifestEntry struct {
 	UUID       string
@@ -156,8 +147,10 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 }
 
 // ManifestEntryGroup is a set of ManifestEntry rows from the same xcodebuild
-// invocation and the same LogStoreManifest.plist. Grouping key is scheme +
-// time-gap cluster; group aggregation lets the watcher emit one PUT per
+// invocation and the same LogStoreManifest.plist. Default is one entry per
+// group; a prep-phase xcactivitylog fuses with its real-build companion only
+// when they share scheme + Command + non-empty BuildDescriptionHash and land
+// within mergeMaxGap. Group aggregation lets the watcher emit one PUT per
 // invocation instead of one per entry.
 //
 // Invariant (relied on by the enricher's sibling-log resolve): a group never
@@ -171,10 +164,6 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 //     renders "build [scheme / testPlan / config]" from argv, but the manifest
 //     carries only the scheme name, so wrapper-less analytics runs show a
 //     coarser command string.
-//   - The aggregate span (Start = min, Stop = max) is wide by design: a burst
-//     entry plus a late entry within TimeGap collapses into one group whose
-//     span covers both. Correlation uses that span, so overlap-based matching
-//     can pick a pending record that only overlaps part of the window.
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
 
@@ -537,23 +526,26 @@ type groupOptions struct {
 	metricsLookup MetricsLookup
 }
 
-// WithMetricsLookup enables (Command, BuildDescriptionHash)-aware splitting of
-// a scheme+time-gap cluster. Two consecutive ⌘Bs within LocalGroupTimeGap
-// would otherwise merge into one group whose Primary UUID masks the second
-// build's PUT as already-seen; cutting on the xcbuilddata hash keeps same-hash
-// prep + real-build entries clustered while distinct build-descriptions split.
-// Nil-tolerant: a nil lookup disables the split (falls back to pure time-gap
-// behavior).
+// WithMetricsLookup wires the per-entry BuildDescriptionHash source used by
+// the prep+real-build merge rule. Nil-tolerant: every entry stands on its own
+// when no lookup is wired (the Watcher installs one per-tick so a log is
+// gunzipped at most once per scan).
 func WithMetricsLookup(fn MetricsLookup) GroupOption {
 	return func(o *groupOptions) {
 		o.metricsLookup = fn
 	}
 }
 
+// mergeMaxGap is the sub-second-ish window inside which a prep xcactivitylog
+// and its real-build companion may fuse into one group. Anything beyond this
+// is a user action in its own right and lands as its own BE row.
+const mergeMaxGap = 3 * time.Second
+
 // GroupManifestEntries expects entries from a single manifest — see the
-// ManifestEntryGroup invariant. opts tune the clustering: WithMetricsLookup
-// enables the hex-aware cluster split documented in v6.
-func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration, opts ...GroupOption) []ManifestEntryGroup {
+// ManifestEntryGroup invariant. Default is one entry per group; adjacent
+// entries (ordered by Start) merge iff they share SchemeName, Command, a
+// non-empty BuildDescriptionHash, and are less than mergeMaxGap apart.
+func GroupManifestEntries(entries []ManifestEntry, opts ...GroupOption) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -563,94 +555,62 @@ func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration, opts .
 		opt(&cfg)
 	}
 
-	byScheme := make(map[string][]ManifestEntry)
-	schemeOrder := make([]string, 0)
+	ordered := append([]ManifestEntry(nil), entries...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Start.Before(ordered[j].Start)
+	})
 
-	for _, e := range entries {
-		if _, seen := byScheme[e.SchemeName]; !seen {
-			schemeOrder = append(schemeOrder, e.SchemeName)
-		}
+	out := make([]ManifestEntryGroup, 0, len(ordered))
+	current := ManifestEntryGroup{Entries: []ManifestEntry{ordered[0]}}
 
-		byScheme[e.SchemeName] = append(byScheme[e.SchemeName], e)
-	}
-
-	out := make([]ManifestEntryGroup, 0, len(schemeOrder))
-
-	for _, scheme := range schemeOrder {
-		bucket := byScheme[scheme]
-		sort.SliceStable(bucket, func(i, j int) bool {
-			return bucket[i].Start.Before(bucket[j].Start)
-		})
-
-		current := ManifestEntryGroup{Entries: []ManifestEntry{bucket[0]}}
-		currentStop := bucket[0].Stop
-
-		for _, e := range bucket[1:] {
-			gap := e.Start.Sub(currentStop)
-			if gap > timeGap {
-				out = append(out, current)
-				current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
-				currentStop = e.Stop
-
-				continue
-			}
-
-			if shouldSplitOnHex(current, e, cfg.metricsLookup) {
-				out = append(out, current)
-				current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
-				currentStop = e.Stop
-
-				continue
-			}
-
+	for _, e := range ordered[1:] {
+		prev := current.Entries[len(current.Entries)-1]
+		if canMerge(prev, e, cfg.metricsLookup) {
 			current.Entries = append(current.Entries, e)
-			if e.Stop.After(currentStop) {
-				currentStop = e.Stop
-			}
+
+			continue
 		}
 
 		out = append(out, current)
+		current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
 	}
+
+	out = append(out, current)
 
 	return out
 }
 
-// shouldSplitOnHex cuts a cluster when the candidate's (Command, hex) key
-// differs from the most recent entry in the cluster that carries a non-empty
-// hex. Returns false (cluster) when either side has no hex — the caller then
-// falls back to the already-applied time-gap check alone. A nil lookup also
-// returns false so the pre-option behavior is preserved for tests / callers
-// that never wired the cache.
-func shouldSplitOnHex(current ManifestEntryGroup, candidate ManifestEntry, lookup MetricsLookup) bool {
+// canMerge returns true when candidate should fuse into prev's group:
+// same SchemeName, same Command, same non-empty BuildDescriptionHash, and
+// candidate.Start − prev.Stop < mergeMaxGap. A nil lookup — or either side
+// carrying an empty hash — keeps them apart.
+func canMerge(prev, candidate ManifestEntry, lookup MetricsLookup) bool {
 	if lookup == nil {
 		return false
 	}
-
-	candidateHash := lookup(candidate).BuildDescriptionHash
-	if candidateHash == "" {
+	if prev.SchemeName != candidate.SchemeName {
+		return false
+	}
+	if prev.Command() != candidate.Command() {
 		return false
 	}
 
-	for i := len(current.Entries) - 1; i >= 0; i-- {
-		existing := current.Entries[i]
-		existingHash := lookup(existing).BuildDescriptionHash
-		if existingHash == "" {
-			continue
-		}
-
-		return existingHash != candidateHash || existing.Command() != candidate.Command()
+	prevHash := lookup(prev).BuildDescriptionHash
+	candHash := lookup(candidate).BuildDescriptionHash
+	if prevHash == "" || candHash == "" || prevHash != candHash {
+		return false
 	}
 
-	return false
+	return candidate.Start.Sub(prev.Stop) < mergeMaxGap
 }
 
-func LoadManifestGrouped(path string, timeGap time.Duration, opts ...GroupOption) ([]ManifestEntryGroup, error) {
+func LoadManifestGrouped(path string, opts ...GroupOption) ([]ManifestEntryGroup, error) {
 	entries, err := LoadManifest(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return GroupManifestEntries(entries, timeGap, opts...), nil
+	return GroupManifestEntries(entries, opts...), nil
 }
 
 func LoadManifest(path string) ([]ManifestEntry, error) {

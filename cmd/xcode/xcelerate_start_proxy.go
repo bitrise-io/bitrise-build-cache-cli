@@ -343,7 +343,6 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		Logger:                logger,
 		MatchProbe:            matchProbe,
 		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
-		TimeGap:               watcherTimeGap(),
 		HandledStore:          b.handledManifests,
 		SidecarReader:         sidecarReader,
 		SetMetricsLookup:      enricher.SetMetricsLookup,
@@ -351,16 +350,6 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	enricher.OnEmit = w.RecordEmittedInvocationID
 
 	return w
-}
-
-// watcherTimeGap widens the manifest-grouping window on CI to absorb
-// wall-clock skew that a local machine doesn't have.
-func watcherTimeGap() time.Duration {
-	if configcommon.IsCI(utils.AllEnvs(), utils.DefaultOsProxy{}) {
-		return enrichment.CIGroupTimeGap
-	}
-
-	return enrichment.LocalGroupTimeGap
 }
 
 func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {

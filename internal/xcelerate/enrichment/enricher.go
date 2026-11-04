@@ -71,11 +71,11 @@ func (e *Enricher) now() time.Time {
 
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
 // xcactivitylog read used to populate the wrapperless hit rate.
-func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
+func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
 
 	if len(group.Entries) == 0 {
-		return false
+		return
 	}
 
 	var (
@@ -94,7 +94,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	if command == "" {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: side-effect only (uuids=%v)", group.SchemeName(), group.UUIDs())
 
-		return false
+		return
 	}
 
 	if pendingID, matched := Correlate(GroupCorrelationSpan(group), pending); matched {
@@ -106,7 +106,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 			}
 		}
 
-		return false
+		return
 	}
 
 	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
@@ -138,7 +138,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	if invocationID == "" {
 		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
 
-		return false
+		return
 	}
 
 	// Synthetic (sidecar-sourced) groups and override-anchored PUTs carry their
@@ -148,7 +148,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	if hitRateOutcome != xcactivitylog.OutcomeOK && !hasAlternateDataSource {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar / override (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
 
-		return false
+		return
 	}
 
 	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
@@ -189,7 +189,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 			unlinkSidecars(consumedPaths, logger)
 		}
 
-		return false
+		return
 	}
 
 	unlinkSidecars(consumedPaths, logger)
@@ -203,8 +203,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
-
-	return true
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
@@ -326,9 +324,9 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 }
 
 // aggregateHitRate sums the compile-cache counters across every manifest entry
-// that carries a FileName and a known action. Post-split each group typically
-// holds one action, but a prep-Build + real-Build cluster (same hex, same
-// command) still aggregates. The lookup is the Watcher's per-tick cache so a
+// that carries a FileName and a known action. Most groups hold one entry; a
+// prep-Build + real-Build cluster (same scheme / Command / hex, <mergeMaxGap
+// apart) still aggregates. The lookup is the Watcher's per-tick cache so a
 // log is gunzipped at most once per scan; nil falls through to a direct read.
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the

@@ -44,11 +44,10 @@ func TestWatcher_EmitsOnlyNewEntries(t *testing.T) {
 		HomeDir:      home,
 		PollInterval: 20 * time.Millisecond,
 		Now:          func() time.Time { return fixtureNow },
-		Handle: func(_ string, g enrichment.ManifestEntryGroup) bool {
+		Handle: func(_ string, g enrichment.ManifestEntryGroup) {
 			mu.Lock()
 			defer mu.Unlock()
 			collected = append(collected, g.UUIDs()...)
-			return true
 		},
 	}
 
@@ -519,7 +518,7 @@ func TestWatcher_scan_GunzipsEachLogOncePerTick(t *testing.T) {
 	w := &enrichment.Watcher{
 		HomeDir: home,
 		Now:     func() time.Time { return fixtureNow },
-		Handle: func(manifestPath string, group enrichment.ManifestEntryGroup) bool {
+		Handle: func(manifestPath string, group enrichment.ManifestEntryGroup) {
 			// Mimic Enrich's own iteration: for every entry in the group, hit
 			// the installed lookup. With the shared cache this adds no disk
 			// reads.
@@ -532,7 +531,7 @@ func TestWatcher_scan_GunzipsEachLogOncePerTick(t *testing.T) {
 				}
 			}
 
-			return e.Enrich(manifestPath, group)
+			e.Enrich(manifestPath, group)
 		},
 		SetMetricsLookup: func(ml enrichment.MetricsLookup) {
 			mu.Lock()

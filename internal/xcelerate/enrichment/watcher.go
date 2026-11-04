@@ -30,13 +30,11 @@ type Watcher struct {
 	Globs        []string
 	PollInterval time.Duration
 	// Handle receives manifestPath so the callback can resolve the sibling xcactivitylog.
-	// Handle returns true when the group was emitted (OnEmit fired), false when
-	// Enrich skipped the PUT (outcome=3 + no sidecar, nil InvocationID, etc).
-	// markGroupHandled only runs on true so a prep-phase xcactivitylog whose PUT
-	// was skipped does not shadow the real build log that joins the cluster
-	// later (same scheme+timegap, same command rank → Primary picks the earlier
-	// prep UUID → groupFullySeen blocks the richer group).
-	Handle func(manifestPath string, group ManifestEntryGroup) bool
+	// With per-entry groups as the default, a prep-Build's skipped PUT no longer
+	// shadows the real build — they fuse into one group only when scheme +
+	// Command + hex + sub-mergeMaxGap all agree, and otherwise each PUTs under
+	// its own UUID. handleGroup marks the group seen unconditionally after Handle.
+	Handle func(manifestPath string, group ManifestEntryGroup)
 	Logger log.Logger
 
 	// MatchProbe returns true when a pending record for the group
@@ -44,9 +42,6 @@ type Watcher struct {
 	// nil disables the retry bucket: groups fire immediately on first sight.
 	MatchProbe            func(group ManifestEntryGroup) bool
 	MaxCorrelationRetries int
-
-	// TimeGap zero-value falls back to LocalGroupTimeGap.
-	TimeGap time.Duration
 
 	// HandledStore persists the seen-UUID set across restarts. nil disables
 	// persistence (seen stays in-memory only) — this is the pre-persistence
@@ -270,11 +265,6 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 		globs = []string{DefaultDerivedDataGlob}
 	}
 
-	timeGap := w.TimeGap
-	if timeGap == 0 {
-		timeGap = LocalGroupTimeGap
-	}
-
 	// HOME-relative defaults go through filepath.Join(HomeDir, ...); sidecar
 	// hints are already absolute so they stay as-is.
 	type scanTarget struct {
@@ -308,7 +298,7 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 		for _, path := range matches {
 			manifestLookup := cachedMetricsLookup(metricsCache, path, logger)
 
-			groups, err := LoadManifestGrouped(path, timeGap, WithMetricsLookup(manifestLookup))
+			groups, err := LoadManifestGrouped(path, WithMetricsLookup(manifestLookup))
 			if err != nil {
 				logger.Debugf("LogWatcher failed to load %s: %s", path, err)
 
@@ -571,16 +561,11 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 	key := groupKey(group)
 
 	if synthetic || w.Handle == nil || w.MaxCorrelationRetries == 0 || !w.hasCorrelationSignal() {
-		handled := true
 		if w.Handle != nil {
 			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
-			handled = w.Handle(manifestPath, group)
+			w.Handle(manifestPath, group)
 		}
-		if handled {
-			w.markGroupHandled(group)
-		} else {
-			logger.Debugf("Watcher: handle returned skip — leaving group unmarked scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-		}
+		w.markGroupHandled(group)
 
 		return
 	}
@@ -589,18 +574,16 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 		switch {
 		case w.canCorrelate(group):
 			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
-			if w.Handle(manifestPath, group) {
-				w.markGroupHandled(group)
-			}
+			w.Handle(manifestPath, group)
+			w.markGroupHandled(group)
 			delete(w.retries, key)
 		case w.retries[key] > 0:
 			w.retries[key]--
 			logger.Debugf("Watcher: pending still unmatched, decrement scheme=%s attempts_left=%d", group.SchemeName(), w.retries[key])
 		default:
 			logger.Debugf("Watcher: pending retries exhausted, minting orphan scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-			if w.Handle(manifestPath, group) {
-				w.markGroupHandled(group)
-			}
+			w.Handle(manifestPath, group)
+			w.markGroupHandled(group)
 			delete(w.retries, key)
 		}
 
@@ -612,9 +595,8 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 	// short-circuit the retry setup entirely.
 	if w.canCorrelate(group) {
 		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-		if w.Handle(manifestPath, group) {
-			w.markGroupHandled(group)
-		}
+		w.Handle(manifestPath, group)
+		w.markGroupHandled(group)
 
 		return
 	}
