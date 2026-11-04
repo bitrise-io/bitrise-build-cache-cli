@@ -16,7 +16,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	xa "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
@@ -84,7 +83,7 @@ var restoreXcodeDerivedDataFilesCmd = &cobra.Command{
 
 			op.DurationMilliseconds = int(time.Since(op.StartedAt).Milliseconds())
 
-			xaClient, clientErr := xa.NewClient(configcommon.ServicesURL(consts.XcodeAnalyticsServiceEndpoint, utils.AllEnvs()), func() string { return authConfig.Token }, logger)
+			xaClient, clientErr := xa.NewClient(configcommon.XcodeAnalyticsURL(utils.AllEnvs()), func() string { return authConfig.Token }, logger)
 			if clientErr != nil {
 				return fmt.Errorf("failed to create Xcode Analytics Service client: %w", clientErr)
 			}

@@ -32,7 +32,6 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/jobsummary"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
@@ -656,7 +655,7 @@ func (c *XcodebuildRunner) resolveInvocationAPI() (invocationSaver, error) {
 		return c.invocationAPI, nil
 	}
 
-	client, err := analytics.NewClient(configcommon.ServicesURL(consts.XcodeAnalyticsServiceEndpoint, utils.AllEnvs()), func() string { return authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin) }, c.Logger)
+	client, err := analytics.NewClient(configcommon.XcodeAnalyticsURL(utils.AllEnvs()), func() string { return authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin) }, c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create analytics client: %w", err)
 	}
@@ -669,7 +668,7 @@ func (c *XcodebuildRunner) resolveRelationAPI() (relationSender, error) {
 		return c.relationAPI, nil
 	}
 
-	client, err := multiplatform.NewClient(configcommon.ServicesURL(consts.MultiplatformAnalyticsServiceEndpoint, utils.AllEnvs()), authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin), c.Logger)
+	client, err := multiplatform.NewClient(configcommon.MultiplatformAnalyticsURL(utils.AllEnvs()), authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin), c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create multiplatform analytics client: %w", err)
 	}

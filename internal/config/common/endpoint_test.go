@@ -79,6 +79,8 @@ func TestServicesURL(t *testing.T) {
 		{"whitespace is dropped", map[string]string{consts.EnvServicesDomain: " bitrise.dev "}, sink, "https://gradle-sink.services.bitrise.dev"},
 		{"a bare host moves", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "gradle-analytics.services.bitrise.io", "gradle-analytics.services.bitrise.dev"},
 		{"a port is kept", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "grpcs://gradle-analytics.services.bitrise.io:444", "grpcs://gradle-analytics.services.bitrise.dev:444"},
+		{"case is ignored", map[string]string{consts.EnvServicesDomain: "BITRISE.DEV"}, sink, "https://gradle-sink.services.bitrise.dev"},
+		{"a suffixed domain is ignored", map[string]string{consts.EnvServicesDomain: "bitrise.dev.evil.example"}, sink, sink},
 		{"another domain is ignored", map[string]string{consts.EnvServicesDomain: "evil.example"}, sink, sink},
 		{"explicit bitrise.io stays", map[string]string{consts.EnvServicesDomain: "bitrise.io"}, sink, sink},
 	}
@@ -88,4 +90,13 @@ func TestServicesURL(t *testing.T) {
 			assert.Equal(t, tt.want, common.ServicesURL(tt.in, tt.envs))
 		})
 	}
+}
+
+func TestAnalyticsURLs(t *testing.T) {
+	dev := map[string]string{consts.EnvServicesDomain: "bitrise.dev"}
+
+	assert.Equal(t, "https://xcode-analytics.services.bitrise.io", common.XcodeAnalyticsURL(map[string]string{}))
+	assert.Equal(t, "https://xcode-analytics.services.bitrise.dev", common.XcodeAnalyticsURL(dev))
+	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.io", common.MultiplatformAnalyticsURL(map[string]string{}))
+	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.dev", common.MultiplatformAnalyticsURL(dev))
 }

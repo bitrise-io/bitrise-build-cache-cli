@@ -54,11 +54,21 @@ func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 // ServicesURL maps a production services URL onto the domain named by BITRISE_BUILD_CACHE_SERVICES_DOMAIN.
 // Only bitrise.dev is honoured; anything else keeps bitrise.io.
 func ServicesURL(prodURL string, envs map[string]string) string {
-	if strings.TrimSpace(envs[consts.EnvServicesDomain]) != "bitrise.dev" {
+	if !strings.EqualFold(strings.TrimSpace(envs[consts.EnvServicesDomain]), "bitrise.dev") {
 		return prodURL
 	}
 
 	return strings.Replace(prodURL, ".services.bitrise.io", ".services.bitrise.dev", 1)
+}
+
+// XcodeAnalyticsURL is the Xcode analytics service URL for the services domain in envs.
+func XcodeAnalyticsURL(envs map[string]string) string {
+	return ServicesURL(consts.XcodeAnalyticsServiceEndpoint, envs)
+}
+
+// MultiplatformAnalyticsURL is the multiplatform analytics service URL for the services domain in envs.
+func MultiplatformAnalyticsURL(envs map[string]string) string {
+	return ServicesURL(consts.MultiplatformAnalyticsServiceEndpoint, envs)
 }
 
 // SelectWebsiteBaseURL returns the website base URL from the environment when it is an

@@ -651,4 +651,11 @@ func Test_TemplateInventory_AnalyticsFollowsTheServicesDomain(t *testing.T) {
 	assert.Equal(t, "gradle-analytics.services.bitrise.dev", inv.Analytics.Endpoint)
 	assert.Equal(t, "https://gradle-sink.services.bitrise.dev", inv.Analytics.HTTPEndpoint)
 	assert.Equal(t, "grpcs://gradle-analytics.services.bitrise.dev:444", inv.Analytics.GRPCEndpoint)
+
+	script, err := inv.GenerateInitGradle(GradleTemplateProxy())
+	require.NoError(t, err)
+	assert.Contains(t, script, `endpoint.set("gradle-analytics.services.bitrise.dev:`)
+	assert.Contains(t, script, `httpEndpoint.set("https://gradle-sink.services.bitrise.dev")`)
+	assert.Contains(t, script, `grpcEndpoint.set("grpcs://gradle-analytics.services.bitrise.dev:444")`)
+	assert.NotContains(t, script, "services.bitrise.io")
 }

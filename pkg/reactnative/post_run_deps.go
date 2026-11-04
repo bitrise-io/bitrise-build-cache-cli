@@ -16,7 +16,6 @@ import (
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -261,7 +260,7 @@ func (d *postRunDeps) resolveClientAndCred(ctx context.Context) (authpkg.Credent
 		return authpkg.Credential{}, nil, false
 	}
 
-	client, err := ccacheanalytics.NewClient(common.ServicesURL(consts.MultiplatformAnalyticsServiceEndpoint, utils.AllEnvs()), authpkg.GradleToken(cred, origin), d.logger)
+	client, err := ccacheanalytics.NewClient(common.MultiplatformAnalyticsURL(utils.AllEnvs()), authpkg.GradleToken(cred, origin), d.logger)
 	if err != nil {
 		d.logger.TWarnf("Failed to create analytics client for post-run hook: %v", err)
 
