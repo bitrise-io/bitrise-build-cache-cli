@@ -2,6 +2,7 @@ package common
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 )
@@ -45,4 +46,13 @@ func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 	}
 
 	return consts.BitriseAccelerate
+}
+
+// SelectWebsiteBaseURL returns the website base URL from the environment, else production.
+func SelectWebsiteBaseURL(envs map[string]string) string {
+	if baseURL := strings.TrimSpace(envs[consts.EnvWebsiteBaseURL]); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+
+	return consts.BitriseWebsiteBaseURL
 }

@@ -14,6 +14,8 @@ const (
 	MultiplatformAnalyticsServiceEndpoint = "https://multiplatform-analytics.services.bitrise.io"
 
 	BitriseWebsiteBaseURL = "https://app.bitrise.io"
+	// EnvWebsiteBaseURL overrides BitriseWebsiteBaseURL, so a staging VM can ask its own website.
+	EnvWebsiteBaseURL = "BITRISE_BUILD_CACHE_WEBSITE_URL"
 
 	// Gradle Remote Build Cache related consts
 	GradleRemoteBuildCachePluginDepVersion = "2.2.1"
