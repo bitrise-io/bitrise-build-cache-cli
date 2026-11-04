@@ -72,7 +72,7 @@ func (params ActivateBazelParams) TemplateInventory(
 	}
 
 	cacheInventory := params.cacheTemplateInventory(logger, envs)
-	besInventory := params.besTemplateInventory(logger)
+	besInventory := params.besTemplateInventory(logger, envs)
 	rbeInventory := params.rbeTemplateInventory(logger, envs)
 
 	return TemplateInventory{
@@ -120,6 +120,8 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
 		CLIPath:      credentialHelperPath(params.CLIPath),
+
+		CredentialHostPatterns: common.BazelCredentialHostPatterns(envs),
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,
@@ -158,6 +160,7 @@ func (params ActivateBazelParams) cacheTemplateInventory(
 
 func (params ActivateBazelParams) besTemplateInventory(
 	logger log.Logger,
+	envs map[string]string,
 ) BESTemplateInventory {
 	if !params.BES.Enabled {
 		logger.Infof("(i) BES disabled")
@@ -171,13 +174,14 @@ func (params ActivateBazelParams) besTemplateInventory(
 
 	besEndpoint := params.BES.Endpoint
 	if besEndpoint == "" {
-		besEndpoint = "grpcs://flare-bes.services.bitrise.io:443"
+		besEndpoint = common.BazelBESEndpointURL(envs)
 	}
 	logger.Infof("(i) Build Event Service Endpoint URL: %s", besEndpoint)
 
 	return BESTemplateInventory{
 		Enabled:             true,
 		EndpointURLWithPort: besEndpoint,
+		ResultsURL:          common.BazelBESResultsURL(envs),
 	}
 }
 

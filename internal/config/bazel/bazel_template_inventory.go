@@ -28,8 +28,9 @@ type CommonTemplateInventory struct {
 	// `<CLIPath> get` per the EngFlow credential-helper spec) instead of being
 	// written literally into `~/.bazelrc`. Empty when the CLI is not reachable,
 	// which falls back to the literal `Bearer <token>` header.
-	CLIPath      string
-	HostMetadata HostMetadataInventory
+	CLIPath                string
+	HostMetadata           HostMetadataInventory
+	CredentialHostPatterns []string
 }
 
 type CacheTemplateInventory struct {
@@ -42,6 +43,7 @@ type BESTemplateInventory struct {
 	Enabled             bool
 	Version             string
 	EndpointURLWithPort string
+	ResultsURL          string
 }
 
 type RBETemplateInventory struct {

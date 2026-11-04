@@ -13,7 +13,7 @@ Two CLI subcommands act as the public, build-tool-agnostic registration surface 
 
 Both commands read auth credentials from the multiplatform analytics config (`~/.bitrise/analytics/multiplatform/config.json`), written by `activate react-native`, `activate c++`, or `activate xcode`. This is the single canonical on-disk source of auth credentials — neither the ccache config nor the xcelerate config persists auth.
 
-The backend endpoint used by both commands is `consts.MultiplatformAnalyticsServiceEndpoint` (`https://multiplatform-analytics.services.bitrise.io`).
+The backend endpoint used by both commands is `consts.MultiplatformAnalyticsServiceEndpoint` (`https://multiplatform-analytics.services.bitrise.io`; `.dev` when `BITRISE_BUILD_CACHE_SERVICES_DOMAIN=bitrise.dev`).
 
 ---
 

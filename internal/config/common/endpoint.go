@@ -51,6 +51,45 @@ func SelectRBEEndpointURL(endpointURL string, envs map[string]string) string {
 	return consts.BitriseAccelerate
 }
 
+// ServicesURL maps a production services URL onto the domain named by BITRISE_BUILD_CACHE_SERVICES_DOMAIN.
+// Only bitrise.dev is honoured; anything else keeps bitrise.io.
+func ServicesURL(prodURL string, envs map[string]string) string {
+	if !usesStagingServices(envs) {
+		return prodURL
+	}
+
+	return strings.Replace(prodURL, ".services.bitrise.io", ".services.bitrise.dev", 1)
+}
+
+func usesStagingServices(envs map[string]string) bool {
+	return strings.ToLower(strings.TrimSpace(envs[consts.EnvServicesDomain])) == "bitrise.dev"
+}
+
+// BazelCredentialHostPatterns lists both domains on staging, as the cache and RBE defaults stay on bitrise.io.
+func BazelCredentialHostPatterns(envs map[string]string) []string {
+	if usesStagingServices(envs) {
+		return []string{consts.BazelCredentialHostPattern, strings.Replace(consts.BazelCredentialHostPattern, ".bitrise.io", ".bitrise.dev", 1)}
+	}
+
+	return []string{consts.BazelCredentialHostPattern}
+}
+
+func BazelBESEndpointURL(envs map[string]string) string {
+	return ServicesURL(consts.BazelBESEndpoint, envs)
+}
+
+func BazelBESResultsURL(envs map[string]string) string {
+	return SelectWebsiteBaseURL(envs) + consts.BazelBESResultsPath
+}
+
+func XcodeAnalyticsURL(envs map[string]string) string {
+	return ServicesURL(consts.XcodeAnalyticsServiceEndpoint, envs)
+}
+
+func MultiplatformAnalyticsURL(envs map[string]string) string {
+	return ServicesURL(consts.MultiplatformAnalyticsServiceEndpoint, envs)
+}
+
 // SelectWebsiteBaseURL returns the website base URL from the environment when it is an
 // https URL on a Bitrise domain, else production. The token is sent there.
 func SelectWebsiteBaseURL(envs map[string]string) string {

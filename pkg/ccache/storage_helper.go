@@ -25,7 +25,6 @@ import (
 	ccacheconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/ccache"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	machineconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/machine"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/exec"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/jobsummary"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
@@ -320,7 +319,7 @@ func (h *StorageHelper) sendInvocation(ctx context.Context, invocationID, parent
 		return
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
+	client, err := ccacheanalytics.NewClient(configcommon.MultiplatformAnalyticsURL(h.params.Envs), authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
 	if err != nil {
 		h.logger.TWarnf("Failed to create analytics client for ccache stats: %v", err)
 

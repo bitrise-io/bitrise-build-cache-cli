@@ -47,6 +47,8 @@ func NewClient(baseURL, accessToken string, logger log.Logger) (*Client, error) 
 	}, nil
 }
 
+func (c *Client) BaseURL() string { return c.baseURL }
+
 // Put marshals payload as JSON and sends it via HTTP PUT to baseURL+path.
 func (c *Client) Put(path string, payload any) error {
 	requestURL := c.baseURL + path

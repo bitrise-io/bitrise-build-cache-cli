@@ -456,6 +456,18 @@ Roughly in order of how likely they are to matter.
     (`grpcs` for the cache, a bare `host:port` also for RBE) on `bitrise.io` or
     `bitrise.dev`, and otherwise uses the production default without a warning.
     An endpoint passed as an explicit flag is not checked.
+    `BITRISE_BUILD_CACHE_SERVICES_DOMAIN=bitrise.dev` moves the analytics services
+    (Gradle sink and analytics, Xcode, multiplatform) and the default Bazel BES
+    endpoint to their `.dev` hosts, so a staging VM sends its staging token to
+    staging. Any other value keeps `bitrise.io`. Test distribution is not
+    switched, and an explicit BES endpoint is used as given.
+    The Bazel `--credential_helper` is then scoped to both `*.services.bitrise.io`
+    and `*.services.bitrise.dev`, and `--bes_results_url` follows
+    `BITRISE_BUILD_CACHE_WEBSITE_URL`. The Bazel cache and RBE endpoints are separate
+    (`BITRISE_BUILD_CACHE_ENDPOINT`, `BITRISE_RBE_ENDPOINT`), so the domain alone
+    does not move them. Gradle endpoints and the Bazel helper scope are fixed at
+    activation; Xcode, ccache and multiplatform read the env at runtime, and a
+    running xcelerate proxy keeps its URL until restarted.
 11. **Version skew.** Three components agree on an env contract: preboot, `bitrise`
     and the build cache CLI. A mismatch is a skipped activation, not a failure, so
     it is easy to miss. The pin handoff goes through a file in `/tmp` because the

@@ -64,3 +64,51 @@ func TestSelectRBEEndpointURL_EnvOverride(t *testing.T) {
 	assert.Equal(t, "grpcs://rbe.bitrise.io", common.SelectRBEEndpointURL("", map[string]string{key: "grpcs://rbe.bitrise.io"}))
 	assert.Equal(t, consts.BitriseAccelerate, common.SelectRBEEndpointURL("", map[string]string{key: "rbe.evil.example:443"}))
 }
+
+func TestServicesURL(t *testing.T) {
+	const sink = "https://gradle-sink.services.bitrise.io"
+
+	tests := []struct {
+		name string
+		envs map[string]string
+		in   string
+		want string
+	}{
+		{"production by default", map[string]string{}, sink, sink},
+		{"bitrise.dev moves a URL", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, sink, "https://gradle-sink.services.bitrise.dev"},
+		{"whitespace is dropped", map[string]string{consts.EnvServicesDomain: " bitrise.dev "}, sink, "https://gradle-sink.services.bitrise.dev"},
+		{"a bare host moves", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "gradle-analytics.services.bitrise.io", "gradle-analytics.services.bitrise.dev"},
+		{"a port is kept", map[string]string{consts.EnvServicesDomain: "bitrise.dev"}, "grpcs://gradle-analytics.services.bitrise.io:444", "grpcs://gradle-analytics.services.bitrise.dev:444"},
+		{"case is ignored", map[string]string{consts.EnvServicesDomain: "BITRISE.DEV"}, sink, "https://gradle-sink.services.bitrise.dev"},
+		{"a suffixed domain is ignored", map[string]string{consts.EnvServicesDomain: "bitrise.dev.evil.example"}, sink, sink},
+		{"a Unicode lookalike is ignored", map[string]string{consts.EnvServicesDomain: "bitri\u017fe.dev"}, sink, sink},
+		{"another domain is ignored", map[string]string{consts.EnvServicesDomain: "evil.example"}, sink, sink},
+		{"explicit bitrise.io stays", map[string]string{consts.EnvServicesDomain: "bitrise.io"}, sink, sink},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, common.ServicesURL(tt.in, tt.envs))
+		})
+	}
+}
+
+func TestAnalyticsURLs(t *testing.T) {
+	dev := map[string]string{consts.EnvServicesDomain: "bitrise.dev"}
+
+	assert.Equal(t, "https://xcode-analytics.services.bitrise.io", common.XcodeAnalyticsURL(map[string]string{}))
+	assert.Equal(t, "https://xcode-analytics.services.bitrise.dev", common.XcodeAnalyticsURL(dev))
+	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.io", common.MultiplatformAnalyticsURL(map[string]string{}))
+	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.dev", common.MultiplatformAnalyticsURL(dev))
+}
+
+func TestBazelEndpoints(t *testing.T) {
+	staging := map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev", "BITRISE_BUILD_CACHE_WEBSITE_URL": "https://app-staging.bitrise.io"}
+
+	assert.Equal(t, []string{"*.services.bitrise.io"}, common.BazelCredentialHostPatterns(map[string]string{}))
+	assert.Equal(t, []string{"*.services.bitrise.io", "*.services.bitrise.dev"}, common.BazelCredentialHostPatterns(staging))
+	assert.Equal(t, "grpcs://flare-bes.services.bitrise.io:443", common.BazelBESEndpointURL(map[string]string{}))
+	assert.Equal(t, "grpcs://flare-bes.services.bitrise.dev:443", common.BazelBESEndpointURL(staging))
+	assert.Equal(t, "https://app.bitrise.io/build-cache/invocations/bazel/", common.BazelBESResultsURL(map[string]string{}))
+	assert.Equal(t, "https://app-staging.bitrise.io/build-cache/invocations/bazel/", common.BazelBESResultsURL(staging))
+}

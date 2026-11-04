@@ -22,7 +22,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
@@ -236,7 +235,7 @@ func newAnalyticsBundle(
 
 		return authpkg.GradleToken(cred, origin)
 	}
-	client, err := analytics.NewClient(consts.XcodeAnalyticsServiceEndpoint, tokenSupplier, logger)
+	client, err := analytics.NewClient(configcommon.XcodeAnalyticsURL(envProvider), tokenSupplier, logger)
 	if err != nil {
 		logger.Warnf("Xcode analytics disabled — client init failed: %s", err)
 

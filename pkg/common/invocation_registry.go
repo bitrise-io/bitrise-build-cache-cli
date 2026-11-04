@@ -14,7 +14,6 @@ import (
 	ccacheanalytics "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/ccache/analytics"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	multiplatformconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/multiplatform"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
@@ -170,7 +169,7 @@ func (inv *InvocationRegistry) resolveAPI(cred authpkg.Credential, origin authpk
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(consts.MultiplatformAnalyticsServiceEndpoint, authpkg.GradleToken(cred, origin), inv.logger)
+	client, err := ccacheanalytics.NewClient(configcommon.MultiplatformAnalyticsURL(inv.params.Envs), authpkg.GradleToken(cred, origin), inv.logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}

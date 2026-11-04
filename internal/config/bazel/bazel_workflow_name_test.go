@@ -53,8 +53,9 @@ func Test_WorkflowNameHeaderValue(t *testing.T) {
 func Test_Generate_WorkflowNameIsEscaped(t *testing.T) {
 	inventory := TemplateInventory{
 		Common: CommonTemplateInventory{
-			CLIPath:      "/usr/local/bin/bitrise-build-cache",
-			WorkflowName: "Pat's workflow",
+			CLIPath:                "/usr/local/bin/bitrise-build-cache",
+			CredentialHostPatterns: []string{"*.services.bitrise.io"},
+			WorkflowName:           "Pat's workflow",
 		},
 		Cache: CacheTemplateInventory{
 			Enabled:             true,
@@ -62,6 +63,7 @@ func Test_Generate_WorkflowNameIsEscaped(t *testing.T) {
 			IsPushEnabled:       true,
 		},
 		BES: BESTemplateInventory{
+			ResultsURL:          "https://app.bitrise.io/build-cache/invocations/bazel/",
 			Enabled:             true,
 			EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.io:443",
 		},

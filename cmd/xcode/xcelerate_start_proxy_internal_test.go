@@ -379,3 +379,17 @@ func Test_slimInvocationEmitter_EmitSlim_appendsPendingWithoutPUT(t *testing.T) 
 	assert.Equal(t, int64(2500), records[0].Duration)
 	assert.InDelta(t, 0.75, records[0].HitRate, 1e-6)
 }
+
+func Test_newAnalyticsBundle_usesTheInjectedEnvsForTheAnalyticsURL(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ap := live.Default(bundleTestLogger).Bind(map[string]string{})
+	cfg := xcelerate.Config{AuthConfig: auth.Credential{Token: "t", WorkspaceID: "w"}}
+
+	staging := newAnalyticsBundle(context.Background(), cfg,
+		map[string]string{"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev"}, noopCommandFunc, bundleTestLogger, ap)
+	prod := newAnalyticsBundle(context.Background(), cfg, map[string]string{}, noopCommandFunc, bundleTestLogger, ap)
+
+	require.NotNil(t, staging.client)
+	assert.Equal(t, "https://xcode-analytics.services.bitrise.dev", staging.client.BaseURL())
+	assert.Equal(t, "https://xcode-analytics.services.bitrise.io", prod.client.BaseURL())
+}
