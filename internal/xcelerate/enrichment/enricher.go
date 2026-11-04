@@ -121,8 +121,12 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	if hitRateOutcome != xcactivitylog.OutcomeOK && !sidecarFound {
-		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar stats (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
+	// Synthetic (sidecar-sourced) groups and override-anchored PUTs carry their
+	// own data path — the xcactivitylog is only the authoritative source for
+	// real manifest-derived emissions.
+	hasAlternateDataSource := sidecarFound || group.OverrideInvocationID() != ""
+	if hitRateOutcome != xcactivitylog.OutcomeOK && !hasAlternateDataSource {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar / override (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
 
 		return
 	}

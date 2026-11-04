@@ -890,9 +890,11 @@ func TestEnricher_FallsBackToManifestUUID_WhenNoSidecar(t *testing.T) {
 	}
 
 	now := time.Now()
-	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		UUID:      "manifest-uuid",
 		Signature: "Build S",
+		FileName:  logName,
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
@@ -988,17 +990,18 @@ func TestEnricher_DeterministicReputs_ProduceSameInvocationID(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	manifestPath, logName := stageOKLog(t)
 	g1 := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "aaa", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
-		{UUID: "bbb", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "aaa", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "bbb", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 	}}
 	g2 := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "bbb", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
-		{UUID: "aaa", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "bbb", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "aaa", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 	}}
 
-	e.Enrich("", g1)
-	e.Enrich("", g2)
+	e.Enrich(manifestPath, g1)
+	e.Enrich(manifestPath, g2)
 
 	require.Len(t, ids, 2)
 	assert.Equal(t, ids[0], ids[1])
@@ -1025,13 +1028,14 @@ func TestEnricher_UsesPrimarySpanForDuration_NotWideClusterSpan(t *testing.T) {
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
+	manifestPath, logName := stageOKLog(t)
 	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
 		// Primary: Build (highest known rank), 10s window.
-		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u-primary", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 		// Late post-build entry (unknown command rank) joining the cluster, 50s window.
 		{UUID: "u-late", SchemeName: "S", Signature: "Indexing S", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(70 * time.Second)},
 	}}
-	e.Enrich("", group)
+	e.Enrich(manifestPath, group)
 
 	assert.Equal(t, int64(10_000), captured.DurationMs,
 		"durationMs comes from PrimarySpan — not the 70s wide cluster span inflated by the late indexing entry")
