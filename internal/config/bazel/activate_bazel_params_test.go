@@ -299,7 +299,30 @@ func Test_TemplateInventoryWiresTheStagingEnvsIntoTheRenderedBazelrc(t *testing.
 
 	got, err := inventory.GenerateBazelrc(utils.DefaultTemplateProxy())
 	require.NoError(t, err)
+	assert.Contains(t, got, "build --credential_helper=*.services.bitrise.io="+params.CLIPath+"\n")
 	assert.Contains(t, got, "build --credential_helper=*.services.bitrise.dev="+params.CLIPath+"\n")
 	assert.Contains(t, got, "build --bes_backend=grpcs://flare-bes.services.bitrise.dev:443\n")
 	assert.Contains(t, got, "build --bes_results_url=https://app-staging.bitrise.io/build-cache/invocations/bazel/\n")
+}
+
+func Test_TemplateInventoryScopesTheHelperToProductionByDefault(t *testing.T) {
+	mockLogger := &mocks.Logger{}
+	mockLogger.On("Infof", mock.Anything).Return()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything).Return()
+	mockLogger.On("Debugf", mock.Anything, mock.Anything).Return()
+
+	params := DefaultActivateBazelParams()
+	params.CLIPath = "/usr/local/bin/bitrise-build-cache"
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
+		"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
+	}
+
+	inventory, err := params.TemplateInventory(context.Background(), mockLogger, envs,
+		func(_ string, _ ...string) (string, error) { return "", nil }, false)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"*.services.bitrise.io"}, inventory.Common.CredentialHostPatterns)
+	assert.Equal(t, "https://app.bitrise.io/build-cache/invocations/bazel/", inventory.BES.ResultsURL)
 }
