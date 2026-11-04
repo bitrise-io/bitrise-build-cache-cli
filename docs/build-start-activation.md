@@ -450,6 +450,12 @@ Roughly in order of how likely they are to matter.
 10. **Credential exposure surface.** The services token is handed to a child
     process. Only `BITRISE_BUILD_CACHE_*` and that token are passed, so the build's
     other secrets are not, and the CLI logs a hash instead of the token.
+    The `BITRISE_BUILD_CACHE_*` envs come from the build, so a URL among them could
+    redirect the token. The CLI therefore takes an endpoint override (website, cache,
+    RBE, Build Hub token URL, REST API, OIDC, OAuth issuer) only when it is `https`
+    (`grpcs` for the cache, a bare `host:port` also for RBE) on `bitrise.io` or
+    `bitrise.dev`, and otherwise uses the production default without a warning.
+    An endpoint passed as an explicit flag is not checked.
 11. **Version skew.** Three components agree on an env contract: preboot, `bitrise`
     and the build cache CLI. A mismatch is a skipped activation, not a failure, so
     it is easy to miss. The pin handoff goes through a file in `/tmp` because the

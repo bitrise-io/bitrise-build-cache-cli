@@ -201,7 +201,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		envVars := map[string]string{
 			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "AuthTokenValue",
 			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "WorkspaceIDValue",
-			"BITRISE_RBE_ENDPOINT":             "rbe.yolo.com:443",
+			"BITRISE_RBE_ENDPOINT":             "rbe.bitrise.io:443",
 		}
 
 		// when
@@ -212,7 +212,7 @@ func Test_ActivateBazelParams(t *testing.T) {
 		// then
 		require.NoError(t, err)
 		assert.True(t, inventory.RBE.Enabled)
-		assert.Equal(t, "rbe.yolo.com:443", inventory.RBE.EndpointURLWithPort)
+		assert.Equal(t, "rbe.bitrise.io:443", inventory.RBE.EndpointURLWithPort)
 	})
 
 	t.Run("TemplateInventory with RBE enabled and custom endpoint", func(t *testing.T) {

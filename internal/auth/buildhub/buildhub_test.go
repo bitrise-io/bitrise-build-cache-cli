@@ -25,12 +25,12 @@ func TestFromEnv_NeedsBothHalves(t *testing.T) {
 	_, ok = FromEnv(map[string]string{auth.EnvBuildHubVMToken: "vm-token"})
 	assert.False(t, ok)
 
-	_, ok = FromEnv(map[string]string{auth.EnvBuildHubVMTokenURL: "https://example.com"})
+	_, ok = FromEnv(map[string]string{auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"})
 	assert.False(t, ok)
 
 	_, ok = FromEnv(map[string]string{
 		auth.EnvBuildHubVMToken:    "vm-token",
-		auth.EnvBuildHubVMTokenURL: "https://example.com",
+		auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io",
 	})
 	assert.True(t, ok)
 }
@@ -200,8 +200,8 @@ func TestOnBuildHub_MatchesFromEnv(t *testing.T) {
 	for _, envs := range []map[string]string{
 		{},
 		{auth.EnvBuildHubVMToken: "vm-token"},
-		{auth.EnvBuildHubVMTokenURL: "https://example.com"},
-		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: "https://example.com"},
+		{auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"},
+		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"},
 	} {
 		_, ok := FromEnv(envs)
 		assert.Equal(t, ok, auth.OnBuildHub(envs))

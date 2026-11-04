@@ -12,6 +12,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/trustedurl"
 )
 
 // Identity defaults (production), each overridable per environment via the env
@@ -75,9 +76,9 @@ func (c Config) warnf(format string, args ...any) {
 // BITRISE_OAUTH_ISSUER, BITRISE_OIDC_TOKEN_ENDPOINT, BITRISE_OAUTH_CLIENT_ID.
 func NewConfigFromEnv(envs map[string]string) Config {
 	return Config{
-		Issuer:            firstNonEmpty(envs["BITRISE_OAUTH_ISSUER"], DefaultIssuer),
-		OIDCTokenEndpoint: firstNonEmpty(envs[auth.EnvOIDCTokenEndpoint], DefaultOIDCEndpoint),
-		ClientID:          firstNonEmpty(envs["BITRISE_OAUTH_CLIENT_ID"], DefaultClientID),
+		Issuer:            firstNonEmpty(trustedurl.FromEnv(envs, "BITRISE_OAUTH_ISSUER", "https"), DefaultIssuer),
+		OIDCTokenEndpoint: firstNonEmpty(trustedurl.FromEnv(envs, auth.EnvOIDCTokenEndpoint, "https"), DefaultOIDCEndpoint),
+		ClientID:          firstNonEmpty(trustedurl.FromEnv(envs, "BITRISE_OAUTH_CLIENT_ID", "https"), DefaultClientID),
 		Resource:          DefaultResource,
 	}
 }
