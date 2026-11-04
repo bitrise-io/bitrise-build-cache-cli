@@ -11,6 +11,8 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"howett.net/plist"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
 // CI writes many entries per xcodebuild invocation and timestamps them with
@@ -176,6 +178,29 @@ type ManifestEntryGroup struct {
 	// orphan — this collapses the manifest-orphan + pseudo-group pair into one
 	// BE row.
 	overrideInvocationID string
+
+	// preattachedSidecar lets the hex-bridge path skip SidecarReader.Lookup
+	// and feed blob stats + consumed sidecar paths directly. When non-nil the
+	// enricher reads blob stats from here and consumes the listed paths on
+	// success, without going through the time-overlap Lookup — so the
+	// sidecar's own WrapperLink.InvocationID cannot win over the clone's
+	// manifest UUID in the resolution ladder.
+	preattachedSidecar *preattachedSidecar
+}
+
+type preattachedSidecar struct {
+	Blob          *blobstats.Snapshot
+	ConsumedPaths []string
+}
+
+// Preattached returns the bundled sidecar blob + consumed paths when set by
+// CloneManifestGroupWithSidecar; nil otherwise.
+func (g ManifestEntryGroup) Preattached() (*blobstats.Snapshot, []string, bool) {
+	if g.preattachedSidecar == nil {
+		return nil, nil, false
+	}
+
+	return g.preattachedSidecar.Blob, g.preattachedSidecar.ConsumedPaths, true
 }
 
 // OverrideInvocationID returns the InvocationID the pseudo-group must PUT under,
@@ -423,6 +448,30 @@ func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature
 			Stop:       stop,
 		}},
 		overrideInvocationID: overrideInvocationID,
+	}
+}
+
+// CloneManifestGroupWithSidecar returns a group that shares src's manifest
+// identity (entries copied, not aliased) and carries a preattached sidecar
+// payload. Used by the hex-bridge path: scanOrphanSidecars has matched a
+// pseudo-group's build-request hex to a manifest emission, and must re-PUT
+// under the manifest's UUID with sidecar blob stats merged in. Because the
+// clone keeps the manifest's entries, Primary().UUID stays non-synthetic and
+// ManifestUUID() returns the manifest's UUID — the enricher's SidecarReader
+// lookup is bypassed via Preattached(), so the sidecar's own WrapperLink
+// InvocationID cannot win over the manifest UUID in the ladder.
+func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snapshot, consumedPaths []string) ManifestEntryGroup {
+	entries := make([]ManifestEntry, len(src.Entries))
+	copy(entries, src.Entries)
+
+	paths := append([]string(nil), consumedPaths...)
+
+	return ManifestEntryGroup{
+		Entries: entries,
+		preattachedSidecar: &preattachedSidecar{
+			Blob:          blob,
+			ConsumedPaths: paths,
+		},
 	}
 }
 

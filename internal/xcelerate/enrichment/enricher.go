@@ -104,7 +104,14 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarInvocationID string
 		sidecarFound        bool
 	)
-	if e.SidecarReader != nil {
+	// Preattached short-circuits the time-overlap SidecarReader lookup so the
+	// hex-bridge path (CloneManifestGroupWithSidecar) PUTs under the manifest
+	// UUID instead of the sidecar's WrapperLink.InvocationID.
+	if blob, paths, ok := group.Preattached(); ok {
+		sidecarBlob = blob
+		consumedPaths = paths
+		sidecarFound = blob != nil
+	} else if e.SidecarReader != nil {
 		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
 	}
 

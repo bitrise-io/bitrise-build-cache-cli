@@ -1601,3 +1601,151 @@ func TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil(t *te
 	assert.Equal(t, []string{uuid}, handled, "MatchProbe must resolve retry bucket when SidecarReader is nil")
 	assert.Contains(t, w.seen, uuid)
 }
+
+// TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup pins the
+// hex-bridge path: a sidecar's BuildRequestHex matches a recent manifest
+// emission's recorded hash, so the pseudo-group is cloned off the manifest
+// group and PUTs under the manifest's UUID with the sidecar blob stats
+// preattached.
+func TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup(t *testing.T) {
+	const hex = "ea6297e079ee1683905d008d83044b10"
+	const manifestUUID = "manifest-uuid-u1"
+	const proxyID = "proxy-derived-id"
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 5
+	sidecarBlob.Download.MissCount = 2
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:           fixtureNow.Add(-5 * time.Minute),
+			Stop:            fixtureNow.Add(-4 * time.Minute),
+			SidecarUUIDs:    []string{"sidecar-a"},
+			Paths:           []string{"/tmp/sidecar-a.json"},
+			Blob:            sidecarBlob,
+			BuildRequestHex: hex,
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	// Seed a recent manifest emission under manifestUUID with the matching hex.
+	manifestGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       manifestUUID,
+			Signature:  "Build S",
+			SchemeName: "S",
+			Start:      fixtureNow.Add(-6 * time.Minute),
+			Stop:       fixtureNow.Add(-5 * time.Minute),
+		}},
+	}
+	w.RecordEmittedInvocationID("manifest-id", hex, manifestGroup)
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "hex match must emit exactly one cloned group")
+	clone := handled[0]
+	assert.Equal(t, manifestUUID, clone.ManifestUUID(), "clone keeps manifest UUID so enricher PUTs under it")
+
+	blob, paths, ok := clone.Preattached()
+	require.True(t, ok, "clone must carry a preattached sidecar payload")
+	assert.Equal(t, sidecarBlob, blob, "preattached blob is the sidecar snapshot")
+	assert.Equal(t, []string{"/tmp/sidecar-a.json"}, paths, "preattached consumedPaths are the sidecar's own paths")
+}
+
+// TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow pins the safe
+// default: when the sidecar's hex does not match any recent manifest
+// emission, the pseudo-group falls through to the slim synthetic path under
+// the proxy-derived InvocationID — separate BE row, no clobber risk.
+func TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow(t *testing.T) {
+	const sidecarHex = "ea6297e079ee1683905d008d83044b10"
+	const manifestHex = "ffffffffffffffffffffffffffffffff"
+	const proxyID = "proxy-derived-id"
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:           fixtureNow.Add(-5 * time.Minute),
+			Stop:            fixtureNow.Add(-4 * time.Minute),
+			SidecarUUIDs:    []string{"sidecar-b"},
+			BuildRequestHex: sidecarHex,
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	// Seed a recent emission with a DIFFERENT hex — no bridge.
+	manifestGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:      "manifest-uuid-other",
+			Signature: "Build S",
+			Start:     fixtureNow.Add(-6 * time.Minute),
+			Stop:      fixtureNow.Add(-5 * time.Minute),
+		}},
+	}
+	w.RecordEmittedInvocationID("manifest-id", manifestHex, manifestGroup)
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "hex mismatch must still emit — via the slim synthetic path")
+	g := handled[0]
+	assert.True(t, strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix), "fallback is the slim synthetic pseudo-group")
+	_, _, preattached := g.Preattached()
+	assert.False(t, preattached, "slim fallback must NOT carry a preattached payload — SidecarReader.Lookup will supply it")
+}
+
+// TestWatcher_findEmissionByBuildRequestHex_MultipleMatches_PicksClosestByStart
+// pins the tie-breaker: when two emissions share the same hex (incremental
+// rebuilds reused the build-description), the one whose group Start is
+// closest to the sidecar's AcceptedAt wins — temporal proximity defeats a
+// stale emission.
+func TestWatcher_findEmissionByBuildRequestHex_MultipleMatches_PicksClosestByStart(t *testing.T) {
+	const hex = "ea6297e079ee1683905d008d83044b10"
+
+	w := &Watcher{Now: func() time.Time { return fixtureNow }}
+	w.recentEmissions = map[string]emissionRecord{}
+
+	farGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:  "manifest-far",
+			Start: fixtureNow.Add(-10 * time.Minute),
+			Stop:  fixtureNow.Add(-9 * time.Minute),
+		}},
+	}
+	nearGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:  "manifest-near",
+			Start: fixtureNow.Add(-2 * time.Minute),
+			Stop:  fixtureNow.Add(-1 * time.Minute),
+		}},
+	}
+
+	w.RecordEmittedInvocationID("id-far", hex, farGroup)
+	w.RecordEmittedInvocationID("id-near", hex, nearGroup)
+
+	sidecarAcceptedAt := fixtureNow.Add(-90 * time.Second)
+	rec, ok := w.findEmissionByBuildRequestHex(hex, sidecarAcceptedAt)
+	require.True(t, ok)
+	assert.Equal(t, "manifest-near", rec.group.ManifestUUID(), "nearer Start must win the tie-break")
+}

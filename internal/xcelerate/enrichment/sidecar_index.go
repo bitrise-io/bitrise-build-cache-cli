@@ -64,12 +64,17 @@ type SidecarReader interface {
 
 // SidecarGroup aggregates one or more sidecars sharing an InvocationID.
 // Blob stats are summed across the set; Start/Stop collapse to earliest/latest.
+// BuildRequestHex is the hex of the earliest-accepted sidecar in the group —
+// typically the Primary that generated the reseat-anchored WrapperLink. Used
+// by the enricher's hex-bridge to match a pseudo-group back to the originating
+// manifest's recorded build-description hash.
 type SidecarGroup struct {
 	Blob             *blobstats.Snapshot
 	Start, Stop      time.Time
 	DerivedDataPaths []string
 	SidecarUUIDs     []string
 	Paths            []string
+	BuildRequestHex  string
 }
 
 type sidecarIndex struct {
@@ -241,8 +246,17 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 
 		g := groups[s.WrapperSession.InvocationID]
 		g.Blob = mergeBlobs(g.Blob, s.BlobStats)
+		// Earliest-accepted sidecar supplies the hex: later flushes under the
+		// same InvocationID (idle beats + terminal close) share the hex that
+		// identified the originating ⌘B, so any of them is safe to use — but
+		// picking the earliest is deterministic across scan ticks.
 		if g.Start.IsZero() || (!s.AcceptedAt.IsZero() && s.AcceptedAt.Before(g.Start)) {
 			g.Start = s.AcceptedAt
+			if s.BuildRequestHex != "" {
+				g.BuildRequestHex = s.BuildRequestHex
+			}
+		} else if g.BuildRequestHex == "" && s.BuildRequestHex != "" {
+			g.BuildRequestHex = s.BuildRequestHex
 		}
 		if s.ClosedAt.After(g.Stop) {
 			g.Stop = s.ClosedAt

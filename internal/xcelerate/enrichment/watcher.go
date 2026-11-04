@@ -307,10 +307,17 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 // manifest path this tick. forceSynthesize drops the minAge gate — used by the
 // shutdown sweep so a sidecar that just closed still lands before exit.
 //
+// Two emission shapes:
+//   - Hex-match: the sidecar's build-request hex matches a manifest emission
+//     already recorded this retention window. Clone that manifest group,
+//     attach the sidecar blob stats, PUT under the manifest's UUID so the BE
+//     overwrite carries a superset of the manifest row.
+//   - No match: fall through to a slim SyntheticManifestGroup under the
+//     proxy-derived InvocationID (separate BE row).
+//
 // Sidecars left on disk at this point are ones the manifest-driven Enrich path
 // did not consume via SidecarReader.Lookup (consumed sidecars are unlinked
-// synchronously inside Handle before this function runs). Emit a pseudo-group
-// for each so the blob stats land at BE under the sidecar's wrapper InvocationID.
+// synchronously inside Handle before this function runs).
 func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 	if w.SidecarReader == nil {
 		return
@@ -339,6 +346,24 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
+		// Hex-bridge: when the sidecar's build-request hex matches a recent
+		// manifest emission, re-PUT under the manifest's UUID with the sidecar
+		// blob stats merged in. BE last-write-wins means this overwrite carries
+		// a superset of Path A's manifest row. The manifest's UUID is already
+		// in w.seen from the Path A emission, so bypass handleGroup's seen gate
+		// and dispatch Handle directly.
+		if group.BuildRequestHex != "" {
+			if emission, ok := w.findEmissionByBuildRequestHex(group.BuildRequestHex, group.Start); ok {
+				clone := CloneManifestGroupWithSidecar(emission.group, group.Blob, group.Paths)
+				logger.Debugf("Watcher: hex-bridged pseudo-group — sidecar hex %s matched manifest UUID %s (InvocationID %s)", group.BuildRequestHex, emission.group.ManifestUUID(), invocationID)
+				if w.Handle != nil {
+					w.Handle("", clone)
+				}
+
+				continue
+			}
+		}
+
 		// Shutdown sweep stays sidecar-anchored: a late-closing sidecar's data
 		// must land under its own InvocationID, not fold into whatever
 		// manifest-orphan happened to fire this scan.
@@ -354,6 +379,44 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}
+}
+
+// findEmissionByBuildRequestHex returns the recent emission whose stored
+// build-description hash matches hex exactly. When multiple emissions share
+// the hex (incremental rebuilds reusing the same build-description), the one
+// whose group Start is closest to sidecarAcceptedAt wins — breaks ties by
+// temporal proximity so an index-pass reusing a hex does not steal a
+// user-build's hex.
+func (w *Watcher) findEmissionByBuildRequestHex(hex string, sidecarAcceptedAt time.Time) (emissionRecord, bool) {
+	if hex == "" || w.recentEmissions == nil {
+		return emissionRecord{}, false
+	}
+
+	var (
+		best       emissionRecord
+		bestDelta  time.Duration = -1
+		foundMatch bool
+	)
+
+	for _, rec := range w.recentEmissions {
+		if rec.BuildDescriptionHash != hex {
+			continue
+		}
+
+		start := rec.group.Start()
+		delta := sidecarAcceptedAt.Sub(start)
+		if delta < 0 {
+			delta = -delta
+		}
+
+		if !foundMatch || delta < bestDelta {
+			best = rec
+			bestDelta = delta
+			foundMatch = true
+		}
+	}
+
+	return best, foundMatch
 }
 
 // logStalledIfSuspicious emits a once-per-minute diagnostic when a scan found
