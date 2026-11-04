@@ -570,3 +570,23 @@ func Test_Generate_ProjectMode_NotWrittenToBazelrc(t *testing.T) {
 	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MODE")
 	assert.NotContains(t, got, "BITRISE_BUILD_CACHE_PROJECT_MARKER")
 }
+
+func Test_Generate_StagingServicesScopeTheHelperAndLinkTheStagingWebsite(t *testing.T) {
+	inv := TemplateInventory{
+		Common: CommonTemplateInventory{
+			CLIPath:         "/usr/local/bin/bitrise-build-cache",
+			StagingServices: true,
+			WebsiteBaseURL:  "https://app-staging.bitrise.io",
+		},
+		Cache: CacheTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://build-cache-api.services.bitrise.dev"},
+		BES:   BESTemplateInventory{Enabled: true, EndpointURLWithPort: "grpcs://flare-bes.services.bitrise.dev:443"},
+	}
+
+	got, err := inv.GenerateBazelrc(utils.DefaultTemplateProxy())
+
+	require.NoError(t, err)
+	assert.Contains(t, got, "build --credential_helper=*.services.bitrise.dev=/usr/local/bin/bitrise-build-cache\n")
+	assert.Contains(t, got, "build --bes_results_url=https://app-staging.bitrise.io/build-cache/invocations/bazel/\n")
+	assert.NotContains(t, got, "services.bitrise.io")
+	assert.NotContains(t, got, "https://app.bitrise.io")
+}

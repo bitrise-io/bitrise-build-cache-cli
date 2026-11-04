@@ -18,7 +18,7 @@ a helper that can't be spawned fails every build.
 */ -}}
 {{- $useHelper := .Common.CLIPath -}}
 {{- if and $useHelper (or .Cache.Enabled .BES.Enabled) -}}
-build --credential_helper=*.services.bitrise.io={{ .Common.CLIPath }}
+build --credential_helper={{ .Common.CredentialHostPattern }}={{ .Common.CLIPath }}
 {{ end }}
 {{- if .Cache.Enabled -}}
 build --remote_cache={{ .Cache.EndpointURLWithPort }}
@@ -41,7 +41,7 @@ build --bes_backend={{ .BES.EndpointURLWithPort }}
 {{- if not $useHelper }}
 build --bes_header=authorization="Bearer {{ .Common.AuthToken }}"
 {{- end }}
-build --bes_results_url=https://app.bitrise.io/build-cache/invocations/bazel/
+build --bes_results_url={{ .Common.BESResultsURL }}
 build --bes_timeout=2m
 build --bes_upload_mode=wait_for_upload_complete
 build --build_event_publish_all_actions

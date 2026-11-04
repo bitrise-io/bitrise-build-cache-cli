@@ -120,6 +120,9 @@ func (params ActivateBazelParams) commonTemplateInventory(
 		BuildID:      cacheConfig.BitriseBuildID,
 		Timestamps:   params.Timestamps,
 		CLIPath:      credentialHelperPath(params.CLIPath),
+
+		StagingServices: common.UsesStagingServices(envs),
+		WebsiteBaseURL:  common.SelectWebsiteBaseURL(envs),
 		HostMetadata: HostMetadataInventory{
 			OS:             cacheConfig.HostMetadata.OS,
 			Locale:         cacheConfig.HostMetadata.Locale,

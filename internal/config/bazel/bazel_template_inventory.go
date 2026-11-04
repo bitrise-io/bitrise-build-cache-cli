@@ -1,6 +1,10 @@
 package bazelconfig
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/consts"
+)
 
 type HostMetadataInventory struct {
 	OS             string
@@ -30,6 +34,26 @@ type CommonTemplateInventory struct {
 	// which falls back to the literal `Bearer <token>` header.
 	CLIPath      string
 	HostMetadata HostMetadataInventory
+	// StagingServices and WebsiteBaseURL are empty for hand-built inventories, which render production values.
+	StagingServices bool
+	WebsiteBaseURL  string
+}
+
+func (i CommonTemplateInventory) CredentialHostPattern() string {
+	if i.StagingServices {
+		return "*.services.bitrise.dev"
+	}
+
+	return "*.services.bitrise.io"
+}
+
+func (i CommonTemplateInventory) BESResultsURL() string {
+	base := i.WebsiteBaseURL
+	if base == "" {
+		base = consts.BitriseWebsiteBaseURL
+	}
+
+	return base + "/build-cache/invocations/bazel/"
 }
 
 type CacheTemplateInventory struct {

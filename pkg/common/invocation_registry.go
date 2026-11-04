@@ -169,7 +169,7 @@ func (inv *InvocationRegistry) resolveAPI(cred authpkg.Credential, origin authpk
 		return inv.api, nil
 	}
 
-	client, err := ccacheanalytics.NewClient(configcommon.MultiplatformAnalyticsURL(utils.AllEnvs()), authpkg.GradleToken(cred, origin), inv.logger)
+	client, err := ccacheanalytics.NewClient(configcommon.MultiplatformAnalyticsURL(inv.params.Envs), authpkg.GradleToken(cred, origin), inv.logger)
 	if err != nil {
 		return nil, fmt.Errorf("new analytics client: %w", err)
 	}

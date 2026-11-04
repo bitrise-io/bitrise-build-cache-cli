@@ -319,7 +319,7 @@ func (h *StorageHelper) sendInvocation(ctx context.Context, invocationID, parent
 		return
 	}
 
-	client, err := ccacheanalytics.NewClient(configcommon.MultiplatformAnalyticsURL(utils.AllEnvs()), authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
+	client, err := ccacheanalytics.NewClient(configcommon.MultiplatformAnalyticsURL(h.params.Envs), authpkg.GradleToken(h.config.AuthConfig, h.config.AuthOrigin), h.logger)
 	if err != nil {
 		h.logger.TWarnf("Failed to create analytics client for ccache stats: %v", err)
 
