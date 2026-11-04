@@ -18,6 +18,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -1214,4 +1215,73 @@ func TestEnricher_AggregatesXcresultSummaryAcrossActions(t *testing.T) {
 	}
 	assert.Contains(t, failureKeys, "App|compile error")
 	assert.Contains(t, failureKeys, "AppTests|test failed")
+}
+
+// TestAggregateHitRate_UsesCacheWhenProvided pins the per-tick cache seam:
+// when the Watcher installs a MetricsLookup via SetMetricsLookup, Enrich must
+// route xcactivitylog reads through it and never call ReadMetricsFromManifest
+// directly — so a log is gunzipped at most once per scan regardless of how
+// many entries a cluster holds.
+func TestEnricher_AggregateHitRate_UsesCacheWhenProvided(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	calls := map[string]int{}
+	e.SetMetricsLookup(func(entry enrichment.ManifestEntry) xcactivitylog.Metrics {
+		calls[entry.FileName]++
+
+		return xcactivitylog.Metrics{
+			Outcome: xcactivitylog.OutcomeOK,
+			Hits:    5,
+			Total:   10,
+		}
+	})
+
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u1", SchemeName: "S", Signature: "Build S", FileName: "A.xcactivitylog", Status: "S", Start: base, Stop: base.Add(5 * time.Second)},
+	}}
+	e.Enrich("/tmp/LogStoreManifest.plist", group)
+
+	assert.InDelta(t, float32(0.5), captured.HitRate, 0.0001, "hit rate came from the stub lookup — never touched disk")
+	assert.Equal(t, 1, calls["A.xcactivitylog"], "lookup must be called exactly once per entry")
+}
+
+// TestAggregateHitRate_FallsBackToReadWhenCacheNil pins the no-cache path:
+// when no MetricsLookup is installed, Enrich continues to read via
+// ReadMetricsFromManifest. Guards against a regression where the lookup is
+// silently required.
+func TestEnricher_AggregateHitRate_FallsBackToReadWhenCacheNil(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	// No SetMetricsLookup call: aggregateHitRate must still read directly.
+	e := &enrichment.Enricher{Store: store, Client: mock}
+
+	manifestPath, logName := stageOKLog(t)
+	base := time.Now()
+	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
+		{UUID: "u", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(time.Second)},
+	}}
+	e.Enrich(manifestPath, group)
+
+	assert.InDelta(t, float32(0.7), captured.HitRate, 0.0001, "stageOKLog writes a 70% hit rate body; the direct-read path must still see it")
 }

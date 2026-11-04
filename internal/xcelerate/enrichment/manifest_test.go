@@ -9,8 +9,22 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
+
+// hashLookup builds a MetricsLookup that returns a canned BuildDescriptionHash
+// per entry.UUID. Entries whose UUID is absent from the map resolve to an
+// empty hash (OutcomeOK — present-but-no-hash is a valid Xcode state that
+// must NOT split).
+func hashLookup(byUUID map[string]string) enrichment.MetricsLookup {
+	return func(entry enrichment.ManifestEntry) xcactivitylog.Metrics {
+		return xcactivitylog.Metrics{
+			Outcome:              xcactivitylog.OutcomeOK,
+			BuildDescriptionHash: byUUID[entry.UUID],
+		}
+	}
+}
 
 func TestLoadManifest_ParsesEntries(t *testing.T) {
 	entries, err := enrichment.LoadManifest("testdata/LogStoreManifest.plist")
@@ -499,4 +513,73 @@ func TestFullCommand_SchemeOnlyNoWorkspaceOrProject(t *testing.T) {
 
 	assert.Equal(t, "xcodebuild build -scheme S", g.FullCommand(),
 		"a known action is enough to render the xcodebuild argv form even without workspace/project/configuration")
+}
+
+func TestGroupManifestEntries_SameHexSameCommand_Merges(t *testing.T) {
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "prep", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+		{UUID: "real", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(5 * time.Second), Stop: base.Add(40 * time.Second)},
+	}
+
+	lookup := hashLookup(map[string]string{"prep": "abcd1234", "real": "abcd1234"})
+
+	groups := enrichment.GroupManifestEntries(entries, enrichment.LocalGroupTimeGap, enrichment.WithMetricsLookup(lookup))
+	require.Len(t, groups, 1, "same (Command, hex) must cluster — prep-Build + real-Build is one BE row")
+	assert.ElementsMatch(t, []string{"prep", "real"}, groups[0].UUIDs())
+}
+
+func TestGroupManifestEntries_SameHexDifferentCommand_Splits(t *testing.T) {
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "clean", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
+		{UUID: "build", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(5 * time.Second), Stop: base.Add(40 * time.Second)},
+	}
+
+	// Same hex, different Command — Clean (⌘⇧K) + Build (⌘B) are two user
+	// actions and must surface as two BE rows even when Xcode reuses the
+	// xcbuilddata hash across them.
+	lookup := hashLookup(map[string]string{"clean": "abcd1234", "build": "abcd1234"})
+
+	groups := enrichment.GroupManifestEntries(entries, enrichment.LocalGroupTimeGap, enrichment.WithMetricsLookup(lookup))
+	require.Len(t, groups, 2)
+	assert.Equal(t, []string{"clean"}, groups[0].UUIDs())
+	assert.Equal(t, []string{"build"}, groups[1].UUIDs())
+}
+
+func TestGroupManifestEntries_DifferentHex_Splits(t *testing.T) {
+	// v6 RDE repro: two consecutive ⌘Bs with scheme=Models within
+	// LocalGroupTimeGap used to merge into one 2-UUID group whose
+	// Primary.UUID of the first ⌘B went to w.seen, skipping the second ⌘B's
+	// PUT as already-seen. Distinct build-description hashes must split.
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "build1", SchemeName: "Models", Signature: "Build Models", Status: "S", Start: base, Stop: base.Add(15 * time.Second)},
+		{UUID: "build2", SchemeName: "Models", Signature: "Build Models", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(45 * time.Second)},
+	}
+
+	lookup := hashLookup(map[string]string{"build1": "aaaa1111", "build2": "bbbb2222"})
+
+	groups := enrichment.GroupManifestEntries(entries, enrichment.LocalGroupTimeGap, enrichment.WithMetricsLookup(lookup))
+	require.Len(t, groups, 2, "distinct xcbuilddata hashes split; both ⌘Bs land as their own BE row")
+	assert.Equal(t, []string{"build1"}, groups[0].UUIDs())
+	assert.Equal(t, []string{"build2"}, groups[1].UUIDs())
+}
+
+func TestGroupManifestEntries_EmptyHex_FallsBackToTimeGap(t *testing.T) {
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u2", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(15 * time.Second), Stop: base.Add(40 * time.Second)},
+	}
+
+	// All lookups return empty hash — the "reader miss / unparsed log" path.
+	// Clustering must fall back to time-gap only, matching pre-option behavior.
+	lookup := func(_ enrichment.ManifestEntry) xcactivitylog.Metrics {
+		return xcactivitylog.Metrics{Outcome: xcactivitylog.OutcomeUnparsed}
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, enrichment.LocalGroupTimeGap, enrichment.WithMetricsLookup(lookup))
+	require.Len(t, groups, 1, "no hex on either side = don't split; time-gap alone decides")
+	assert.ElementsMatch(t, []string{"u1", "u2"}, groups[0].UUIDs())
 }

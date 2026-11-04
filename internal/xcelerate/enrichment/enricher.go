@@ -46,6 +46,19 @@ type Enricher struct {
 	// orphan sweep can bridge a pseudo-group back to the originating manifest
 	// via hex-exact match on buildDescriptionHash.
 	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup)
+
+	// metricsLookup is the per-tick xcactivitylog cache the Watcher installs
+	// via SetMetricsLookup before invoking Enrich; aggregateHitRate consults
+	// it so a single gunzip is shared with the grouping pass. nil = fall
+	// through to a direct ReadMetricsFromManifest read.
+	metricsLookup MetricsLookup
+}
+
+// SetMetricsLookup wires the Watcher's per-tick metrics cache. Called at scan
+// start; cleared at scan tail so a stale cache from one tick cannot leak into
+// the next.
+func (e *Enricher) SetMetricsLookup(lookup MetricsLookup) {
+	e.metricsLookup = lookup
 }
 
 func (e *Enricher) now() time.Time {
@@ -96,7 +109,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 		return false
 	}
 
-	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger)
+	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
 
 	var (
 		sidecarBlob         *blobstats.Snapshot
@@ -313,16 +326,15 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 }
 
 // aggregateHitRate sums the compile-cache counters across every manifest entry
-// that carries a FileName and a known action. A clean+build+test cluster
-// reports 3 logs; only the build log carries CompilationCacheMetrics, so the
-// aggregate hit rate equals the build log's rate — but the helper stays
-// correct if future Xcode versions add cache events to the test log too.
+// that carries a FileName and a known action. Post-split each group typically
+// holds one action, but a prep-Build + real-Build cluster (same hex, same
+// command) still aggregates. The lookup is the Watcher's per-tick cache so a
+// log is gunzipped at most once per scan; nil falls through to a direct read.
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
 // last non-OK outcome so the existing gate in Enrich behaves as before.
-// BuildDescriptionHash is sourced from the first OK log (deterministic:
-// entries are iterated in Actions()-chronological order).
-func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger) (float32, xcactivitylog.Outcome, string) {
+// BuildDescriptionHash is sourced from the first OK log in iteration order.
+func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger, lookup MetricsLookup) (float32, xcactivitylog.Outcome, string) {
 	if manifestPath == "" {
 		return 0, xcactivitylog.OutcomeFileMissing, ""
 	}
@@ -342,7 +354,13 @@ func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.
 		}
 
 		sawAny = true
-		m := xcactivitylog.ReadMetricsFromManifest(manifestPath, entry.FileName, logger)
+
+		var m xcactivitylog.Metrics
+		if lookup != nil {
+			m = lookup(entry)
+		} else {
+			m = xcactivitylog.ReadMetricsFromManifest(manifestPath, entry.FileName, logger)
+		}
 
 		if m.Outcome != xcactivitylog.OutcomeOK {
 			lastBad = m.Outcome

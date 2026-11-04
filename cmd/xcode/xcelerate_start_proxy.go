@@ -346,6 +346,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		TimeGap:               watcherTimeGap(),
 		HandledStore:          b.handledManifests,
 		SidecarReader:         sidecarReader,
+		SetMetricsLookup:      enricher.SetMetricsLookup,
 	}
 	enricher.OnEmit = w.RecordEmittedInvocationID
 

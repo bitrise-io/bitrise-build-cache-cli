@@ -13,7 +13,14 @@ import (
 	"howett.net/plist"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
+
+// MetricsLookup resolves an entry's xcactivitylog metrics. The Watcher wires
+// a per-tick cache so each log is gunzipped at most once per scan; nil
+// disables the lookup (grouping falls back to time-gap only; aggregateHitRate
+// reads directly).
+type MetricsLookup func(entry ManifestEntry) xcactivitylog.Metrics
 
 // CI writes many entries per xcodebuild invocation and timestamps them with
 // wall-clock skew, so the CI grouping window is wider than the local one.
@@ -522,11 +529,38 @@ func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snaps
 	}
 }
 
+// GroupOption configures GroupManifestEntries. Options are applied in order;
+// absent options preserve the pre-option behavior.
+type GroupOption func(*groupOptions)
+
+type groupOptions struct {
+	metricsLookup MetricsLookup
+}
+
+// WithMetricsLookup enables (Command, BuildDescriptionHash)-aware splitting of
+// a scheme+time-gap cluster. Two consecutive ⌘Bs within LocalGroupTimeGap
+// would otherwise merge into one group whose Primary UUID masks the second
+// build's PUT as already-seen; cutting on the xcbuilddata hash keeps same-hash
+// prep + real-build entries clustered while distinct build-descriptions split.
+// Nil-tolerant: a nil lookup disables the split (falls back to pure time-gap
+// behavior).
+func WithMetricsLookup(fn MetricsLookup) GroupOption {
+	return func(o *groupOptions) {
+		o.metricsLookup = fn
+	}
+}
+
 // GroupManifestEntries expects entries from a single manifest — see the
-// ManifestEntryGroup invariant.
-func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []ManifestEntryGroup {
+// ManifestEntryGroup invariant. opts tune the clustering: WithMetricsLookup
+// enables the hex-aware cluster split documented in v6.
+func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration, opts ...GroupOption) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil
+	}
+
+	var cfg groupOptions
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 
 	byScheme := make(map[string][]ManifestEntry)
@@ -561,6 +595,14 @@ func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []Mani
 				continue
 			}
 
+			if shouldSplitOnHex(current, e, cfg.metricsLookup) {
+				out = append(out, current)
+				current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
+				currentStop = e.Stop
+
+				continue
+			}
+
 			current.Entries = append(current.Entries, e)
 			if e.Stop.After(currentStop) {
 				currentStop = e.Stop
@@ -573,13 +615,42 @@ func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []Mani
 	return out
 }
 
-func LoadManifestGrouped(path string, timeGap time.Duration) ([]ManifestEntryGroup, error) {
+// shouldSplitOnHex cuts a cluster when the candidate's (Command, hex) key
+// differs from the most recent entry in the cluster that carries a non-empty
+// hex. Returns false (cluster) when either side has no hex — the caller then
+// falls back to the already-applied time-gap check alone. A nil lookup also
+// returns false so the pre-option behavior is preserved for tests / callers
+// that never wired the cache.
+func shouldSplitOnHex(current ManifestEntryGroup, candidate ManifestEntry, lookup MetricsLookup) bool {
+	if lookup == nil {
+		return false
+	}
+
+	candidateHash := lookup(candidate).BuildDescriptionHash
+	if candidateHash == "" {
+		return false
+	}
+
+	for i := len(current.Entries) - 1; i >= 0; i-- {
+		existing := current.Entries[i]
+		existingHash := lookup(existing).BuildDescriptionHash
+		if existingHash == "" {
+			continue
+		}
+
+		return existingHash != candidateHash || existing.Command() != candidate.Command()
+	}
+
+	return false
+}
+
+func LoadManifestGrouped(path string, timeGap time.Duration, opts ...GroupOption) ([]ManifestEntryGroup, error) {
 	entries, err := LoadManifest(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return GroupManifestEntries(entries, timeGap), nil
+	return GroupManifestEntries(entries, timeGap, opts...), nil
 }
 
 func LoadManifest(path string) ([]ManifestEntry, error) {

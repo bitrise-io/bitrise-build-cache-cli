@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
 const DefaultPollInterval = 5 * time.Second
@@ -64,6 +66,13 @@ type Watcher struct {
 	// Now is a test seam for the timestamp written into HandledStore records.
 	// nil falls back to time.Now.
 	Now func() time.Time
+
+	// SetMetricsLookup is the Enricher's cache seam. Watcher.scan builds a
+	// per-tick cache (keyed by manifestPath + "\x00" + fileName), installs it
+	// here before invoking Handle, and clears it at scan tail. Also passed to
+	// GroupManifestEntries via WithMetricsLookup so clustering sees the same
+	// cache — a log is gunzipped at most once per tick.
+	SetMetricsLookup func(MetricsLookup)
 
 	seen    map[string]struct{}
 	retries map[string]int
@@ -247,6 +256,15 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	}
 	w.pruneRecentEmissions()
 
+	// metricsCache is scoped to this scan tick: a log gunzipped by grouping
+	// (hex-aware split) is reused by aggregateHitRate. Cleared at scan tail so
+	// no stale metrics leak into the next tick's emission.
+	metricsCache := make(map[string]xcactivitylog.Metrics)
+	if w.SetMetricsLookup != nil {
+		w.SetMetricsLookup(cachedMetricsLookup(metricsCache, "", logger))
+		defer w.SetMetricsLookup(nil)
+	}
+
 	globs := w.Globs
 	if len(globs) == 0 {
 		globs = []string{DefaultDerivedDataGlob}
@@ -288,11 +306,19 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 		totalMatches += len(matches)
 
 		for _, path := range matches {
-			groups, err := LoadManifestGrouped(path, timeGap)
+			manifestLookup := cachedMetricsLookup(metricsCache, path, logger)
+
+			groups, err := LoadManifestGrouped(path, timeGap, WithMetricsLookup(manifestLookup))
 			if err != nil {
 				logger.Debugf("LogWatcher failed to load %s: %s", path, err)
 
 				continue
+			}
+
+			// Rebind the Enricher's lookup to this manifest so aggregateHitRate
+			// hits the cache under the same (manifestPath, fileName) key.
+			if w.SetMetricsLookup != nil {
+				w.SetMetricsLookup(manifestLookup)
 			}
 
 			for _, group := range groups {
@@ -306,6 +332,30 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	}
 
 	w.logStalledIfSuspicious(logger, totalMatches, len(targets))
+}
+
+// cachedMetricsLookup wraps a per-tick metricsCache map keyed by
+// manifestPath + "\x00" + fileName. The returned lookup is safe to share
+// across the grouping pass and aggregateHitRate; each unique key triggers one
+// gunzip, repeated lookups serve the cached Metrics. An empty fileName
+// short-circuits as OutcomeFileMissing without touching the cache (ignored by
+// the callers' FileName guards anyway).
+func cachedMetricsLookup(cache map[string]xcactivitylog.Metrics, manifestPath string, logger log.Logger) MetricsLookup {
+	return func(entry ManifestEntry) xcactivitylog.Metrics {
+		if entry.FileName == "" {
+			return xcactivitylog.Metrics{Outcome: xcactivitylog.OutcomeFileMissing}
+		}
+
+		key := manifestPath + "\x00" + entry.FileName
+		if m, ok := cache[key]; ok {
+			return m
+		}
+
+		m := xcactivitylog.ReadMetricsFromManifest(manifestPath, entry.FileName, logger)
+		cache[key] = m
+
+		return m
+	}
 }
 
 // scanOrphanSidecars synthesizes pseudo-groups from aged orphan sidecars whose

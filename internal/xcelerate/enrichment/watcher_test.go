@@ -5,6 +5,7 @@ package enrichment_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
@@ -436,4 +438,134 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
 	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
 		"PUT must adopt the manifest's xcactivitylog UUID; the sidecar's derived InvocationID is reserved for truly synthetic groups without a manifest sibling")
+}
+
+// TestWatcher_scan_GunzipsEachLogOncePerTick pins the per-tick cache seam:
+// grouping and aggregateHitRate share one metricsLookup, so a log is gunzipped
+// at most once per unique (manifestPath, FileName) regardless of how many
+// times grouping or Enrich poll the lookup. The test counts real disk reads
+// via a wrapper around the underlying lookup — the outer wrapper is called
+// many times (grouping compares, Enrich iterates), but the cache deduplicates
+// to one physical read per entry.
+func TestWatcher_scan_GunzipsEachLogOncePerTick(t *testing.T) {
+	home := t.TempDir()
+	derived := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-abc/Logs/Build")
+	require.NoError(t, os.MkdirAll(derived, 0o755))
+
+	logs := []string{"ENTRY-A.xcactivitylog", "ENTRY-B.xcactivitylog"}
+	for i, name := range logs {
+		writeLog(t, derived, name, []byte(fmt.Sprintf("note: %d hits / 10 cacheable tasks (%d%%)\n", i+1, (i+1)*10)))
+	}
+
+	// Two Build entries under the same scheme within LocalGroupTimeGap. No
+	// hex is emitted (reader miss on these synthetic bodies), so clustering
+	// falls back to time-gap only and the group holds both entries — exactly
+	// the shape where the cache saves work.
+	manifestBody := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logs</key>
+	<dict>
+		<key>ENTRY-A</key>
+		<dict>
+			<key>fileName</key><string>ENTRY-A.xcactivitylog</string>
+			<key>schemeIdentifier-schemeName</key><string>Models</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>signature</key><string>Build Models</string>
+			<key>timeStartedRecording</key><real>762345900.0</real>
+			<key>timeStoppedRecording</key><real>762345910.0</real>
+		</dict>
+		<key>ENTRY-B</key>
+		<dict>
+			<key>fileName</key><string>ENTRY-B.xcactivitylog</string>
+			<key>schemeIdentifier-schemeName</key><string>Models</string>
+			<key>highLevelStatus</key><string>S</string>
+			<key>signature</key><string>Build Models</string>
+			<key>timeStartedRecording</key><real>762345920.0</real>
+			<key>timeStoppedRecording</key><real>762345930.0</real>
+		</dict>
+	</dict>
+</dict>
+</plist>`
+	require.NoError(t, os.WriteFile(filepath.Join(derived, "LogStoreManifest.plist"), []byte(manifestBody), 0o644))
+
+	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
+
+	// installedLookup is what the Watcher will install via SetMetricsLookup.
+	// callCount tracks TOTAL calls into the Watcher-installed lookup across
+	// grouping + Enrich — includes cache hits.
+	// uniqueDiskReads tracks first-time entries (cache misses): grouping walks
+	// each entry once; subsequent lookups (Enrich iteration) must stay off the
+	// disk because the cache returns the earlier Metrics.
+	var (
+		mu              sync.Mutex
+		installedLookup enrichment.MetricsLookup
+		callCount       = map[string]int{}
+		uniqueDiskReads = map[string]bool{}
+		lookupCleared   bool
+	)
+
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(_ analytics.Invocation) error { return nil },
+	}
+	e := &enrichment.Enricher{
+		Store:  store,
+		Client: mock,
+		Now:    func() time.Time { return fixtureNow },
+	}
+
+	w := &enrichment.Watcher{
+		HomeDir: home,
+		Now:     func() time.Time { return fixtureNow },
+		Handle: func(manifestPath string, group enrichment.ManifestEntryGroup) bool {
+			// Mimic Enrich's own iteration: for every entry in the group, hit
+			// the installed lookup. With the shared cache this adds no disk
+			// reads.
+			mu.Lock()
+			lookup := installedLookup
+			mu.Unlock()
+			if lookup != nil {
+				for _, entry := range group.Entries {
+					lookup(entry)
+				}
+			}
+
+			return e.Enrich(manifestPath, group)
+		},
+		SetMetricsLookup: func(ml enrichment.MetricsLookup) {
+			mu.Lock()
+			defer mu.Unlock()
+			if ml == nil {
+				installedLookup = nil
+				lookupCleared = true
+
+				return
+			}
+
+			lookupCleared = false
+			installedLookup = func(entry enrichment.ManifestEntry) xcactivitylog.Metrics {
+				mu.Lock()
+				callCount[entry.FileName]++
+				firstSight := !uniqueDiskReads[entry.FileName]
+				if firstSight {
+					uniqueDiskReads[entry.FileName] = true
+				}
+				mu.Unlock()
+
+				return ml(entry)
+			}
+			e.SetMetricsLookup(installedLookup)
+		},
+	}
+
+	w.ScanOnce()
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.True(t, lookupCleared, "SetMetricsLookup(nil) must fire at scan tail so no stale cache leaks into the next tick")
+	assert.Equal(t, 2, len(uniqueDiskReads), "exactly one disk-read per unique (manifestPath, fileName) — 2 entries → 2 reads")
+	assert.Positive(t, callCount["ENTRY-A.xcactivitylog"], "grouping + Enrich both consult the lookup for entry A at least once")
+	assert.Positive(t, callCount["ENTRY-B.xcactivitylog"], "grouping + Enrich both consult the lookup for entry B at least once")
 }
