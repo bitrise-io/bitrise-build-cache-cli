@@ -457,10 +457,10 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 	}}
 	e.Enrich(manifestPath, group)
 
-	assert.Equal(t, "build test [S]", captured.Command,
-		"aggregate command renders every action chronologically with the shared scheme")
-	assert.Equal(t, "xcodebuild build test -scheme S", captured.FullCommand,
-		"aggregate FullCommand carries every action verb before the xcodebuild flags")
+	assert.Equal(t, "build [S]", captured.Command,
+		"Primary-only rendering: Build outranks Test as primary for the shared-scheme group")
+	assert.Equal(t, "xcodebuild build -scheme S", captured.FullCommand,
+		"Primary-only FullCommand surfaces the build verb; the test entry's duration is still folded into the span")
 	assert.Equal(t, int64(45_000), captured.DurationMs,
 		"duration = group.Duration() — the full min-Start → max-Stop span across all clustered actions")
 	assert.True(t, captured.Success)

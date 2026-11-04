@@ -114,9 +114,8 @@ func TestGroupManifestEntries_MultiEntrySameSchemeWithinGap(t *testing.T) {
 	assert.Equal(t, base, groups[0].Start())
 	assert.Equal(t, base.Add(55*time.Second), groups[0].Stop())
 	assert.Equal(t, 55*time.Second, groups[0].Duration())
-	assert.Equal(t, "build test [S]", groups[0].Command(),
-		"actions render in chronological order with duplicates collapsed: build (u1) → test (u2) → build (u3) collapses to build test")
-	assert.Equal(t, "xcodebuild build test -scheme S", groups[0].FullCommand())
+	assert.Equal(t, "build [S]", groups[0].Command(), "Build outranks Test as Primary")
+	assert.Equal(t, "xcodebuild build -scheme S", groups[0].FullCommand())
 	assert.True(t, groups[0].Success())
 }
 
@@ -188,10 +187,7 @@ func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "build archive [S]", groups[0].Command(),
-		"actions render chronologically: build (Start=1s) then archive (Start=2s)")
-	assert.Equal(t, "archive", string(groups[0].Primary().Command()),
-		"Primary() still ranks archive above build regardless of Start — used by UUID / BE-identity anchoring")
+	assert.Equal(t, "archive [S]", groups[0].Command(), "Archive outranks Build as primary")
 }
 
 func TestGroupManifestEntries_SameRankBreaksByEarliestStart(t *testing.T) {
@@ -493,59 +489,6 @@ func TestManifestEntryGroup_PrimarySpan_UsesPrimaryEntryOnly(t *testing.T) {
 
 	assert.Equal(t, 10*time.Second, g.PrimarySpan(), "PrimarySpan is anchored to Primary().Stop-Primary().Start")
 	assert.Equal(t, 70*time.Second, g.Duration(), "Duration stays as the wide cluster span used by correlation")
-}
-
-func TestActions_ChronologicalWithDedup(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "u-build-prep", SchemeName: "S", Signature: "Build S", Start: base.Add(10 * time.Second), Stop: base.Add(15 * time.Second)},
-		{UUID: "u-clean", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Start: base, Stop: base.Add(5 * time.Second)},
-		{UUID: "u-build-real", SchemeName: "S", Signature: "Build S", Start: base.Add(20 * time.Second), Stop: base.Add(40 * time.Second)},
-	}}
-
-	assert.Equal(t, []enrichment.Command{enrichment.CommandClean, enrichment.CommandBuild}, g.Actions(),
-		"actions ordered by Start (clean=0s, build=10s/20s) with the second build deduped")
-}
-
-func TestActions_SkipsUnknownEntries(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "u-indexing", SchemeName: "S", Signature: "Indexing S", Start: base, Stop: base.Add(1 * time.Second)},
-		{UUID: "u-build", SchemeName: "S", Signature: "Build S", Start: base.Add(2 * time.Second), Stop: base.Add(10 * time.Second)},
-	}}
-
-	assert.Equal(t, []enrichment.Command{enrichment.CommandBuild}, g.Actions(),
-		"Unknown-command entries (Indexing) must be filtered out of the action list")
-}
-
-func TestActions_EmptyWhenAllUnknown(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "u", SchemeName: "S", Signature: "Resolve Packages", Start: base, Stop: base.Add(1 * time.Second)},
-	}}
-
-	assert.Empty(t, g.Actions())
-}
-
-func TestCommand_MultiActionCleanBuild(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "clean", SchemeName: "Models", Signature: "Cleaning project IceCubesApp with scheme Models", Start: base, Stop: base.Add(2 * time.Second)},
-		{UUID: "build", SchemeName: "Models", Signature: "Build Models", Start: base.Add(5 * time.Second), Stop: base.Add(45 * time.Second)},
-	}}
-
-	assert.Equal(t, "clean build [Models]", g.Command())
-}
-
-func TestFullCommand_MultiActionCleanBuildWithProject(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "clean", SchemeName: "Models", Signature: "Cleaning project IceCubesApp with scheme Models and configuration Debug", Start: base, Stop: base.Add(2 * time.Second)},
-		{UUID: "build", SchemeName: "Models", Signature: "Build Models", Start: base.Add(5 * time.Second), Stop: base.Add(45 * time.Second)},
-	}}
-
-	assert.Equal(t, "xcodebuild clean build -project IceCubesApp -scheme Models -configuration Debug", g.FullCommand(),
-		"multi-action FullCommand lists every action verb before the xcodebuild flags; ws/project/configuration still come from Primary")
 }
 
 func TestFullCommand_SchemeOnlyNoWorkspaceOrProject(t *testing.T) {
