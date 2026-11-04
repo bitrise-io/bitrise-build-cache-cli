@@ -67,8 +67,8 @@ const manifestStatusError = "E"
 
 //nolint:gochecknoglobals
 var (
-	configurationFromSignature = regexp.MustCompile(`(?i)configuration\s+(\S+)`)
-	projectFromSignature       = regexp.MustCompile(`(?i)project\s+(\S+)`)
+	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
+	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
 )
 
 // Configuration parses the configuration name out of Xcode's Signature string.

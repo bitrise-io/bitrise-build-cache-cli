@@ -272,3 +272,33 @@ func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, groups, 3)
 }
+
+// `\b`-anchored regex must not swallow MyProject / MyConfiguration as a trailing
+// substring of a word (e.g. "Build MyProject" or "Running MyConfiguration").
+func TestProject_IgnoresSubstringMatch(t *testing.T) {
+	for _, sig := range []string{
+		"Build workspace MyProject with scheme Foo",
+		"Building MyProject target with scheme Foo",
+	} {
+		assert.Empty(t, enrichment.ManifestEntry{Signature: sig}.Project(), sig)
+	}
+}
+
+func TestConfiguration_IgnoresSubstringMatch(t *testing.T) {
+	for _, sig := range []string{
+		"Running MyConfiguration with Foo",
+		"Build using TheirConfiguration setup",
+	} {
+		assert.Empty(t, enrichment.ManifestEntry{Signature: sig}.Configuration(), sig)
+	}
+}
+
+// Positive confirmation that the bare xcodebuild-signature shape still parses
+// (matches testdata/LogStoreManifest.plist "Cleaning project ... configuration Debug").
+func TestProjectAndConfiguration_ParseBareSignature(t *testing.T) {
+	m := enrichment.ManifestEntry{
+		Signature: "Cleaning project IceCubesApp with scheme Models and configuration Debug",
+	}
+	assert.Equal(t, "IceCubesApp", m.Project())
+	assert.Equal(t, "Debug", m.Configuration())
+}
