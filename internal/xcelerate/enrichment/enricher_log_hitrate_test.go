@@ -66,7 +66,7 @@ func newEnrichSetup(t *testing.T) *enrichSetup {
 	e := &enrichment.Enricher{
 		Store:  store,
 		Client: mock,
-		Logger: log.NewLogger(log.WithOutput(buf)),
+		Logger: log.NewLogger(log.WithOutput(buf), log.WithDebugLog(true)),
 	}
 
 	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
@@ -101,4 +101,40 @@ func TestEnricher_LogHitRate_FlowsIntoInvocation(t *testing.T) {
 	s.enricher.Enrich(s.manifestPath, s.group)
 
 	assert.InDelta(t, float32(0.7), s.captured.HitRate, 0.001)
+}
+
+// Non-OK xcactivitylog outcomes mean the parse we'd attribute to the PUT is
+// unknown — skip the PUT so the BE row does not carry a bogus zero-hit-rate.
+func TestEnricher_SkipsPutInvocationWhenLogMissing(t *testing.T) {
+	s := newEnrichSetup(t)
+	// No log file staged — ReadHitRateFromManifest returns OutcomeFileMissing.
+
+	mock := s.enricher.Client.(*InvocationPutterMock)
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Empty(t, mock.PutInvocationCalls(), "missing log must skip PUT")
+	assert.Contains(t, s.logBuf.String(), "Enrichment PUT skipped")
+}
+
+func TestEnricher_SkipsPutInvocationWhenLogEmpty(t *testing.T) {
+	s := newEnrichSetup(t)
+	require.NoError(t, os.WriteFile(filepath.Join(s.manifestDir, s.logName), nil, 0o644))
+
+	mock := s.enricher.Client.(*InvocationPutterMock)
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Empty(t, mock.PutInvocationCalls(), "empty log must skip PUT")
+	assert.Contains(t, s.logBuf.String(), "Enrichment PUT skipped")
+}
+
+func TestEnricher_SkipsPutInvocationWhenLogUnparsed(t *testing.T) {
+	s := newEnrichSetup(t)
+	// Gzip body without the CompilationCacheMetrics line — OutcomeUnparsed.
+	writeLog(t, s.manifestDir, s.logName, []byte("some unrelated xcactivitylog body\n"))
+
+	mock := s.enricher.Client.(*InvocationPutterMock)
+	s.enricher.Enrich(s.manifestPath, s.group)
+
+	assert.Empty(t, mock.PutInvocationCalls(), "unparsed log must skip PUT")
+	assert.Contains(t, s.logBuf.String(), "Enrichment PUT skipped")
 }

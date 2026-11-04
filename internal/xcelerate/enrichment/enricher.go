@@ -86,9 +86,14 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	invocationID := uuid.NewString()
+	hitRate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
+	if outcome != xcactivitylog.OutcomeOK {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v (uuids=%v)", group.SchemeName(), outcome, group.UUIDs())
 
-	hitRate, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
+		return
+	}
+
+	invocationID := uuid.NewString()
 
 	var runErr error
 	if !group.Success() {
