@@ -19,6 +19,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 )
 
@@ -47,8 +48,6 @@ type DefaultRunner struct {
 	config  xcelerate.Config
 	logFile io.Writer
 }
-
-var compCacheStatLineRegex = regexp.MustCompile(`^note:\s+(\d+)\s+hits\s*/\s*(\d+)\s+cacheable`)
 
 var casErrorLineRegex = regexp.MustCompile(`(?i)\bCAS error\b`)
 
@@ -120,8 +119,12 @@ func (runner *DefaultRunner) hitRateCapturer(runStats *RunStats) loglineCapturer
 			runStats.CacheStats.CASErrors++
 		}
 
-		matches := compCacheStatLineRegex.FindStringSubmatch(line)
-		if len(matches) == 3 {
+		if !strings.HasPrefix(line, "note:") {
+			return
+		}
+
+		matches := xcactivitylog.HitRateRegexp.FindStringSubmatch(line)
+		if len(matches) >= 3 {
 			hit := matches[1]
 			if hitInt, err := strconv.ParseInt(hit, 10, 64); err == nil {
 				runStats.CacheStats.Hits = hitInt

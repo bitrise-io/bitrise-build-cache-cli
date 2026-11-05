@@ -35,11 +35,13 @@ const (
 	OutcomeReadError
 )
 
-// hitRateRegexp matches both the diagnostic-rendered ("note: ...") and bare
-// section-payload forms of the CompilationCacheMetrics line.
+// HitRateRegexp matches the CompilationCacheMetrics line in both its stdout
+// diagnostic form (`note: N hits / M cacheable tasks`) and its bare SLF
+// payload form inside an .xcactivitylog; the trailing `(NN%)` suffix only
+// appears in the SLF form, so it is optional.
 //
 //nolint:gochecknoglobals // compiled once, read-only
-var hitRateRegexp = regexp.MustCompile(`(\d+)\s+hits\s*/\s*(\d+)\s+cacheable\s+tasks\s*\(\s*(\d+)%\s*\)`)
+var HitRateRegexp = regexp.MustCompile(`(\d+)\s+hits\s*/\s*(\d+)\s+cacheable\s+tasks(?:\s*\(\s*\d+%\s*\))?`)
 
 // buildDescriptionHashRegexp captures the 32-hex build-description hash Xcode
 // writes into the log body as a plain ASCII substring.
@@ -116,7 +118,7 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 		hash = string(m[1])
 	}
 
-	if m := hitRateRegexp.FindSubmatch(body); m != nil {
+	if m := HitRateRegexp.FindSubmatch(body); m != nil {
 		h, _ := strconv.Atoi(string(m[1]))
 		tot, _ := strconv.Atoi(string(m[2]))
 
