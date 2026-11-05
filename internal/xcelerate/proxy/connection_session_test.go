@@ -436,3 +436,31 @@ func TestFlushIdle_PromotesDerivedIDEvenWhenStatsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "only the aged + derived-ID connection must flush")
 }
+
+// TestFlushIdle_AnchoredEmptyIsOneShot pins the sticky-branch bug fix:
+// anchoredAndAged stays true on every subsequent idle tick, so without the
+// sync.Once gate flushIdle would write an empty sidecar per tick until ConnEnd.
+func TestFlushIdle_AnchoredEmptyIsOneShot(t *testing.T) {
+	dir := t.TempDir()
+	registry := newSessionRegistry()
+	h := &sidecarStatsHandler{
+		writer:   newSidecarWriter(dir, nil),
+		registry: registry,
+	}
+
+	cs := newConnectionSession("k-anchored", 42, time.Unix(0, 0))
+	cs.derivedInvocationID = "derived-sticky"
+	cs.markActivity()
+	cs.activityMu.Lock()
+	cs.lastActivityAt = time.Now().Add(-1 * time.Hour)
+	cs.activityMu.Unlock()
+	registry.put(cs)
+
+	for i := 0; i < 3; i++ {
+		h.flushIdle(time.Now(), perConnIdleThreshold)
+	}
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "anchored-empty terminal marker must fire exactly once")
+}

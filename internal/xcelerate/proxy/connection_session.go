@@ -75,6 +75,13 @@ type connectionSession struct {
 	// repeatedly across the connection's lifetime.
 	terminalOnce sync.Once
 
+	// anchoredEmptyOnce guards the terminal marker written by flushIdle when a
+	// connection anchored a derivedInvocationID but then stayed idle past
+	// derivedIDFlushMultiplier * threshold with no activity to flush. The gate
+	// is sticky (anchoredAndAged stays true on every subsequent idle tick), so
+	// without the Once we would emit an empty sidecar per tick until ConnEnd.
+	anchoredEmptyOnce sync.Once
+
 	// Zero lastActivityAt means no cache RPC ran (health probe, aborted
 	// dial); flushTerminal suppresses the sidecar write in that case. Also
 	// drives the idle check for intermediate flushes.
@@ -512,6 +519,16 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		anchoredAndAged := cs.derivedInvocationID != "" &&
 			!cs.hadActivityWithin(threshold*derivedIDFlushMultiplier, now)
 		if !hasActivity && !anchoredAndAged {
+			continue
+		}
+
+		if !hasActivity {
+			cs.anchoredEmptyOnce.Do(func() {
+				old := cs.swapState()
+				sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
+				h.writer.write(sidecar)
+			})
+
 			continue
 		}
 
