@@ -1,10 +1,8 @@
 package trampoline
 
 import (
-	"context"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -12,6 +10,7 @@ import (
 
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 )
 
 // socketProbeTimeout is tight: a serving proxy answers within microseconds on
@@ -89,14 +88,7 @@ var defaultAutostartDeps = autostartDeps{
 		return func() { _ = fl.Unlock() }, true, nil
 	},
 	startAutostep: func() {
-		cmd := exec.CommandContext(context.Background(), cliBinaryPath(), "xcelerate", "start-proxy") //nolint:noctx,gosec // intentionally detached: must outlive trampoline exec; args are compile-time constants
-		cmd.Stdin = nil
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		_ = cmd.Start()
-		if cmd.Process != nil {
-			_ = cmd.Process.Release()
-		}
+		_, _ = spawn.DetachedFrom(cliBinaryPath(), spawn.XcelerateProxy())
 	},
 	sleep: time.Sleep,
 	now:   time.Now,
