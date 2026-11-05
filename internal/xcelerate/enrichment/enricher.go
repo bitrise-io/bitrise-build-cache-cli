@@ -80,6 +80,30 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
+// resolveSidecar returns the sidecar blob + consumed paths + derived InvocationID
+// + found flag. Preattached groups short-circuit the time-overlap SidecarReader
+// lookup (hex-bridge path keeps the manifest UUID authoritative). Otherwise the
+// SidecarReader runs with a LookupFilter whose DerivedData + build-description
+// hash disambiguate parallel builds sharing a time window; both axes degrade
+// gracefully when either source is empty.
+func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup, buildDescriptionHash string) (*blobstats.Snapshot, []string, string, bool) {
+	if blob, paths, ok := group.Preattached(); ok {
+		return blob, paths, "", blob != nil
+	}
+	if e.SidecarReader == nil {
+		return nil, nil, "", false
+	}
+
+	filter := LookupFilter{
+		DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
+	}
+	if buildDescriptionHash != "" {
+		filter.Hashes = []string{buildDescriptionHash}
+	}
+
+	return e.SidecarReader.Lookup(group, filter)
+}
+
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
 // xcactivitylog read used to populate the wrapperless hit rate.
 func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
@@ -128,25 +152,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarInvocationID string
 		sidecarFound        bool
 	)
-	// Preattached short-circuits the time-overlap SidecarReader lookup so the
-	// hex-bridge path (CloneManifestGroupWithSidecar) PUTs under the manifest
-	// UUID instead of the sidecar's WrapperLink.InvocationID.
-	if blob, paths, ok := group.Preattached(); ok {
-		sidecarBlob = blob
-		consumedPaths = paths
-		sidecarFound = blob != nil
-	} else if e.SidecarReader != nil {
-		// DerivedData root + build-description hash disambiguate parallel builds
-		// that share a time window. Both axes degrade gracefully when either
-		// source is empty — see LookupFilter docs.
-		filter := LookupFilter{
-			DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
-		}
-		if buildDescriptionHash != "" {
-			filter.Hashes = []string{buildDescriptionHash}
-		}
-		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group, filter)
-	}
+	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.resolveSidecar(manifestPath, group, buildDescriptionHash)
 
 	invocationID := group.ManifestUUID()
 	if invocationID == "" {
