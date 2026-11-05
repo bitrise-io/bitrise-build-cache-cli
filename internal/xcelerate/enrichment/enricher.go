@@ -54,10 +54,6 @@ type Enricher struct {
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
 	LocalLogAppender invocationlog.Appender
 
-	// OnEmitted fires with the invocation ID on each successful wrapperless PUT.
-	// nil disables. Used by flush-session to collect IDs emitted during a sweep.
-	OnEmitted func(invocationID string)
-
 	// metricsLookup is the per-tick xcactivitylog cache the Watcher installs
 	// via SetMetricsLookup before invoking Enrich; aggregateHitRate consults
 	// it so a single gunzip is shared with the grouping pass. nil = fall
@@ -232,10 +228,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
 
 	e.appendLocalLog(invocationID, command, group, runStats, inv)
-
-	if e.OnEmitted != nil {
-		e.OnEmitted(invocationID)
-	}
 }
 
 // VisitURL is the invocation-detail URL rendered in the Visit line + the

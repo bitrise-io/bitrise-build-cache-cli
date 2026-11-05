@@ -834,6 +834,35 @@ func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
 	assert.Contains(t, w.seen, uuid, "ScanOnce must lazy-init seen and mark emitted uuids")
 }
 
+// TestWatcher_ScanOnceWithEmit_InvokesObserver pins the flush-session shape:
+// the external observer fires for every InvocationID the Enricher records via
+// RecordEmittedInvocationID during the scan, and does NOT leak after the call.
+func TestWatcher_ScanOnceWithEmit_InvokesObserver(t *testing.T) {
+	home := t.TempDir()
+	writeFixtureManifest(t, home)
+	uuid := pickUUID(t, home)
+
+	var w *Watcher
+	w = &Watcher{
+		Now:     func() time.Time { return fixtureNow },
+		HomeDir: home,
+		Handle: func(_ string, g ManifestEntryGroup) {
+			w.RecordEmittedInvocationID("inv-"+g.UUIDs()[0], "", g)
+		},
+	}
+
+	var observed []string
+	w.ScanOnceWithEmit(func(id string) {
+		observed = append(observed, id)
+	})
+
+	assert.Contains(t, observed, "inv-"+uuid, "observer must fire for emitted IDs")
+
+	observed = nil
+	w.ScanOnce()
+	assert.Empty(t, observed, "observer must not persist past ScanOnceWithEmit")
+}
+
 func TestWatcher_scanOrphanSidecars_FiresPseudoGroupForAgedOrphan(t *testing.T) {
 	home := t.TempDir()
 	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)

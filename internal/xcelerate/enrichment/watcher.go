@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -86,6 +88,17 @@ type Watcher struct {
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
 	lastStalledLogAt time.Time
+
+	// scanMu serializes Run's ticker-driven scans with external one-shot calls
+	// (ScanOnce, ScanOnceWithEmit) so background + flush-session paths cannot
+	// race over seen / recentEmissions / tickEmittedIDs.
+	scanMu sync.Mutex
+
+	// emitObserver is a transient callback installed by ScanOnceWithEmit that
+	// receives each InvocationID emitted during that scan. Shared instance
+	// means the flush-session RPC sees emissions off the one live Watcher
+	// without spawning a parallel instance with divergent dedup state.
+	emitObserver atomic.Pointer[func(string)]
 }
 
 // emissionRecord pairs a manifest-emitted group with the time it was recorded
@@ -115,6 +128,10 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptio
 	}
 	if w.recentEmissions != nil {
 		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: now, BuildDescriptionHash: buildDescriptionHash}
+	}
+
+	if cb := w.emitObserver.Load(); cb != nil {
+		(*cb)(invocationID)
 	}
 }
 
@@ -178,13 +195,15 @@ func (w *Watcher) Run(ctx context.Context) {
 		w.PollInterval = DefaultPollInterval
 	}
 
+	w.scanMu.Lock()
 	w.seen = make(map[string]struct{})
 	w.retries = make(map[string]int)
 	w.recentEmissions = make(map[string]emissionRecord)
-
-	if !w.seedSeenFromStore() {
+	seeded := w.seedSeenFromStore()
+	if !seeded {
 		w.scan(true, false)
 	}
+	w.scanMu.Unlock()
 
 	ticker := time.NewTicker(w.PollInterval)
 	defer ticker.Stop()
@@ -194,7 +213,9 @@ func (w *Watcher) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			w.scanMu.Lock()
 			w.scan(false, false)
+			w.scanMu.Unlock()
 		}
 	}
 }
@@ -203,6 +224,31 @@ func (w *Watcher) Run(ctx context.Context) {
 // Used by the shutdown sweep: synthesizes pseudo-groups unconditionally (age gate dropped)
 // so wrapperless invocations whose sidecars just closed still land in BE.
 func (w *Watcher) ScanOnce() {
+	w.scanMu.Lock()
+	defer w.scanMu.Unlock()
+
+	w.ensureMaps()
+	w.scan(false, true)
+}
+
+// ScanOnceWithEmit runs one synchronous pass against the live Watcher state,
+// routing each emitted InvocationID to onEmitted for the duration of the scan.
+// Safe to call concurrently with Run — scanMu serializes.
+func (w *Watcher) ScanOnceWithEmit(onEmitted func(string)) {
+	w.scanMu.Lock()
+	defer w.scanMu.Unlock()
+
+	w.ensureMaps()
+
+	if onEmitted != nil {
+		w.emitObserver.Store(&onEmitted)
+		defer w.emitObserver.Store(nil)
+	}
+
+	w.scan(false, true)
+}
+
+func (w *Watcher) ensureMaps() {
 	if w.seen == nil {
 		w.seen = make(map[string]struct{})
 	}
@@ -212,8 +258,6 @@ func (w *Watcher) ScanOnce() {
 	if w.recentEmissions == nil {
 		w.recentEmissions = make(map[string]emissionRecord)
 	}
-
-	w.scan(false, true)
 }
 
 // seedSeenFromStore returns true when HandledStore contributed at least one

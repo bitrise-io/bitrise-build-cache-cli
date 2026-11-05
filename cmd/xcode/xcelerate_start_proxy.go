@@ -208,7 +208,7 @@ func StartXcodeCacheProxy(
 	defer cancelEnrich()
 
 	if bundle.enrichmentEnabled() {
-		go bundle.watcher(enrichCtx, initialLogger).Run(enrichCtx)
+		go bundle.ensureWatcher(enrichCtx, initialLogger).Run(enrichCtx)
 		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
 
@@ -241,6 +241,13 @@ type analyticsBundle struct {
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
+
+	// watcherInstance is the single live enrichment.Watcher. Run drives the
+	// background ticker; ScanOnce / ScanOnceWithEmit cover shutdown sweep and
+	// flush-session RPC. Sharing one instance keeps seen / recentEmissions /
+	// tickEmittedIDs singular so the flush path cannot re-emit a sidecar the
+	// background path already handled.
+	watcherInstance *enrichment.Watcher
 }
 
 func newAnalyticsBundle(
@@ -302,11 +309,13 @@ func (b *analyticsBundle) enrichmentEnabled() bool {
 	return b.client != nil && b.pending != nil && b.homeDir != ""
 }
 
-func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enrichment.Watcher {
-	return b.watcherWithEmit(ctx, logger, nil)
-}
+// ensureWatcher lazily builds the single shared *enrichment.Watcher. Idempotent
+// so tests seeding b.watcherInstance directly stay in control.
+func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) *enrichment.Watcher {
+	if b.watcherInstance != nil {
+		return b.watcherInstance
+	}
 
-func (b *analyticsBundle) watcherWithEmit(ctx context.Context, logger log.Logger, onEmitted func(string)) *enrichment.Watcher {
 	enricher := &enrichment.Enricher{
 		Store:            b.pending,
 		Client:           b.client,
@@ -315,7 +324,6 @@ func (b *analyticsBundle) watcherWithEmit(ctx context.Context, logger log.Logger
 		XcodeVersion:     b.xcodeVersion,
 		XcodeBuildNumber: b.xcodeBuildNumber,
 		Logger:           logger,
-		OnEmitted:        onEmitted,
 	}
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
@@ -360,6 +368,8 @@ func (b *analyticsBundle) watcherWithEmit(ctx context.Context, logger log.Logger
 	}
 	enricher.OnEmit = w.RecordEmittedInvocationID
 
+	b.watcherInstance = w
+
 	return w
 }
 
@@ -376,13 +386,12 @@ func (b *analyticsBundle) finalEnrichmentSweep(ctx context.Context, logger log.L
 		return
 	}
 
-	b.watcher(ctx, logger).ScanOnce()
+	b.ensureWatcher(ctx, logger).ScanOnce()
 	b.retrier(logger).Sweep()
 }
 
-// flushEnrichmentSweep runs a synchronous one-shot scan and retry, returning
-// the invocation IDs emitted during this sweep. Thread-safe collector so a
-// background watcher goroutine stays untouched.
+// flushEnrichmentSweep runs a synchronous one-shot scan on the shared Watcher
+// and returns the invocation IDs emitted during this sweep.
 func (b *analyticsBundle) flushEnrichmentSweep(ctx context.Context, logger log.Logger) []string {
 	if !b.enrichmentEnabled() {
 		return nil
@@ -398,7 +407,7 @@ func (b *analyticsBundle) flushEnrichmentSweep(ctx context.Context, logger log.L
 		mu.Unlock()
 	}
 
-	b.watcherWithEmit(ctx, logger, collect).ScanOnce()
+	b.ensureWatcher(ctx, logger).ScanOnceWithEmit(collect)
 	b.retrier(logger).Sweep()
 
 	mu.Lock()
