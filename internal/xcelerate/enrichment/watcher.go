@@ -465,7 +465,20 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
+		pseudo := SyntheticManifestGroup(
+			group.SidecarUUIDs[0],
+			group.Start,
+			group.Stop,
+			"",
+			"",
+			"",
+			SyntheticClassification{
+				Command:       group.BuildRequest.Command,
+				Action:        group.BuildRequest.Action,
+				Configuration: group.BuildRequest.Configuration,
+				Container:     group.BuildRequest.Container,
+			},
+		)
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)
 	}

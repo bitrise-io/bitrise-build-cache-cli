@@ -938,7 +938,7 @@ func TestEnricher_FallsBackToOverride_WhenSyntheticGroup(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	now := time.Now()
-	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "override-id")
+	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "override-id", enrichment.SyntheticClassification{})
 	e.Enrich("", g)
 
 	assert.Equal(t, "override-id", captured.InvocationID)
@@ -963,7 +963,7 @@ func TestEnricher_UsesSidecarInvocationID_OnSyntheticGroupWithoutOverride(t *tes
 	}
 
 	now := time.Now()
-	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "")
+	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "", enrichment.SyntheticClassification{})
 	e.Enrich("", g)
 
 	assert.Equal(t, "sidecar-id", captured.InvocationID)
@@ -989,7 +989,7 @@ func TestEnricher_DropsAndWarns_WhenNoIdentitySource(t *testing.T) {
 	}
 
 	now := time.Now()
-	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "")
+	g := enrichment.SyntheticManifestGroup("sidecar-x", now, now.Add(time.Second), "Build S", "S", "", enrichment.SyntheticClassification{})
 	e.Enrich("", g)
 
 	assert.Zero(t, puts)

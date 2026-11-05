@@ -92,7 +92,10 @@ type SidecarReader interface {
 // BuildRequestHex is the hex of the earliest-accepted sidecar in the group —
 // typically the Primary that generated the reseat-anchored WrapperLink. Used
 // by the enricher's hex-bridge to match a pseudo-group back to the originating
-// manifest's recorded build-description hash.
+// manifest's recorded build-description hash. BuildRequest mirrors the
+// earliest-accepted sidecar's parsed Xcode classification (Command/Action/
+// Configuration/Container) so scanOrphanSidecars can label the synthetic
+// pseudo-group PUT instead of rendering a bare "build".
 type SidecarGroup struct {
 	Blob             *blobstats.Snapshot
 	Start, Stop      time.Time
@@ -100,6 +103,7 @@ type SidecarGroup struct {
 	SidecarUUIDs     []string
 	Paths            []string
 	BuildRequestHex  string
+	BuildRequest     sessions.BuildRequestInfo
 }
 
 type sidecarIndex struct {
@@ -486,15 +490,19 @@ func (a *invocationAggregator) updateEarliest(invoID string, s sessions.Sidecar)
 }
 
 func (a *invocationAggregator) updateHex(g *SidecarGroup, invoID string, s sessions.Sidecar) {
-	// Earliest-accepted sidecar supplies the hex: later flushes under the
-	// same InvocationID (idle beats + terminal close) share the hex that
-	// identified the originating ⌘B, so any of them is safe to use — but
+	// Earliest-accepted sidecar supplies the hex AND the classification:
+	// later flushes under the same InvocationID (idle beats + terminal close)
+	// share the ⌘B that identified them, so any of them is safe to use — but
 	// picking the earliest is deterministic across scan ticks.
 	cur, present := a.hexAcceptedAt[invoID]
-	if !present || (!s.AcceptedAt.IsZero() && s.AcceptedAt.Before(cur)) {
+	earlier := !present || (!s.AcceptedAt.IsZero() && s.AcceptedAt.Before(cur))
+	if earlier {
 		a.hexAcceptedAt[invoID] = s.AcceptedAt
 		if s.BuildRequestHex != "" {
 			g.BuildRequestHex = s.BuildRequestHex
+		}
+		if s.BuildRequest != nil {
+			g.BuildRequest = *s.BuildRequest
 		}
 
 		return
@@ -502,6 +510,16 @@ func (a *invocationAggregator) updateHex(g *SidecarGroup, invoID string, s sessi
 	if g.BuildRequestHex == "" && s.BuildRequestHex != "" {
 		g.BuildRequestHex = s.BuildRequestHex
 	}
+	if isBuildRequestEmpty(g.BuildRequest) && s.BuildRequest != nil {
+		g.BuildRequest = *s.BuildRequest
+	}
+}
+
+// isBuildRequestEmpty mirrors deriveddata.BuildRequest.IsEmpty for the
+// sessions-side struct so the aggregator can decide whether a later sidecar
+// may fill a classification gap the earliest-accepted left behind.
+func isBuildRequestEmpty(b sessions.BuildRequestInfo) bool {
+	return b.Command == "" && b.Action == "" && b.Configuration == "" && b.Container == ""
 }
 
 // finalise applies the BuildStartedAt-first precedence: any sidecar in the

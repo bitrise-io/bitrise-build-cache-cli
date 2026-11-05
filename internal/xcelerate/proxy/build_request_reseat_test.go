@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
 )
 
@@ -41,10 +42,10 @@ func TestResolveAndMaybeReseat_IDEEdgeTriggersReseat(t *testing.T) {
 	nextHex := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	h := &sidecarStatsHandler{
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
 			calls++
 
-			return nextHex, true
+			return BuildRequestResult{Hex: nextHex}, true
 		},
 	}
 
@@ -75,8 +76,8 @@ func TestResolveAndMaybeReseat_IDEEdgeTriggersReseat(t *testing.T) {
 func TestResolveAndMaybeReseat_CLIAncestryNoReseat(t *testing.T) {
 	h := &sidecarStatsHandler{
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, true
 		},
 	}
 
@@ -93,8 +94,8 @@ func TestResolveAndMaybeReseat_CLIAncestryNoReseat(t *testing.T) {
 func TestResolveAndMaybeReseat_WrapperSessionWinsOverReseat(t *testing.T) {
 	h := &sidecarStatsHandler{
 		wrapperSessionActive: func() bool { return true },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, true
 		},
 	}
 
@@ -124,8 +125,8 @@ func TestResolveAndMaybeReseat_NilResolverNoOp(t *testing.T) {
 func TestResolveAndMaybeReseat_EmptyHexResultNoOp(t *testing.T) {
 	h := &sidecarStatsHandler{
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "", false
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{}, false
 		},
 	}
 
@@ -190,8 +191,8 @@ func TestIsIDEAncestry_Classification(t *testing.T) {
 func TestRewrapInvocationID_PicksUpReseatedID(t *testing.T) {
 	h := &sidecarStatsHandler{
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, true
 		},
 	}
 
@@ -238,8 +239,8 @@ func TestResolveAndMaybeReseat_FlushesOldInvocationIDSidecar(t *testing.T) {
 	h := &sidecarStatsHandler{
 		writer:               newSidecarWriter(dir, nil),
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, true
 		},
 	}
 
@@ -285,8 +286,8 @@ func TestResolveAndMaybeReseat_FlushedSidecarCarriesOldHex(t *testing.T) {
 	h := &sidecarStatsHandler{
 		writer:               newSidecarWriter(dir, nil),
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return newHex, true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: newHex}, true
 		},
 	}
 
@@ -320,8 +321,8 @@ func TestResolveAndMaybeReseat_NoFlushWhenStateEmpty(t *testing.T) {
 	h := &sidecarStatsHandler{
 		writer:               newSidecarWriter(dir, nil),
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, true
 		},
 	}
 
@@ -347,8 +348,8 @@ func TestResolveAndMaybeReseat_StampsFreshBuildStartedAtAfterOldSnapshot(t *test
 	h := &sidecarStatsHandler{
 		writer:               newSidecarWriter(dir, nil),
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return nextHex, true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: nextHex}, true
 		},
 	}
 
@@ -401,8 +402,8 @@ func TestPollAllForReseat_IteratesEveryRegisteredSession(t *testing.T) {
 	h := &sidecarStatsHandler{
 		registry:             registry,
 		wrapperSessionActive: func() bool { return false },
-		buildRequestResolver: func(*connectionSession) (string, bool) {
-			return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, true
 		},
 	}
 
@@ -421,4 +422,75 @@ func TestPollAllForReseat_IteratesEveryRegisteredSession(t *testing.T) {
 	registry.put(cs)
 
 	assert.Equal(t, 2, h.pollAllForReseat(), "only the two IDE sessions reseat")
+}
+
+// TestResolveAndMaybeReseat_StashesBuildRequestFromResolver pins the S6 wiring:
+// the resolver now returns a parsed BuildRequest alongside the hex, and
+// ResolveAndMaybeReseat must stash the new classification on the session after
+// the swap so terminal / idle flushes serialise it onto downstream sidecars.
+func TestResolveAndMaybeReseat_StashesBuildRequestFromResolver(t *testing.T) {
+	want := deriveddata.BuildRequest{
+		Command:       "prepareForIndexing",
+		Action:        "indexbuild",
+		Configuration: "Debug",
+		Container:     "IceCubesApp",
+	}
+
+	h := &sidecarStatsHandler{
+		wrapperSessionActive: func() bool { return false },
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Request: want}, true
+		},
+	}
+
+	cs := newConnectionSession("k", 10, time.Now())
+	cs.ancestryEntries = ideAncestry()
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
+
+	require.True(t, h.ResolveAndMaybeReseat(cs))
+	assert.Equal(t, want, cs.buildRequestSnapshot(), "post-reseat session must carry the parsed BuildRequest")
+}
+
+// TestResolveAndMaybeReseat_FlushedSidecarCarriesOldClassification pins the
+// OLD-before-swap snapshot: on a reseat, the flushed sidecar must serialise
+// the pre-swap classification so BE rows attribute the pre-reseat ⌘B's blob
+// stats to its own classification (not the freshly-polled one that belongs to
+// the next ⌘B).
+func TestResolveAndMaybeReseat_FlushedSidecarCarriesOldClassification(t *testing.T) {
+	dir := t.TempDir()
+	newClass := deriveddata.BuildRequest{Command: "build", Container: "NextApp"}
+
+	h := &sidecarStatsHandler{
+		writer:               newSidecarWriter(dir, nil),
+		wrapperSessionActive: func() bool { return false },
+		buildRequestResolver: func(*connectionSession) (BuildRequestResult, bool) {
+			return BuildRequestResult{Hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Request: newClass}, true
+		},
+	}
+
+	cs := newConnectionSession("k", 10, time.Now())
+	cs.ancestryEntries = ideAncestry()
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
+	cs.buildRequestHex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	cs.setBuildRequest(deriveddata.BuildRequest{Command: "prepareForIndexing", Container: "PrevApp"})
+
+	// Seed stats so the reseat flush actually writes a sidecar.
+	cs.state.Load().recordDownload(opGet, 42, 0)
+
+	require.True(t, h.ResolveAndMaybeReseat(cs))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "reseat with seeded stats must write one intermediate sidecar")
+
+	body, err := os.ReadFile(filepath.Join(dir, entries[0].Name()))
+	require.NoError(t, err)
+
+	var sc sessions.Sidecar
+	require.NoError(t, json.Unmarshal(body, &sc))
+	require.NotNil(t, sc.BuildRequest, "sidecar must serialise the classification carried on the OLD identity")
+	assert.Equal(t, "prepareForIndexing", sc.BuildRequest.Command)
+	assert.Equal(t, "PrevApp", sc.BuildRequest.Container)
+
+	assert.Equal(t, newClass, cs.buildRequestSnapshot(), "post-reseat session carries the newly-polled classification")
 }

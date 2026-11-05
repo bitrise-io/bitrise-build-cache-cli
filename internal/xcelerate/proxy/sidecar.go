@@ -10,6 +10,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/google/uuid"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
 )
 
@@ -77,14 +78,17 @@ func sidecarFilename(s sessions.Sidecar) string {
 
 // sidecarIdentity bundles the attributes that identify the row the sidecar
 // contributes to: the InvocationID the BE row is keyed under, the
-// build-request hex that generated the accumulated blob stats, and the per-
-// build start timestamp that bounds its Start-to-Stop window. On reseat all
-// three must snapshot the OLD values before the swap — otherwise the flushed
-// stats land on the freshly-derived ID / new hex / new start.
+// build-request hex that generated the accumulated blob stats, the per-
+// build start timestamp that bounds its Start-to-Stop window, and the
+// parsed build-request classification (Command / Action / Configuration /
+// Container) that labels the wrapperless BE row. On reseat all four must
+// snapshot the OLD values before the swap — otherwise the flushed stats land
+// on the freshly-derived ID / new hex / new start / new classification.
 type sidecarIdentity struct {
 	InvocationID    string
 	BuildRequestHex string
 	BuildStartedAt  time.Time
+	BuildRequest    deriveddata.BuildRequest
 }
 
 // newSessionSidecar materialises a sidecar from a per-conn session plus the
@@ -120,6 +124,23 @@ func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt ti
 		DerivedDataPath: conn.derivedDataPath,
 		BuildRequestHex: identity.BuildRequestHex,
 		BuildStartedAt:  identity.BuildStartedAt.UTC(),
+		BuildRequest:    buildRequestInfoOrNil(identity.BuildRequest),
 		Terminal:        terminal,
+	}
+}
+
+// buildRequestInfoOrNil projects a deriveddata.BuildRequest into the sidecar
+// nested substruct. An entirely-empty BuildRequest returns nil so the omitempty
+// JSON tag drops the field; pre-S6 readers see no change.
+func buildRequestInfoOrNil(br deriveddata.BuildRequest) *sessions.BuildRequestInfo {
+	if br.IsEmpty() {
+		return nil
+	}
+
+	return &sessions.BuildRequestInfo{
+		Command:       br.Command,
+		Action:        br.Action,
+		Configuration: br.Configuration,
+		Container:     br.Container,
 	}
 }

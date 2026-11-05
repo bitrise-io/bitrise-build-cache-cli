@@ -1,0 +1,10 @@
+{
+  "buildCommand": {
+    "command": "clean"
+  },
+  "containerPath": "/Users/vagrant/MyApp/MyApp.xcodeproj",
+  "parameters": {
+    "action": "clean",
+    "configurationName": "Release"
+  }
+}

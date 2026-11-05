@@ -1,0 +1,10 @@
+{
+  "buildCommand": {
+    "command": "build"
+  },
+  "containerPath": "/Users/vagrant/MyApp/MyApp.xcworkspace",
+  "parameters": {
+    "action": "build",
+    "configurationName": "Debug"
+  }
+}

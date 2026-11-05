@@ -394,7 +394,7 @@ func TestPrimary_CleanBeatsUnknown(t *testing.T) {
 func TestSyntheticManifestGroup_PopulatesBuildCommandAndSpan(t *testing.T) {
 	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 	stop := start.Add(45 * time.Second)
-	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "", "", "")
+	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "", "", "", enrichment.SyntheticClassification{})
 
 	require.Len(t, g.Entries, 1)
 	assert.Equal(t, enrichment.SyntheticManifestGroupUUIDPrefix+"abc-123", g.Entries[0].UUID,
@@ -410,7 +410,7 @@ func TestSyntheticManifestGroup_PopulatesBuildCommandAndSpan(t *testing.T) {
 func TestSyntheticManifestGroup_WithSignatureAndSchemeRendersFullCommand(t *testing.T) {
 	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 	stop := start.Add(45 * time.Second)
-	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "Build IceCubesApp", "IceCubesApp", "")
+	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "Build IceCubesApp", "IceCubesApp", "", enrichment.SyntheticClassification{})
 
 	require.Len(t, g.Entries, 1)
 	assert.Equal(t, enrichment.CommandBuild, g.Entries[0].Command())
@@ -421,7 +421,7 @@ func TestSyntheticManifestGroup_WithSignatureAndSchemeRendersFullCommand(t *test
 func TestSyntheticManifestGroup_StampsOverrideInvocationID(t *testing.T) {
 	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 	stop := start.Add(1 * time.Second)
-	g := enrichment.SyntheticManifestGroup("sidecar-x", start, stop, "", "", "override-id")
+	g := enrichment.SyntheticManifestGroup("sidecar-x", start, stop, "", "", "override-id", enrichment.SyntheticClassification{})
 
 	assert.Equal(t, "override-id", g.OverrideInvocationID())
 }
@@ -464,7 +464,7 @@ func TestManifestEntryGroup_Primary_StableAcrossShuffledInput(t *testing.T) {
 func TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic(t *testing.T) {
 	start := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
 	stop := start.Add(10 * time.Second)
-	g := enrichment.SyntheticManifestGroup("sidecar-xyz", start, stop, "", "", "")
+	g := enrichment.SyntheticManifestGroup("sidecar-xyz", start, stop, "", "", "", enrichment.SyntheticClassification{})
 
 	assert.Empty(t, g.ManifestUUID(),
 		"synthetic pseudo-group UUIDs carry the sentinel prefix; ManifestUUID must return empty so the enricher falls through to override/sidecar")
@@ -612,6 +612,87 @@ func TestGroupManifestEntries_ThreeCommandBsSameHash_SplitsIntoThree(t *testing.
 	assert.Equal(t, []string{"b1"}, groups[0].UUIDs())
 	assert.Equal(t, []string{"b2"}, groups[1].UUIDs())
 	assert.Equal(t, []string{"b3"}, groups[2].UUIDs())
+}
+
+func TestSyntheticManifestGroup_RenderRules(t *testing.T) {
+	start := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	stop := start.Add(10 * time.Second)
+
+	cases := []struct {
+		name  string
+		class enrichment.SyntheticClassification
+		want  string
+	}{
+		{
+			name:  "empty falls back to bare build",
+			class: enrichment.SyntheticClassification{},
+			want:  "build",
+		},
+		{
+			name:  "command only",
+			class: enrichment.SyntheticClassification{Command: "prepareForIndexing"},
+			want:  "prepareForIndexing",
+		},
+		{
+			name:  "action only (no command)",
+			class: enrichment.SyntheticClassification{Action: "indexbuild"},
+			want:  "indexbuild",
+		},
+		{
+			name:  "command wins over action",
+			class: enrichment.SyntheticClassification{Command: "prepareForIndexing", Action: "indexbuild"},
+			want:  "prepareForIndexing",
+		},
+		{
+			name:  "command with configuration",
+			class: enrichment.SyntheticClassification{Command: "build", Configuration: "Debug"},
+			want:  "build Debug",
+		},
+		{
+			name:  "command with configuration and container",
+			class: enrichment.SyntheticClassification{Command: "prepareForIndexing", Configuration: "Debug", Container: "IceCubesApp"},
+			want:  "prepareForIndexing Debug [IceCubesApp]",
+		},
+		{
+			name:  "action with container (no configuration)",
+			class: enrichment.SyntheticClassification{Action: "clean", Container: "IceCubesApp"},
+			want:  "clean [IceCubesApp]",
+		},
+		{
+			name:  "unknown action passes through verbatim",
+			class: enrichment.SyntheticClassification{Action: "customAction", Container: "MyApp"},
+			want:  "customAction [MyApp]",
+		},
+		{
+			name:  "container only renders bare build container",
+			class: enrichment.SyntheticClassification{Container: "MyApp"},
+			want:  "build [MyApp]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := enrichment.SyntheticManifestGroup("sidecar-x", start, stop, "", "", "", tc.class)
+			assert.Equal(t, tc.want, g.Command())
+		})
+	}
+}
+
+// Classification on a synthetic group must not affect manifest-sourced groups —
+// those still go through the Primary() path.
+func TestSyntheticClassification_DoesNotLeakIntoManifestSourcedGroups(t *testing.T) {
+	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	g := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{{
+		UUID:       "u1",
+		SchemeName: "S",
+		Signature:  "Build S",
+		Status:     "S",
+		Start:      base,
+		Stop:       base.Add(10 * time.Second),
+	}}}
+
+	// Manifest-derived groups never carry a classification, so the render stays on the Primary() path.
+	assert.Equal(t, "build [S]", g.Command())
 }
 
 // v6 reproducer: Clean then Build on the same scheme ~1 s apart — two user

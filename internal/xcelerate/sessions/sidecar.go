@@ -49,10 +49,28 @@ type Sidecar struct {
 	// Additive to schema v2; zero value falls back to AcceptedAt.
 	BuildStartedAt time.Time `json:"build_started_at,omitempty"`
 
+	// BuildRequest carries the Xcode build-request.json classification fields
+	// parsed on the proxy side: the Command/Action label pair, Configuration,
+	// and the Container project/workspace name. Nil pre-S6 and on legacy
+	// sidecars whose connection never anchored a build-request.json read.
+	// Additive to schema v2.
+	BuildRequest *BuildRequestInfo `json:"build_request,omitempty"`
+
 	// Terminal reports whether this sidecar closes out the connection
 	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush.
 	// Additive to schema v2.
 	Terminal bool `json:"terminal"`
+}
+
+// BuildRequestInfo mirrors deriveddata.BuildRequest in on-disk form: a
+// snapshot of what the proxy parsed from Xcode's build-request.json for the
+// ⌘B that generated the accompanying blob stats. Each field is omitted when
+// empty so legacy / partial sidecars stay compact.
+type BuildRequestInfo struct {
+	Command       string `json:"command,omitempty"`
+	Action        string `json:"action,omitempty"`
+	Configuration string `json:"configuration,omitempty"`
+	Container     string `json:"container,omitempty"`
 }
 
 // WrapperLink carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.
