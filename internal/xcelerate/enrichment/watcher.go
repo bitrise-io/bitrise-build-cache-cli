@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
@@ -573,7 +574,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 	if _, pending := w.retries[key]; pending {
 		switch {
-		case w.canCorrelate(group):
+		case w.canCorrelate(manifestPath, group):
 			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
 			w.Handle(manifestPath, group)
 			w.markGroupHandled(group)
@@ -594,7 +595,7 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 	// First-pass also consults the sidecar reader so a fast-flushing sidecar
 	// (IDE flow: manifest lands, sidecar flushed on next idle beat) can
 	// short-circuit the retry setup entirely.
-	if w.canCorrelate(group) {
+	if w.canCorrelate(manifestPath, group) {
 		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
 		w.Handle(manifestPath, group)
 		w.markGroupHandled(group)
@@ -613,12 +614,17 @@ func (w *Watcher) hasCorrelationSignal() bool {
 	return w.MatchProbe != nil || w.SidecarReader != nil
 }
 
-// canCorrelate: pending-record probe matches OR a sidecar overlapping the window is on disk. Side-effect free (Lookup consumes later).
-func (w *Watcher) canCorrelate(group ManifestEntryGroup) bool {
+// canCorrelate: pending-record probe matches OR a sidecar overlapping the
+// window is on disk. Side-effect free (Lookup consumes later). Supplies the
+// DerivedData filter axis from manifestPath so parallel builds on different DD
+// roots do not falsely satisfy each other's retry buckets. The Hashes axis is
+// Enricher-only (buildDescriptionHash is sourced from metricsLookup, which
+// only runs at emission time) so Has operates on DD alone.
+func (w *Watcher) canCorrelate(manifestPath string, group ManifestEntryGroup) bool {
 	if w.MatchProbe != nil && w.MatchProbe(group) {
 		return true
 	}
-	if w.SidecarReader != nil && w.SidecarReader.Has(group, LookupFilter{}) {
+	if w.SidecarReader != nil && w.SidecarReader.Has(group, LookupFilter{DerivedData: paths.DerivedDataFromManifestPath(manifestPath)}) {
 		return true
 	}
 

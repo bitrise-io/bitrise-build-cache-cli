@@ -14,6 +14,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	pathsutil "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -125,7 +126,16 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		consumedPaths = paths
 		sidecarFound = blob != nil
 	} else if e.SidecarReader != nil {
-		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group, LookupFilter{})
+		// DerivedData root + build-description hash disambiguate parallel builds
+		// that share a time window. Both axes degrade gracefully when either
+		// source is empty — see LookupFilter docs.
+		filter := LookupFilter{
+			DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
+		}
+		if buildDescriptionHash != "" {
+			filter.Hashes = []string{buildDescriptionHash}
+		}
+		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group, filter)
 	}
 
 	invocationID := group.ManifestUUID()

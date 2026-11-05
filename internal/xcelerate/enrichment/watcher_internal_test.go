@@ -1568,7 +1568,7 @@ func TestCanCorrelate_BothWiredBothFalse(t *testing.T) {
 		SidecarReader: &hasControllingStub{hasFn: func() bool { return false }},
 	}
 
-	assert.False(t, w.canCorrelate(ManifestEntryGroup{}))
+	assert.False(t, w.canCorrelate("", ManifestEntryGroup{}))
 }
 
 // TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil guards against

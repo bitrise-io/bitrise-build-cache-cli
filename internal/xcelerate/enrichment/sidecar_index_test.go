@@ -27,6 +27,7 @@ type sidecarFixture struct {
 	BlobStats       *blobstats.Snapshot    `json:"blobStats,omitempty"`
 	WrapperSession  *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
 	DerivedDataPath string                 `json:"derived_data_path,omitempty"`
+	BuildRequestHex string                 `json:"build_request_hex,omitempty"`
 }
 
 type sidecarFixtureWrapper struct {
@@ -715,4 +716,260 @@ func TestSidecarIndex_Has_DoesNotConsume(t *testing.T) {
 
 	_, err := os.Stat(path)
 	assert.NoError(t, err, "Has must be side-effect free; sidecar file must remain for a later Lookup")
+}
+
+// TestSidecarIndex_Lookup_FiltersDifferentDerivedData pins the core
+// parallel-build disambiguation: a sidecar whose DD root differs from the
+// filter must be rejected even when its time window overlaps.
+func TestSidecarIndex_Lookup_FiltersDifferentDerivedData(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	// Two overlapping sidecars on different DD roots — a parallel build.
+	writeSidecar(t, dir, "projA.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(10 * time.Second),
+		BlobStats:       blob(9, 1, 2),
+		WrapperSession:  &sidecarFixtureWrapper{InvocationID: "proj-A"},
+		DerivedDataPath: "/dd/A",
+	})
+	ourPath := writeSidecar(t, dir, "projB.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(10 * time.Second),
+		BlobStats:       blob(1, 0, 0),
+		WrapperSession:  &sidecarFixtureWrapper{InvocationID: "proj-B"},
+		DerivedDataPath: "/dd/B",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(
+		groupFor(base, base.Add(10*time.Second)),
+		enrichment.LookupFilter{DerivedData: "/dd/B"},
+	)
+	require.True(t, ok, "filtered-match must return true when the correct-DD sidecar exists")
+	require.Equal(t, []string{ourPath}, paths, "the mismatched-DD sidecar must not be consumed")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(1), snap.Download.OpCount, "stats must come from the DD-matching sidecar, not the overlapping one")
+	assert.Equal(t, "proj-B", invocationID)
+}
+
+// TestSidecarIndex_Lookup_EmptyFilterDDSkipsDDCheck pins the degrade-gracefully
+// invariant on the filter side: a zero-value DerivedData field skips the DD axis
+// so the pre-filter behavior is preserved.
+func TestSidecarIndex_Lookup_EmptyFilterDDSkipsDDCheck(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(5 * time.Second),
+		BlobStats:       blob(3, 0, 0),
+		DerivedDataPath: "/dd/anywhere",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, _, ok := idx.Lookup(
+		groupFor(base, base.Add(5*time.Second)),
+		enrichment.LookupFilter{},
+	)
+	require.True(t, ok, "zero-value filter must not reject the sidecar")
+	assert.Len(t, paths, 1)
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(3), snap.Download.OpCount)
+}
+
+// TestSidecarIndex_Lookup_EmptySidecarDDSkipsDDCheck pins the degrade-gracefully
+// invariant on the sidecar side: a sidecar with no DerivedDataPath must still
+// match a filter that sets DerivedData — the sidecar simply lacks the info to
+// disambiguate, and we fall back to ancestry + time-overlap.
+func TestSidecarIndex_Lookup_EmptySidecarDDSkipsDDCheck(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "legacy.json", sidecarFixture{
+		SchemaVersion: 2,
+		PeerAncestry:  []string{"xcodebuild"},
+		AcceptedAt:    base,
+		ClosedAt:      base.Add(5 * time.Second),
+		BlobStats:     blob(7, 0, 0),
+		// DerivedDataPath intentionally empty — legacy sidecar / failed resolution.
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, _, _, ok := idx.Lookup(
+		groupFor(base, base.Add(5*time.Second)),
+		enrichment.LookupFilter{DerivedData: "/dd/whatever"},
+	)
+	require.True(t, ok, "sidecar with empty DerivedDataPath must not be filtered out — nothing to disambiguate against")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(7), snap.Download.OpCount)
+}
+
+// TestSidecarIndex_Lookup_FiltersMismatchHash pins the hex axis: when the
+// sidecar's BuildRequestHex is present and does not match any entry in
+// filter.Hashes, the sidecar is skipped.
+func TestSidecarIndex_Lookup_FiltersMismatchHash(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "other-hex.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(10 * time.Second),
+		BlobStats:       blob(9, 1, 2),
+		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	ourPath := writeSidecar(t, dir, "our-hex.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(10 * time.Second),
+		BlobStats:       blob(1, 0, 0),
+		BuildRequestHex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, _, ok := idx.Lookup(
+		groupFor(base, base.Add(10*time.Second)),
+		enrichment.LookupFilter{Hashes: []string{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+	)
+	require.True(t, ok)
+	require.Equal(t, []string{ourPath}, paths, "only the hex-matching sidecar may be consumed")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(1), snap.Download.OpCount)
+}
+
+// TestSidecarIndex_Lookup_EmptyFilterHashesSkipsHexCheck pins the filter-side
+// degrade: empty Hashes skips the hex axis entirely.
+func TestSidecarIndex_Lookup_EmptyFilterHashesSkipsHexCheck(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(5 * time.Second),
+		BlobStats:       blob(2, 0, 0),
+		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	_, _, _, ok := idx.Lookup(
+		groupFor(base, base.Add(5*time.Second)),
+		enrichment.LookupFilter{},
+	)
+	assert.True(t, ok, "empty Hashes must not reject a sidecar whose hex is set")
+}
+
+// TestSidecarIndex_Lookup_EmptySidecarHexSkipsHexCheck pins the sidecar-side
+// degrade on the hex axis: a sidecar without BuildRequestHex is not filtered
+// out even when the filter sets Hashes.
+func TestSidecarIndex_Lookup_EmptySidecarHexSkipsHexCheck(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "legacy.json", sidecarFixture{
+		SchemaVersion: 2,
+		PeerAncestry:  []string{"xcodebuild"},
+		AcceptedAt:    base,
+		ClosedAt:      base.Add(5 * time.Second),
+		BlobStats:     blob(4, 0, 0),
+		// BuildRequestHex intentionally empty — legacy sidecar predates hex field.
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	_, _, _, ok := idx.Lookup(
+		groupFor(base, base.Add(5*time.Second)),
+		enrichment.LookupFilter{Hashes: []string{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+	)
+	assert.True(t, ok, "sidecar with empty BuildRequestHex must not be filtered out — nothing to disambiguate")
+}
+
+// TestSidecarIndex_Lookup_BothFiltersRespected pins that both axes AND together:
+// one sidecar passes DD but fails hex, another passes hex but fails DD, a third
+// passes both. Only the third survives.
+func TestSidecarIndex_Lookup_BothFiltersRespected(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "dd-only.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(5 * time.Second),
+		BlobStats:       blob(5, 0, 0),
+		DerivedDataPath: "/dd/A",
+		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	writeSidecar(t, dir, "hex-only.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(5 * time.Second),
+		BlobStats:       blob(6, 0, 0),
+		DerivedDataPath: "/dd/B",
+		BuildRequestHex: "cccccccccccccccccccccccccccccccc",
+	})
+	ourPath := writeSidecar(t, dir, "both.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(5 * time.Second),
+		BlobStats:       blob(1, 0, 0),
+		DerivedDataPath: "/dd/A",
+		BuildRequestHex: "cccccccccccccccccccccccccccccccc",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, _, ok := idx.Lookup(
+		groupFor(base, base.Add(5*time.Second)),
+		enrichment.LookupFilter{
+			DerivedData: "/dd/A",
+			Hashes:      []string{"cccccccccccccccccccccccccccccccc"},
+		},
+	)
+	require.True(t, ok)
+	require.Equal(t, []string{ourPath}, paths, "only the DD+hex double-matching sidecar may survive")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(1), snap.Download.OpCount)
+}
+
+// TestSidecarIndex_Has_SymmetricWithLookup pins that Has enforces the same
+// filter semantics as Lookup so the Watcher's canCorrelate deferral and the
+// Enricher's actual consumption agree.
+func TestSidecarIndex_Has_SymmetricWithLookup(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "wrong-dd.json", sidecarFixture{
+		SchemaVersion:   2,
+		PeerAncestry:    []string{"xcodebuild"},
+		AcceptedAt:      base,
+		ClosedAt:        base.Add(10 * time.Second),
+		BlobStats:       blob(2, 0, 0),
+		WrapperSession:  &sidecarFixtureWrapper{InvocationID: "wrong"},
+		DerivedDataPath: "/dd/other",
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+
+	// Filter wants DD A — the only sidecar has DD other. Has must say no.
+	assert.False(t, idx.Has(
+		groupFor(base, base.Add(10*time.Second)),
+		enrichment.LookupFilter{DerivedData: "/dd/A"},
+	), "Has must honor DD filter mismatch, same as Lookup")
+
+	// Empty filter DD or empty sidecar DD — both fall back to overlap-only match.
+	assert.True(t, idx.Has(
+		groupFor(base, base.Add(10*time.Second)),
+		enrichment.LookupFilter{},
+	), "Has with empty filter must behave as pre-filter")
 }
