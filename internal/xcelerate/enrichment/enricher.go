@@ -125,7 +125,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		consumedPaths = paths
 		sidecarFound = blob != nil
 	} else if e.SidecarReader != nil {
-		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group)
+		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group, LookupFilter{})
 	}
 
 	invocationID := group.ManifestUUID()

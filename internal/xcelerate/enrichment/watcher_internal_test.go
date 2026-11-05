@@ -643,11 +643,11 @@ type sidecarReaderStub struct {
 	pendingCount int
 }
 
-func (s *sidecarReaderStub) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+func (s *sidecarReaderStub) Lookup(ManifestEntryGroup, LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	return nil, nil, "", false
 }
 
-func (s *sidecarReaderStub) Has(ManifestEntryGroup) bool { return false }
+func (s *sidecarReaderStub) Has(ManifestEntryGroup, LookupFilter) bool { return false }
 
 func (s *sidecarReaderStub) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]SidecarGroup {
 	return nil
@@ -1095,11 +1095,11 @@ type stubReaderCall struct {
 	minAge time.Duration
 }
 
-func (s *stubReader) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+func (s *stubReader) Lookup(ManifestEntryGroup, LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	return nil, nil, "", false
 }
 
-func (s *stubReader) Has(ManifestEntryGroup) bool { return false }
+func (s *stubReader) Has(ManifestEntryGroup, LookupFilter) bool { return false }
 
 func (s *stubReader) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {
 	s.calls = append(s.calls, stubReaderCall{now: now, minAge: minAge})
@@ -1409,11 +1409,11 @@ type stagedReader struct {
 	calls  int
 }
 
-func (s *stagedReader) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+func (s *stagedReader) Lookup(ManifestEntryGroup, LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	return nil, nil, "", false
 }
 
-func (s *stagedReader) Has(ManifestEntryGroup) bool { return false }
+func (s *stagedReader) Has(ManifestEntryGroup, LookupFilter) bool { return false }
 
 func (s *stagedReader) OrphanSidecarsGroupedByInvocation(time.Time, time.Duration) map[string]SidecarGroup {
 	idx := s.calls
@@ -1458,11 +1458,11 @@ type hasControllingStub struct {
 	hasFn func() bool
 }
 
-func (s *hasControllingStub) Lookup(ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+func (s *hasControllingStub) Lookup(ManifestEntryGroup, LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	return nil, nil, "", false
 }
 
-func (s *hasControllingStub) Has(ManifestEntryGroup) bool {
+func (s *hasControllingStub) Has(ManifestEntryGroup, LookupFilter) bool {
 	if s.hasFn == nil {
 		return false
 	}

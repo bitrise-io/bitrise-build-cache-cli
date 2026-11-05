@@ -358,6 +358,23 @@ func RepoLocalConfigPath(repoRoot, filename string) string {
 	return filepath.Join(repoRoot, BitriseBuildCacheDirRelative, filename)
 }
 
+// DerivedDataFromManifestPath climbs 3 levels from
+// <DD>/Logs/<Build|Test|...>/LogStoreManifest.plist and returns the DD root.
+// Returns "" when the input shape doesn't match — callers treat empty as
+// "don't filter on DerivedData for this manifest".
+func DerivedDataFromManifestPath(manifestPath string) string {
+	if manifestPath == "" {
+		return ""
+	}
+
+	logsDir := filepath.Dir(filepath.Dir(manifestPath))
+	if filepath.Base(logsDir) != "Logs" {
+		return ""
+	}
+
+	return filepath.Dir(logsDir)
+}
+
 // XcodeSelectLinkCASPluginPath returns the CAS plugin dylib rooted at the
 // xcode-select active-Xcode anchor. Independent of $HOME, so it is package-level
 // rather than a Paths method.

@@ -464,8 +464,9 @@ func (w *Watcher) findEmissionByBuildRequestHex(hex string, sidecarAcceptedAt ti
 		foundMatch bool
 	)
 
+	hashes := []string{hex}
 	for _, rec := range w.recentEmissions {
-		if rec.BuildDescriptionHash != hex {
+		if !hexMatches(rec.BuildDescriptionHash, hashes) {
 			continue
 		}
 
@@ -617,7 +618,7 @@ func (w *Watcher) canCorrelate(group ManifestEntryGroup) bool {
 	if w.MatchProbe != nil && w.MatchProbe(group) {
 		return true
 	}
-	if w.SidecarReader != nil && w.SidecarReader.Has(group) {
+	if w.SidecarReader != nil && w.SidecarReader.Has(group, LookupFilter{}) {
 		return true
 	}
 

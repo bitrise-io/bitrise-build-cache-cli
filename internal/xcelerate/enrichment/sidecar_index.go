@@ -28,19 +28,44 @@ var acceptedAncestors = map[string]struct{}{
 	"Xcode":      {},
 }
 
+// LookupFilter tightens sidecar-to-group matching with DerivedData and
+// build-description-hash equality. Both axes follow the same rule: empty on
+// either side (filter or sidecar) skips that axis and falls back to the
+// pre-existing ancestry + time-overlap match. This is required so IDE flows
+// (which may not carry a DD path on every sidecar, and whose early sidecars
+// can flush before the build-description hash is known) and the orphan
+// scan path (which has no manifest to source DD from) do not regress.
+type LookupFilter struct {
+	// DerivedData is the DD root parsed from the group's manifest path; empty
+	// on sidecar-only orphan paths. The filter is honored only when both this
+	// and the sidecar's DerivedDataPath are non-empty.
+	DerivedData string
+	// Hashes is the set of acceptable build-description hashes (today: one,
+	// aggregated from the group's manifest entries by the Enricher). A
+	// non-empty slice is required to activate the hex axis; a sidecar whose
+	// BuildRequestHex is empty is NOT filtered out — the sidecar simply does
+	// not have the information to disambiguate.
+	Hashes []string
+}
+
 // SidecarReader resolves sidecars left by the proxy that overlap a manifest
 // group's time window. Returns the representative blob snapshot (largest-op
 // winner across overlapping sidecars), the sidecar paths to unlink on PUT, and
 // the derived InvocationID carried by the winning sidecar's WrapperLink (empty
 // when the proxy could not anchor peer ancestry).
+//
+// filter narrows the candidate set beyond ancestry + time overlap. Empty
+// LookupFilter (zero value) preserves pre-existing behavior.
 type SidecarReader interface {
-	Lookup(group ManifestEntryGroup) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
+	Lookup(group ManifestEntryGroup, filter LookupFilter) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
 
 	// Has returns true when a sidecar overlapping the group's time window exists
 	// on disk with a non-empty WrapperSession.InvocationID. Side-effect free —
 	// used by the watcher's retry bucket to short-circuit orphan-mint without
-	// consuming sidecar paths.
-	Has(group ManifestEntryGroup) bool
+	// consuming sidecar paths. MaxCorrelationRetries is the sole safety net
+	// against a group deferring forever if the matching sidecar never arrives;
+	// Has itself has no bound.
+	Has(group ManifestEntryGroup, filter LookupFilter) bool
 
 	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
 	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
@@ -96,7 +121,7 @@ func invocationIDOf(s sessions.Sidecar) string {
 	return s.WrapperSession.InvocationID
 }
 
-func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
+func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	logger := logOr(i.logger)
 
 	if i.dir == "" {
@@ -136,6 +161,14 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 		if !overlapsClosed(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
+		// DerivedData + hex equality tighten disambiguation for parallel builds.
+		// Both axes honor the empty-means-skip rule — see LookupFilter docs.
+		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
+			continue
+		}
+		if len(filter.Hashes) > 0 && s.BuildRequestHex != "" && !hexMatches(s.BuildRequestHex, filter.Hashes) {
+			continue
+		}
 
 		// Prefer-stats-bearing: stats-winner InvocationID always wins; nil-BlobStats first-seen is the fallback.
 		sidecarInvocation := invocationIDOf(s)
@@ -164,7 +197,8 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup) (*blobstats.Snapshot, []
 // Has walks i.dir once and returns true on the first sidecar whose
 // AcceptedAt/ClosedAt window overlaps the group AND whose
 // WrapperSession.InvocationID is non-empty. No file is unlinked or recorded.
-func (i *sidecarIndex) Has(group ManifestEntryGroup) bool {
+// Honors the same empty-means-skip rule as Lookup on DerivedData + hex.
+func (i *sidecarIndex) Has(group ManifestEntryGroup, filter LookupFilter) bool {
 	logger := logOr(i.logger)
 
 	if i.dir == "" {
@@ -196,6 +230,12 @@ func (i *sidecarIndex) Has(group ManifestEntryGroup) bool {
 			continue
 		}
 		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+			continue
+		}
+		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
+			continue
+		}
+		if len(filter.Hashes) > 0 && s.BuildRequestHex != "" && !hexMatches(s.BuildRequestHex, filter.Hashes) {
 			continue
 		}
 
@@ -427,6 +467,24 @@ func (i *sidecarIndex) PendingCount() int {
 func ancestryMatches(ancestry []string) bool {
 	for _, a := range ancestry {
 		if _, ok := acceptedAncestors[a]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hexMatches reports whether sidecarHex equals any of hashes. Both sides are
+// compared verbatim — Xcode's BuildDescriptionHash is already lowercase hex, so
+// no normalisation is applied. Shared by Lookup / Has (DD+hex filter axis) and
+// the Watcher's hex-bridge path so the equality contract has a single owner.
+func hexMatches(sidecarHex string, hashes []string) bool {
+	if sidecarHex == "" {
+		return false
+	}
+
+	for _, h := range hashes {
+		if h == sidecarHex {
 			return true
 		}
 	}

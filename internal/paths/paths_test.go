@@ -101,6 +101,37 @@ func TestXcodeSelectLinkCASPluginPath(t *testing.T) {
 	assert.Equal(t, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib", XcodeSelectLinkCASPluginPath())
 }
 
+func TestDerivedDataFromManifestPath_ValidShape(t *testing.T) {
+	// Canonical IDE layout: <DD>/Logs/Build/LogStoreManifest.plist
+	assert.Equal(t,
+		"/Users/alice/Library/Developer/Xcode/DerivedData/App-abc123",
+		DerivedDataFromManifestPath("/Users/alice/Library/Developer/Xcode/DerivedData/App-abc123/Logs/Build/LogStoreManifest.plist"),
+	)
+
+	// Different sub-directory under Logs (Test action) still resolves to DD root.
+	assert.Equal(t,
+		"/project/DD",
+		DerivedDataFromManifestPath("/project/DD/Logs/Test/LogStoreManifest.plist"),
+	)
+
+	// Wrapper-managed DD layout.
+	assert.Equal(t,
+		"/h/.bitrise/cache/xcode-dd/sha",
+		DerivedDataFromManifestPath("/h/.bitrise/cache/xcode-dd/sha/Logs/Build/LogStoreManifest.plist"),
+	)
+}
+
+func TestDerivedDataFromManifestPath_MalformedReturnsEmpty(t *testing.T) {
+	// Empty input.
+	assert.Equal(t, "", DerivedDataFromManifestPath(""))
+
+	// No "Logs" ancestor two levels up.
+	assert.Equal(t, "", DerivedDataFromManifestPath("/some/random/path/LogStoreManifest.plist"))
+
+	// "Logs" is at the wrong depth — only one level between manifest and base.
+	assert.Equal(t, "", DerivedDataFromManifestPath("/Logs/LogStoreManifest.plist"))
+}
+
 type osDirMaker struct{}
 
 func (osDirMaker) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
