@@ -259,12 +259,9 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 		return nil
 	}
 
-	var (
-		versionSkipped    bool
-		agedWithoutInvoID int
-	)
-	groups := make(map[string]SidecarGroup)
+	acc := newOrphanAccumulator()
 
+	var versionSkipped bool
 	for _, de := range entries {
 		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
 			continue
@@ -278,44 +275,115 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 		if s.ClosedAt.IsZero() || now.Sub(s.ClosedAt) <= minAge {
 			continue
 		}
-		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
-			agedWithoutInvoID++
 
-			continue
-		}
-
-		g := groups[s.WrapperSession.InvocationID]
-		g.Blob = mergeBlobs(g.Blob, s.BlobStats)
-		// Earliest-accepted sidecar supplies the hex: later flushes under the
-		// same InvocationID (idle beats + terminal close) share the hex that
-		// identified the originating ⌘B, so any of them is safe to use — but
-		// picking the earliest is deterministic across scan ticks.
-		if g.Start.IsZero() || (!s.AcceptedAt.IsZero() && s.AcceptedAt.Before(g.Start)) {
-			g.Start = s.AcceptedAt
-			if s.BuildRequestHex != "" {
-				g.BuildRequestHex = s.BuildRequestHex
-			}
-		} else if g.BuildRequestHex == "" && s.BuildRequestHex != "" {
-			g.BuildRequestHex = s.BuildRequestHex
-		}
-		if s.ClosedAt.After(g.Stop) {
-			g.Stop = s.ClosedAt
-		}
-		if s.SidecarUUID != "" {
-			g.SidecarUUIDs = append(g.SidecarUUIDs, s.SidecarUUID)
-		}
-		g.Paths = append(g.Paths, path)
-		groups[s.WrapperSession.InvocationID] = g
+		acc.add(path, s)
 	}
 
 	// Aged sidecars without an anchored InvocationID will never surface as
 	// enriched invocations — the proxy's peer-ancestry gate silently dropped
 	// them. Warn-level because at this point it's not a transient condition.
-	if agedWithoutInvoID > 0 {
-		logger.Warnf("Enrichment: %d aged sidecar(s) have no WrapperSession.InvocationID — their cache stats will not land in BE", agedWithoutInvoID)
+	if acc.agedWithoutInvoID > 0 {
+		logger.Warnf("Enrichment: %d aged sidecar(s) have no WrapperSession.InvocationID — their cache stats will not land in BE", acc.agedWithoutInvoID)
 	}
 
-	return groups
+	return acc.finalise()
+}
+
+// orphanAccumulator collects per-InvocationID aggregates during the
+// OrphanSidecarsGroupedByInvocation scan. BuildStartedAt supersedes AcceptedAt
+// only for pseudo-group derivation; Lookup/Has still read AcceptedAt. Earliest
+// BuildStartedAt and earliest AcceptedAt are tracked separately so a legacy
+// sidecar's daemon-start AcceptedAt cannot under-cut an upgraded sidecar's
+// per-build BuildStartedAt in the same group. hexAcceptedAt tracks the
+// earliest AcceptedAt per group independently from Start so the hex still
+// comes from the first-accepted sidecar (deterministic across scan ticks).
+type orphanAccumulator struct {
+	groups             map[string]SidecarGroup
+	earliestBuildStart map[string]time.Time
+	earliestAccepted   map[string]time.Time
+	hexAcceptedAt      map[string]time.Time
+	agedWithoutInvoID  int
+}
+
+func newOrphanAccumulator() *orphanAccumulator {
+	return &orphanAccumulator{
+		groups:             make(map[string]SidecarGroup),
+		earliestBuildStart: make(map[string]time.Time),
+		earliestAccepted:   make(map[string]time.Time),
+		hexAcceptedAt:      make(map[string]time.Time),
+	}
+}
+
+func (a *orphanAccumulator) add(path string, s sessions.Sidecar) {
+	if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
+		a.agedWithoutInvoID++
+
+		return
+	}
+
+	invoID := s.WrapperSession.InvocationID
+	g := a.groups[invoID]
+	g.Blob = mergeBlobs(g.Blob, s.BlobStats)
+
+	a.updateEarliest(invoID, s)
+	a.updateHex(&g, invoID, s)
+
+	if s.ClosedAt.After(g.Stop) {
+		g.Stop = s.ClosedAt
+	}
+	if s.SidecarUUID != "" {
+		g.SidecarUUIDs = append(g.SidecarUUIDs, s.SidecarUUID)
+	}
+	g.Paths = append(g.Paths, path)
+	a.groups[invoID] = g
+}
+
+func (a *orphanAccumulator) updateEarliest(invoID string, s sessions.Sidecar) {
+	if !s.BuildStartedAt.IsZero() {
+		if cur, present := a.earliestBuildStart[invoID]; !present || s.BuildStartedAt.Before(cur) {
+			a.earliestBuildStart[invoID] = s.BuildStartedAt
+		}
+	}
+	if !s.AcceptedAt.IsZero() {
+		if cur, present := a.earliestAccepted[invoID]; !present || s.AcceptedAt.Before(cur) {
+			a.earliestAccepted[invoID] = s.AcceptedAt
+		}
+	}
+}
+
+func (a *orphanAccumulator) updateHex(g *SidecarGroup, invoID string, s sessions.Sidecar) {
+	// Earliest-accepted sidecar supplies the hex: later flushes under the
+	// same InvocationID (idle beats + terminal close) share the hex that
+	// identified the originating ⌘B, so any of them is safe to use — but
+	// picking the earliest is deterministic across scan ticks.
+	cur, present := a.hexAcceptedAt[invoID]
+	if !present || (!s.AcceptedAt.IsZero() && s.AcceptedAt.Before(cur)) {
+		a.hexAcceptedAt[invoID] = s.AcceptedAt
+		if s.BuildRequestHex != "" {
+			g.BuildRequestHex = s.BuildRequestHex
+		}
+
+		return
+	}
+	if g.BuildRequestHex == "" && s.BuildRequestHex != "" {
+		g.BuildRequestHex = s.BuildRequestHex
+	}
+}
+
+// finalise applies the BuildStartedAt-first precedence: any sidecar in the
+// group that carries BuildStartedAt wins over all AcceptedAt values.
+func (a *orphanAccumulator) finalise() map[string]SidecarGroup {
+	for invoID, g := range a.groups {
+		switch {
+		case !a.earliestBuildStart[invoID].IsZero():
+			g.Start = a.earliestBuildStart[invoID]
+		case !a.earliestAccepted[invoID].IsZero():
+			g.Start = a.earliestAccepted[invoID]
+		}
+		a.groups[invoID] = g
+	}
+
+	return a.groups
 }
 
 // mergeBlobs sums the per-direction counters (op / miss / error / skipped-saved

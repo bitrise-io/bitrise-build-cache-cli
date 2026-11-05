@@ -28,6 +28,7 @@ type sidecarFixture struct {
 	WrapperSession  *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
 	DerivedDataPath string                 `json:"derived_data_path,omitempty"`
 	BuildRequestHex string                 `json:"build_request_hex,omitempty"`
+	BuildStartedAt  time.Time              `json:"build_started_at,omitempty"`
 }
 
 type sidecarFixtureWrapper struct {
@@ -382,13 +383,132 @@ func TestSidecarIndex_OrphanSidecars_GroupsByInvocationID(t *testing.T) {
 	assert.Equal(t, int64(3), gX.Blob.Upload.OpCount)
 	assert.ElementsMatch(t, []string{"sidecar-a", "sidecar-b"}, gX.SidecarUUIDs)
 	assert.Len(t, gX.Paths, 2)
-	assert.Equal(t, base, gX.Start, "Start is earliest AcceptedAt in the group")
+	assert.Equal(t, base, gX.Start, "BuildStartedAt zero → AcceptedAt fallback branch: Start is earliest AcceptedAt in the group")
 	assert.Equal(t, base.Add(7*time.Second), gX.Stop, "Stop is latest ClosedAt in the group")
 
 	gY := groups["invocation-Y"]
 	require.NotNil(t, gY.Blob)
 	assert.Equal(t, int64(1), gY.Blob.Download.OpCount)
 	assert.Equal(t, []string{"sidecar-c"}, gY.SidecarUUIDs)
+}
+
+// TestSidecarIndex_OrphanSidecars_UsesBuildStartedAtWhenPresent pins the
+// per-build Start precedence: when every sidecar carries BuildStartedAt, the
+// pseudo-group's Start collapses to the earliest BuildStartedAt — NOT the
+// AcceptedAt (which, for a long-lived SWBBuildService daemon, would inflate
+// the Start-to-Stop window to the daemon's uptime).
+func TestSidecarIndex_OrphanSidecars_UsesBuildStartedAtWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-a",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		BuildStartedAt: base.Add(10 * time.Second),
+		ClosedAt:       base.Add(15 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-b",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		BuildStartedAt: base.Add(12 * time.Second),
+		ClosedAt:       base.Add(17 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
+
+	require.Len(t, groups, 1)
+	gX := groups["invocation-X"]
+	assert.Equal(t, base.Add(10*time.Second), gX.Start,
+		"Start must collapse to earliest BuildStartedAt, NOT AcceptedAt, when every sidecar carries the field")
+}
+
+// TestSidecarIndex_OrphanSidecars_FallsBackToAcceptedAtWhenBuildStartedAtZero
+// pins the backward-compat fallback: legacy sidecars written before this change
+// have zero BuildStartedAt, so the pseudo-group Start must fall back to the
+// earliest AcceptedAt exactly as before.
+func TestSidecarIndex_OrphanSidecars_FallsBackToAcceptedAtWhenBuildStartedAtZero(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-a",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-b",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(3 * time.Second),
+		ClosedAt:       base.Add(8 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
+
+	require.Len(t, groups, 1)
+	gX := groups["invocation-X"]
+	assert.Equal(t, base, gX.Start,
+		"zero BuildStartedAt on every sidecar → Start must fall back to earliest AcceptedAt (legacy semantics)")
+}
+
+// TestSidecarIndex_OrphanSidecars_MixedLegacyAndUpgraded guards against a
+// min()-style regression: when a legacy sidecar (zero BuildStartedAt) and an
+// upgraded sidecar (populated BuildStartedAt) share an InvocationID, the
+// legacy's daemon-start AcceptedAt must NOT under-cut the upgraded's per-
+// build BuildStartedAt. BuildStartedAt-first precedence: any sidecar in the
+// group carrying the field wins over all AcceptedAt values.
+func TestSidecarIndex_OrphanSidecars_MixedLegacyAndUpgraded(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	// Upgraded: BuildStartedAt = T+5s, AcceptedAt = T+0s.
+	writeSidecar(t, dir, "upgraded.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-upgraded",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		BuildStartedAt: base.Add(5 * time.Second),
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	// Legacy: BuildStartedAt zero, AcceptedAt = T+0s.
+	writeSidecar(t, dir, "legacy.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-legacy",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
+
+	require.Len(t, groups, 1)
+	gX := groups["invocation-X"]
+	assert.Equal(t, base.Add(5*time.Second), gX.Start,
+		"when any sidecar carries BuildStartedAt, Start must collapse to the earliest BuildStartedAt — NOT the earliest AcceptedAt (would be T+0s, a min()-based regression)")
 }
 
 func TestSidecarIndex_OrphanSidecars_AgeGateFiltersFreshSidecars(t *testing.T) {

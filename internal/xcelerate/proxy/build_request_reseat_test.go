@@ -336,6 +336,66 @@ func TestResolveAndMaybeReseat_NoFlushWhenStateEmpty(t *testing.T) {
 	assert.Empty(t, entries, "empty-state reseat must not produce a sidecar file")
 }
 
+// TestResolveAndMaybeReseat_StampsFreshBuildStartedAtAfterOldSnapshot pins the
+// per-build start precedence on reseat: the OLD buildStartedAt is snapshot on
+// the flushed sidecar BEFORE the swap, and the connection's current
+// buildStartedAt advances to a FRESH time AFTER the swap. Three ticks → three
+// distinct start times (initial + two reseats).
+func TestResolveAndMaybeReseat_StampsFreshBuildStartedAtAfterOldSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	nextHex := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	h := &sidecarStatsHandler{
+		writer:               newSidecarWriter(dir, nil),
+		wrapperSessionActive: func() bool { return false },
+		buildRequestResolver: func(*connectionSession) (string, bool) {
+			return nextHex, true
+		},
+	}
+
+	cs := newConnectionSession("k", 10, time.Now())
+	cs.ancestryEntries = ideAncestry()
+	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
+	// Simulate TagConn's stamp: initial per-build start before any reseat.
+	initialStart := time.Now().Add(-10 * time.Second)
+	cs.setBuildStartedAt(initialStart)
+
+	// Seed stats so the reseat flush actually writes a sidecar.
+	cs.state.Load().recordDownload(opGet, 42, 0)
+
+	// Tick 1: fresh hex → reseat. Old sidecar carries initialStart; connection
+	// advances to a fresh start.
+	require.True(t, h.ResolveAndMaybeReseat(cs))
+	afterTick1 := cs.buildStartedAtSnapshot()
+	assert.True(t, afterTick1.After(initialStart), "reseat must advance buildStartedAt to a fresh time")
+
+	// Tick 2: hex advances again → reseat again, fresh stats first.
+	cs.state.Load().recordDownload(opGet, 43, 0)
+	nextHex = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	require.True(t, h.ResolveAndMaybeReseat(cs))
+	afterTick2 := cs.buildStartedAtSnapshot()
+	assert.True(t, afterTick2.After(afterTick1), "second reseat must advance buildStartedAt again")
+
+	// Verify the two flushed sidecars carry the OLD buildStartedAt — not the fresh one.
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "two reseats with seeded stats produce two intermediate sidecars")
+
+	// Collect the sidecar BuildStartedAt values; they must match {initialStart, afterTick1}
+	// (in UTC, with omitempty-safe serialisation), NOT the fresh afterTick2.
+	seen := make(map[string]struct{})
+	for _, de := range entries {
+		body, err := os.ReadFile(filepath.Join(dir, de.Name()))
+		require.NoError(t, err)
+
+		var sc sessions.Sidecar
+		require.NoError(t, json.Unmarshal(body, &sc))
+		require.False(t, sc.BuildStartedAt.IsZero(), "sidecar must carry a non-zero BuildStartedAt")
+		assert.True(t, sc.BuildStartedAt.Before(afterTick2), "sidecar carries pre-reseat start, not the fresh one")
+		seen[sc.BuildStartedAt.UTC().String()] = struct{}{}
+	}
+	assert.Len(t, seen, 2, "two reseats observe two distinct OLD start times (initial + tick1)")
+}
+
 func TestPollAllForReseat_IteratesEveryRegisteredSession(t *testing.T) {
 	registry := newSessionRegistry()
 	h := &sidecarStatsHandler{

@@ -76,13 +76,15 @@ func sidecarFilename(s sessions.Sidecar) string {
 }
 
 // sidecarIdentity bundles the attributes that identify the row the sidecar
-// contributes to: the InvocationID the BE row is keyed under and the
-// build-request hex that generated the accumulated blob stats. On reseat
-// both must snapshot the OLD values before the swap — otherwise the flushed
-// stats land on the freshly-derived ID / new hex.
+// contributes to: the InvocationID the BE row is keyed under, the
+// build-request hex that generated the accumulated blob stats, and the per-
+// build start timestamp that bounds its Start-to-Stop window. On reseat all
+// three must snapshot the OLD values before the swap — otherwise the flushed
+// stats land on the freshly-derived ID / new hex / new start.
 type sidecarIdentity struct {
 	InvocationID    string
 	BuildRequestHex string
+	BuildStartedAt  time.Time
 }
 
 // newSessionSidecar materialises a sidecar from a per-conn session plus the
@@ -117,6 +119,7 @@ func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt ti
 		WrapperSession:  link,
 		DerivedDataPath: conn.derivedDataPath,
 		BuildRequestHex: identity.BuildRequestHex,
+		BuildStartedAt:  identity.BuildStartedAt.UTC(),
 		Terminal:        terminal,
 	}
 }

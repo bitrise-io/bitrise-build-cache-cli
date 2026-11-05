@@ -42,6 +42,13 @@ type Sidecar struct {
 	// schema v2 like DerivedDataPath; no SchemaVersion bump needed.
 	BuildRequestHex string `json:"build_request_hex,omitempty"`
 
+	// BuildStartedAt is the per-build start timestamp stamped when the
+	// connection first anchored a derivedInvocationID (or was re-stamped on a
+	// ⌘B reseat). Decouples pseudo-group Start from the daemon's AcceptedAt so
+	// long-lived SWBBuildService connections don't inflate per-build duration.
+	// Additive to schema v2; zero value falls back to AcceptedAt.
+	BuildStartedAt time.Time `json:"build_started_at,omitempty"`
+
 	// Terminal reports whether this sidecar closes out the connection
 	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush.
 	// Additive to schema v2.
