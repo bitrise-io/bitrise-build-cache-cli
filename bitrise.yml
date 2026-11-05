@@ -1757,6 +1757,28 @@ workflows:
               echo "  if Xcode changed the CompilationCacheMetrics line format, update internal/xcactivitylog/reader.go"
               exit 1
             fi
+    - script:
+        title: Extract Xcode InvocationID from wrapper log
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            line=$(grep -F 'Invocation saved. Visit' "$BITRISE_DEPLOY_DIR/wrapper.log" | tail -n1)
+            inv_id="${line##*/xcode/}"
+            [[ -n "$inv_id" ]] || { echo "no Invocation saved line in wrapper.log"; exit 1; }
+            envman add --key INVOCATION_ID --value "$inv_id"
+    - script:
+        title: Assert the xcode invocation reached the BE with hits
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -exo pipefail
+            : "${MONOLITH_API_PAT:?}" "${WORKSPACE_SLUG:?}" "${INVOCATION_ID:?}"
+            url="https://app.bitrise.io/build-cache/$WORKSPACE_SLUG/invocations/xcode/$INVOCATION_ID.json"
+            inv=$(curl --retry 3 -sS -H "Authorization: token $MONOLITH_API_PAT" "$url")
+            echo "$inv" | jq -e --arg id "$INVOCATION_ID" '
+              .invocationId == $id and .tool == "xcode" and (.cacheHitRate | tonumber) > 0
+            ' > /dev/null || { echo "$inv" | jq .; exit 1; }
     - save-cache:
         title: 'ACI-5253: save the SPM checkouts the build actually used'
         inputs:
