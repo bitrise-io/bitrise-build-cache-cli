@@ -47,6 +47,9 @@ var defaultDeps = resolveDeps{
 		if v := os.Getenv("DEVELOPER_DIR"); v != "" {
 			return v
 		}
+		if v := xcodeSelectDir(); v != "" {
+			return v
+		}
 
 		return defaultDeveloperDir
 	},
@@ -119,6 +122,20 @@ func resolveReal(name string, d resolveDeps) (string, error) {
 	writeCache(name, resolved, d)
 
 	return resolved, nil
+}
+
+// xcodeSelectDir returns the active Xcode developer directory as reported by
+// `xcode-select -p`, honoring the user's current selection (Xcode-beta.app,
+// multi-Xcode workers). Returns "" on any failure; caller falls back to the
+// hard-coded default so cold boots without xcode-select still work.
+func xcodeSelectDir() string {
+	//nolint:gosec // fixed path.
+	out, err := exec.Command(xcodeSelectPath, "-p").Output()
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(out))
 }
 
 // isSelfReference returns true if path lives inside the CAS toolchain bundle,
