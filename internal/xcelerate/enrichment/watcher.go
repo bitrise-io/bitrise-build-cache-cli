@@ -127,6 +127,12 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptio
 		w.tickEmittedIDs[invocationID] = struct{}{}
 	}
 	if w.recentEmissions != nil {
+		// Empty hash from a hex-bridge re-PUT must not clobber the originating emit's hash.
+		if buildDescriptionHash == "" {
+			if prior, ok := w.recentEmissions[invocationID]; ok && prior.BuildDescriptionHash != "" {
+				buildDescriptionHash = prior.BuildDescriptionHash
+			}
+		}
 		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: now, BuildDescriptionHash: buildDescriptionHash}
 	}
 
@@ -441,15 +447,10 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		// Shutdown sweep stays sidecar-anchored: a late-closing sidecar's data
-		// must land under its own InvocationID, not fold into whatever
-		// manifest-orphan happened to fire this scan.
-		if !forceSynthesize {
-			if _, prior := w.recentEmissions[invocationID]; prior {
-				logger.Debugf("Watcher: skip pseudo-group — invocation %s already emitted this retention window (same ⌘B late sidecar)", invocationID)
+		if _, prior := w.recentEmissions[invocationID]; prior {
+			logger.Debugf("Watcher: skip pseudo-group — invocation %s already emitted this retention window", invocationID)
 
-				continue
-			}
+			continue
 		}
 
 		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
@@ -487,6 +488,11 @@ func (w *Watcher) tryHexBridgeClone(group SidecarGroup, invocationID string, log
 	logger.Debugf("Watcher: hex-bridged pseudo-group — sidecar hex %s matched manifest UUID %s (InvocationID %s)", group.BuildRequestHex, manifestID, invocationID)
 	if w.Handle != nil {
 		w.Handle("", clone)
+	}
+
+	// Residual sidecars sharing this proxy-side InvocationID must skip the slim pseudo-group path.
+	if w.recentEmissions != nil {
+		w.recentEmissions[invocationID] = emissionRecord{group: emission.group, emittedAt: w.now(), BuildDescriptionHash: group.BuildRequestHex}
 	}
 
 	return true
