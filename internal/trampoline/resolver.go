@@ -5,6 +5,7 @@
 package trampoline
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,11 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
+
+// xcodeSelectTimeout caps `xcode-select -p` — fast on a healthy system
+// (microseconds), but the resolver is on the per-compile hot path so we never
+// want to block on a stuck xcode-select.
+const xcodeSelectTimeout = 2 * time.Second
 
 // toolchainBundleID must match paths.XcodeToolchainBundleID (import-free trampoline).
 const toolchainBundleID = "io.bitrise.cas.xctoolchain"
@@ -129,8 +135,11 @@ func resolveReal(name string, d resolveDeps) (string, error) {
 // multi-Xcode workers). Returns "" on any failure; caller falls back to the
 // hard-coded default so cold boots without xcode-select still work.
 func xcodeSelectDir() string {
+	ctx, cancel := context.WithTimeout(context.Background(), xcodeSelectTimeout)
+	defer cancel()
+
 	//nolint:gosec // fixed path.
-	out, err := exec.Command(xcodeSelectPath, "-p").Output()
+	out, err := exec.CommandContext(ctx, xcodeSelectPath, "-p").Output()
 	if err != nil {
 		return ""
 	}

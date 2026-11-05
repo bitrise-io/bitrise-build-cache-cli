@@ -35,7 +35,7 @@ func DetachedFrom(exe string, svc Service) (int, error) {
 		return 0, ErrUnderTest
 	}
 
-	cmd := exec.Command(exe, svc.Args...)
+	cmd := exec.Command(exe, svc.Args...) //nolint:gosec // callers pass a fixed Service (XcelerateProxy / CcacheHelper) whose Args are compile-time constants.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
