@@ -140,13 +140,9 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 	groupStart := group.Start()
 	groupStop := group.Stop()
 
-	var (
-		best           *blobstats.Snapshot
-		bestBlobTotal  int64
-		bestInvocation string
-		versionSkipped bool
-	)
-	consumedPaths := make([]string, 0, len(entries))
+	agg := newInvocationAggregator(logger)
+	anchorless := make([]sidecarMatch, 0, len(entries))
+	var versionSkipped bool
 
 	for _, de := range entries {
 		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
@@ -170,28 +166,150 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 			continue
 		}
 
-		// Prefer-stats-bearing: stats-winner InvocationID always wins; nil-BlobStats first-seen is the fallback.
-		sidecarInvocation := invocationIDOf(s)
+		if invocationIDOf(s) != "" {
+			agg.add(path, s)
 
-		if blob := s.BlobStats; blob != nil {
-			total := blob.Download.OpCount + blob.Download.MissCount + blob.Upload.OpCount
-			if best == nil || total > bestBlobTotal {
-				best = blob
-				bestBlobTotal = total
-				bestInvocation = sidecarInvocation
-			}
-		} else if best == nil && bestInvocation == "" && sidecarInvocation != "" {
-			bestInvocation = sidecarInvocation
+			continue
 		}
-
-		consumedPaths = append(consumedPaths, path)
+		anchorless = append(anchorless, sidecarMatch{path: path, blob: s.BlobStats})
 	}
 
-	if len(consumedPaths) == 0 {
+	if len(agg.groups) == 0 && len(anchorless) == 0 {
 		return nil, nil, "", false
 	}
 
-	return best, consumedPaths, bestInvocation, true
+	snap, invocationID, consumed := pickLookupWinner(agg, anchorless)
+
+	return snap, consumed, invocationID, true
+}
+
+// sidecarMatch is the anchorless-path book-keeping: Lookup needs to remember
+// the path for unlink and the blob for the anchorless-only winner fallback.
+type sidecarMatch struct {
+	path string
+	blob *blobstats.Snapshot
+}
+
+// scoredGroup is the tuple pickLookupWinner ranks: invoID + its finalised
+// SidecarGroup + the pre-computed op-total used as the primary sort key.
+type scoredGroup struct {
+	invoID string
+	group  SidecarGroup
+	total  int64
+}
+
+// pickLookupWinner selects the winning blob/InvocationID across aggregated
+// groups and anchorless sidecars.
+//
+//   - Any anchored group with a non-zero op-total: largest aggregated total
+//     wins (sum of Download.OpCount + Download.MissCount + Upload.OpCount);
+//     ties by earliest AcceptedAt, then by firstAnchored order.
+//   - No stats-bearing anchored groups but at least one zero-total anchored
+//     group: first-seen anchored InvocationID wins so the nil-BlobStats
+//     InvocationID still surfaces to the enricher (regression guard
+//     TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats).
+//   - No anchored groups at all: largest-op anchorless blob wins (pre-reducer
+//     TestSidecarIndex_TwoMatchesPickLargestBlob semantics).
+//
+// Every consumed sidecar path (both aggregated and anchorless) is returned so
+// the enricher unlinks the full set.
+func pickLookupWinner(agg *invocationAggregator, anchorless []sidecarMatch) (*blobstats.Snapshot, string, []string) {
+	finalised := agg.finalise()
+	consumed := make([]string, 0, len(anchorless))
+
+	var statsBearing, zeroTotal []scoredGroup
+	for invoID, g := range finalised {
+		consumed = append(consumed, g.Paths...)
+		total := aggregateOpTotal(g.Blob)
+		entry := scoredGroup{invoID: invoID, group: g, total: total}
+		if g.Blob != nil && total > 0 {
+			statsBearing = append(statsBearing, entry)
+		} else {
+			zeroTotal = append(zeroTotal, entry)
+		}
+	}
+	for _, m := range anchorless {
+		consumed = append(consumed, m.path)
+	}
+
+	switch {
+	case len(statsBearing) > 0:
+		winner := pickLargestGroup(statsBearing, agg.firstAnchored, agg.earliestAccepted)
+
+		return winner.group.Blob, winner.invoID, consumed
+	case len(zeroTotal) > 0:
+		winner := pickFirstAnchoredGroup(zeroTotal, agg.firstAnchored)
+
+		return winner.group.Blob, winner.invoID, consumed
+	default:
+		return pickAnchorlessWinner(anchorless), "", consumed
+	}
+}
+
+func aggregateOpTotal(b *blobstats.Snapshot) int64 {
+	if b == nil {
+		return 0
+	}
+
+	return b.Download.OpCount + b.Download.MissCount + b.Upload.OpCount
+}
+
+func pickLargestGroup(entries []scoredGroup, firstAnchored map[string]int, earliestAccepted map[string]time.Time) scoredGroup {
+	best := entries[0]
+	for _, e := range entries[1:] {
+		if isBetterStatsBearing(e, best, firstAnchored, earliestAccepted) {
+			best = e
+		}
+	}
+
+	return best
+}
+
+func isBetterStatsBearing(candidate, best scoredGroup, firstAnchored map[string]int, earliestAccepted map[string]time.Time) bool {
+	switch {
+	case candidate.total != best.total:
+		return candidate.total > best.total
+	case !earliestAccepted[candidate.invoID].Equal(earliestAccepted[best.invoID]):
+		return earliestAccepted[candidate.invoID].Before(earliestAccepted[best.invoID])
+	default:
+		return firstAnchored[candidate.invoID] < firstAnchored[best.invoID]
+	}
+}
+
+// pickFirstAnchoredGroup: when all groups have zero op-total, the first-added
+// InvocationID wins — this preserves the pre-reducer first-seen semantics for
+// nil-BlobStats sidecars.
+func pickFirstAnchoredGroup(entries []scoredGroup, firstAnchored map[string]int) scoredGroup {
+	best := entries[0]
+	for _, e := range entries[1:] {
+		if firstAnchored[e.invoID] < firstAnchored[best.invoID] {
+			best = e
+		}
+	}
+
+	return best
+}
+
+// pickAnchorlessWinner preserves the pre-reducer "largest-op anchorless blob
+// wins" tiebreak. Only reached when no anchored group was seen — the common
+// path for sidecars whose proxy peer-ancestry gate rejected the anchor.
+func pickAnchorlessWinner(anchorless []sidecarMatch) *blobstats.Snapshot {
+	var (
+		best      *blobstats.Snapshot
+		bestTotal int64
+	)
+	for _, m := range anchorless {
+		if m.blob == nil {
+			continue
+		}
+		total := aggregateOpTotal(m.blob)
+		if best == nil || total > bestTotal {
+			best = m.blob
+			bestTotal = total
+		}
+	}
+
+	return best
 }
 
 // Has walks i.dir once and returns true on the first sidecar whose
@@ -259,7 +377,7 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 		return nil
 	}
 
-	acc := newOrphanAccumulator()
+	agg := newInvocationAggregator(logger)
 
 	var versionSkipped bool
 	for _, de := range entries {
@@ -276,45 +394,57 @@ func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge t
 			continue
 		}
 
-		acc.add(path, s)
+		agg.add(path, s)
 	}
 
 	// Aged sidecars without an anchored InvocationID will never surface as
 	// enriched invocations — the proxy's peer-ancestry gate silently dropped
 	// them. Warn-level because at this point it's not a transient condition.
-	if acc.agedWithoutInvoID > 0 {
-		logger.Warnf("Enrichment: %d aged sidecar(s) have no WrapperSession.InvocationID — their cache stats will not land in BE", acc.agedWithoutInvoID)
+	if agg.agedWithoutInvoID > 0 {
+		logger.Warnf("Enrichment: %d aged sidecar(s) have no WrapperSession.InvocationID — their cache stats will not land in BE", agg.agedWithoutInvoID)
 	}
 
-	return acc.finalise()
+	return agg.finalise()
 }
 
-// orphanAccumulator collects per-InvocationID aggregates during the
-// OrphanSidecarsGroupedByInvocation scan. BuildStartedAt supersedes AcceptedAt
-// only for pseudo-group derivation; Lookup/Has still read AcceptedAt. Earliest
-// BuildStartedAt and earliest AcceptedAt are tracked separately so a legacy
-// sidecar's daemon-start AcceptedAt cannot under-cut an upgraded sidecar's
-// per-build BuildStartedAt in the same group. hexAcceptedAt tracks the
-// earliest AcceptedAt per group independently from Start so the hex still
-// comes from the first-accepted sidecar (deterministic across scan ticks).
-type orphanAccumulator struct {
+// invocationAggregator reduces sidecars into per-InvocationID SidecarGroups.
+// Shared by Lookup (manifest-correlated path) and
+// OrphanSidecarsGroupedByInvocation (wrapperless pseudo-group path). Keyed on
+// WrapperSession.InvocationID; sidecars without one must be filtered by the
+// caller before `add` — only the orphan path increments agedWithoutInvoID.
+//
+// BuildStartedAt supersedes AcceptedAt only for pseudo-group derivation;
+// Lookup/Has still read AcceptedAt. Earliest BuildStartedAt and earliest
+// AcceptedAt are tracked separately so a legacy sidecar's daemon-start
+// AcceptedAt cannot under-cut an upgraded sidecar's per-build
+// BuildStartedAt in the same group. hexAcceptedAt tracks the earliest
+// AcceptedAt per group independently from Start so the hex still comes from
+// the first-accepted sidecar (deterministic across scan ticks). firstAnchored
+// records the add-order of the first sidecar seen under each InvocationID; it
+// is the fallback tiebreak when every anchored group has zero op-total.
+type invocationAggregator struct {
 	groups             map[string]SidecarGroup
 	earliestBuildStart map[string]time.Time
 	earliestAccepted   map[string]time.Time
 	hexAcceptedAt      map[string]time.Time
+	firstAnchored      map[string]int
+	nextOrder          int
 	agedWithoutInvoID  int
+	logger             log.Logger
 }
 
-func newOrphanAccumulator() *orphanAccumulator {
-	return &orphanAccumulator{
+func newInvocationAggregator(logger log.Logger) *invocationAggregator {
+	return &invocationAggregator{
 		groups:             make(map[string]SidecarGroup),
 		earliestBuildStart: make(map[string]time.Time),
 		earliestAccepted:   make(map[string]time.Time),
 		hexAcceptedAt:      make(map[string]time.Time),
+		firstAnchored:      make(map[string]int),
+		logger:             logger,
 	}
 }
 
-func (a *orphanAccumulator) add(path string, s sessions.Sidecar) {
+func (a *invocationAggregator) add(path string, s sessions.Sidecar) {
 	if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
 		a.agedWithoutInvoID++
 
@@ -322,8 +452,12 @@ func (a *orphanAccumulator) add(path string, s sessions.Sidecar) {
 	}
 
 	invoID := s.WrapperSession.InvocationID
+	if _, present := a.firstAnchored[invoID]; !present {
+		a.firstAnchored[invoID] = a.nextOrder
+		a.nextOrder++
+	}
 	g := a.groups[invoID]
-	g.Blob = mergeBlobs(g.Blob, s.BlobStats)
+	g.Blob = mergeBlobs(g.Blob, s.BlobStats, a.logger)
 
 	a.updateEarliest(invoID, s)
 	a.updateHex(&g, invoID, s)
@@ -338,7 +472,7 @@ func (a *orphanAccumulator) add(path string, s sessions.Sidecar) {
 	a.groups[invoID] = g
 }
 
-func (a *orphanAccumulator) updateEarliest(invoID string, s sessions.Sidecar) {
+func (a *invocationAggregator) updateEarliest(invoID string, s sessions.Sidecar) {
 	if !s.BuildStartedAt.IsZero() {
 		if cur, present := a.earliestBuildStart[invoID]; !present || s.BuildStartedAt.Before(cur) {
 			a.earliestBuildStart[invoID] = s.BuildStartedAt
@@ -351,7 +485,7 @@ func (a *orphanAccumulator) updateEarliest(invoID string, s sessions.Sidecar) {
 	}
 }
 
-func (a *orphanAccumulator) updateHex(g *SidecarGroup, invoID string, s sessions.Sidecar) {
+func (a *invocationAggregator) updateHex(g *SidecarGroup, invoID string, s sessions.Sidecar) {
 	// Earliest-accepted sidecar supplies the hex: later flushes under the
 	// same InvocationID (idle beats + terminal close) share the hex that
 	// identified the originating ⌘B, so any of them is safe to use — but
@@ -372,7 +506,7 @@ func (a *orphanAccumulator) updateHex(g *SidecarGroup, invoID string, s sessions
 
 // finalise applies the BuildStartedAt-first precedence: any sidecar in the
 // group that carries BuildStartedAt wins over all AcceptedAt values.
-func (a *orphanAccumulator) finalise() map[string]SidecarGroup {
+func (a *invocationAggregator) finalise() map[string]SidecarGroup {
 	for invoID, g := range a.groups {
 		switch {
 		case !a.earliestBuildStart[invoID].IsZero():
@@ -386,11 +520,12 @@ func (a *orphanAccumulator) finalise() map[string]SidecarGroup {
 	return a.groups
 }
 
-// mergeBlobs sums the per-direction counters (op / miss / error / skipped-saved
-// / bytes) of two snapshots. Histogram and throughput retained-sample fields
-// are intentionally dropped — the pseudo-group path only needs totals for the
-// hit-rate fallback and the analytics counters.
-func mergeBlobs(a, b *blobstats.Snapshot) *blobstats.Snapshot {
+// mergeBlobs sums every field — counters AND histograms — of two snapshots
+// via blobstats.MergeDirectionSnapshots. CAS/KV sub-protocol snapshots merge
+// pairwise when both sides carry them; otherwise the non-nil side wins.
+// Throughput p10/p50/p90 are re-derived from the merged histogram buckets
+// because raw per-sample throughput doesn't travel on the wire.
+func mergeBlobs(a, b *blobstats.Snapshot, logger log.Logger) *blobstats.Snapshot {
 	if a == nil && b == nil {
 		return nil
 	}
@@ -403,19 +538,31 @@ func mergeBlobs(a, b *blobstats.Snapshot) *blobstats.Snapshot {
 		return a
 	}
 
-	a.Upload.OpCount += b.Upload.OpCount
-	a.Upload.ErrorCount += b.Upload.ErrorCount
-	a.Upload.MissCount += b.Upload.MissCount
-	a.Upload.SkippedAlreadySavedCount += b.Upload.SkippedAlreadySavedCount
-	a.Upload.BytesTotal += b.Upload.BytesTotal
-
-	a.Download.OpCount += b.Download.OpCount
-	a.Download.ErrorCount += b.Download.ErrorCount
-	a.Download.MissCount += b.Download.MissCount
-	a.Download.SkippedAlreadySavedCount += b.Download.SkippedAlreadySavedCount
-	a.Download.BytesTotal += b.Download.BytesTotal
+	a.Download = blobstats.MergeDirectionSnapshots(a.Download, b.Download, logger)
+	a.Upload = blobstats.MergeDirectionSnapshots(a.Upload, b.Upload, logger)
+	a.CAS = mergeProtocolSnapshots(a.CAS, b.CAS, logger)
+	a.KV = mergeProtocolSnapshots(a.KV, b.KV, logger)
 
 	return a
+}
+
+func mergeProtocolSnapshots(a, b *blobstats.ProtocolSnapshot, logger log.Logger) *blobstats.ProtocolSnapshot {
+	if a == nil && b == nil {
+		return nil
+	}
+	if a == nil {
+		cp := *b
+
+		return &cp
+	}
+	if b == nil {
+		return a
+	}
+
+	return &blobstats.ProtocolSnapshot{
+		Upload:   blobstats.MergeDirectionSnapshots(a.Upload, b.Upload, logger),
+		Download: blobstats.MergeDirectionSnapshots(a.Download, b.Download, logger),
+	}
 }
 
 // loadSidecar reads + unmarshals + gates on schema / ancestry. Returns ok=false

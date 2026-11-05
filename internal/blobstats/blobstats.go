@@ -5,11 +5,13 @@ package blobstats
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/dustin/go-humanize"
 )
 
@@ -78,6 +80,121 @@ type DirectionSnapshot struct {
 
 func (s DirectionSnapshot) IsEmpty() bool {
 	return s.OpCount == 0 && s.ErrorCount == 0 && s.MissCount == 0 && s.SkippedAlreadySavedCount == 0
+}
+
+// MergeDirectionSnapshots sums the counters, latency / size / throughput
+// histograms and retained min/max/sum of two DirectionSnapshots. Throughput
+// p10/p50/p90 are re-derived from the merged throughput histogram's bucket
+// bounds — raw per-sample throughput does not survive serialisation, so a
+// cross-sidecar merge accepts bucket-granular percentiles.
+//
+// Boundary-mismatch fallback: when the two sides disagree on histogram
+// boundaries, the b-side histogram contribution is dropped and a Debug line
+// is emitted (the callers of this API pin the boundary set at compile time,
+// so this path should never fire in practice). Counters still sum in that
+// case. Passing a nil logger silences the diagnostic.
+func MergeDirectionSnapshots(a, b DirectionSnapshot, logger log.Logger) DirectionSnapshot {
+	merged := DirectionSnapshot{
+		OpCount:                  a.OpCount + b.OpCount,
+		ErrorCount:               a.ErrorCount + b.ErrorCount,
+		MissCount:                a.MissCount + b.MissCount,
+		SkippedAlreadySavedCount: a.SkippedAlreadySavedCount + b.SkippedAlreadySavedCount,
+		BytesTotal:               a.BytesTotal + b.BytesTotal,
+		LatencyMs:                mergeHistogramSnapshots(a.LatencyMs, b.LatencyMs, logger),
+		SizeBytes:                mergeHistogramSnapshots(a.SizeBytes, b.SizeBytes, logger),
+	}
+
+	throughputHist := mergeHistogramSnapshots(a.Throughput.Histogram, b.Throughput.Histogram, logger)
+	p10, _ := throughputHist.PercentileBucket(0.10)
+	p50, _ := throughputHist.PercentileBucket(0.50)
+	p90, _ := throughputHist.PercentileBucket(0.90)
+
+	minBlob := a.Throughput.MinBlobBytes
+	if minBlob == 0 {
+		minBlob = b.Throughput.MinBlobBytes
+	}
+	merged.Throughput = ThroughputSnapshot{
+		Histogram:        throughputHist,
+		P10BytesPerSec:   p10,
+		P50BytesPerSec:   p50,
+		P90BytesPerSec:   p90,
+		MinBlobBytes:     minBlob,
+		ExcludedSmallOps: a.Throughput.ExcludedSmallOps + b.Throughput.ExcludedSmallOps,
+	}
+
+	return merged
+}
+
+// mergeHistogramSnapshots sums counts / Count / Sum and extends min/max from
+// two HistogramSnapshots that share a boundary set. When boundaries disagree,
+// the b-side contribution is dropped and a Debug diagnostic is emitted. This
+// path should not fire in practice — every caller pins boundaries at compile
+// time via the package-level LatencyMsBuckets / SizeBytesBuckets /
+// ThroughputBytesPerSecBuckets.
+func mergeHistogramSnapshots(a, b HistogramSnapshot, logger log.Logger) HistogramSnapshot {
+	if a.Count == 0 && b.Count == 0 && len(a.Boundaries) == 0 && len(b.Boundaries) == 0 {
+		return HistogramSnapshot{}
+	}
+
+	if len(a.Boundaries) == 0 {
+		return cloneHistogramSnapshot(b)
+	}
+	if len(b.Boundaries) == 0 {
+		return cloneHistogramSnapshot(a)
+	}
+
+	if !reflect.DeepEqual(a.Boundaries, b.Boundaries) {
+		if logger != nil {
+			logger.Debugf("blobstats: histogram boundary mismatch on merge; dropping b-side histogram contribution")
+		}
+
+		return cloneHistogramSnapshot(a)
+	}
+
+	counts := make([]int64, len(a.Counts))
+	for i := range counts {
+		counts[i] = a.Counts[i]
+		if i < len(b.Counts) {
+			counts[i] += b.Counts[i]
+		}
+	}
+
+	merged := HistogramSnapshot{
+		Boundaries: a.Boundaries,
+		Counts:     counts,
+		Count:      a.Count + b.Count,
+		Sum:        a.Sum + b.Sum,
+	}
+
+	switch {
+	case a.Count == 0:
+		merged.Min, merged.Max = b.Min, b.Max
+	case b.Count == 0:
+		merged.Min, merged.Max = a.Min, a.Max
+	default:
+		merged.Min = min(a.Min, b.Min)
+		merged.Max = max(a.Max, b.Max)
+	}
+
+	return merged
+}
+
+func cloneHistogramSnapshot(h HistogramSnapshot) HistogramSnapshot {
+	if len(h.Counts) == 0 && len(h.Boundaries) == 0 {
+		return HistogramSnapshot{}
+	}
+
+	counts := make([]int64, len(h.Counts))
+	copy(counts, h.Counts)
+
+	return HistogramSnapshot{
+		Boundaries: h.Boundaries,
+		Counts:     counts,
+		Count:      h.Count,
+		Sum:        h.Sum,
+		Min:        h.Min,
+		Max:        h.Max,
+	}
 }
 
 type Snapshot struct {
