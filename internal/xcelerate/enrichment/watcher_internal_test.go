@@ -17,6 +17,18 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
+// nonEmptySidecarBlob returns a Snapshot with a single Download op so it
+// satisfies scanOrphanSidecars' zero-blob suppression gate. Tests that pin
+// the emission flow (age-gating, dedup, overlap, etc.) attach this to
+// SidecarGroup.Blob; tests that specifically pin the zero-blob suppression
+// path leave Blob nil or hand in an empty Snapshot.
+func nonEmptySidecarBlob() *blobstats.Snapshot {
+	b := &blobstats.Snapshot{}
+	b.Download.OpCount = 1
+
+	return b
+}
+
 func writeFixtureManifest(t *testing.T, home string) {
 	t.Helper()
 
@@ -870,7 +882,7 @@ func TestWatcher_scanOrphanSidecars_FiresPseudoGroupForAgedOrphan(t *testing.T) 
 	stop := start.Add(45 * time.Second)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"invocation-X": {Start: start, Stop: stop, SidecarUUIDs: []string{"sidecar-a"}},
+		"invocation-X": {Start: start, Stop: stop, SidecarUUIDs: []string{"sidecar-a"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var handled []ManifestEntryGroup
@@ -907,7 +919,7 @@ func TestWatcher_scanOrphanSidecars_ForceSynthesizeDropsAgeGate(t *testing.T) {
 	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"invocation-X": {Start: now.Add(-time.Second), Stop: now, SidecarUUIDs: []string{"sidecar-a"}},
+		"invocation-X": {Start: now.Add(-time.Second), Stop: now, SidecarUUIDs: []string{"sidecar-a"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	w := &Watcher{
@@ -932,7 +944,7 @@ func TestWatcher_scanOrphanSidecars_SyntheticBypassesRetryBucket(t *testing.T) {
 	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"invocation-X": {Start: now.Add(-time.Minute), Stop: now.Add(-time.Second), SidecarUUIDs: []string{"sidecar-a"}},
+		"invocation-X": {Start: now.Add(-time.Minute), Stop: now.Add(-time.Second), SidecarUUIDs: []string{"sidecar-a"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var handled int
@@ -960,8 +972,8 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 	writeFixtureManifest(t, home)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"id-manifest": {Start: fixtureNow.Add(-time.Minute), Stop: fixtureNow.Add(-30 * time.Second), SidecarUUIDs: []string{"sidecar-a"}},
-		"id-orphan":   {Start: fixtureNow.Add(-time.Minute), Stop: fixtureNow.Add(-30 * time.Second), SidecarUUIDs: []string{"sidecar-b"}},
+		"id-manifest": {Start: fixtureNow.Add(-time.Minute), Stop: fixtureNow.Add(-30 * time.Second), SidecarUUIDs: []string{"sidecar-a"}, Blob: nonEmptySidecarBlob()},
+		"id-orphan":   {Start: fixtureNow.Add(-time.Minute), Stop: fixtureNow.Add(-30 * time.Second), SidecarUUIDs: []string{"sidecar-b"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var handled []ManifestEntryGroup
@@ -1021,11 +1033,13 @@ func TestWatcher_scanOrphanSidecars_EmitsEvenWhenManifestWindowOverlaps(t *testi
 			Start:        manifestStart.Add(-time.Second),
 			Stop:         manifestStop.Add(time.Second),
 			SidecarUUIDs: []string{"sidecar-overlap"},
+			Blob:         nonEmptySidecarBlob(),
 		},
 		"invocation-orphan": {
 			Start:        manifestStart.Add(-time.Hour),
 			Stop:         manifestStart.Add(-time.Hour).Add(5 * time.Second),
 			SidecarUUIDs: []string{"sidecar-orphan"},
+			Blob:         nonEmptySidecarBlob(),
 		},
 	}}
 
@@ -1077,6 +1091,7 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepIgnoresOverlapDefer(t *testing.
 			Start:        manifestStart.Add(-time.Second),
 			Stop:         manifestStop.Add(time.Second),
 			SidecarUUIDs: []string{"sidecar-overlap"},
+			Blob:         nonEmptySidecarBlob(),
 		},
 	}}
 
@@ -1112,6 +1127,119 @@ func TestWatcher_scanOrphanSidecars_NoReaderNoSynthesis(t *testing.T) {
 	w.retries = map[string]int{}
 
 	w.scan(false, false)
+}
+
+// TestWatcher_scanOrphanSidecars_SuppressesZeroBlobAndUnlinks pins the
+// SWBBuildService auxiliary-connection noise filter: a sidecar with Blob=nil
+// (idle proxy connection, no CAS transfer) must NOT synthesize a pseudo-group
+// — a bare `cmd=build` row would double-emit alongside the real manifest row —
+// AND its sidecar paths must be unlinked so they don't re-accumulate every
+// scan tick for SessionSidecarMaxAge (7 days).
+func TestWatcher_scanOrphanSidecars_SuppressesZeroBlobAndUnlinks(t *testing.T) {
+	home := t.TempDir()
+
+	pathA := filepath.Join(home, "sidecar-a.json")
+	pathB := filepath.Join(home, "sidecar-b.json")
+	require.NoError(t, os.WriteFile(pathA, []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(pathB, []byte("{}"), 0o644))
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"idle-aux-conn": {
+			Start:        fixtureNow.Add(-time.Minute),
+			Stop:         fixtureNow.Add(-30 * time.Second),
+			SidecarUUIDs: []string{"sidecar-idle"},
+			Paths:        []string{pathA, pathB},
+			// Blob is nil — zero CAS transfer.
+		},
+	}}
+
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+		Handle: func(string, ManifestEntryGroup) {
+			t.Fatal("zero-blob orphan must not emit a pseudo-group")
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	_, errA := os.Stat(pathA)
+	_, errB := os.Stat(pathB)
+	assert.True(t, os.IsNotExist(errA), "sidecar A must be unlinked: %v", errA)
+	assert.True(t, os.IsNotExist(errB), "sidecar B must be unlinked: %v", errB)
+}
+
+// TestWatcher_scanOrphanSidecars_SuppressesIsEmptySnapshotAndUnlinks pins the
+// companion case: a non-nil but all-zeros Snapshot (proxy wrote a terminal
+// anchored-empty marker) is treated identically to nil — Snapshot.IsEmpty().
+func TestWatcher_scanOrphanSidecars_SuppressesIsEmptySnapshotAndUnlinks(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "sidecar-empty.json")
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"empty-snap": {
+			Start:        fixtureNow.Add(-time.Minute),
+			Stop:         fixtureNow.Add(-30 * time.Second),
+			SidecarUUIDs: []string{"sidecar-empty"},
+			Paths:        []string{path},
+			Blob:         &blobstats.Snapshot{}, // non-nil but IsEmpty()
+		},
+	}}
+
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+		Handle: func(string, ManifestEntryGroup) {
+			t.Fatal("IsEmpty() snapshot must not emit a pseudo-group")
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.scan(false, false)
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "IsEmpty() sidecar must be unlinked: %v", err)
+}
+
+// TestWatcher_scanOrphanSidecars_ShutdownSweep_StillSuppressesZeroBlob pins
+// that the suppression applies even on forceSynthesize=true (shutdown sweep /
+// flush-session RPC). An auxiliary-connection sidecar still on disk at exit
+// is noise — do not PUT a bare row on the way out.
+func TestWatcher_scanOrphanSidecars_ShutdownSweep_StillSuppressesZeroBlob(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "sidecar-shutdown-empty.json")
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		"aux-conn-at-exit": {
+			Start:        fixtureNow.Add(-time.Second),
+			Stop:         fixtureNow,
+			SidecarUUIDs: []string{"sidecar-shutdown-empty"},
+			Paths:        []string{path},
+		},
+	}}
+
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+		Handle: func(string, ManifestEntryGroup) {
+			t.Fatal("shutdown sweep must still suppress zero-blob orphans")
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+
+	w.ScanOnce()
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "shutdown-swept zero-blob sidecar must be unlinked: %v", err)
 }
 
 type stubReader struct {
@@ -1157,7 +1285,7 @@ func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedU
 	const sharedID = "build-manifest-orphan"
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}},
+		sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var handled []ManifestEntryGroup
@@ -1204,7 +1332,7 @@ func TestWatcher_scanOrphanSidecars_FreshInvocationID_EmitsEvenOnTimeOverlap(t *
 	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"new-build-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-new"}},
+		"new-build-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-new"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var handled []ManifestEntryGroup
@@ -1252,7 +1380,7 @@ func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testin
 	sidecarStop := time.Date(2025, 2, 27, 5, 0, 10, 0, time.UTC)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"orphan-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-orphan"}},
+		"orphan-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-orphan"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var pseudo *ManifestEntryGroup
@@ -1292,7 +1420,7 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 	sidecarStop := time.Date(2025, 2, 27, 10, 45, 10, 0, time.UTC)
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
-		"sidecar-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-shutdown"}},
+		"sidecar-id": {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-shutdown"}, Blob: nonEmptySidecarBlob()},
 	}}
 
 	var pseudo *ManifestEntryGroup
@@ -1338,7 +1466,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	// sidecar carries the SAME InvocationID the manifest already PUT.
 	reader := &stagedReader{stages: []map[string]SidecarGroup{
 		nil,
-		{sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}}},
+		{sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-overlap"}, Blob: nonEmptySidecarBlob()}},
 	}}
 
 	// Clock advances less than RecentEmissionsRetention between ticks.
@@ -1392,7 +1520,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 
 	reader := &stagedReader{stages: []map[string]SidecarGroup{
 		nil,
-		{sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-late"}}},
+		{sharedID: {Start: sidecarStart, Stop: sidecarStop, SidecarUUIDs: []string{"sidecar-late"}, Blob: nonEmptySidecarBlob()}},
 	}}
 
 	// Second tick lands past the retention window — the emission must be pruned.
@@ -1715,6 +1843,7 @@ func TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow(t *testing.T) {
 			Stop:            fixtureNow.Add(-4 * time.Minute),
 			SidecarUUIDs:    []string{"sidecar-b"},
 			BuildRequestHex: sidecarHex,
+			Blob:            nonEmptySidecarBlob(),
 		},
 	}}
 

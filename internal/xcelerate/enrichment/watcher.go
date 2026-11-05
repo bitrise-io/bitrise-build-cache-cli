@@ -453,6 +453,18 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
+		// SWBBuildService opens auxiliary proxy connections (package resolution,
+		// workspace init, index scheduler) that idle without CAS transfer and
+		// close. The proxy's T2 anchored-empty terminal marker captures those
+		// for debug; synthesizing a bare `cmd=build` BE row from them would
+		// double-emit alongside the real manifest-sourced row. Drop + unlink.
+		if group.Blob == nil || group.Blob.IsEmpty() {
+			logger.Debugf("Watcher: suppress zero-blob pseudo-group for InvocationID %s (no CAS transfer, %d sidecar(s))", invocationID, len(group.SidecarUUIDs))
+			unlinkSidecars(group.Paths, logger)
+
+			continue
+		}
+
 		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
 		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
 		w.handleGroup("", pseudo, false, true)

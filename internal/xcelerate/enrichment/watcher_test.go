@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -213,9 +214,14 @@ func TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID(t *testing.T) {
 
 	const sharedID = "shared-X"
 
+	orphanBlob := &blobstats.Snapshot{}
+	orphanBlob.Download.OpCount = 1
+
 	// SidecarReader double: Lookup fires on the manifest-path emission with
 	// invocationID=sharedID so the Enricher adopts that ID; orphans returns
-	// one group under sharedID that must be deduped.
+	// one group under sharedID that must be deduped. The orphan group carries
+	// a non-empty Blob so scanOrphanSidecars' zero-blob suppression does not
+	// drop it before the dedup gate — the test pins dedup, not suppression.
 	reader := &fakeSidecarReader{
 		found:        true,
 		invocationID: sharedID,
@@ -224,6 +230,7 @@ func TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID(t *testing.T) {
 				Start:        fixtureNow.Add(-time.Minute),
 				Stop:         fixtureNow.Add(-30 * time.Second),
 				SidecarUUIDs: []string{"sidecar-shared"},
+				Blob:         orphanBlob,
 			},
 		},
 	}
