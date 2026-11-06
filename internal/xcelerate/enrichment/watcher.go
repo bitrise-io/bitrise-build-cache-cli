@@ -489,15 +489,13 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		if _, prior := w.recentEmissions[invocationID]; prior {
-			logger.Debugf("Watcher: skip pseudo-group — invocation %s already emitted this retention window", invocationID)
-
-			continue
-		}
-
-		pseudo := SyntheticManifestGroup(group.SidecarUUIDs[0], group.Start, group.Stop, "", "", "")
-		logger.Debugf("Watcher: synthesizing pseudo-group from %d sidecar(s) for InvocationID %s", len(group.SidecarUUIDs), invocationID)
-		w.handleGroup("", pseudo, false, true)
+		// No boundary match: the orphan sidecar is held open by the payload
+		// store; the 60s crash-fallback (or a later plist arrival) will
+		// carry it to a PUT. No bare-build fallthrough — pre-ruleset emits
+		// left duplicate rows under the ordering bug (see
+		// project_wrapperless_cas_pipeline_and_ruleset).
+		logger.Debugf("Watcher: orphan sidecar held for InvocationID %s (%d sidecar(s)) — awaiting boundary or crash-fallback",
+			invocationID, len(group.SidecarUUIDs))
 	}
 }
 
@@ -573,35 +571,14 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 		return true
 	}
 
-	emission, hasEmission := w.recentEmissions[enclosing.UniqueIdentifier]
-	if !hasEmission {
-		// The master's plist entry exists but hasn't been PUT yet this scan.
-		// Letting the manifest path win preserves the "manifest is authoritative"
-		// ordering — the sidecar will bridge on the next tick once the master
-		// emission is recorded.
-		logger.Debugf("Watcher: boundary-bridge deferred — boundary UUID %s found in %s but not yet PUT", enclosing.UniqueIdentifier, boundaryDD)
+	// Build-domain boundaries no longer re-PUT under the master manifest
+	// UUID — the single-ID payload store aggregates sidecar + xcactivitylog
+	// signals under the proxy-derived InvocationID instead. The remaining
+	// bridge path handles only non-Build domains above.
+	logger.Debugf("Watcher: build-domain boundary %s matched in %s for InvocationID %s — single-ID pipeline handles the merge",
+		enclosing.UniqueIdentifier, boundaryDD, invocationID)
 
-		return false
-	}
-
-	mergedBlob := mergeBlobs(copySnapshot(emission.MasterBlob), group.Blob, logger)
-	clone := CloneManifestGroupWithSidecar(emission.group, mergedBlob, group.Paths)
-	logger.Debugf("Watcher: boundary-bridged pseudo-group — sidecar at=%s matched master UUID %s via %s (InvocationID %s)", at.Format(time.RFC3339), enclosing.UniqueIdentifier, boundaryDD, invocationID)
-	if w.Handle != nil {
-		w.Handle("", clone)
-	}
-
-	// Residual sidecars sharing this proxy-side InvocationID must skip the slim pseudo-group path.
-	if w.recentEmissions != nil {
-		w.recentEmissions[invocationID] = emissionRecord{
-			group:                emission.group,
-			emittedAt:            w.now(),
-			BuildDescriptionHash: emission.BuildDescriptionHash,
-			MasterBlob:           emission.MasterBlob,
-		}
-	}
-
-	return true
+	return false
 }
 
 // allDerivedDataRoots enumerates every DerivedData subtree under HomeDir.
@@ -617,19 +594,6 @@ func (w *Watcher) allDerivedDataRoots(logger log.Logger) []string {
 	}
 
 	return matches
-}
-
-// copySnapshot defensively clones the master's stashed blob so mergeBlobs does
-// not mutate the emissionRecord's own snapshot (mergeBlobs overwrites the
-// a-side fields in place). nil in, nil out.
-func copySnapshot(s *blobstats.Snapshot) *blobstats.Snapshot {
-	if s == nil {
-		return nil
-	}
-
-	cp := *s
-
-	return &cp
 }
 
 // findEnclosingBoundary walks each DerivedData root the sidecar carried and

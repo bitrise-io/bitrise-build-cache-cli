@@ -86,16 +86,10 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-// resolveSidecar returns the sidecar blob + consumed paths + derived InvocationID
-// + found flag. Preattached groups short-circuit the time-overlap SidecarReader
-// lookup (boundary-bridge path keeps the manifest UUID authoritative). Otherwise
-// the SidecarReader runs with a LookupFilter whose DerivedData + build-description
-// hash disambiguate parallel builds sharing a time window; both axes degrade
-// gracefully when either source is empty.
+// resolveSidecar runs the SidecarReader with a LookupFilter whose DerivedData
+// + build-description hash disambiguate parallel builds sharing a time window;
+// both axes degrade gracefully when either source is empty.
 func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup, buildDescriptionHash string) (*blobstats.Snapshot, []string, string, bool) {
-	if blob, paths, ok := group.Preattached(); ok {
-		return blob, paths, "", blob != nil
-	}
 	if e.SidecarReader == nil {
 		return nil, nil, "", false
 	}
@@ -162,23 +156,18 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	invocationID := group.ManifestUUID()
 	if invocationID == "" {
-		invocationID = group.OverrideInvocationID()
-	}
-	if invocationID == "" {
 		invocationID = sidecarInvocationID
 	}
 	if invocationID == "" {
-		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / sidecar both empty)", group.SchemeName(), command)
 
 		return
 	}
 
-	// Synthetic (sidecar-sourced) groups and override-anchored PUTs carry their
-	// own data path — the xcactivitylog is only the authoritative source for
-	// real manifest-derived emissions.
-	hasAlternateDataSource := sidecarFound || group.OverrideInvocationID() != ""
-	if hitRateOutcome != xcactivitylog.OutcomeOK && !hasAlternateDataSource {
-		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar / override (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
+	// Sidecar-sourced groups carry their own data path — the xcactivitylog is
+	// only the authoritative source for real manifest-derived emissions.
+	if hitRateOutcome != xcactivitylog.OutcomeOK && !sidecarFound {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
 
 		return
 	}

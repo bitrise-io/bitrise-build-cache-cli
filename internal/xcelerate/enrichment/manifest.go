@@ -164,50 +164,12 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
 
-	// overrideInvocationID is set by SyntheticManifestGroup when the orphan
-	// sweep already identified a manifest-emitted InvocationID that overlaps
-	// this pseudo-group's time window. Enricher.Enrich reads it via
-	// OverrideInvocationID() to re-PUT under that ID instead of minting a new
-	// orphan — this collapses the manifest-orphan + pseudo-group pair into one
-	// BE row.
-	overrideInvocationID string
-
-	// preattachedSidecar lets the boundary-bridge path skip SidecarReader.Lookup
-	// and feed blob stats + consumed sidecar paths directly. When non-nil the
-	// enricher reads blob stats from here and consumes the listed paths on
-	// success, without going through the time-overlap Lookup — so the
-	// sidecar's own WrapperLink.InvocationID cannot win over the clone's
-	// manifest UUID in the resolution ladder.
-	preattachedSidecar *preattachedSidecar
-
 	// commandLabel overrides Command()'s first-word verb lookup so a non-Build
 	// boundary (Package / Signing / Localization) renders with its own plist
 	// signature ("Resolve Packages", "Update Signing", ...) instead of
 	// returning CommandUnknown and being dropped by the enricher gate. Set
 	// only by SyntheticBoundaryGroup; empty for every other construction path.
 	commandLabel string
-}
-
-type preattachedSidecar struct {
-	Blob          *blobstats.Snapshot
-	ConsumedPaths []string
-}
-
-// Preattached returns the bundled sidecar blob + consumed paths when set by
-// CloneManifestGroupWithSidecar; nil otherwise.
-func (g ManifestEntryGroup) Preattached() (*blobstats.Snapshot, []string, bool) {
-	if g.preattachedSidecar == nil {
-		return nil, nil, false
-	}
-
-	return g.preattachedSidecar.Blob, g.preattachedSidecar.ConsumedPaths, true
-}
-
-// OverrideInvocationID returns the InvocationID the pseudo-group must PUT under,
-// or "" when no override was stamped. Only SyntheticManifestGroup populates
-// this; real manifest-derived groups return "".
-func (g ManifestEntryGroup) OverrideInvocationID() string {
-	return g.overrideInvocationID
 }
 
 func (g ManifestEntryGroup) UUIDs() []string {
@@ -360,14 +322,10 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 	return best
 }
 
-// ManifestUUID returns Primary().UUID when the group is manifest-sourced, empty for SyntheticManifestGroup pseudo-groups.
+// ManifestUUID returns Primary().UUID; always manifest-sourced now that
+// synthetic pseudo-groups no longer mint UUIDs.
 func (g ManifestEntryGroup) ManifestUUID() string {
-	uuid := g.Primary().UUID
-	if strings.HasPrefix(uuid, SyntheticManifestGroupUUIDPrefix) {
-		return ""
-	}
-
-	return uuid
+	return g.Primary().UUID
 }
 
 // Command returns empty when the primary carries no known action so the caller
@@ -485,60 +443,6 @@ func (g ManifestEntryGroup) firstNonEmptyTokens() (string, string, string) {
 	return ws, proj, cfg
 }
 
-// SyntheticManifestGroupUUIDPrefix tags pseudo-groups synthesized from aged
-// orphan sidecars. Bare xcodebuild UUIDs never carry this prefix so the
-// HandledManifestStore cannot collide across the real/synthetic boundary.
-const SyntheticManifestGroupUUIDPrefix = "synthetic-"
-
-// SyntheticManifestGroup builds a one-entry pseudo-group suitable for feeding
-// Enrich() when no LogStoreManifest.plist arrived. signature falls back to
-// "build" so Command()→CommandBuild and the enricher does not drop the group;
-// scheme is stamped as SchemeName so the rendered command carries the scheme.
-// overrideInvocationID, when non-empty, redirects the PUT at the ID of a
-// manifest-orphan that overlapped this pseudo-group's window — dedups the
-// Clean+Build-manifest-orphan + pseudo-group pair into a single BE row.
-func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature, scheme, overrideInvocationID string) ManifestEntryGroup {
-	if signature == "" {
-		signature = "build"
-	}
-
-	return ManifestEntryGroup{
-		Entries: []ManifestEntry{{
-			UUID:       SyntheticManifestGroupUUIDPrefix + sidecarUUID,
-			Signature:  signature,
-			SchemeName: scheme,
-			Start:      start,
-			Stop:       stop,
-		}},
-		overrideInvocationID: overrideInvocationID,
-	}
-}
-
-// CloneManifestGroupWithSidecar returns a group that shares src's manifest
-// identity (entries copied, not aliased) and carries a preattached sidecar
-// payload. Used by the boundary-bridge path: scanOrphanSidecars has matched a
-// pseudo-group's time window to a Build boundary carried by a manifest
-// emission, and must re-PUT under the manifest's UUID with sidecar blob stats
-// merged in. Because the clone keeps the manifest's entries, Primary().UUID
-// stays non-synthetic and ManifestUUID() returns the manifest's UUID — the
-// enricher's SidecarReader lookup is bypassed via Preattached(), so the
-// sidecar's own WrapperLink InvocationID cannot win over the manifest UUID in
-// the ladder.
-func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snapshot, consumedPaths []string) ManifestEntryGroup {
-	entries := make([]ManifestEntry, len(src.Entries))
-	copy(entries, src.Entries)
-
-	paths := append([]string(nil), consumedPaths...)
-
-	return ManifestEntryGroup{
-		Entries: entries,
-		preattachedSidecar: &preattachedSidecar{
-			Blob:          blob,
-			ConsumedPaths: paths,
-		},
-	}
-}
-
 // SyntheticBoundaryGroup builds a boundary-anchored pseudo-group for a non-
 // Build-domain activity (Package / Signing / Localization) whose recording
 // window enclosed an orphan sidecar. The boundary's UniqueIdentifier becomes
@@ -547,13 +451,11 @@ func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snaps
 // Packages" / "Update Signing" / "Sync Localizations" instead of the fallback
 // bare "build". commandLabel is set so Command()/FullCommand() return the
 // label rather than returning "" for an unknown first-word verb.
-func SyntheticBoundaryGroup(b Boundary, blob *blobstats.Snapshot, consumedPaths []string) ManifestEntryGroup {
+func SyntheticBoundaryGroup(b Boundary, _ *blobstats.Snapshot, _ []string) ManifestEntryGroup {
 	label := b.Signature
 	if label == "" {
 		label = defaultLabelForDomain(b.Domain)
 	}
-
-	paths := append([]string(nil), consumedPaths...)
 
 	return ManifestEntryGroup{
 		Entries: []ManifestEntry{{
@@ -565,10 +467,6 @@ func SyntheticBoundaryGroup(b Boundary, blob *blobstats.Snapshot, consumedPaths 
 			Stop:       b.Stop,
 		}},
 		commandLabel: label,
-		preattachedSidecar: &preattachedSidecar{
-			Blob:          blob,
-			ConsumedPaths: paths,
-		},
 	}
 }
 
