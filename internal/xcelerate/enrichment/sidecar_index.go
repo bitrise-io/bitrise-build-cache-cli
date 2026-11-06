@@ -586,7 +586,9 @@ func mergeProtocolSnapshots(a, b *blobstats.ProtocolSnapshot, logger log.Logger)
 
 // loadSidecar reads + unmarshals + gates on schema / ancestry. Returns ok=false
 // (sidecar must be skipped) for any filter miss; versionSkipped tracks the
-// "logged once per Lookup" promise for schema-too-new.
+// "logged once per Lookup" promise for schema-too-new. Pre-v3 sidecars are
+// rejected with a once-per-scan warn so stale on-disk state from an older
+// proxy is visible but never parsed.
 func loadSidecar(path string, logger log.Logger, versionSkipped *bool) (sessions.Sidecar, bool) {
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -605,6 +607,15 @@ func loadSidecar(path string, logger log.Logger, versionSkipped *bool) (sessions
 	if s.SchemaVersion > supportedSidecarSchema {
 		if !*versionSkipped {
 			logger.Debugf("Sidecar %s schema_version=%d > %d, leaving on disk", path, s.SchemaVersion, supportedSidecarSchema)
+			*versionSkipped = true
+		}
+
+		return sessions.Sidecar{}, false
+	}
+
+	if s.SchemaVersion < supportedSidecarSchema {
+		if !*versionSkipped {
+			logger.Warnf("Sidecar %s schema_version=%d < %d, pre-v3 sidecars are no longer parsed", path, s.SchemaVersion, supportedSidecarSchema)
 			*versionSkipped = true
 		}
 

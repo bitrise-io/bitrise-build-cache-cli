@@ -9,7 +9,12 @@ import (
 // SidecarSchemaVersion is the on-disk version written by the proxy and read by
 // the enrichment side. Readers must leave files with a higher version on disk
 // so a newer binary can pick them up — never delete, never attempt to parse.
-const SidecarSchemaVersion = 2
+//
+// v3 adds BuildRequestAction and BuildRequestQoS, which the proxy stamps from
+// the sidecar's build-request.json so the enricher can classify each sidecar
+// (MainBuild / DarkBuild / Indexer / PackageResolve / ...) without reparsing
+// the file itself. Pre-v3 sidecars are rejected on read.
+const SidecarSchemaVersion = 3
 
 // Sidecar is one line's worth of per-connection accounting written by the
 // proxy on connection close (gRPC ConnEnd) or per-conn inactivity.
@@ -53,6 +58,17 @@ type Sidecar struct {
 	// (ConnEnd / GracefulStop) or is an intermediate inactivity flush.
 	// Additive to schema v2.
 	Terminal bool `json:"terminal"`
+
+	// BuildRequestAction is the `action` field read from this sidecar's
+	// build-request.json (resolved via DerivedDataPath + BuildRequestHex at
+	// write time). The enricher classifies the sidecar's row type from this
+	// pair (e.g. "build" + "default" → DarkBuild). Empty when the file could
+	// not be read. Added in schema v3.
+	BuildRequestAction string `json:"build_request_action,omitempty"`
+
+	// BuildRequestQoS mirrors BuildRequestAction — the build-request.json's
+	// qos field. Added in schema v3.
+	BuildRequestQoS string `json:"build_request_qos,omitempty"`
 }
 
 // WrapperLink carries the derived InvocationID when peer-ancestry anchoring succeeded; nil otherwise.

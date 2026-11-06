@@ -146,7 +146,7 @@ func TestWatcher_OrphanSidecarPseudoGroupEndToEnd(t *testing.T) {
 	write := func(name, sidecarUUID string, downloadOps int64) {
 		path := filepath.Join(sidecarsDir, name)
 		body, err := json.Marshal(sidecarFixtureFile{
-			SchemaVersion: 2,
+			SchemaVersion: 3,
 			SidecarUUID:   sidecarUUID,
 			PeerAncestry:  []string{"xcodebuild"},
 			AcceptedAt:    closed.Add(-time.Minute),
@@ -309,7 +309,7 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderManifestUUID(t
 	// Sidecar window covers the manifest entries so Has/Lookup overlap returns true.
 	flushSidecar := func() {
 		body, err := json.Marshal(sidecarFixtureFile{
-			SchemaVersion:  2,
+			SchemaVersion:  3,
 			SidecarUUID:    "sidecar-ide",
 			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
 			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
@@ -391,7 +391,7 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	// Empty-stat anchored-aged flush shape: no BlobStats, derived InvocationID only.
 	flushNilStatsSidecar := func() {
 		body, err := json.Marshal(sidecarFixtureFile{
-			SchemaVersion:  2,
+			SchemaVersion:  3,
 			SidecarUUID:    "sidecar-ide-nil",
 			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
 			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
