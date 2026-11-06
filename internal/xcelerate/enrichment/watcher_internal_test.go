@@ -2192,3 +2192,207 @@ func TestWatcher_scanOrphanSidecars_BoundaryBridge_SumsMasterAndOrphanBlobs(t *t
 	assert.Equal(t, int64(10), masterBlob.Download.OpCount, "master's stashed blob must not be mutated by the merge")
 	assert.Equal(t, int64(1024), masterBlob.Download.BytesTotal, "master's stashed blob bytes must not be mutated")
 }
+
+// writeDomainBoundaryPlist drops a single entry under
+// <dd>/Logs/<subdir>/LogStoreManifest.plist so scanOrphanSidecars' extended
+// S8 bridge can resolve orphan sidecars back to a Package / Signing /
+// Localization boundary UUID. subdir names the sibling directory Xcode
+// writes to (Package / Signing / Localization) and domainType is the
+// authoritative classifier.
+func writeDomainBoundaryPlist(t *testing.T, dd, subdir, className, domainType, uuid, signature string, cfStart, cfStop float64) {
+	t.Helper()
+
+	logsDir := filepath.Join(dd, "Logs", subdir)
+	require.NoError(t, os.MkdirAll(logsDir, 0o755))
+
+	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key><integer>11</integer>
+	<key>logs</key>
+	<dict>
+		<key>%s</key>
+		<dict>
+			<key>className</key><string>%s</string>
+			<key>domainType</key><string>%s</string>
+			<key>signature</key><string>%s</string>
+			<key>timeStartedRecording</key><real>%f</real>
+			<key>timeStoppedRecording</key><real>%f</real>
+			<key>uniqueIdentifier</key><string>%s</string>
+		</dict>
+	</dict>
+</dict>
+</plist>`, uuid, className, domainType, signature, cfStart, cfStop, uuid)
+
+	require.NoError(t, os.WriteFile(filepath.Join(logsDir, "LogStoreManifest.plist"), []byte(body), 0o644))
+}
+
+// TestWatcher_tryBoundaryBridgeClone_UsesPackageSignature pins the S8
+// motivation: SPM prep CAS traffic lands during a Package boundary's window
+// (fired on Xcode launch before any ⌘B). No prior enricher emission exists
+// for the Package UUID — the bridge must synthesize a group anchored at the
+// boundary itself and render Command() as "Resolve Packages" instead of the
+// bare "build" fallback.
+func TestWatcher_tryBoundaryBridgeClone_UsesPackageSignature(t *testing.T) {
+	dd := t.TempDir()
+	const packageUUID = "AAAA-PACKAGE-RESOLVE"
+	const proxyID = "proxy-id-spm"
+
+	pkgStart := fixtureNow.Add(-2 * time.Minute)
+	pkgStop := fixtureNow.Add(-90 * time.Second)
+	sidecarStart := pkgStart.Add(10 * time.Second) // inside the Package window
+
+	writeDomainBoundaryPlist(t, dd, "Package",
+		"IDEActivityLogPackageLoadLog", "Xcode.IDEActivityLogDomainType.PackageLog",
+		packageUUID, "Resolve Packages",
+		wallToCFAbs(pkgStart), wallToCFAbs(pkgStop))
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 7
+	sidecarBlob.Download.BytesTotal = 2048
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(5 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-spm"},
+			Paths:            []string{"/tmp/sidecar-spm.json"},
+			Blob:             sidecarBlob,
+			DerivedDataPaths: []string{dd},
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	// No RecordEmittedInvocationID call — Package activities never flow
+	// through the enricher's manifest path, so the bridge must not require a
+	// recentEmissions entry for a non-Build boundary.
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "Package boundary must bridge the SPM-prep sidecar")
+	synth := handled[0]
+	assert.Equal(t, packageUUID, synth.ManifestUUID(), "boundary UUID anchors the BE row — no synthetic- prefix")
+	assert.Equal(t, "Resolve Packages", synth.Command(), "short command reads the Package boundary's signature")
+	assert.Equal(t, "Resolve Packages", synth.FullCommand(), "label-anchored groups surface the label verbatim as FullCommand")
+
+	blob, paths, ok := synth.Preattached()
+	require.True(t, ok, "synth group must carry the sidecar payload so the enricher outcome gate passes")
+	assert.Equal(t, sidecarBlob, blob)
+	assert.Equal(t, []string{"/tmp/sidecar-spm.json"}, paths)
+}
+
+// TestWatcher_tryBoundaryBridgeClone_UsesSigningSignature is the Signing-
+// domain counterpart of the Package test above: a provisioning / signing
+// activity recording window encloses the sidecar; render reads the boundary's
+// Signature ("Update Signing").
+func TestWatcher_tryBoundaryBridgeClone_UsesSigningSignature(t *testing.T) {
+	dd := t.TempDir()
+	const signingUUID = "BBBB-SIGNING-UPDATE"
+	const proxyID = "proxy-id-signing"
+
+	sigStart := fixtureNow.Add(-2 * time.Minute)
+	sigStop := fixtureNow.Add(-90 * time.Second)
+	sidecarStart := sigStart.Add(5 * time.Second)
+
+	writeDomainBoundaryPlist(t, dd, "Signing",
+		"IDEActivityLogProvisioningSection", "Xcode.IDEActivityLogDomainType.ProvisioningLog",
+		signingUUID, "Update Signing",
+		wallToCFAbs(sigStart), wallToCFAbs(sigStop))
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 3
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(2 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-signing"},
+			Paths:            []string{"/tmp/sidecar-signing.json"},
+			Blob:             sidecarBlob,
+			DerivedDataPaths: []string{dd},
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "Signing boundary must bridge the provisioning sidecar")
+	synth := handled[0]
+	assert.Equal(t, signingUUID, synth.ManifestUUID())
+	assert.Equal(t, "Update Signing", synth.Command())
+}
+
+// TestWatcher_tryBoundaryBridgeClone_UsesLocalizationSignature is the
+// Localization-domain counterpart.
+func TestWatcher_tryBoundaryBridgeClone_UsesLocalizationSignature(t *testing.T) {
+	dd := t.TempDir()
+	const locUUID = "CCCC-LOCALIZE"
+	const proxyID = "proxy-id-loc"
+
+	locStart := fixtureNow.Add(-90 * time.Second)
+	locStop := fixtureNow.Add(-60 * time.Second)
+	sidecarStart := locStart.Add(5 * time.Second)
+
+	writeDomainBoundaryPlist(t, dd, "Localization",
+		"IDEActivityLogLocalizationSection", "Xcode.IDEActivityLogDomainType.LocalizationLog",
+		locUUID, "Sync Localizations",
+		wallToCFAbs(locStart), wallToCFAbs(locStop))
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 2
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(2 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-loc"},
+			Paths:            []string{"/tmp/sidecar-loc.json"},
+			Blob:             sidecarBlob,
+			DerivedDataPaths: []string{dd},
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "Localization boundary must bridge the sidecar")
+	synth := handled[0]
+	assert.Equal(t, locUUID, synth.ManifestUUID())
+	assert.Equal(t, "Sync Localizations", synth.Command())
+}

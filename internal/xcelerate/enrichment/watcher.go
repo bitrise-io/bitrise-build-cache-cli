@@ -523,9 +523,36 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 		return false
 	}
 
-	enclosing, boundaryDD, ok := w.findEnclosingBuildBoundary(group.DerivedDataPaths, at, logger)
+	enclosing, boundaryDD, ok := w.findEnclosingBoundary(group.DerivedDataPaths, at, logger)
 	if !ok {
 		return false
+	}
+
+	// Non-Build domains (Package / Signing / Localization) fire on Xcode launch
+	// without a user ⌘B, so they never flow through the enricher's manifest
+	// emission path and never populate recentEmissions. Synthesize a group
+	// anchored at the boundary's own UUID with a label sourced from the
+	// boundary's Signature, bypassing the recentEmissions lookup entirely.
+	if enclosing.Domain != DomainBuild {
+		synth := SyntheticBoundaryGroup(enclosing, group.Blob, group.Paths)
+		logger.Debugf("Watcher: boundary-bridged pseudo-group for %s domain — sidecar at=%s matched boundary UUID %s signature=%q via %s (InvocationID %s)",
+			enclosing.Domain, at.Format(time.RFC3339), enclosing.UniqueIdentifier, enclosing.Signature, boundaryDD, invocationID)
+		if w.Handle != nil {
+			w.Handle("", synth)
+		}
+
+		// Residual sidecars sharing this proxy-side InvocationID must skip the
+		// slim pseudo-group path. MasterBlob stays nil — there is no "master"
+		// emission for a non-Build boundary; the synth group's attached blob IS
+		// the data path.
+		if w.recentEmissions != nil {
+			w.recentEmissions[invocationID] = emissionRecord{
+				group:     synth,
+				emittedAt: w.now(),
+			}
+		}
+
+		return true
 	}
 
 	emission, hasEmission := w.recentEmissions[enclosing.UniqueIdentifier]
@@ -572,44 +599,59 @@ func copySnapshot(s *blobstats.Snapshot) *blobstats.Snapshot {
 	return &cp
 }
 
-// findEnclosingBuildBoundary walks each DerivedData root the sidecar carried
-// and reads its Logs/Build/LogStoreManifest.plist for Build-domain boundaries.
-// Returns the most-recent-preceding Build entry whose window encloses at
-// (within DefaultAttributionGrace of its Stop), alongside the DD path that
-// supplied it for log context. Returns ok=false when no DD root yields a plist
-// or no boundary in any plist encloses at.
-func (w *Watcher) findEnclosingBuildBoundary(ddPaths []string, at time.Time, logger log.Logger) (BuildBoundary, string, bool) {
+// findEnclosingBoundary walks each DerivedData root the sidecar carried and
+// reads every sibling Logs/<subdir>/LogStoreManifest.plist for attribution-
+// eligible boundaries (Build + Package + Signing + Localization — see
+// classifyDomain). Returns the most-recent-preceding entry whose window
+// encloses at (within DefaultAttributionGrace of its Stop), alongside the DD
+// path that supplied it for log context. Returns ok=false when no DD root
+// yields a plist or no boundary in any plist encloses at.
+//
+// Domain precedence is NOT applied — Start order alone picks the winner so
+// a Build boundary that started AFTER a still-running Package activity
+// correctly steals its sub-sidecars. SPM prep activities run only on Xcode
+// launch and are long-closed by the time ⌘B fires, so this is the natural
+// precedence.
+func (w *Watcher) findEnclosingBoundary(ddPaths []string, at time.Time, logger log.Logger) (Boundary, string, bool) {
 	var (
-		best     BuildBoundary
+		best     Boundary
 		bestDD   string
 		found    bool
 		hadPlist bool
 	)
 
 	for _, dd := range ddPaths {
-		plistPath := filepath.Join(dd, "Logs", "Build", "LogStoreManifest.plist")
-		boundaries, err := ReadBuildBoundaries(plistPath)
+		plistMatches, err := filepath.Glob(filepath.Join(dd, "Logs", "*", "LogStoreManifest.plist"))
 		if err != nil {
-			logger.Debugf("Watcher: boundary read %s failed: %s", plistPath, err)
+			logger.Debugf("Watcher: boundary glob under %s failed: %s", dd, err)
 
 			continue
 		}
-		hadPlist = true
 
-		boundary, ok := EnclosingBuildBoundary(boundaries, at, DefaultAttributionGrace)
-		if !ok {
-			continue
-		}
+		for _, plistPath := range plistMatches {
+			boundaries, err := ReadBoundaries(plistPath)
+			if err != nil {
+				logger.Debugf("Watcher: boundary read %s failed: %s", plistPath, err)
 
-		if !found || boundary.Start.After(best.Start) {
-			best = boundary
-			bestDD = dd
-			found = true
+				continue
+			}
+			hadPlist = true
+
+			boundary, ok := EnclosingBoundary(boundaries, at, DefaultAttributionGrace)
+			if !ok {
+				continue
+			}
+
+			if !found || boundary.Start.After(best.Start) {
+				best = boundary
+				bestDD = dd
+				found = true
+			}
 		}
 	}
 
 	if !hadPlist {
-		return BuildBoundary{}, "", false
+		return Boundary{}, "", false
 	}
 
 	return best, bestDD, found

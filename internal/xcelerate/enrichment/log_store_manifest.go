@@ -9,21 +9,35 @@ import (
 	"howett.net/plist"
 )
 
-// BuildBoundary is a single Build-domain entry from
-// `<DerivedData>/Logs/Build/LogStoreManifest.plist`. It represents one master
-// user action Xcode's IDE Report Navigator renders (e.g. "Build IceCubesApp").
+// Domain classifies a LogStoreManifest.plist entry by the user action that
+// recorded it. Attribution bridging treats each domain differently:
+// DomainBuild entries pair with the enricher's manifest emissions (dark build
+// + indexer traffic attribute back to a ⌘B); the other three fire on Xcode
+// launch without a user ⌘B and only surface when an orphan sidecar's window
+// lands inside their recording boundary.
+type Domain string
+
+const (
+	DomainBuild        Domain = "build"
+	DomainPackage      Domain = "package"
+	DomainSigning      Domain = "signing"
+	DomainLocalization Domain = "localization"
+)
+
+// Boundary is a single attribution-eligible entry from
+// `<DerivedData>/Logs/<subdir>/LogStoreManifest.plist`. It represents one
+// recording window Xcode's IDE Report Navigator surfaces: either a Build
+// master (per-⌘B) or an SPM/signing/localization sub-activity that fires on
+// Xcode launch.
 //
-// For a per-⌘B master, Start/Stop span the recording window of the main
-// xcactivitylog. Sub-activities (dark-build xcbuilddata, indexer xcbuilddata,
-// orphan proxy sidecars) landing at time T within [Start, Stop+grace] attribute
-// to this boundary — the PR596 S7 algorithm.
-//
-// Scope: Build-domain only. The plist also carries Package / Update Signing /
-// Localization entries that fire on Xcode launch without a user ⌘B; those are
-// independent BE rows and live in sibling plists under Package/Signing/
-// Localization subdirectories — not consumed by this reader.
-type BuildBoundary struct {
+// Sub-activities landing at time T within [Start, Stop+grace] attribute to
+// this boundary — the PR596 S7+S8 algorithm. Domain lets the watcher's bridge
+// path render the right label ("Resolve Packages", "Update Signing", "Sync
+// Localizations") for pre-build CAS traffic that would otherwise fall through
+// to a bare "build" row.
+type Boundary struct {
 	UniqueIdentifier string
+	Domain           Domain
 	Signature        string
 	SchemeName       string
 	Status           string
@@ -31,23 +45,21 @@ type BuildBoundary struct {
 	Stop             time.Time
 }
 
-// ReadBuildBoundaries parses the plist at path and returns Build-domain
-// entries sorted by Start ascending. Empty plist (no logs yet) returns
-// (nil, nil); parse failure propagates err. Missing file returns the underlying
-// os error so callers can distinguish "no DD / no builds yet" (ENOENT) from a
-// real decode failure.
+// ReadBoundaries parses the plist at path and returns entries across all
+// attribution-eligible domains (Build, Package, Signing, Localization) sorted
+// by Start ascending. Empty plist (no logs yet) returns (nil, nil); parse
+// failure propagates err. Missing file returns the underlying os error so
+// callers can distinguish "no DD / no builds yet" (ENOENT) from a real decode
+// failure.
 //
-// The plist's logs map includes classes that map to Build, Package, Signing
-// and Localization domains. This reader keeps only Build — identified by the
-// highest-reliability className values Xcode emits:
-//   - IDEActivityLogSection — the IDE's per-⌘B master entry
-//   - IDECommandLineBuildLog — xcodebuild CLI master entry (also used for
-//     Clean when the user clicks Clean in the IDE)
-//
-// Package/Signing/Localization entries carry different className values
-// (IDEActivityLogPackageLoadLog, IDEActivityLogProvisioningSection, ...) that
-// are not consumed here.
-func ReadBuildBoundaries(path string) ([]BuildBoundary, error) {
+// Each domain is identified by the authoritative domainType field when
+// present, with a className fallback for older Xcode versions whose plist
+// omits domainType:
+//   - Build:        IDEActivityLogSection / IDECommandLineBuildLog
+//   - Package:      IDEActivityLogPackageLoadLog / IDEActivityLogPackageResolutionSection
+//   - Signing:      IDEActivityLogProvisioningSection / IDEActivityLogSigningSection
+//   - Localization: IDEActivityLogLocalizationSection / IDEActivityLogExportLocalizationsSection
+func ReadBoundaries(path string) ([]Boundary, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open build manifest: %w", err)
@@ -59,10 +71,11 @@ func ReadBuildBoundaries(path string) ([]BuildBoundary, error) {
 		return nil, fmt.Errorf("decode build manifest: %w", err)
 	}
 
-	out := make([]BuildBoundary, 0, len(raw.Logs))
+	out := make([]Boundary, 0, len(raw.Logs))
 
 	for uuid, entry := range raw.Logs {
-		if !isBuildDomain(entry.ClassName, entry.DomainType) {
+		domain, ok := classifyDomain(entry.ClassName, entry.DomainType)
+		if !ok {
 			continue
 		}
 
@@ -71,8 +84,9 @@ func ReadBuildBoundaries(path string) ([]BuildBoundary, error) {
 			status = entry.PrimaryObservable.HighLevelStatus
 		}
 
-		out = append(out, BuildBoundary{
+		out = append(out, Boundary{
 			UniqueIdentifier: uuid,
+			Domain:           domain,
 			Signature:        entry.Signature,
 			SchemeName:       entry.SchemeName,
 			Status:           status,
@@ -88,25 +102,44 @@ func ReadBuildBoundaries(path string) ([]BuildBoundary, error) {
 	return out, nil
 }
 
-const buildDomainType = "Xcode.IDEActivityLogDomainType.BuildLog"
+const (
+	buildDomainType        = "Xcode.IDEActivityLogDomainType.BuildLog"
+	packageDomainType      = "Xcode.IDEActivityLogDomainType.PackageLog"
+	signingDomainType      = "Xcode.IDEActivityLogDomainType.ProvisioningLog"
+	localizationDomainType = "Xcode.IDEActivityLogDomainType.LocalizationLog"
+)
 
-// isBuildDomain filters the plist's logs map down to Build-domain entries.
-// domainType is the authoritative source when present
-// ("Xcode.IDEActivityLogDomainType.BuildLog"); className is the legacy
-// fallback for older Xcode versions whose plist omits domainType.
-//
-// Returns true for IDE and CLI build logs, false for Package / Signing /
-// Localization entries that fire passively on Xcode launch.
-func isBuildDomain(className, domainType string) bool {
+// classifyDomain maps a plist entry to its attribution Domain. domainType is
+// authoritative when present; className is the legacy fallback for older
+// Xcode versions whose plist omits it. Returns ok=false for classNames /
+// domainTypes outside the attribution-eligible set so callers skip the entry.
+func classifyDomain(className, domainType string) (Domain, bool) {
 	if domainType != "" {
-		return domainType == buildDomainType
+		switch domainType {
+		case buildDomainType:
+			return DomainBuild, true
+		case packageDomainType:
+			return DomainPackage, true
+		case signingDomainType:
+			return DomainSigning, true
+		case localizationDomainType:
+			return DomainLocalization, true
+		default:
+			return "", false
+		}
 	}
 
 	switch className {
 	case "IDEActivityLogSection", "IDECommandLineBuildLog":
-		return true
+		return DomainBuild, true
+	case "IDEActivityLogPackageLoadLog", "IDEActivityLogPackageResolutionSection":
+		return DomainPackage, true
+	case "IDEActivityLogProvisioningSection", "IDEActivityLogSigningSection":
+		return DomainSigning, true
+	case "IDEActivityLogLocalizationSection", "IDEActivityLogExportLocalizationsSection":
+		return DomainLocalization, true
 	default:
-		return false
+		return "", false
 	}
 }
 
@@ -129,22 +162,22 @@ type buildManifestObservable struct {
 	HighLevelStatus string `plist:"highLevelStatus"`
 }
 
-// EnclosingBuildBoundary returns the Build boundary whose Start ≤ at ≤ Stop+grace.
-// When multiple candidates match (overlapping cancelled+restart edge cases),
-// the one with the latest Start wins — the "most recent preceding Build" rule
-// from the PR596 S7 attribution algorithm. Returns (BuildBoundary{}, false)
-// when no boundary encloses at.
+// EnclosingBoundary returns the boundary whose Start ≤ at ≤ Stop+grace. When
+// multiple candidates match (overlapping cancelled+restart edge cases), the
+// one with the latest Start wins — the "most recent preceding" rule from the
+// PR596 S7 attribution algorithm. Returns (Boundary{}, false) when no
+// boundary encloses at.
 //
-// Input boundaries are expected sorted by Start ascending (ReadBuildBoundaries
+// Input boundaries are expected sorted by Start ascending (ReadBoundaries
 // output); callers that assemble boundaries elsewhere are responsible for
 // ordering.
-func EnclosingBuildBoundary(boundaries []BuildBoundary, at time.Time, grace time.Duration) (BuildBoundary, bool) {
+func EnclosingBoundary(boundaries []Boundary, at time.Time, grace time.Duration) (Boundary, bool) {
 	if at.IsZero() {
-		return BuildBoundary{}, false
+		return Boundary{}, false
 	}
 
 	var (
-		best  BuildBoundary
+		best  Boundary
 		found bool
 	)
 
@@ -168,9 +201,9 @@ func EnclosingBuildBoundary(boundaries []BuildBoundary, at time.Time, grace time
 	return best, found
 }
 
-// DefaultAttributionGrace is the window past a Build boundary's Stop during
-// which a late-arriving sub-activity (dark build fires ~35s after master start
-// but can trail master stop by a few seconds; sidecars flush a few ticks
-// after proxy close) still attributes to that boundary. Chosen at 5s per
-// PR596 S7 architect design.
+// DefaultAttributionGrace is the window past a boundary's Stop during which a
+// late-arriving sub-activity (dark build fires ~35s after master start but
+// can trail master stop by a few seconds; sidecars flush a few ticks after
+// proxy close) still attributes to that boundary. Chosen at 5s per PR596 S7
+// architect design.
 const DefaultAttributionGrace = 5 * time.Second
