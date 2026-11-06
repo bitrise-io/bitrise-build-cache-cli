@@ -81,10 +81,16 @@ func sidecarFilename(s sessions.Sidecar) string {
 // build start timestamp that bounds its Start-to-Stop window. On reseat all
 // three must snapshot the OLD values before the swap — otherwise the flushed
 // stats land on the freshly-derived ID / new hex / new start.
+//
+// BuildRequestAction / BuildRequestQoS carry the build-request.json decision
+// (resolved and cached outside newSessionSidecar) so the enricher can classify
+// the sidecar at parse time without touching disk itself.
 type sidecarIdentity struct {
-	InvocationID    string
-	BuildRequestHex string
-	BuildStartedAt  time.Time
+	InvocationID       string
+	BuildRequestHex    string
+	BuildStartedAt     time.Time
+	BuildRequestAction string
+	BuildRequestQoS    string
 }
 
 // newSessionSidecar materialises a sidecar from a per-conn session plus the
@@ -95,10 +101,10 @@ type sidecarIdentity struct {
 // again at close time would race the peer PID's exit (proc gone → nil names
 // → `peer_ancestry` serialises as `null`).
 //
-// identity is the (InvocationID, BuildRequestHex) tuple the sidecar is
-// attributed to: the reseat-flush path passes the pre-swap pair so the
-// accumulated state lands on the old row rather than the newly-derived one;
-// idle/terminal paths pass the current pair.
+// identity is the (InvocationID, BuildRequestHex, BuildRequestAction/QoS)
+// tuple the sidecar is attributed to: the reseat-flush path passes the
+// pre-swap pair so the accumulated state lands on the old row rather than the
+// newly-derived one; idle/terminal paths pass the current pair.
 func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt time.Time, terminal bool, identity sidecarIdentity) sessions.Sidecar {
 	stats := state.getStats().toPublic()
 
@@ -108,18 +114,20 @@ func newSessionSidecar(conn *connectionSession, state *sessionState, closedAt ti
 	}
 
 	return sessions.Sidecar{
-		SchemaVersion:   sessions.SidecarSchemaVersion,
-		Source:          "proxy",
-		SidecarUUID:     uuid.NewString(),
-		PeerPID:         conn.peerPID,
-		PeerAncestry:    toNames(conn.ancestryEntries),
-		AcceptedAt:      conn.acceptedAt.UTC(),
-		ClosedAt:        closedAt.UTC(),
-		BlobStats:       stats.BlobStats,
-		WrapperSession:  link,
-		DerivedDataPath: conn.derivedDataPath,
-		BuildRequestHex: identity.BuildRequestHex,
-		BuildStartedAt:  identity.BuildStartedAt.UTC(),
-		Terminal:        terminal,
+		SchemaVersion:      sessions.SidecarSchemaVersion,
+		Source:             "proxy",
+		SidecarUUID:        uuid.NewString(),
+		PeerPID:            conn.peerPID,
+		PeerAncestry:       toNames(conn.ancestryEntries),
+		AcceptedAt:         conn.acceptedAt.UTC(),
+		ClosedAt:           closedAt.UTC(),
+		BlobStats:          stats.BlobStats,
+		WrapperSession:     link,
+		DerivedDataPath:    conn.derivedDataPath,
+		BuildRequestHex:    identity.BuildRequestHex,
+		BuildStartedAt:     identity.BuildStartedAt.UTC(),
+		Terminal:           terminal,
+		BuildRequestAction: identity.BuildRequestAction,
+		BuildRequestQoS:    identity.BuildRequestQoS,
 	}
 }
