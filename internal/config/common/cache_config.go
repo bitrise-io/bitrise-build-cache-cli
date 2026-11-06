@@ -1,10 +1,7 @@
 package common
 
 import (
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
-	"hash"
 	"maps"
 	"os"
 	"runtime"
@@ -46,8 +43,6 @@ const (
 	CIProviderGitHubActions = "github-actions"
 	// CIProviderGitLabCI ...
 	CIProviderGitLabCI = "gitlab-ci"
-
-	RedactorSeed = "BitriseBuildCacheRedactor"
 )
 
 type CommandFunc func(string, ...string) (string, error)
@@ -143,7 +138,6 @@ func NewMetadata(envs map[string]string, username string, commandFunc CommandFun
 	provider := DetectCIProvider(envs, osProxy)
 
 	redactedEnvs := maps.Clone(envs)
-	redactBitriseEnvs(redactedEnvs)
 
 	if provider == CIProviderBitrise {
 		return CacheConfigMetadata{
@@ -172,71 +166,6 @@ func NewMetadata(envs map[string]string, username string, commandFunc CommandFun
 		ExternalBuildID:      externalBuildID,
 		ExternalWorkflowName: externalWorkflowName,
 	}
-}
-
-func hashKeyValue(hasher hash.Hash, key, value string) []byte {
-	hasher.Reset()
-	hasher.Write([]byte(RedactorSeed))
-	hasher.Write([]byte(key))
-	hasher.Write([]byte(value))
-	hasher.Write([]byte(RedactorSeed))
-
-	return hasher.Sum(nil)
-}
-
-// alwaysRedactKeys are env vars that carry a Bitrise credential regardless of
-// whether BITRISE_SECRET_ENV_KEY_LIST names them. Keep in sync with any new
-// token-bearing env var the CLI or step layer introduces.
-var alwaysRedactKeys = []string{ //nolint:gochecknoglobals
-	auth.EnvAuthToken,
-	auth.EnvJWT,
-	"BITRISE_API_TOKEN",
-	"BUILD_TRIGGER_TOKEN",
-}
-
-// tokenValuePrefixes are value prefixes that identify a Bitrise credential —
-// used as a safety net so a value never surfaces cleartext even if its env-var
-// key isn't in the explicit lists above.
-var tokenValuePrefixes = []string{"bitpat_", "bitwat_"} //nolint:gochecknoglobals
-
-func redactBitriseEnvs(envs map[string]string) {
-	hasher := sha256.New()
-	redact := func(key, value string) {
-		envs[key] = fmt.Sprintf("<sha256@%x>", hashKeyValue(hasher, key, value)[:4])
-	}
-
-	secretKeys := envs["BITRISE_SECRET_ENV_KEY_LIST"]
-	for key := range strings.SplitSeq(secretKeys, ",") {
-		if key == "" {
-			continue
-		}
-		if envValue, ok := envs[key]; ok {
-			redact(key, envValue)
-		}
-	}
-
-	for _, key := range alwaysRedactKeys {
-		if envValue, ok := envs[key]; ok {
-			redact(key, envValue)
-		}
-	}
-
-	for key, value := range envs {
-		if !hasTokenPrefix(value) {
-			continue
-		}
-		redact(key, value)
-	}
-}
-
-func hasTokenPrefix(value string) bool {
-	for _, p := range tokenValuePrefixes {
-		if strings.HasPrefix(value, p) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func generateGitMetadata(logger log.Logger, commandFunc CommandFunc, envs map[string]string, osProxy utils.OsProxy) GitMetadata {

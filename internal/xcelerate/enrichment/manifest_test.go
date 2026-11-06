@@ -95,7 +95,7 @@ func TestGroupManifestEntries_SingleEntry(t *testing.T) {
 	assert.Equal(t, "S", groups[0].SchemeName())
 	assert.Equal(t, 10*time.Second, groups[0].Duration())
 	assert.True(t, groups[0].Success())
-	assert.Equal(t, "build S", groups[0].Command())
+	assert.Equal(t, "build [S]", groups[0].Command())
 	assert.Equal(t, "Build S", groups[0].FullCommand())
 }
 
@@ -113,8 +113,8 @@ func TestGroupManifestEntries_MultiEntrySameSchemeWithinGap(t *testing.T) {
 	assert.Equal(t, base, groups[0].Start())
 	assert.Equal(t, base.Add(55*time.Second), groups[0].Stop())
 	assert.Equal(t, 55*time.Second, groups[0].Duration())
-	assert.Equal(t, "test S", groups[0].Command(), "Test outranks Build as primary")
-	assert.Equal(t, "Test S", groups[0].FullCommand())
+	assert.Equal(t, "build [S]", groups[0].Command(), "Build outranks Test as primary")
+	assert.Equal(t, "Build S", groups[0].FullCommand())
 	assert.True(t, groups[0].Success())
 }
 
@@ -161,6 +161,22 @@ func TestGroupManifestEntries_MixedSuccessFailsGroup(t *testing.T) {
 	assert.False(t, groups[0].Success(), "group Success is AND across entries")
 }
 
+// build-for-testing + test share a scheme and cluster into one group. The
+// test-without-building log always reports hitRate=0 (no compile-cache
+// events), so Primary() must pick the build entry for hit-rate attribution.
+func TestPrimary_PrefersBuildForTestingOverTest_InSameSchemeGroup(t *testing.T) {
+	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
+	entries := []enrichment.ManifestEntry{
+		{UUID: "build-for-testing", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(30 * time.Second)},
+		{UUID: "test-without-building", SchemeName: "S", Signature: "Test S", Status: "S", Start: base.Add(35 * time.Second), Stop: base.Add(60 * time.Second)},
+	}
+
+	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "build-for-testing", groups[0].Primary().UUID, "Build must outrank Test so hit rate reads from the build log")
+	assert.Equal(t, enrichment.CommandBuild, groups[0].Primary().Command())
+}
+
 func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {
 	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
@@ -170,7 +186,7 @@ func TestGroupManifestEntries_PrimaryOrdering(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "archive S", groups[0].Command(), "Archive outranks Build even when Build starts first")
+	assert.Equal(t, "archive [S]", groups[0].Command(), "Archive outranks Build even when Build starts first")
 }
 
 func TestGroupManifestEntries_SameRankBreaksByEarliestStart(t *testing.T) {
@@ -194,7 +210,7 @@ func TestGroupManifestEntries_HigherRankWinsOverUnknown(t *testing.T) {
 
 	groups := enrichment.GroupManifestEntries(entries, 60*time.Second)
 	require.Len(t, groups, 1)
-	assert.Equal(t, "build S", groups[0].Command())
+	assert.Equal(t, "build [S]", groups[0].Command())
 }
 
 // Pins the wide-span trade-off documented on ManifestEntryGroup so nobody
@@ -229,8 +245,60 @@ func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing
 	assert.Equal(t, "burst-only", id, "the sole pending record wins the overlap")
 }
 
+func TestManifestEntryGroup_ErrorMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		statuses []string
+		want     string
+	}{
+		{name: "empty", statuses: nil, want: ""},
+		{name: "all success", statuses: []string{"S", "S"}, want: ""},
+		{name: "single error", statuses: []string{"E"}, want: "xcodebuild failed (status=E)"},
+		{name: "mixed picks first failing entry", statuses: []string{"S", "E", "E"}, want: "xcodebuild failed (status=E)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var entries []enrichment.ManifestEntry
+			for _, s := range tc.statuses {
+				entries = append(entries, enrichment.ManifestEntry{Status: s})
+			}
+			group := enrichment.ManifestEntryGroup{Entries: entries}
+			assert.Equal(t, tc.want, group.ErrorMessage())
+		})
+	}
+}
+
 func TestLoadManifestGrouped_ThreeSchemesThreeGroups(t *testing.T) {
 	groups, err := enrichment.LoadManifestGrouped("testdata/LogStoreManifest.plist", 60*time.Second)
 	require.NoError(t, err)
 	require.Len(t, groups, 3)
+}
+
+// `\b`-anchored regex must not swallow MyProject / MyConfiguration as a trailing
+// substring of a word (e.g. "Build MyProject" or "Running MyConfiguration").
+func TestProject_IgnoresSubstringMatch(t *testing.T) {
+	for _, sig := range []string{
+		"Build workspace MyProject with scheme Foo",
+		"Building MyProject target with scheme Foo",
+	} {
+		assert.Empty(t, enrichment.ManifestEntry{Signature: sig}.Project(), sig)
+	}
+}
+
+func TestConfiguration_IgnoresSubstringMatch(t *testing.T) {
+	for _, sig := range []string{
+		"Running MyConfiguration with Foo",
+		"Build using TheirConfiguration setup",
+	} {
+		assert.Empty(t, enrichment.ManifestEntry{Signature: sig}.Configuration(), sig)
+	}
+}
+
+// Positive confirmation that the bare xcodebuild-signature shape still parses
+// (matches testdata/LogStoreManifest.plist "Cleaning project ... configuration Debug").
+func TestProjectAndConfiguration_ParseBareSignature(t *testing.T) {
+	m := enrichment.ManifestEntry{
+		Signature: "Cleaning project IceCubesApp with scheme Models and configuration Debug",
+	}
+	assert.Equal(t, "IceCubesApp", m.Project())
+	assert.Equal(t, "Debug", m.Configuration())
 }

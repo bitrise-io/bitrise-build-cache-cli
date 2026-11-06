@@ -22,6 +22,20 @@ func singleEntryGroup(e enrichment.ManifestEntry) enrichment.ManifestEntryGroup 
 	return enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{e}}
 }
 
+// stageOKLog writes an xcactivitylog with a parseable CompilationCacheMetrics
+// payload so the outcome-OK gate in Enrich() lets the test's PUT through.
+// Returns (manifestPath, logFileName) to plug into the ManifestEntry.
+func stageOKLog(t *testing.T) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	manifestDir := filepath.Join(dir, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(manifestDir, 0o755))
+	logName := "AAAA-BBBB.xcactivitylog"
+	writeLog(t, manifestDir, logName, []byte("note: 7 hits / 10 cacheable tasks (70%)\n"))
+
+	return filepath.Join(manifestDir, "LogStoreManifest.plist"), logName
+}
+
 func TestEnricher_MatchedPendingSkipsPUTAndPrunesRecord(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
@@ -49,7 +63,7 @@ func TestEnricher_MatchedPendingSkipsPUTAndPrunesRecord(t *testing.T) {
 		XcodeBuildNumber: "16C5032a",
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		UUID:       "manifest-uuid",
 		Signature:  "Build MyScheme",
 		SchemeName: "MyScheme",
@@ -80,14 +94,16 @@ func TestEnricher_NoMatchMintsFreshID(t *testing.T) {
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
+	manifestPath, logName := stageOKLog(t)
 	entry := enrichment.ManifestEntry{
 		UUID:      "orphan",
 		Signature: "Archive MyScheme",
+		FileName:  logName,
 		Status:    "E",
 		Start:     time.Now(),
 		Stop:      time.Now().Add(3 * time.Second),
 	}
-	e.Enrich(singleEntryGroup(entry))
+	e.Enrich(manifestPath, singleEntryGroup(entry))
 
 	assert.NotEmpty(t, captured.InvocationID)
 	assert.False(t, captured.Success)
@@ -116,7 +132,7 @@ func TestEnricher_CommandUnknown_SkipsPUT(t *testing.T) {
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
 	for _, sig := range []string{"Resolve Packages", "Update Signing", "Sync Localizations"} {
-		e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+		e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 			UUID:      "side-effect-" + sig,
 			Signature: sig,
 			Status:    "S",
@@ -157,8 +173,10 @@ func TestEnricher_MetadataForwarded(t *testing.T) {
 		Client: mock,
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
+		FileName:  logName,
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
 	}))
@@ -184,8 +202,10 @@ func TestEnricher_UpdatesHealth_OnSuccess(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
+		FileName:  logName,
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
@@ -215,8 +235,10 @@ func TestEnricher_UpdatesHealth_OnPutFailure(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
+		FileName:  logName,
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
@@ -244,9 +266,11 @@ func TestEnricher_PutFailure_OrphanCreatesFreshRecord(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		UUID:      "orphan",
 		Signature: "Archive S",
+		FileName:  logName,
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
@@ -273,8 +297,10 @@ func TestEnricher_UnmatchedMintsAndPUTs(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
+		FileName:  logName,
 		Start:     time.Now(),
 		Stop:      time.Now().Add(time.Second),
 	}))
@@ -304,7 +330,7 @@ func TestEnricher_MatchedSkip_DoesNotTickHealth(t *testing.T) {
 		Now:    func() time.Time { return base },
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
 		Status:    "S",
 		Start:     base.Add(2 * time.Second),
@@ -339,8 +365,10 @@ func TestEnricher_UnmatchedSuccess_DoesNotTickLastMatched(t *testing.T) {
 		Now:    func() time.Time { return now },
 	}
 
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Archive S",
+		FileName:  logName,
 		Start:     now,
 		Stop:      now.Add(time.Second),
 	}))
@@ -367,8 +395,10 @@ func TestEnricher_OrphanDurationIsFromManifest(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(singleEntryGroup(enrichment.ManifestEntry{
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
 		Signature: "Build S",
+		FileName:  logName,
 		Status:    "S",
 		Start:     base.Add(1 * time.Second),
 		Stop:      base.Add(43 * time.Second),
@@ -394,17 +424,46 @@ func TestEnricher_MultiEntryGroup_AggregatesSpan(t *testing.T) {
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
 
+	manifestPath, logName := stageOKLog(t)
 	group := enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{
-		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
-		{UUID: "u2", SchemeName: "S", Signature: "Test S", Status: "S", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
+		{UUID: "u1", SchemeName: "S", Signature: "Build S", FileName: logName, Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
+		{UUID: "u2", SchemeName: "S", Signature: "Test S", FileName: logName, Status: "S", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
 	}}
-	e.Enrich(group)
+	e.Enrich(manifestPath, group)
 
-	assert.Equal(t, "test S", captured.Command, "aggregate command uses the primary (test > build) plus scheme")
-	assert.Equal(t, "Test S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
+	assert.Equal(t, "build [S]", captured.Command, "aggregate command uses the primary (build > test) plus scheme")
+	assert.Equal(t, "Build S", captured.FullCommand, "aggregate FullCommand is the primary's signature")
 	assert.Equal(t, int64(45_000), captured.DurationMs, "aggregate duration = max(Stop) − min(Start)")
 	assert.True(t, captured.Success)
 	assert.Equal(t, base, captured.InvocationDate.UTC(), "aggregate InvocationDate = min(Start)")
+}
+
+func TestEnricher_WrapperlessFailurePopulatesSyntheticError(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Store: store, Client: mock}
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "wrapperless-failed",
+		Signature: "Build S",
+		FileName:  logName,
+		Status:    "E",
+		Start:     time.Now(),
+		Stop:      time.Now().Add(time.Second),
+	}))
+
+	assert.False(t, captured.Success)
+	assert.Equal(t, "xcodebuild failed (status=E)", captured.Error,
+		"wrapperless PUT must carry a synthetic Error so BE rows surface failure signal")
 }
 
 func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
@@ -428,7 +487,7 @@ func TestEnricher_MultiEntryGroup_MixedSuccessAggregatesFalse(t *testing.T) {
 		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(10 * time.Second)},
 		{UUID: "u2", SchemeName: "S", Signature: "Test S", Status: "E", Start: base.Add(15 * time.Second), Stop: base.Add(45 * time.Second)},
 	}}
-	e.Enrich(group)
+	e.Enrich("", group)
 
 	assert.False(t, captured.Success, "any failed entry fails the aggregate")
 }
@@ -447,7 +506,7 @@ func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	}
 
 	e := &enrichment.Enricher{Store: store, Client: mock}
-	e.Enrich(enrichment.ManifestEntryGroup{})
+	e.Enrich("", enrichment.ManifestEntryGroup{})
 
 	assert.Zero(t, puts)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -64,8 +65,41 @@ func (m ManifestEntry) Command() Command {
 // requiring "S" mislabelled every warning-carrying build as failed.
 const manifestStatusError = "E"
 
+//nolint:gochecknoglobals
+var (
+	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
+	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
+)
+
+// Configuration parses the configuration name out of Xcode's Signature string.
+func (m ManifestEntry) Configuration() string {
+	if match := configurationFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
+		return match[1]
+	}
+
+	return ""
+}
+
+// Project parses the project name out of Xcode's Signature string.
+func (m ManifestEntry) Project() string {
+	if match := projectFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
+		return match[1]
+	}
+
+	return ""
+}
+
 func (m ManifestEntry) Success() bool {
 	return m.Status != manifestStatusError
+}
+
+// ErrorMessage synthesizes a failure string — manifest has no richer payload.
+func (m ManifestEntry) ErrorMessage() string {
+	if m.Success() {
+		return ""
+	}
+
+	return "xcodebuild failed (status=" + m.Status + ")"
 }
 
 // WalkManifests expands each glob against homeDir, loads every matched
@@ -97,9 +131,12 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 }
 
 // ManifestEntryGroup is a set of ManifestEntry rows from the same xcodebuild
-// invocation. Grouping key is manifest-path + scheme + time-gap cluster; group
-// aggregation lets the watcher emit one PUT per invocation instead of one per
-// entry.
+// invocation and the same LogStoreManifest.plist. Grouping key is scheme +
+// time-gap cluster; group aggregation lets the watcher emit one PUT per
+// invocation instead of one per entry.
+//
+// Invariant (relied on by the enricher's sibling-log resolve): a group never
+// mixes entries from different manifests.
 //
 // Two known aggregation trade-offs:
 //   - Cross-manifest fusion (Logs/Build/... + Logs/Test/...) is not attempted:
@@ -177,6 +214,18 @@ func (g ManifestEntryGroup) Duration() time.Duration {
 	return stop.Sub(start)
 }
 
+// ErrorMessage returns the first non-empty entry message so a mixed-status
+// group surfaces failure signal while mirroring Success()'s AND semantics.
+func (g ManifestEntryGroup) ErrorMessage() string {
+	for _, e := range g.Entries {
+		if msg := e.ErrorMessage(); msg != "" {
+			return msg
+		}
+	}
+
+	return ""
+}
+
 func (g ManifestEntryGroup) Success() bool {
 	if len(g.Entries) == 0 {
 		return false
@@ -191,8 +240,13 @@ func (g ManifestEntryGroup) Success() bool {
 	return true
 }
 
-// Primary picks the outermost entry by command rank (test > archive > build >
+// Primary picks the outermost entry by command rank (archive > build > test >
 // unknown). Ties are broken by earliest Start.
+//
+// Build outranks Test because build-for-testing and test share a scheme and
+// cluster into one group, and the test-without-building log never carries
+// compile-cache events — reading hit rate off the test entry pins the group
+// at 0 even when build-for-testing hit the cache.
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
@@ -200,11 +254,11 @@ func (g ManifestEntryGroup) Primary() ManifestEntry {
 
 	rank := func(c Command) int {
 		switch c {
-		case CommandTest:
-			return 3
 		case CommandArchive:
-			return 2
+			return 3
 		case CommandBuild:
+			return 2
+		case CommandTest:
 			return 1
 		case CommandUnknown:
 			return 0
@@ -234,17 +288,49 @@ func (g ManifestEntryGroup) Command() string {
 		return ""
 	}
 
-	if p.SchemeName == "" {
+	parts := make([]string, 0, 2)
+	if p.SchemeName != "" {
+		parts = append(parts, p.SchemeName)
+	}
+
+	if cfg := p.Configuration(); cfg != "" {
+		parts = append(parts, cfg)
+	}
+
+	if len(parts) == 0 {
 		return string(p.Command())
 	}
 
-	return string(p.Command()) + " " + p.SchemeName
+	return string(p.Command()) + " [" + strings.Join(parts, " / ") + "]"
 }
 
 func (g ManifestEntryGroup) FullCommand() string {
-	return g.Primary().Signature
+	p := g.Primary()
+	proj := p.Project()
+	cfg := p.Configuration()
+
+	if proj == "" && cfg == "" {
+		return p.Signature
+	}
+
+	parts := make([]string, 0, 3)
+	if proj != "" {
+		parts = append(parts, "-project "+proj)
+	}
+
+	if p.SchemeName != "" {
+		parts = append(parts, "-scheme "+p.SchemeName)
+	}
+
+	if cfg != "" {
+		parts = append(parts, "-configuration "+cfg)
+	}
+
+	return strings.Join(parts, " ")
 }
 
+// GroupManifestEntries expects entries from a single manifest — see the
+// ManifestEntryGroup invariant.
 func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil

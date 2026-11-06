@@ -1,7 +1,12 @@
 package enrichment
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -9,7 +14,9 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg enrichment_test . InvocationPutter
@@ -28,6 +35,7 @@ type Enricher struct {
 	Logger           log.Logger
 	Health           *HealthWriter
 	Now              func() time.Time
+	XcresultParser   xcresult.Parser
 }
 
 func (e *Enricher) now() time.Time {
@@ -38,7 +46,9 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-func (e *Enricher) Enrich(group ManifestEntryGroup) {
+// Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
+// xcactivitylog read used to populate the wrapperless hit rate.
+func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger := logOr(e.Logger)
 
 	if len(group.Entries) == 0 {
@@ -76,7 +86,19 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 		return
 	}
 
+	hitRate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
+	if outcome != xcactivitylog.OutcomeOK {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v (uuids=%v)", group.SchemeName(), outcome, group.UUIDs())
+
+		return
+	}
+
 	invocationID := uuid.NewString()
+
+	var runErr error
+	if !group.Success() {
+		runErr = errors.New(group.ErrorMessage())
+	}
 
 	inv := analytics.NewInvocation(analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
@@ -85,16 +107,20 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 		Command:          command,
 		FullCommand:      group.FullCommand(),
 		Success:          group.Success(),
+		Error:            runErr,
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
+		HitRate:          hitRate,
 	}, e.Auth, e.Metadata)
+
+	e.attachXcresultSummary(manifestPath, group, inv)
 
 	TickAttempt(e.Health, e.Logger, e.now())
 
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		e.recordOrphanFailure(invocationID, inv, err)
+		_ = e.recordWrapperlessFailure(invocationID, inv, err)
 
 		return
 	}
@@ -103,7 +129,7 @@ func (e *Enricher) Enrich(group ManifestEntryGroup) {
 	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
-	logger.Infof("Enriched invocation PUT %s (orphan scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
+	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
@@ -117,9 +143,9 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
-func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invocation, putErr error) {
+func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
-		return
+		return false
 	}
 
 	logger := logOr(e.Logger)
@@ -128,7 +154,7 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	if err != nil {
 		logger.Warnf("Failed to marshal enriched invocation %s for retry: %s", invocationID, err)
 
-		return
+		return false
 	}
 
 	now := e.now()
@@ -142,5 +168,64 @@ func (e *Enricher) recordOrphanFailure(invocationID string, inv *analytics.Invoc
 	}
 	if err := e.Store.Append(rec); err != nil {
 		logger.Warnf("Failed to append orphan retry record %s: %s", invocationID, err)
+
+		return false
 	}
+
+	return true
+}
+
+// attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
+// Xcode writes next to the activity log. Silent no-op when parser is unset,
+// bundle is absent, or the summary is empty.
+func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntryGroup, inv *analytics.Invocation) {
+	if e.XcresultParser == nil {
+		return
+	}
+
+	bundlePath := xcresultBundlePath(manifestPath, group)
+	if bundlePath == "" {
+		return
+	}
+	if _, err := os.Stat(bundlePath); err != nil {
+		return
+	}
+
+	summary := e.XcresultParser.Parse(context.Background(), bundlePath)
+	if len(summary.Targets) == 0 && len(summary.Failures) == 0 {
+		return
+	}
+
+	for _, t := range summary.Targets {
+		inv.Targets = append(inv.Targets, analytics.TargetSummary{
+			Name:            t.Name,
+			BuildDurationMs: t.BuildDurationMs,
+		})
+	}
+	for _, f := range summary.Failures {
+		inv.Failures = append(inv.Failures, analytics.FailureSummary{
+			TargetName: f.TargetName,
+			Message:    f.Message,
+		})
+	}
+
+	logOr(e.Logger).Debugf("Attached xcresult summary to invocation %s (targets=%d, failures=%d)", inv.InvocationID, len(inv.Targets), len(inv.Failures))
+}
+
+// xcresultBundlePath derives the sibling xcresult bundle path from the manifest
+// group's primary activity-log entry: same directory as the manifest, same
+// basename as the .xcactivitylog with the extension swapped for .xcresult.
+func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
+	if manifestPath == "" {
+		return ""
+	}
+
+	primary := group.Primary()
+	if primary.FileName == "" {
+		return ""
+	}
+
+	base := strings.TrimSuffix(primary.FileName, filepath.Ext(primary.FileName))
+
+	return filepath.Join(filepath.Dir(manifestPath), base+".xcresult")
 }
