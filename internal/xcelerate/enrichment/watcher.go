@@ -32,10 +32,6 @@ type Watcher struct {
 	// behavior and is still what tests use unless they set the field.
 	HandledStore *HandledManifestStore
 
-	// PayloadStore is kept for one release so the proxy wiring (commit 8 drops
-	// it) keeps compiling across commits. Watcher does not read it directly.
-	PayloadStore *PayloadStore
-
 	// CrashFallbackChannel feeds the PayloadStore's AfterFunc output back into
 	// the scan loop so a timer fire does not race scanMu. nil disables draining;
 	// the default-constructed Watcher behaves identically to the pre-ledger shape.

@@ -360,7 +360,6 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 		Handle:               enricher.Enrich,
 		Logger:               logger,
 		HandledStore:         b.handledManifests,
-		PayloadStore:         b.payloadStore,
 		CrashFallbackChannel: b.crashFallbackChannel,
 		CrashFallback:        enricher.EmitCrashFallback,
 		SessionsDir:          b.sessionsDir,
