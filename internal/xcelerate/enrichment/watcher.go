@@ -405,12 +405,17 @@ func cachedMetricsLookup(cache map[string]xcactivitylog.Metrics, manifestPath st
 // shutdown sweep so a sidecar that just closed still lands before exit.
 //
 // Two emission shapes:
-//   - Hex-match: the sidecar's build-request hex matches a manifest emission
-//     already recorded this retention window. Clone that manifest group,
-//     attach the sidecar blob stats, PUT under the manifest's UUID so the BE
-//     overwrite carries a superset of the manifest row.
+//   - Boundary-bridge: the sidecar's time window lands inside a Build boundary
+//     recorded in a reachable Logs/Build/LogStoreManifest.plist (PR596 S7).
+//     Clone that manifest group, attach the sidecar blob stats, PUT under the
+//     boundary's UniqueIdentifier so the BE overwrite carries a superset of
+//     the manifest row. Attributes dark-build CAS traffic and indexer activity
+//     that landed between master start and (master stop + grace) back to the
+//     master Build entry's UUID instead of minting a parallel orphan row.
 //   - No match: fall through to a slim SyntheticManifestGroup under the
-//     proxy-derived InvocationID (separate BE row).
+//     proxy-derived InvocationID (separate BE row). Applies when no plist
+//     ever landed (CLI xcodebuild with no DerivedData) or the sidecar lands
+//     outside every known Build boundary's window+grace.
 //
 // Sidecars left on disk at this point are ones the manifest-driven Enrich path
 // did not consume via SidecarReader.Lookup (consumed sidecars are unlinked
@@ -443,7 +448,7 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		if w.tryHexBridgeClone(group, invocationID, logger) {
+		if w.tryBoundaryBridgeClone(group, invocationID, logger) {
 			continue
 		}
 
@@ -471,82 +476,108 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 	}
 }
 
-// tryHexBridgeClone dispatches a manifest-UUID-anchored clone when the
-// sidecar's build-request hex matches a recent manifest emission AND that
-// manifest UUID has not yet been PUT. Returns true when a clone was
-// dispatched (caller must continue). Returns false when no match, or when
-// the match's manifest UUID is already in recentEmissions — in which case
-// the caller falls through to the slim pseudo-group path so residual
-// sidecars land under their proxy-derived InvocationID as post-build
-// activity, rather than clobbering Path A's blob stats under BE last-write-wins.
-func (w *Watcher) tryHexBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
-	if group.BuildRequestHex == "" {
+// tryBoundaryBridgeClone dispatches a manifest-UUID-anchored clone when the
+// orphan sidecar's time window overlaps a Build boundary carried by one of
+// the DerivedData paths the sidecar itself recorded (PR596 S7). Returns true
+// when a clone was dispatched (caller must continue). Returns false when no
+// boundary encloses the sidecar, or when the enclosing boundary's UUID has
+// already been PUT this retention window — in which case the caller falls
+// through to the slim pseudo-group path so residual sidecars land under their
+// proxy-derived InvocationID as post-build activity, rather than clobbering
+// Path A's blob stats under BE last-write-wins.
+//
+// Known gap: the clone substitutes the orphan's blob snapshot verbatim — it
+// does NOT sum with the master's own blob via MergeDirectionSnapshots. Fine
+// on the dominant observed case (main build does 0 CAS while dark build does
+// all of it) but understates on warm cached rebuilds where both carry traffic.
+// Follow-up ticket should persist the master's blob in emissionRecord and
+// merge pairwise here.
+func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
+	if len(group.DerivedDataPaths) == 0 {
 		return false
 	}
 
-	emission, ok := w.findEmissionByBuildRequestHex(group.BuildRequestHex, group.Start)
+	// Attribution anchor: BuildStartedAt is the earliest signal the proxy saw
+	// the build action begin; falls back to AcceptedAt via SidecarGroup.Start.
+	// We use the group's Start so the attribution window matches the plist's
+	// own recording window — a sidecar that started before master stop but
+	// flushed after it still attributes.
+	at := group.Start
+	if at.IsZero() {
+		return false
+	}
+
+	enclosing, boundaryDD, ok := w.findEnclosingBuildBoundary(group.DerivedDataPaths, at, logger)
 	if !ok {
 		return false
 	}
 
-	manifestID := emission.group.ManifestUUID()
-	if _, alreadyPut := w.recentEmissions[manifestID]; alreadyPut {
-		logger.Debugf("Watcher: hex-bridge skipped — manifest UUID %s already PUT; routing residual sidecar to slim pseudo-group path", manifestID)
+	emission, hasEmission := w.recentEmissions[enclosing.UniqueIdentifier]
+	if !hasEmission {
+		// The master's plist entry exists but hasn't been PUT yet this scan.
+		// Letting the manifest path win preserves the "manifest is authoritative"
+		// ordering — the sidecar will bridge on the next tick once the master
+		// emission is recorded.
+		logger.Debugf("Watcher: boundary-bridge deferred — boundary UUID %s found in %s but not yet PUT", enclosing.UniqueIdentifier, boundaryDD)
 
 		return false
 	}
 
 	clone := CloneManifestGroupWithSidecar(emission.group, group.Blob, group.Paths)
-	logger.Debugf("Watcher: hex-bridged pseudo-group — sidecar hex %s matched manifest UUID %s (InvocationID %s)", group.BuildRequestHex, manifestID, invocationID)
+	logger.Debugf("Watcher: boundary-bridged pseudo-group — sidecar at=%s matched master UUID %s via %s (InvocationID %s)", at.Format(time.RFC3339), enclosing.UniqueIdentifier, boundaryDD, invocationID)
 	if w.Handle != nil {
 		w.Handle("", clone)
 	}
 
 	// Residual sidecars sharing this proxy-side InvocationID must skip the slim pseudo-group path.
 	if w.recentEmissions != nil {
-		w.recentEmissions[invocationID] = emissionRecord{group: emission.group, emittedAt: w.now(), BuildDescriptionHash: group.BuildRequestHex}
+		w.recentEmissions[invocationID] = emissionRecord{group: emission.group, emittedAt: w.now(), BuildDescriptionHash: emission.BuildDescriptionHash}
 	}
 
 	return true
 }
 
-// findEmissionByBuildRequestHex returns the recent emission whose stored
-// build-description hash matches hex exactly. When multiple emissions share
-// the hex (incremental rebuilds reusing the same build-description), the one
-// whose group Start is closest to sidecarAcceptedAt wins — breaks ties by
-// temporal proximity so an index-pass reusing a hex does not steal a
-// user-build's hex.
-func (w *Watcher) findEmissionByBuildRequestHex(hex string, sidecarAcceptedAt time.Time) (emissionRecord, bool) {
-	if hex == "" || w.recentEmissions == nil {
-		return emissionRecord{}, false
-	}
-
+// findEnclosingBuildBoundary walks each DerivedData root the sidecar carried
+// and reads its Logs/Build/LogStoreManifest.plist for Build-domain boundaries.
+// Returns the most-recent-preceding Build entry whose window encloses at
+// (within DefaultAttributionGrace of its Stop), alongside the DD path that
+// supplied it for log context. Returns ok=false when no DD root yields a plist
+// or no boundary in any plist encloses at.
+func (w *Watcher) findEnclosingBuildBoundary(ddPaths []string, at time.Time, logger log.Logger) (BuildBoundary, string, bool) {
 	var (
-		best       emissionRecord
-		bestDelta  time.Duration = -1
-		foundMatch bool
+		best     BuildBoundary
+		bestDD   string
+		found    bool
+		hadPlist bool
 	)
 
-	hashes := []string{hex}
-	for _, rec := range w.recentEmissions {
-		if !hexMatches(rec.BuildDescriptionHash, hashes) {
+	for _, dd := range ddPaths {
+		plistPath := filepath.Join(dd, "Logs", "Build", "LogStoreManifest.plist")
+		boundaries, err := ReadBuildBoundaries(plistPath)
+		if err != nil {
+			logger.Debugf("Watcher: boundary read %s failed: %s", plistPath, err)
+
+			continue
+		}
+		hadPlist = true
+
+		boundary, ok := EnclosingBuildBoundary(boundaries, at, DefaultAttributionGrace)
+		if !ok {
 			continue
 		}
 
-		start := rec.group.Start()
-		delta := sidecarAcceptedAt.Sub(start)
-		if delta < 0 {
-			delta = -delta
-		}
-
-		if !foundMatch || delta < bestDelta {
-			best = rec
-			bestDelta = delta
-			foundMatch = true
+		if !found || boundary.Start.After(best.Start) {
+			best = boundary
+			bestDD = dd
+			found = true
 		}
 	}
 
-	return best, foundMatch
+	if !hadPlist {
+		return BuildBoundary{}, "", false
+	}
+
+	return best, bestDD, found
 }
 
 // logStalledIfSuspicious emits a once-per-minute diagnostic when a scan found

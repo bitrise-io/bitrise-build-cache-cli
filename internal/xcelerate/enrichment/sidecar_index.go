@@ -469,7 +469,26 @@ func (a *invocationAggregator) add(path string, s sessions.Sidecar) {
 		g.SidecarUUIDs = append(g.SidecarUUIDs, s.SidecarUUID)
 	}
 	g.Paths = append(g.Paths, path)
+	appendUniqueDDPath(&g, s.DerivedDataPath)
 	a.groups[invoID] = g
+}
+
+// appendUniqueDDPath keeps SidecarGroup.DerivedDataPaths deduped per-group so
+// the enricher's plist-boundary bridge (PR596 S7) can resolve each orphan
+// InvocationID back to the DD subtree whose Logs/Build/LogStoreManifest.plist
+// carries its enclosing master.
+func appendUniqueDDPath(g *SidecarGroup, dd string) {
+	if dd == "" {
+		return
+	}
+
+	for _, existing := range g.DerivedDataPaths {
+		if existing == dd {
+			return
+		}
+	}
+
+	g.DerivedDataPaths = append(g.DerivedDataPaths, dd)
 }
 
 func (a *invocationAggregator) updateEarliest(invoID string, s sessions.Sidecar) {

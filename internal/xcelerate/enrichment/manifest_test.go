@@ -220,12 +220,11 @@ func TestPrimary_HigherRankWinsOverUnknown(t *testing.T) {
 	assert.Equal(t, "build [S]", g.Command())
 }
 
-// Pins the wide-aggregate-span trade-off documented on ManifestEntryGroup so
-// nobody "fixes" the aggregation by narrowing the span later. A prep+real
-// Build pair within mergeMaxGap collapses into one group whose Start..Stop
-// spans both, and Correlate's overlap matcher will happily match a pending
-// record that only overlaps part of the window.
-func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing.T) {
+// PR596 S7 removed the adjacency merge, so prep + real with identical hex
+// now land as two independent BE rows — each entry stands on its own group.
+// Sub-activity attribution happens at the watcher's orphan-bridge path via
+// plist-boundary windows, not at grouping time.
+func TestGroupManifestEntries_PrepPlusRealBuild_Splits(t *testing.T) {
 	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
 		{UUID: "prep", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
@@ -235,26 +234,9 @@ func TestGroupCorrelationSpan_WideAggregateSpanCanFalseMatchCorrelate(t *testing
 	lookup := hashLookup(map[string]string{"prep": "abcd1234", "real": "abcd1234"})
 
 	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 1, "prep+real Build (same scheme/Command/hex, <3s apart) merge into one group")
-
-	group := groups[0]
-	assert.Equal(t, base, group.Start(), "aggregate Start is the earliest entry")
-	assert.Equal(t, base.Add(50*time.Second), group.Stop(), "aggregate Stop is the latest entry")
-
-	span := enrichment.GroupCorrelationSpan(group)
-	assert.Equal(t, base, span.Start, "correlation span is the aggregate min-Start")
-	assert.Equal(t, base.Add(50*time.Second), span.Stop, "correlation span is the aggregate max-Stop")
-
-	pending := []enrichment.PendingRecord{
-		{
-			InvocationID: "burst-only",
-			StartTime:    base,
-			Duration:     int64(30 * time.Second / time.Millisecond),
-		},
-	}
-	id, matched := enrichment.Correlate(span, pending)
-	assert.True(t, matched, "wide span overlaps the burst-only pending record")
-	assert.Equal(t, "burst-only", id, "the sole pending record wins the overlap")
+	require.Len(t, groups, 2, "canMerge removed in PR596 S7 — every manifest entry is its own group")
+	assert.Equal(t, []string{"prep"}, groups[0].UUIDs())
+	assert.Equal(t, []string{"real"}, groups[1].UUIDs())
 }
 
 func TestManifestEntryGroup_ErrorMessage(t *testing.T) {
@@ -508,10 +490,11 @@ func TestFullCommand_SchemeOnlyNoWorkspaceOrProject(t *testing.T) {
 		"a known action is enough to render the xcodebuild argv form even without workspace/project/configuration")
 }
 
-// A prep-phase Build and its real-Build companion share scheme + Command +
-// xcbuilddata hash and land within mergeMaxGap — the one case the merge rule
-// collapses into a single BE row.
-func TestGroupManifestEntries_PrepPlusRealBuildSameHexSubSecondGap_Merges(t *testing.T) {
+// PR596 S7 removed the adjacency merge. The prep + real pair that used to
+// collapse into one BE row now surfaces as two — the dark-build / sub-build
+// attribution shifted to the watcher's plist-boundary bridge, which runs at
+// orphan-sidecar time, not here.
+func TestGroupManifestEntries_PrepPlusRealBuildSameHexSubSecondGap_Splits(t *testing.T) {
 	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
 		{UUID: "prep", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(500 * time.Millisecond)},
@@ -521,8 +504,9 @@ func TestGroupManifestEntries_PrepPlusRealBuildSameHexSubSecondGap_Merges(t *tes
 	lookup := hashLookup(map[string]string{"prep": "abcd1234", "real": "abcd1234"})
 
 	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 1, "same scheme/Command/hex + sub-second gap must merge — prep-Build + real-Build is one BE row")
-	assert.ElementsMatch(t, []string{"prep", "real"}, groups[0].UUIDs())
+	require.Len(t, groups, 2, "canMerge removed in PR596 S7 — every manifest entry is its own group")
+	assert.Equal(t, []string{"prep"}, groups[0].UUIDs())
+	assert.Equal(t, []string{"real"}, groups[1].UUIDs())
 }
 
 // v7 fix: two ⌘Bs on the same xcbuilddata hash but >=3s apart no longer merge.

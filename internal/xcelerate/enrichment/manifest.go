@@ -146,24 +146,21 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 	}
 }
 
-// ManifestEntryGroup is a set of ManifestEntry rows from the same xcodebuild
-// invocation and the same LogStoreManifest.plist. Default is one entry per
-// group; a prep-phase xcactivitylog fuses with its real-build companion only
-// when they share scheme + Command + non-empty BuildDescriptionHash and land
-// within mergeMaxGap. Group aggregation lets the watcher emit one PUT per
-// invocation instead of one per entry.
+// ManifestEntryGroup is a single ManifestEntry row from a single
+// LogStoreManifest.plist — one group per entry, one BE row per user action
+// Xcode's Report Navigator surfaces. The prior adjacency-based fusion rule
+// (same scheme + Command + BuildDescriptionHash within mergeMaxGap) was
+// subsumed by PR596 S7's plist-boundary attribution: sub-activities (dark
+// build, indexer) attribute via Logs/Build/LogStoreManifest.plist windows in
+// the watcher's orphan-bridge path instead of fusing at grouping time.
 //
 // Invariant (relied on by the enricher's sibling-log resolve): a group never
 // mixes entries from different manifests.
 //
-// Two known aggregation trade-offs:
-//   - Cross-manifest fusion (Logs/Build/... + Logs/Test/...) is not attempted:
-//     those live under different Logs/<subdir>/LogStoreManifest.plist paths
-//     and are grouped independently.
-//   - Command() diverges from the wrapper's ShortCommand() — the wrapper
-//     renders "build [scheme / testPlan / config]" from argv, but the manifest
-//     carries only the scheme name, so wrapper-less analytics runs show a
-//     coarser command string.
+// Known aggregation trade-off: Command() diverges from the wrapper's
+// ShortCommand() — the wrapper renders "build [scheme / testPlan / config]"
+// from argv, but the manifest carries only the scheme name, so wrapper-less
+// analytics runs show a coarser command string.
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
 
@@ -518,33 +515,32 @@ func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snaps
 	}
 }
 
-// GroupOption configures GroupManifestEntries. Options are applied in order;
-// absent options preserve the pre-option behavior.
+// GroupOption configures GroupManifestEntries. Preserved as the extension
+// seam even though the body is currently a no-op: callers (the Watcher) still
+// pass WithMetricsLookup for hit-rate aggregation via Enricher.SetMetricsLookup,
+// and keeping the parameter avoids churning every call site each time the
+// grouping axis changes.
 type GroupOption func(*groupOptions)
 
 type groupOptions struct {
 	metricsLookup MetricsLookup
 }
 
-// WithMetricsLookup wires the per-entry BuildDescriptionHash source used by
-// the prep+real-build merge rule. Nil-tolerant: every entry stands on its own
-// when no lookup is wired (the Watcher installs one per-tick so a log is
-// gunzipped at most once per scan).
+// WithMetricsLookup wires the per-entry xcactivitylog metrics source. No
+// longer consulted at grouping time (PR596 S7 removed the prep+real-build
+// adjacency merge). Kept because the Enricher's hit-rate aggregation reads
+// through the same seam: WithMetricsLookup → SetMetricsLookup, and ripping it
+// out here would force every call site to build the lookup twice.
 func WithMetricsLookup(fn MetricsLookup) GroupOption {
 	return func(o *groupOptions) {
 		o.metricsLookup = fn
 	}
 }
 
-// mergeMaxGap is the sub-second-ish window inside which a prep xcactivitylog
-// and its real-build companion may fuse into one group. Anything beyond this
-// is a user action in its own right and lands as its own BE row.
-const mergeMaxGap = 3 * time.Second
-
 // GroupManifestEntries expects entries from a single manifest — see the
-// ManifestEntryGroup invariant. Default is one entry per group; adjacent
-// entries (ordered by Start) merge iff they share SchemeName, Command, a
-// non-empty BuildDescriptionHash, and are less than mergeMaxGap apart.
+// ManifestEntryGroup invariant. Returns one group per entry, ordered by Start.
+// Sub-activity attribution (dark builds, indexers) happens at the watcher's
+// orphan-bridge path via plist-boundary windows, not here.
 func GroupManifestEntries(entries []ManifestEntry, opts ...GroupOption) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil
@@ -554,6 +550,7 @@ func GroupManifestEntries(entries []ManifestEntry, opts ...GroupOption) []Manife
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+	_ = cfg // reserved for future grouping axes; see GroupOption.
 
 	ordered := append([]ManifestEntry(nil), entries...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -561,47 +558,11 @@ func GroupManifestEntries(entries []ManifestEntry, opts ...GroupOption) []Manife
 	})
 
 	out := make([]ManifestEntryGroup, 0, len(ordered))
-	current := ManifestEntryGroup{Entries: []ManifestEntry{ordered[0]}}
-
-	for _, e := range ordered[1:] {
-		prev := current.Entries[len(current.Entries)-1]
-		if canMerge(prev, e, cfg.metricsLookup) {
-			current.Entries = append(current.Entries, e)
-
-			continue
-		}
-
-		out = append(out, current)
-		current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
+	for _, e := range ordered {
+		out = append(out, ManifestEntryGroup{Entries: []ManifestEntry{e}})
 	}
-
-	out = append(out, current)
 
 	return out
-}
-
-// canMerge returns true when candidate should fuse into prev's group:
-// same SchemeName, same Command, same non-empty BuildDescriptionHash, and
-// candidate.Start − prev.Stop < mergeMaxGap. A nil lookup — or either side
-// carrying an empty hash — keeps them apart.
-func canMerge(prev, candidate ManifestEntry, lookup MetricsLookup) bool {
-	if lookup == nil {
-		return false
-	}
-	if prev.SchemeName != candidate.SchemeName {
-		return false
-	}
-	if prev.Command() != candidate.Command() {
-		return false
-	}
-
-	prevHash := lookup(prev).BuildDescriptionHash
-	candHash := lookup(candidate).BuildDescriptionHash
-	if prevHash == "" || candHash == "" || prevHash != candHash {
-		return false
-	}
-
-	return candidate.Start.Sub(prev.Stop) < mergeMaxGap
 }
 
 func LoadManifestGrouped(path string, opts ...GroupOption) ([]ManifestEntryGroup, error) {

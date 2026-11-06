@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
 // nonEmptySidecarBlob returns a Snapshot with a single Download op so it
@@ -1608,12 +1609,11 @@ func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	assert.Equal(t, before, handled, "subsequent ScanOnce must not re-emit already-seen uuids")
 }
 
-// TestWatcher_groupFullySeen_PartialOverlapEmits exercises the warm
-// consecutive ⌘B case: canMerge fuses the previous (already-seen) build with
-// a new build whose Start lands within mergeMaxGap of the previous Stop. The
-// fused group's Primary UUID is the already-emitted one, but the second
-// UUID is fresh — any-UUID-unseen must bypass the gate so the warm re-⌘B
-// still emits as a BE row.
+// TestWatcher_groupFullySeen_PartialOverlapEmits guards the all-UUIDs-seen
+// invariant: should any future change reintroduce multi-entry groups, a
+// group whose entry set is partially unseen must still emit. The current
+// grouping rule (PR596 S7) is strictly one-entry-per-group, so this path
+// does not fire in production — kept as a regression guard.
 func TestWatcher_groupFullySeen_PartialOverlapEmits(t *testing.T) {
 	w := &Watcher{}
 	w.seen = map[string]struct{}{"u-prior": {}}
@@ -1623,11 +1623,37 @@ func TestWatcher_groupFullySeen_PartialOverlapEmits(t *testing.T) {
 		{UUID: "u-fresh", Signature: "Build SharedScheme", Start: fixtureNow.Add(2 * time.Second), Stop: fixtureNow.Add(3 * time.Second)},
 	}}
 
-	assert.False(t, w.groupFullySeen(fused), "fused warm-⌘B group with at least one unseen UUID must not be gated as already-seen")
+	assert.False(t, w.groupFullySeen(fused), "a hypothetical multi-entry group with at least one unseen UUID must not be gated as already-seen")
 
-	// Baseline: once both UUIDs are marked, the gate trips.
+	// Baseline: once every UUID is marked, the gate trips.
 	w.seen["u-fresh"] = struct{}{}
 	assert.True(t, w.groupFullySeen(fused), "once every UUID is seen the gate trips (second-tick replay is a no-op)")
+}
+
+// TestGroupManifestEntries_WarmConsecutiveCmdB_SplitsIntoDistinctGroups pins
+// the PR596 S7 fix for the warm consecutive ⌘B case: two builds landing
+// sub-second apart on the same scheme used to fuse via canMerge into one
+// group whose Primary UUID shadowed the second ⌘B's PUT. Removing canMerge
+// makes every plist entry stand as its own group — the warm re-⌘B naturally
+// surfaces as its own BE row without any gate bypass.
+func TestGroupManifestEntries_WarmConsecutiveCmdB_SplitsIntoDistinctGroups(t *testing.T) {
+	base := fixtureNow
+	entries := []ManifestEntry{
+		{UUID: "build1", SchemeName: "SharedScheme", Signature: "Build SharedScheme", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
+		{UUID: "build2", SchemeName: "SharedScheme", Signature: "Build SharedScheme", Status: "S", Start: base.Add(2 * time.Second), Stop: base.Add(3 * time.Second)},
+	}
+
+	// Supply a matching hash on both — pre-PR596-S7 this was the smoking gun
+	// for canMerge fusing them into one group. The lookup now rides along as
+	// a no-op (grouping no longer consults it).
+	lookup := func(e ManifestEntry) xcactivitylog.Metrics {
+		return xcactivitylog.Metrics{Outcome: xcactivitylog.OutcomeOK, BuildDescriptionHash: "abcd1234"}
+	}
+
+	groups := GroupManifestEntries(entries, WithMetricsLookup(lookup))
+	require.Len(t, groups, 2, "warm consecutive ⌘B must always surface as two independent BE rows")
+	assert.Equal(t, []string{"build1"}, groups[0].UUIDs())
+	assert.Equal(t, []string{"build2"}, groups[1].UUIDs())
 }
 
 // hasControllingStub is a SidecarReader whose Has response is driven by a
@@ -1788,15 +1814,66 @@ func TestWatcher_WrapperFlow_MatchProbeOwnsResolution_WhenSidecarReaderNil(t *te
 	assert.Contains(t, w.seen, uuid)
 }
 
-// TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup pins the
-// hex-bridge path: a sidecar's BuildRequestHex matches a recent manifest
-// emission's recorded hash, so the pseudo-group is cloned off the manifest
-// group and PUTs under the manifest's UUID with the sidecar blob stats
-// preattached.
-func TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup(t *testing.T) {
-	const hex = "ea6297e079ee1683905d008d83044b10"
-	const manifestUUID = "manifest-uuid-u1"
+// writeBuildBoundaryPlist drops a single Build-domain entry at
+// <dd>/Logs/Build/LogStoreManifest.plist so scanOrphanSidecars'
+// boundary-bridge can resolve orphan sidecars back to that master UUID.
+// cfStart/cfStop are the CFAbsoluteTime values the plist encodes (seconds
+// since 2001-01-01 UTC); callers derive these from the target wall-clock via
+// the reader's cfAbsoluteEpoch offset.
+func writeBuildBoundaryPlist(t *testing.T, dd, uuid, signature string, cfStart, cfStop float64) {
+	t.Helper()
+
+	buildLogsDir := filepath.Join(dd, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(buildLogsDir, 0o755))
+
+	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key><integer>11</integer>
+	<key>logs</key>
+	<dict>
+		<key>%s</key>
+		<dict>
+			<key>className</key><string>IDEActivityLogSection</string>
+			<key>domainType</key><string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>signature</key><string>%s</string>
+			<key>timeStartedRecording</key><real>%f</real>
+			<key>timeStoppedRecording</key><real>%f</real>
+			<key>uniqueIdentifier</key><string>%s</string>
+		</dict>
+	</dict>
+</dict>
+</plist>`, uuid, signature, cfStart, cfStop, uuid)
+
+	require.NoError(t, os.WriteFile(filepath.Join(buildLogsDir, "LogStoreManifest.plist"), []byte(body), 0o644))
+}
+
+// wallToCFAbs converts a wall-clock time.Time to the plist's CFAbsoluteTime
+// encoding. Needed so the test's enclosing-window check matches the
+// orphan-attribution wall clock.
+func wallToCFAbs(t time.Time) float64 {
+	const cfAbsoluteEpoch int64 = 978307200 // 2001-01-01 UTC
+
+	return float64(t.Unix()-cfAbsoluteEpoch) + float64(t.Nanosecond())/1e9
+}
+
+// TestWatcher_scanOrphanSidecars_BoundaryBridge_ClonesManifestGroup pins the
+// PR596 S7 attribution path: a sidecar lands inside a Build boundary's window
+// (dark build fires during master recording window), the sidecar's recorded
+// DerivedDataPath carries the plist, and a prior recentEmissions entry anchors
+// the master group. The pseudo-group clones off the master and PUTs under its
+// UniqueIdentifier with the sidecar blob stats preattached.
+func TestWatcher_scanOrphanSidecars_BoundaryBridge_ClonesManifestGroup(t *testing.T) {
+	dd := t.TempDir()
+	const masterUUID = "AAAA-BUILD-MASTER"
 	const proxyID = "proxy-derived-id"
+
+	masterStart := fixtureNow.Add(-5 * time.Minute)
+	masterStop := fixtureNow.Add(-3 * time.Minute)
+	sidecarStart := masterStart.Add(30 * time.Second) // dark build fires inside master's window
+
+	writeBuildBoundaryPlist(t, dd, masterUUID, "Build IceCubesApp", wallToCFAbs(masterStart), wallToCFAbs(masterStop))
 
 	sidecarBlob := &blobstats.Snapshot{}
 	sidecarBlob.Download.OpCount = 5
@@ -1804,12 +1881,12 @@ func TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup(t *testing.T) {
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
 		proxyID: {
-			Start:           fixtureNow.Add(-5 * time.Minute),
-			Stop:            fixtureNow.Add(-4 * time.Minute),
-			SidecarUUIDs:    []string{"sidecar-a"},
-			Paths:           []string{"/tmp/sidecar-a.json"},
-			Blob:            sidecarBlob,
-			BuildRequestHex: hex,
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(10 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-a"},
+			Paths:            []string{"/tmp/sidecar-a.json"},
+			Blob:             sidecarBlob,
+			DerivedDataPaths: []string{dd},
 		},
 	}}
 
@@ -1826,23 +1903,23 @@ func TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup(t *testing.T) {
 		handled = append(handled, g)
 	}
 
-	// Seed a recent manifest emission under manifestUUID with the matching hex.
-	manifestGroup := ManifestEntryGroup{
+	// Seed master emission matching the plist entry's UUID — the bridge keys on this.
+	masterGroup := ManifestEntryGroup{
 		Entries: []ManifestEntry{{
-			UUID:       manifestUUID,
-			Signature:  "Build S",
-			SchemeName: "S",
-			Start:      fixtureNow.Add(-6 * time.Minute),
-			Stop:       fixtureNow.Add(-5 * time.Minute),
+			UUID:       masterUUID,
+			Signature:  "Build IceCubesApp",
+			SchemeName: "IceCubesApp",
+			Start:      masterStart,
+			Stop:       masterStop,
 		}},
 	}
-	w.RecordEmittedInvocationID("manifest-id", hex, manifestGroup)
+	w.RecordEmittedInvocationID(masterUUID, "", masterGroup)
 
 	w.scanOrphanSidecars(false)
 
-	require.Len(t, handled, 1, "hex match must emit exactly one cloned group")
+	require.Len(t, handled, 1, "boundary-bridge must emit exactly one cloned group")
 	clone := handled[0]
-	assert.Equal(t, manifestUUID, clone.ManifestUUID(), "clone keeps manifest UUID so enricher PUTs under it")
+	assert.Equal(t, masterUUID, clone.ManifestUUID(), "clone keeps master UUID so enricher PUTs under it")
 
 	blob, paths, ok := clone.Preattached()
 	require.True(t, ok, "clone must carry a preattached sidecar payload")
@@ -1850,22 +1927,29 @@ func TestWatcher_scanOrphanSidecars_HexMatch_ClonesManifestGroup(t *testing.T) {
 	assert.Equal(t, []string{"/tmp/sidecar-a.json"}, paths, "preattached consumedPaths are the sidecar's own paths")
 }
 
-// TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow pins the safe
-// default: when the sidecar's hex does not match any recent manifest
-// emission, the pseudo-group falls through to the slim synthetic path under
-// the proxy-derived InvocationID — separate BE row, no clobber risk.
-func TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow(t *testing.T) {
-	const sidecarHex = "ea6297e079ee1683905d008d83044b10"
-	const manifestHex = "ffffffffffffffffffffffffffffffff"
+// TestWatcher_scanOrphanSidecars_BoundaryMiss_EmitsSeparateRow pins the safe
+// default: when the sidecar lands outside every Build boundary's window, the
+// pseudo-group falls through to the slim synthetic path under the proxy-derived
+// InvocationID — separate BE row, no clobber risk.
+func TestWatcher_scanOrphanSidecars_BoundaryMiss_EmitsSeparateRow(t *testing.T) {
+	dd := t.TempDir()
+	const masterUUID = "AAAA-BUILD-MASTER"
 	const proxyID = "proxy-derived-id"
+
+	masterStart := fixtureNow.Add(-10 * time.Minute)
+	masterStop := fixtureNow.Add(-9 * time.Minute)
+	// Sidecar lands LONG past master stop + grace — no enclosing boundary.
+	sidecarStart := fixtureNow.Add(-5 * time.Minute)
+
+	writeBuildBoundaryPlist(t, dd, masterUUID, "Build S", wallToCFAbs(masterStart), wallToCFAbs(masterStop))
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
 		proxyID: {
-			Start:           fixtureNow.Add(-5 * time.Minute),
-			Stop:            fixtureNow.Add(-4 * time.Minute),
-			SidecarUUIDs:    []string{"sidecar-b"},
-			BuildRequestHex: sidecarHex,
-			Blob:            nonEmptySidecarBlob(),
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(10 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-b"},
+			Blob:             nonEmptySidecarBlob(),
+			DerivedDataPaths: []string{dd},
 		},
 	}}
 
@@ -1882,83 +1966,37 @@ func TestWatcher_scanOrphanSidecars_HexMiss_EmitsSeparateRow(t *testing.T) {
 		handled = append(handled, g)
 	}
 
-	// Seed a recent emission with a DIFFERENT hex — no bridge.
-	manifestGroup := ManifestEntryGroup{
-		Entries: []ManifestEntry{{
-			UUID:      "manifest-uuid-other",
-			Signature: "Build S",
-			Start:     fixtureNow.Add(-6 * time.Minute),
-			Stop:      fixtureNow.Add(-5 * time.Minute),
-		}},
-	}
-	w.RecordEmittedInvocationID("manifest-id", manifestHex, manifestGroup)
-
 	w.scanOrphanSidecars(false)
 
-	require.Len(t, handled, 1, "hex mismatch must still emit — via the slim synthetic path")
+	require.Len(t, handled, 1, "boundary miss must still emit — via the slim synthetic path")
 	g := handled[0]
 	assert.True(t, strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix), "fallback is the slim synthetic pseudo-group")
 	_, _, preattached := g.Preattached()
 	assert.False(t, preattached, "slim fallback must NOT carry a preattached payload — SidecarReader.Lookup will supply it")
 }
 
-// TestWatcher_findEmissionByBuildRequestHex_MultipleMatches_PicksClosestByStart
-// pins the tie-breaker: when two emissions share the same hex (incremental
-// rebuilds reused the build-description), the one whose group Start is
-// closest to the sidecar's AcceptedAt wins — temporal proximity defeats a
-// stale emission.
-func TestWatcher_findEmissionByBuildRequestHex_MultipleMatches_PicksClosestByStart(t *testing.T) {
-	const hex = "ea6297e079ee1683905d008d83044b10"
-
-	w := &Watcher{Now: func() time.Time { return fixtureNow }}
-	w.recentEmissions = map[string]emissionRecord{}
-
-	farGroup := ManifestEntryGroup{
-		Entries: []ManifestEntry{{
-			UUID:  "manifest-far",
-			Start: fixtureNow.Add(-10 * time.Minute),
-			Stop:  fixtureNow.Add(-9 * time.Minute),
-		}},
-	}
-	nearGroup := ManifestEntryGroup{
-		Entries: []ManifestEntry{{
-			UUID:  "manifest-near",
-			Start: fixtureNow.Add(-2 * time.Minute),
-			Stop:  fixtureNow.Add(-1 * time.Minute),
-		}},
-	}
-
-	w.RecordEmittedInvocationID("id-far", hex, farGroup)
-	w.RecordEmittedInvocationID("id-near", hex, nearGroup)
-
-	sidecarAcceptedAt := fixtureNow.Add(-90 * time.Second)
-	rec, ok := w.findEmissionByBuildRequestHex(hex, sidecarAcceptedAt)
-	require.True(t, ok)
-	assert.Equal(t, "manifest-near", rec.group.ManifestUUID(), "nearer Start must win the tie-break")
-}
-
-// TestWatcher_scanOrphanSidecars_HexMatch_SkipsCloneWhenManifestAlreadyPut
-// pins the post-ladder-swap behavior: when the manifest path has already
-// PUT under ManifestUUID (OnEmit populated recentEmissions[ManifestUUID]),
-// scanOrphan must NOT re-PUT a clone — BE last-write-wins would clobber
-// Path A's blob stats. Residual sidecars fall through to the slim
-// pseudo-group path under their proxy-derived InvocationID instead.
-func TestWatcher_scanOrphanSidecars_HexMatch_SkipsCloneWhenManifestAlreadyPut(t *testing.T) {
-	const hex = "ea6297e079ee1683905d008d83044b10"
-	const manifestUUID = "manifest-uuid-u1"
+// TestWatcher_scanOrphanSidecars_BoundaryBridge_DefersWhenMasterNotYetEmitted
+// pins the ordering gate: the plist entry exists but the master group has not
+// yet been PUT via Enrich (no recentEmissions entry for its UniqueIdentifier).
+// The bridge defers rather than re-PUT a clone that would land before the
+// master — next scan tick picks it up after Enrich emits.
+func TestWatcher_scanOrphanSidecars_BoundaryBridge_DefersWhenMasterNotYetEmitted(t *testing.T) {
+	dd := t.TempDir()
+	const masterUUID = "AAAA-BUILD-MASTER"
 	const proxyID = "proxy-derived-id"
 
-	sidecarBlob := &blobstats.Snapshot{}
-	sidecarBlob.Download.OpCount = 5
+	masterStart := fixtureNow.Add(-5 * time.Minute)
+	masterStop := fixtureNow.Add(-3 * time.Minute)
+
+	writeBuildBoundaryPlist(t, dd, masterUUID, "Build S", wallToCFAbs(masterStart), wallToCFAbs(masterStop))
 
 	reader := &stubReader{groups: map[string]SidecarGroup{
 		proxyID: {
-			Start:           fixtureNow.Add(-5 * time.Minute),
-			Stop:            fixtureNow.Add(-4 * time.Minute),
-			SidecarUUIDs:    []string{"sidecar-residual"},
-			Paths:           []string{"/tmp/sidecar-residual.json"},
-			Blob:            sidecarBlob,
-			BuildRequestHex: hex,
+			Start:            masterStart.Add(30 * time.Second),
+			Stop:             masterStart.Add(45 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-c"},
+			Blob:             nonEmptySidecarBlob(),
+			DerivedDataPaths: []string{dd},
 		},
 	}}
 
@@ -1975,22 +2013,11 @@ func TestWatcher_scanOrphanSidecars_HexMatch_SkipsCloneWhenManifestAlreadyPut(t 
 		handled = append(handled, g)
 	}
 
-	manifestGroup := ManifestEntryGroup{
-		Entries: []ManifestEntry{{
-			UUID:       manifestUUID,
-			Signature:  "Build S",
-			SchemeName: "S",
-			Start:      fixtureNow.Add(-6 * time.Minute),
-			Stop:       fixtureNow.Add(-5 * time.Minute),
-		}},
-	}
-	// Post-ladder-swap: Enrich PUTs under ManifestUUID, OnEmit keys recentEmissions on ManifestUUID.
-	w.RecordEmittedInvocationID(manifestUUID, hex, manifestGroup)
-
+	// No RecordEmittedInvocationID — the master hasn't been PUT yet.
 	w.scanOrphanSidecars(false)
 
-	require.Len(t, handled, 1, "residual sidecar must fall through to the slim pseudo-group path, not re-PUT a clone")
-	got := handled[0]
-	assert.True(t, strings.HasPrefix(got.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix), "fallback must be slim synthetic, not a manifest clone")
-	assert.Empty(t, got.ManifestUUID(), "fallback must NOT carry the manifest UUID — that would re-PUT under same ID")
+	// Boundary deferral fell through to the slim pseudo-group path (manifest UUID absent → no clone).
+	require.Len(t, handled, 1, "deferred bridge falls through to the slim synthetic path, not a clone")
+	g := handled[0]
+	assert.True(t, strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix), "fallback is the slim synthetic pseudo-group when master emission not yet recorded")
 }
