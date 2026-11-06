@@ -201,6 +201,72 @@ func VisitURL(invocationID string) string {
 	return "https://app.bitrise.io/build-cache/invocations/xcode/" + invocationID
 }
 
+// EmitCrashFallback re-emits a PayloadStore record whose crash-fallback timer
+// fired. Ruleset §4: a crash must be reported, not silently dropped. Reads
+// the last-known merged payload from the ledger and PUTs it; a successful PUT
+// marks the record Emitted (cancels any future timer); a failed PUT leaves it
+// at PendingTerminal for the next scan. Silent no-op when any dependency
+// is nil or the record is already Emitted.
+func (e *Enricher) EmitCrashFallback(invocationID string) {
+	if e == nil || e.PayloadStore == nil || e.Client == nil || invocationID == "" {
+		return
+	}
+
+	logger := logOr(e.Logger)
+
+	records, err := e.PayloadStore.Load()
+	if err != nil {
+		logger.Debugf("crash-fallback load payload store for %s failed: %s", invocationID, err)
+
+		return
+	}
+
+	var rec PayloadRecord
+	found := false
+	for _, r := range records {
+		if r.InvocationID == invocationID {
+			rec = r
+			found = true
+
+			break
+		}
+	}
+
+	if !found {
+		logger.Debugf("crash-fallback: no payload record for %s — nothing to re-emit", invocationID)
+
+		return
+	}
+
+	if rec.Status == PayloadStatusEmitted {
+		return
+	}
+
+	inv := rec.Merged.ToInvocation(invocationID, e.Auth, e.Metadata, e.XcodeVersion, e.XcodeBuildNumber)
+
+	if err := e.Client.PutInvocation(inv); err != nil {
+		logger.Warnf("crash-fallback PUT %s failed: %s", invocationID, err)
+
+		return
+	}
+
+	if err := e.PayloadStore.Upsert(PayloadRecord{
+		InvocationID:  invocationID,
+		LastUpdatedAt: e.now(),
+		Status:        PayloadStatusEmitted,
+		Merged:        rec.Merged,
+	}); err != nil {
+		logger.Debugf("crash-fallback upsert Emitted for %s failed: %s", invocationID, err)
+	}
+
+	logger.Infof("Crash-fallback PUT %s (no terminal signal within window)", invocationID)
+	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
+
+	if e.OnEmit != nil {
+		e.OnEmit(invocationID)
+	}
+}
+
 // appendLocalLog surfaces the wrapperless row in `bitrise-build-cache invocations
 // list`. Failures are warn-only — the analytics PUT is already durable.
 func (e *Enricher) appendLocalLog(invocationID, command string, group ManifestEntryGroup, runStats analytics.InvocationRunStats, inv *analytics.Invocation) {

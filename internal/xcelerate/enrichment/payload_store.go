@@ -10,7 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 )
 
 // DefaultCrashFallbackTimeout bounds how long the single-ID pipeline waits
@@ -63,6 +66,46 @@ type PayloadRecord struct {
 	LastUpdatedAt time.Time     `json:"last_updated_at"`
 	Status        PayloadStatus `json:"status"`
 	Merged        MergedPayload `json:"merged"`
+}
+
+// ToInvocation rebuilds an analytics.Invocation from a MergedPayload keyed
+// under invocationID. Used by the crash-fallback re-emit path: when no
+// terminal plist lands inside CrashFallbackTimeout, the last-known merged
+// signal becomes the BE row. The returned run stats carry Success=false with
+// a "wrapperless_crash_fallback" error when the merged payload has no
+// positive success signal.
+func (p MergedPayload) ToInvocation(invocationID string, cred auth.Credential, md configcommon.CacheConfigMetadata, xcodeVersion, xcodeBuildNumber string) analytics.Invocation {
+	success := p.SuccessKnown && p.Success
+	errText := p.ErrorMessage
+	if !p.SuccessKnown {
+		errText = "wrapperless_crash_fallback"
+	}
+
+	duration := p.DurationMs
+	if duration == 0 && !p.Start.IsZero() && !p.Stop.IsZero() {
+		duration = p.Stop.Sub(p.Start).Milliseconds()
+	}
+
+	var runErr error
+	if errText != "" {
+		runErr = errors.New(errText)
+	}
+
+	runStats := analytics.InvocationRunStats{
+		InvocationDate:   p.Start,
+		InvocationID:     invocationID,
+		Duration:         duration,
+		Command:          p.Command,
+		FullCommand:      p.FullCommand,
+		Success:          success,
+		Error:            runErr,
+		XcodeVersion:     xcodeVersion,
+		XcodeBuildNumber: xcodeBuildNumber,
+		HitRate:          p.HitRate,
+		CacheBlobStats:   p.Blob,
+	}
+
+	return *analytics.NewInvocation(runStats, cred, md)
 }
 
 // PayloadStore is the NDJSON merge ledger the enricher upserts against on

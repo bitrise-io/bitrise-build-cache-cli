@@ -32,12 +32,19 @@ type Watcher struct {
 	// behavior and is still what tests use unless they set the field.
 	HandledStore *HandledManifestStore
 
-	// PayloadStore is the single-ID merge ledger the Enricher upserts against.
-	// CrashFallbackChannel feeds its AfterFunc output back into the scan loop
-	// so a timer fire does not race scanMu. nil disables the ledger; the
-	// default-constructed Watcher behaves identically to the pre-ledger shape.
-	PayloadStore         *PayloadStore
+	// PayloadStore is kept for one release so the proxy wiring (commit 8 drops
+	// it) keeps compiling across commits. Watcher does not read it directly.
+	PayloadStore *PayloadStore
+
+	// CrashFallbackChannel feeds the PayloadStore's AfterFunc output back into
+	// the scan loop so a timer fire does not race scanMu. nil disables draining;
+	// the default-constructed Watcher behaves identically to the pre-ledger shape.
 	CrashFallbackChannel <-chan string
+
+	// CrashFallback re-emits the InvocationID that the fallback timer surfaced.
+	// Wired to Enricher.EmitCrashFallback at construction. nil = log-only drain,
+	// used by tests that only care about the channel read side.
+	CrashFallback func(invocationID string)
 
 	// SidecarReader feeds two scan-tail paths: (a) per-scan DerivedDataPath
 	// hints turn each unique DD path into a <DD>/Logs/*/LogStoreManifest.plist
@@ -472,9 +479,10 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 }
 
 // drainCrashFallbackChannel non-blockingly reads every ripe InvocationID the
-// PayloadStore's crash-fallback AfterFunc queued since the last scan. Logging
-// only for now — commit 6 installs the channel plumbing; the follow-on
-// deletion commits wire a terminal re-emission path.
+// PayloadStore's crash-fallback AfterFunc queued since the last scan and
+// re-emits via CrashFallback (Enricher.EmitCrashFallback in production).
+// Runs under scanMu so the re-emit cannot race scanOrphanSidecars for the
+// same InvocationID.
 func (w *Watcher) drainCrashFallbackChannel(logger log.Logger) {
 	if w.CrashFallbackChannel == nil {
 		return
@@ -484,6 +492,9 @@ func (w *Watcher) drainCrashFallbackChannel(logger log.Logger) {
 		select {
 		case id := <-w.CrashFallbackChannel:
 			logger.Debugf("payload crash-fallback fired for %s (no terminal signal in window)", id)
+			if w.CrashFallback != nil {
+				w.CrashFallback(id)
+			}
 		default:
 			return
 		}
