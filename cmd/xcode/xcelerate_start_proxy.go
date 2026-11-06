@@ -41,8 +41,9 @@ const (
 
 	// crashFallbackChannelCapacity bounds the per-record fallback queue. One
 	// IDE Xcode session produces dozens of distinct proxy-IDs across a day;
-	// the drain runs on every tick, so overflow is harmless but spikes above
-	// this bound just log at Debug.
+	// the drain runs on every tick, so overflow is harmless. The AfterFunc
+	// logs at Debug when a drop happens so operators can tell "was the queue
+	// full when this record's fallback fired" without instrumenting the ledger.
 	crashFallbackChannelCapacity = 256
 )
 
@@ -301,6 +302,7 @@ func newAnalyticsBundle(
 			Path:                 pathResolver.PayloadStoreFile(),
 			CrashFallbackTimeout: enrichment.DefaultCrashFallbackTimeout,
 			CrashFallbackChannel: b.crashFallbackChannel,
+			Logger:               logger,
 		}
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home

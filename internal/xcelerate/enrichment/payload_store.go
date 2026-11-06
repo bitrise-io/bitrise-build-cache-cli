@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
@@ -134,6 +136,9 @@ type PayloadStore struct {
 	Path                 string
 	CrashFallbackTimeout time.Duration
 	CrashFallbackChannel chan<- string
+	// Logger surfaces crash-fallback channel-overflow drops at Debug. nil →
+	// silent drop. Only used from the AfterFunc default branch.
+	Logger log.Logger
 	// CompactThresholdBytes overrides defaultCompactThreshold; the ledger is
 	// rewritten to one line per InvocationID the next time Upsert finds the
 	// file at or above this size. Zero falls back to defaultCompactThreshold.
@@ -317,12 +322,16 @@ func (s *PayloadStore) manageCrashFallbackTimerLocked(rec PayloadRecord) {
 	}
 
 	id := rec.InvocationID
+	logger := s.Logger
 	s.timers[id] = time.AfterFunc(s.CrashFallbackTimeout, func() {
 		// AfterFunc must NOT take s.mu — it enqueues to the channel and the
 		// scan loop drains + re-emits under scanMu.
 		select {
 		case s.CrashFallbackChannel <- id:
 		default:
+			if logger != nil {
+				logger.Debugf("payload-store crash-fallback channel drop for %s (buffer full)", id)
+			}
 		}
 	})
 }
