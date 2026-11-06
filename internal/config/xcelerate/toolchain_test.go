@@ -31,7 +31,7 @@ func TestInstallXcodeToolchain_endToEnd(t *testing.T) {
 		UserHomeDirFunc: func() (string, error) { return home, nil },
 	}
 
-	installXcodeToolchain(log.NewLogger(), osProxy,
+	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy,
 		"/tmp/proxy.sock", fakeDeveloperDir, "/anchor/plugin.dylib")
 
 	p := paths.FromHome(home)
@@ -52,7 +52,7 @@ func TestInstallXcodeToolchain_writesPluginPathIntoPlist(t *testing.T) {
 		UserHomeDirFunc: func() (string, error) { return home, nil },
 	}
 
-	installXcodeToolchain(log.NewLogger(), osProxy,
+	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy,
 		"/tmp/proxy.sock", fakeDeveloperDir, "/opt/custom/libToolchainCASPlugin.dylib")
 
 	body := readToolchainPlist(t, home)
@@ -71,7 +71,7 @@ func TestUninstallXcodeToolchain_removesBundleAndSymlink(t *testing.T) {
 		UserHomeDirFunc: func() (string, error) { return home, nil },
 	}
 
-	installXcodeToolchain(log.NewLogger(), osProxy,
+	installXcodeToolchain(context.Background(), log.NewLogger(), osProxy,
 		"/tmp/proxy.sock", fakeDeveloperDir, "/anchor/plugin.dylib")
 	uninstallXcodeToolchain(log.NewLogger(), osProxy)
 

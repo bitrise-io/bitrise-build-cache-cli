@@ -18,16 +18,24 @@ var ErrUnderTest = errors.New("refusing to re-exec the test binary; stub the spa
 //
 //nolint:noctx // intentionally detached: the service must outlive this command
 func Detached(svc Service) (int, error) {
-	if underTest() {
-		return 0, ErrUnderTest
-	}
-
 	exe, err := os.Executable()
 	if err != nil {
 		return 0, fmt.Errorf("resolve the CLI path: %w", err)
 	}
 
-	cmd := exec.Command(exe, svc.Args...)
+	return DetachedFrom(exe, svc)
+}
+
+// DetachedFrom runs svc via an explicit executable path. The trampoline shim
+// uses this because its own os.Executable() is the compiler shim, not the CLI.
+//
+//nolint:noctx // intentionally detached: the service must outlive this command
+func DetachedFrom(exe string, svc Service) (int, error) {
+	if underTest() {
+		return 0, ErrUnderTest
+	}
+
+	cmd := exec.Command(exe, svc.Args...) //nolint:gosec // callers pass a fixed Service (XcelerateProxy / CcacheHelper) whose Args are compile-time constants.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
