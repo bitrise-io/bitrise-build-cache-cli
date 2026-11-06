@@ -41,6 +41,13 @@ type Enricher struct {
 	XcresultParser   xcresult.Parser
 	SidecarReader    SidecarReader
 
+	// PayloadStore is the single-ID merge ledger. When non-nil, every
+	// enrichment signal (sidecar lookup, manifest entry, xcactivitylog metric,
+	// xcresult summary) is upserted into the store keyed by the proxy-derived
+	// InvocationID before the PUT runs. Final PUTs mark the record as emitted
+	// so the crash-fallback sweep knows to skip them.
+	PayloadStore *PayloadStore
+
 	// OnEmit fires after a successful PutInvocation with the ID actually sent,
 	// the manifest's build-description hash (empty if not extractable), the
 	// group whose PUT just succeeded, and the master's sidecar blob (nil when
@@ -207,6 +214,8 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	TickAttempt(e.Health, e.Logger, e.now())
 
+	e.upsertPayloadStore(invocationID, group, runStats, hitRateOutcome, sidecarBlob, PayloadStatusPendingTerminal)
+
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
@@ -217,6 +226,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
+	e.upsertPayloadStore(invocationID, group, runStats, hitRateOutcome, sidecarBlob, PayloadStatusEmitted)
 	unlinkSidecars(consumedPaths, logger)
 
 	// matched=false always: matched groups short-circuit above and LastMatched
@@ -324,6 +334,72 @@ func unlinkSidecars(paths []string, logger log.Logger) {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
 		}
+	}
+}
+
+// outcomeLabel maps an xcactivitylog.Outcome to a stable string label for
+// the payload store so analytics can key on it without depending on the int
+// representation.
+func outcomeLabel(o xcactivitylog.Outcome) string {
+	switch o {
+	case xcactivitylog.OutcomeOK:
+		return "ok"
+	case xcactivitylog.OutcomeFileMissing:
+		return "file_missing"
+	case xcactivitylog.OutcomeEmpty:
+		return "empty"
+	case xcactivitylog.OutcomeUnparsed:
+		return "unparsed"
+	case xcactivitylog.OutcomeReadError:
+		return "read_error"
+	default:
+		return "unknown"
+	}
+}
+
+// upsertPayloadStore merges the current signals into the single-ID ledger
+// under invocationID. Called twice per emission: once before PUT (status =
+// PendingTerminal) and once after a successful PUT (status = Emitted). A nil
+// store is a silent no-op.
+func (e *Enricher) upsertPayloadStore(
+	invocationID string,
+	group ManifestEntryGroup,
+	runStats analytics.InvocationRunStats,
+	logOutcome xcactivitylog.Outcome,
+	sidecarBlob *blobstats.Snapshot,
+	status PayloadStatus,
+) {
+	if e == nil || e.PayloadStore == nil || invocationID == "" {
+		return
+	}
+
+	merged := MergedPayload{
+		Blob:         sidecarBlob,
+		HitRate:      runStats.HitRate,
+		HitRateKnown: logOutcome == xcactivitylog.OutcomeOK,
+		Scheme:       group.SchemeName(),
+		Command:      runStats.Command,
+		FullCommand:  runStats.FullCommand,
+		Start:        group.Start(),
+		Stop:         group.Stop(),
+		DurationMs:   runStats.Duration,
+		LogOutcome:   outcomeLabel(logOutcome),
+		SuccessKnown: true,
+		Success:      runStats.Success,
+	}
+	if runStats.Error != nil {
+		merged.ErrorMessage = runStats.Error.Error()
+	}
+
+	rec := PayloadRecord{
+		InvocationID:  invocationID,
+		LastUpdatedAt: e.now(),
+		Status:        status,
+		Merged:        merged,
+	}
+
+	if err := e.PayloadStore.Upsert(rec); err != nil {
+		logOr(e.Logger).Debugf("payload store upsert %s status=%s failed: %s", invocationID, status, err)
 	}
 }
 

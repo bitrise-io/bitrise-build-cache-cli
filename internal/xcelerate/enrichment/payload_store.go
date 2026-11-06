@@ -13,6 +13,14 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 )
 
+// DefaultCrashFallbackTimeout bounds how long the single-ID pipeline waits
+// for a terminal signal (plist landing + xcactivitylog outcome) after the
+// last sidecar signal before falling back to a crash-flagged PUT. 60s is
+// generous enough to cover IDE builds whose plist writes trail the last dark
+// build by a few seconds; shorter runs still pick up the plist before the
+// timer fires.
+const DefaultCrashFallbackTimeout = 60 * time.Second
+
 // PayloadStatus tracks where a PayloadRecord sits in the single-ID merge-and-
 // re-PUT lifecycle: Open while sidecars still accumulate, PendingTerminal once
 // the terminal plist or crash-fallback fires, Emitted once the BE PUT lands.
@@ -58,10 +66,19 @@ type PayloadRecord struct {
 // every signal (sidecar update, plist arrival, xcactivitylog metrics parse,
 // xcresult parse). Last-write-wins per InvocationID on disk; readers collapse
 // duplicate lines in memory.
+//
+// CrashFallbackTimeout, when > 0, schedules a per-record AfterFunc (started
+// on the first Upsert of each InvocationID) that sends the InvocationID to
+// CrashFallbackChannel. The AfterFunc never touches scanMu; the Watcher
+// drains the channel at scan start. Cancelled once a terminal upsert
+// (Status == Emitted) lands for the same ID.
 type PayloadStore struct {
-	Path string
+	Path                 string
+	CrashFallbackTimeout time.Duration
+	CrashFallbackChannel chan<- string
 
-	mu sync.Mutex
+	mu     sync.Mutex
+	timers map[string]*time.Timer
 }
 
 // Load reads every record from disk, collapsing duplicates by InvocationID
@@ -155,7 +172,49 @@ func (s *PayloadStore) Upsert(rec PayloadRecord) error {
 		return fmt.Errorf("write payload record: %w", err)
 	}
 
+	s.manageCrashFallbackTimerLocked(rec)
+
 	return nil
+}
+
+// manageCrashFallbackTimerLocked schedules or cancels the per-record
+// crash-fallback AfterFunc depending on record status. Must be called with
+// s.mu held.
+func (s *PayloadStore) manageCrashFallbackTimerLocked(rec PayloadRecord) {
+	if s.CrashFallbackTimeout <= 0 || s.CrashFallbackChannel == nil {
+		return
+	}
+
+	if s.timers == nil {
+		s.timers = make(map[string]*time.Timer)
+	}
+
+	if rec.Status == PayloadStatusEmitted {
+		if t, ok := s.timers[rec.InvocationID]; ok {
+			t.Stop()
+			delete(s.timers, rec.InvocationID)
+		}
+
+		return
+	}
+
+	// Reset the timer on every non-terminal upsert so the fallback fires
+	// relative to the last signal rather than the first.
+	if t, ok := s.timers[rec.InvocationID]; ok {
+		t.Reset(s.CrashFallbackTimeout)
+
+		return
+	}
+
+	id := rec.InvocationID
+	s.timers[id] = time.AfterFunc(s.CrashFallbackTimeout, func() {
+		// AfterFunc must NOT take s.mu — it enqueues to the channel and the
+		// scan loop drains + re-emits under scanMu.
+		select {
+		case s.CrashFallbackChannel <- id:
+		default:
+		}
+	})
 }
 
 // Remove drops every entry for the given InvocationID by atomically
@@ -188,6 +247,11 @@ func (s *PayloadStore) Remove(invocationID string) error {
 
 	if !removed {
 		return nil
+	}
+
+	if t, ok := s.timers[invocationID]; ok {
+		t.Stop()
+		delete(s.timers, invocationID)
 	}
 
 	return s.writeAtomicLocked(kept)

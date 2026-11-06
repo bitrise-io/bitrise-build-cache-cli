@@ -51,6 +51,13 @@ type Watcher struct {
 	// behavior and is still what tests use unless they set the field.
 	HandledStore *HandledManifestStore
 
+	// PayloadStore is the single-ID merge ledger the Enricher upserts against.
+	// CrashFallbackChannel feeds its AfterFunc output back into the scan loop
+	// so a timer fire does not race scanMu. nil disables the ledger; the
+	// default-constructed Watcher behaves identically to the pre-ledger shape.
+	PayloadStore         *PayloadStore
+	CrashFallbackChannel <-chan string
+
 	// SidecarReader feeds two scan-tail paths: (a) per-scan DerivedDataPath
 	// hints turn each unique DD path into a <DD>/Logs/*/LogStoreManifest.plist
 	// glob, layered on top of the HOME-relative defaults so a direct
@@ -308,6 +315,8 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	defer func() {
 		w.tickEmittedIDs = nil
 	}()
+
+	w.drainCrashFallbackChannel(logger)
 
 	if w.recentEmissions == nil {
 		w.recentEmissions = make(map[string]emissionRecord)
@@ -799,6 +808,25 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 
 	w.retries[key] = w.MaxCorrelationRetries
 	logger.Debugf("Watcher: unmatched, opening retry bucket scheme=%s attempts_left=%d", group.SchemeName(), w.MaxCorrelationRetries)
+}
+
+// drainCrashFallbackChannel non-blockingly reads every ripe InvocationID the
+// PayloadStore's crash-fallback AfterFunc queued since the last scan. Logging
+// only for now — commit 6 installs the channel plumbing; the follow-on
+// deletion commits wire a terminal re-emission path.
+func (w *Watcher) drainCrashFallbackChannel(logger log.Logger) {
+	if w.CrashFallbackChannel == nil {
+		return
+	}
+
+	for {
+		select {
+		case id := <-w.CrashFallbackChannel:
+			logger.Debugf("payload crash-fallback fired for %s (no terminal signal in window)", id)
+		default:
+			return
+		}
+	}
 }
 
 // hasCorrelationSignal is true when at least one of {MatchProbe, SidecarReader}
