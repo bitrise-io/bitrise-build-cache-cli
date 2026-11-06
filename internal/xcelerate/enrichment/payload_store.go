@@ -21,6 +21,12 @@ import (
 // timer fires.
 const DefaultCrashFallbackTimeout = 60 * time.Second
 
+// defaultCompactThreshold is the file-size point past which Upsert folds the
+// append-only ledger back into one line per InvocationID. 10 MiB caps the
+// cost of a Load() during a long IDE session; last-write-wins semantics keep
+// Compact a safe no-op on an already-collapsed ledger.
+const defaultCompactThreshold = 10 << 20
+
 // PayloadStatus tracks where a PayloadRecord sits in the single-ID merge-and-
 // re-PUT lifecycle: PendingTerminal once the terminal plist or crash-fallback
 // is queued, Emitted once the BE PUT lands.
@@ -73,6 +79,10 @@ type PayloadStore struct {
 	Path                 string
 	CrashFallbackTimeout time.Duration
 	CrashFallbackChannel chan<- string
+	// CompactThresholdBytes overrides defaultCompactThreshold; the ledger is
+	// rewritten to one line per InvocationID the next time Upsert finds the
+	// file at or above this size. Zero falls back to defaultCompactThreshold.
+	CompactThresholdBytes int64
 
 	mu     sync.Mutex
 	timers map[string]*time.Timer
@@ -171,7 +181,55 @@ func (s *PayloadStore) Upsert(rec PayloadRecord) error {
 
 	s.manageCrashFallbackTimerLocked(rec)
 
+	if err := s.autoCompactLocked(f); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// Compact rewrites the ledger keeping only the latest record per
+// InvocationID. Safe on a missing file (no-op) and on an already-compact
+// ledger (last-write-wins means the rewrite produces the same contents).
+func (s *PayloadStore) Compact() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.compactLocked()
+}
+
+func (s *PayloadStore) compactLocked() error {
+	records, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+
+	if len(records) == 0 {
+		return nil
+	}
+
+	return s.writeAtomicLocked(records)
+}
+
+// autoCompactLocked rewrites the ledger when the file exceeds the configured
+// compaction threshold. Called from Upsert after the append so the newly
+// written record is part of the compaction input.
+func (s *PayloadStore) autoCompactLocked(f *os.File) error {
+	threshold := s.CompactThresholdBytes
+	if threshold <= 0 {
+		threshold = defaultCompactThreshold
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat payload store: %w", err)
+	}
+
+	if info.Size() < threshold {
+		return nil
+	}
+
+	return s.compactLocked()
 }
 
 // manageCrashFallbackTimerLocked schedules or cancels the per-record

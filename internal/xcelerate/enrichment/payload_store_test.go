@@ -103,6 +103,58 @@ func TestPayloadStore_RemoveRewrites(t *testing.T) {
 	require.NoError(t, s.Remove("absent"))
 }
 
+func TestPayloadStore_CompactCollapsesDuplicatesToOneLinePerID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "payload.ndjson")
+	s := &enrichment.PayloadStore{Path: path}
+
+	for i := 0; i < 1000; i++ {
+		require.NoError(t, s.Upsert(enrichment.PayloadRecord{
+			InvocationID: "dup",
+			Status:       enrichment.PayloadStatusPendingTerminal,
+		}))
+	}
+
+	require.NoError(t, s.Compact())
+
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	lines := 0
+	for _, b := range body {
+		if b == '\n' {
+			lines++
+		}
+	}
+	assert.Equal(t, 1, lines, "Compact must keep exactly one line per InvocationID")
+
+	records, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Equal(t, "dup", records[0].InvocationID)
+}
+
+func TestPayloadStore_AutoCompactFiresPastThreshold(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "payload.ndjson")
+	// 1 KiB threshold forces compaction inside a short test loop.
+	s := &enrichment.PayloadStore{Path: path, CompactThresholdBytes: 1 << 10}
+
+	for i := 0; i < 200; i++ {
+		require.NoError(t, s.Upsert(enrichment.PayloadRecord{
+			InvocationID: "dup",
+			Status:       enrichment.PayloadStatusPendingTerminal,
+		}))
+	}
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Less(t, info.Size(), int64(4<<10), "auto-compact must bound file size under light load")
+
+	records, err := s.Load()
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+}
+
 func TestPayloadStore_UpsertStampsLastUpdatedAt(t *testing.T) {
 	dir := t.TempDir()
 	s := &enrichment.PayloadStore{Path: filepath.Join(dir, "payload.ndjson")}
