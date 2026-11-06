@@ -20,10 +20,10 @@ type Watcher struct {
 	HomeDir      string
 	Globs        []string
 	PollInterval time.Duration
-	// Handle receives manifestPath so the callback can resolve the sibling xcactivitylog.
-	// Each manifest entry is its own group; sub-build attribution is performed
-	// downstream via the plist-boundary bridge in scanOrphanSidecars. handleGroup
-	// marks the group seen unconditionally after Handle.
+	// Handle receives manifestPath so the callback can resolve the sibling
+	// xcactivitylog. Each manifest entry is its own group; sub-build
+	// attribution lives in scanOrphanSidecars via GroupSidecarsByProxyID.
+	// handleGroup marks the group seen unconditionally after Handle.
 	Handle func(manifestPath string, group ManifestEntryGroup)
 	Logger log.Logger
 
@@ -52,14 +52,14 @@ type Watcher struct {
 	// PUT path and leaves sidecars on disk.
 	OrphanEmitter func(group *ProxyIDGroup)
 
-	// SidecarReader feeds two scan-tail paths: (a) per-scan DerivedDataPath
-	// hints turn each unique DD path into a <DD>/Logs/*/LogStoreManifest.plist
-	// glob, layered on top of the HOME-relative defaults so a direct
-	// `xcodebuild -derivedDataPath ./DerivedData` invocation is still correlated;
-	// (b) aged orphan sidecar synthesis builds pseudo-ManifestEntryGroups for
-	// InvocationIDs that never produced a LogStoreManifest.plist.
-	// Nil disables both — HOME-relative paths remain the fast path, and no
-	// synthesis fires.
+	// SidecarReader drives the correlated manifest path: (a) Lookup finds the
+	// sidecar peer for a manifest group so Enrich can key under its
+	// WrapperSession.InvocationID; (b) PendingDerivedDataPaths turns each
+	// unique DD path into a <DD>/Logs/*/LogStoreManifest.plist glob, layered
+	// on top of the HOME-relative defaults so `xcodebuild -derivedDataPath`
+	// still correlates; (c) PendingCount feeds the stalled-diagnostic log.
+	// The uncorrelated orphan-sidecar PUT path reads sessions directly via
+	// SessionsDir / OrphanEmitter.
 	SidecarReader SidecarReader
 
 	// Now is a test seam for the timestamp written into HandledStore records.
