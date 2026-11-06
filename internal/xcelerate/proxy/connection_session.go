@@ -10,7 +10,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 )
 
 // perConnIdleThreshold is the per-connection inactivity window after which an
@@ -95,14 +94,6 @@ type connectionSession struct {
 	// SWBBuildService daemon's AcceptedAt doesn't inflate per-build duration to
 	// the daemon's uptime. Guarded by activityMu.
 	buildStartedAt time.Time
-
-	// buildRequest carries the Command/Action/Configuration/Container the
-	// resolver parsed from `<hex>.xcbuilddata/build-request.json` on the last
-	// reseat tick. Lets the wrapperless pseudo-group emit a Command token
-	// (`indexbuild`, `prepareForIndexing`, etc.) instead of a bare `build`.
-	// Guarded by activityMu; snapshot BEFORE swap on reseat so the flushed
-	// sidecar carries the pre-reseat classification.
-	buildRequest deriveddata.BuildRequest
 }
 
 func (c *connectionSession) markActivity() {
@@ -171,25 +162,6 @@ func (c *connectionSession) setBuildStartedAt(t time.Time) {
 	defer c.activityMu.Unlock()
 
 	c.buildStartedAt = t
-}
-
-// buildRequestSnapshot returns the current parsed build-request classification
-// under the activity mutex.
-func (c *connectionSession) buildRequestSnapshot() deriveddata.BuildRequest {
-	c.activityMu.Lock()
-	defer c.activityMu.Unlock()
-
-	return c.buildRequest
-}
-
-// setBuildRequest stores the parsed build-request classification under the
-// activity mutex. Called by ResolveAndMaybeReseat after a successful hex swap
-// so the subsequent sidecar flushes carry the current ⌘B's classification.
-func (c *connectionSession) setBuildRequest(br deriveddata.BuildRequest) {
-	c.activityMu.Lock()
-	defer c.activityMu.Unlock()
-
-	c.buildRequest = br
 }
 
 func (c *connectionSession) hadActivity() bool {
@@ -361,20 +333,10 @@ type sidecarStatsHandler struct {
 }
 
 // BuildRequestResolver returns the newest <32-hex>.xcbuilddata stem scoped to
-// a peer's DerivedData plus the parsed build-request classification. Returns
-// (zero, false) when no entry is found. The resolver takes the per-conn session
-// so an implementation can read the cached derivedDataPath / ancestry without
-// extra wiring.
-type BuildRequestResolver func(cs *connectionSession) (BuildRequestResult, bool)
-
-// BuildRequestResult bundles the hex stem the resolver matched and the
-// best-effort classification parsed from that entry's build-request.json. The
-// Request field is the zero value when the file is absent or malformed —
-// callers must tolerate an empty Request alongside a populated Hex.
-type BuildRequestResult struct {
-	Hex     string
-	Request deriveddata.BuildRequest
-}
+// a peer's DerivedData. Returns ("", false) when no entry is found. The
+// resolver takes the per-conn session so an implementation can read the
+// cached derivedDataPath / ancestry without extra wiring.
+type BuildRequestResolver func(cs *connectionSession) (string, bool)
 
 var _ grpcstats.Handler = (*sidecarStatsHandler)(nil)
 
@@ -501,8 +463,8 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 		return false
 	}
 
-	resolved, ok := h.buildRequestResolver(cs)
-	if !ok || resolved.Hex == "" {
+	hex, ok := h.buildRequestResolver(cs)
+	if !ok || hex == "" {
 		return false
 	}
 
@@ -512,9 +474,8 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	oldID := cs.invocationID()
 	oldHex := cs.buildRequestHexSnapshot()
 	oldBuildStartedAt := cs.buildStartedAtSnapshot()
-	oldBuildRequest := cs.buildRequestSnapshot()
 
-	if !cs.swapBuildRequestHex(resolved.Hex) {
+	if !cs.swapBuildRequestHex(hex) {
 		return false
 	}
 
@@ -524,14 +485,13 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	if h.writer != nil {
 		old := cs.swapState()
 		if !old.getStats().blobStats.IsEmpty() {
-			sidecar := newSessionSidecar(cs, old, time.Now(), false, sidecarIdentity{InvocationID: oldID, BuildRequestHex: oldHex, BuildStartedAt: oldBuildStartedAt, BuildRequest: oldBuildRequest})
+			sidecar := newSessionSidecar(cs, old, time.Now(), false, sidecarIdentity{InvocationID: oldID, BuildRequestHex: oldHex, BuildStartedAt: oldBuildStartedAt})
 			h.writer.write(sidecar)
 		}
 	}
 
 	cs.setBuildStartedAt(time.Now())
-	cs.setBuildRequest(resolved.Request)
-	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, resolved.Hex))
+	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, hex))
 
 	return true
 }
@@ -562,7 +522,7 @@ func (h *sidecarStatsHandler) flushTerminal(cs *connectionSession) {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot(), BuildRequest: cs.buildRequestSnapshot()})
+		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
 		h.writer.write(sidecar)
 	})
 }
@@ -599,7 +559,7 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		if !hasActivity {
 			cs.anchoredEmptyOnce.Do(func() {
 				old := cs.swapState()
-				sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot(), BuildRequest: cs.buildRequestSnapshot()})
+				sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
 				h.writer.write(sidecar)
 			})
 
@@ -607,7 +567,7 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		}
 
 		old := cs.swapState()
-		sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot(), BuildRequest: cs.buildRequestSnapshot()})
+		sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
 		h.writer.write(sidecar)
 	}
 }

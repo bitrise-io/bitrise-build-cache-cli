@@ -28,20 +28,15 @@ const defaultXcodeDerivedDataRelative = "Library/Developer/Xcode/DerivedData"
 func NewDefaultBuildRequestResolver(logger log.Logger) BuildRequestResolver {
 	finder := &deriveddata.Finder{Logger: logger}
 
-	return func(cs *connectionSession) (BuildRequestResult, bool) {
+	return func(cs *connectionSession) (string, bool) {
 		root := resolveBuildRequestRoot(cs, finder)
 		if root == "" {
-			return BuildRequestResult{}, false
+			return "", false
 		}
 
-		hex, dir, _, ok := deriveddata.NewestBuildRequestEntry(root, "", time.Now())
-		if !ok {
-			return BuildRequestResult{}, false
-		}
+		hex, _, ok := deriveddata.NewestBuildRequestHash(root, "", time.Now())
 
-		req, _ := deriveddata.ReadBuildRequest(dir)
-
-		return BuildRequestResult{Hex: hex, Request: req}, true
+		return hex, ok
 	}
 }
 

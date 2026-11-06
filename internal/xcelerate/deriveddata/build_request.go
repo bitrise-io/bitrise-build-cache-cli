@@ -1,7 +1,6 @@
 package deriveddata
 
 import (
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,87 +12,6 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
-
-// BuildRequest captures the classification fields the enrichment layer reads
-// from Xcode's build-request.json inside `<hex>.xcbuilddata`. All fields are
-// optional on disk; readers must tolerate zero values.
-type BuildRequest struct {
-	// Command is buildCommand.command — the primary action label
-	// (e.g. "prepareForIndexing", "build", "archive", "clean").
-	Command string
-	// Action is parameters.action — the fallback label used when Command is
-	// empty (e.g. "build", "indexbuild", "archive", "clean", "test").
-	Action string
-	// Configuration is parameters.configurationName (e.g. "Debug", "Release"),
-	// empty when absent.
-	Configuration string
-	// Container is the basename of containerPath with the `.xcodeproj` or
-	// `.xcworkspace` suffix stripped (e.g. "IceCubesApp"), empty when absent.
-	Container string
-}
-
-// IsEmpty reports whether every classification field is the zero value.
-func (b BuildRequest) IsEmpty() bool {
-	return b.Command == "" && b.Action == "" && b.Configuration == "" && b.Container == ""
-}
-
-// buildRequestFile mirrors the subset of Xcode's build-request.json the
-// enrichment layer consumes. Unknown fields are ignored by encoding/json so
-// future schema additions degrade gracefully.
-type buildRequestFile struct {
-	BuildCommand struct {
-		Command string `json:"command"`
-	} `json:"buildCommand"`
-	Parameters struct {
-		Action            string `json:"action"`
-		ConfigurationName string `json:"configurationName"`
-	} `json:"parameters"`
-	ContainerPath string `json:"containerPath"`
-}
-
-// ReadBuildRequest opens `<dir>/build-request.json` and returns the typed
-// classification fields alongside an ok flag. Any error — missing file,
-// malformed JSON, or an unreadable path — returns a zero BuildRequest + false,
-// since classification is best-effort.
-func ReadBuildRequest(dir string) (BuildRequest, bool) {
-	if dir == "" {
-		return BuildRequest{}, false
-	}
-
-	path := filepath.Join(dir, "build-request.json")
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return BuildRequest{}, false
-	}
-
-	var raw buildRequestFile
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return BuildRequest{}, false
-	}
-
-	return BuildRequest{
-		Command:       raw.BuildCommand.Command,
-		Action:        raw.Parameters.Action,
-		Configuration: raw.Parameters.ConfigurationName,
-		Container:     containerBasename(raw.ContainerPath),
-	}, true
-}
-
-// containerBasename strips the `.xcodeproj` / `.xcworkspace` suffix off the
-// containerPath basename so the enrichment layer renders the bare project
-// name.
-func containerBasename(containerPath string) string {
-	if containerPath == "" {
-		return ""
-	}
-
-	name := filepath.Base(containerPath)
-	name = strings.TrimSuffix(name, ".xcodeproj")
-	name = strings.TrimSuffix(name, ".xcworkspace")
-
-	return name
-}
 
 // xcodeDefaultsPlistRelative is the per-user Xcode defaults plist that holds
 // IDECustomDerivedDataLocation when the user has moved DerivedData out of the
@@ -155,31 +73,19 @@ func (f *Finder) CustomRoot(home string) (string, bool) {
 // it has no workspace scope yet.
 //
 // Returns (hex, mtime, ok). ok=false means no matching entry exists or the
-// supplied root cannot be read. Prefer NewestBuildRequestEntry when the caller
-// also needs the `.xcbuilddata` directory path (e.g. to read build-request.json).
+// supplied root cannot be read.
 func NewestBuildRequestHash(root, workspaceHint string, now time.Time) (string, time.Time, bool) {
-	hex, _, mtime, ok := NewestBuildRequestEntry(root, workspaceHint, now)
-
-	return hex, mtime, ok
-}
-
-// NewestBuildRequestEntry is the richer sibling of NewestBuildRequestHash: it
-// returns the winning entry's `.xcbuilddata` directory path alongside the
-// hex stem, so a caller can ReadBuildRequest(dir) without re-globbing. Empty
-// path + ok=false on every miss path.
-func NewestBuildRequestEntry(root, workspaceHint string, now time.Time) (string, string, time.Time, bool) {
 	if root == "" {
-		return "", "", time.Time{}, false
+		return "", time.Time{}, false
 	}
 
 	roots, ok := enumerateDDRoots(root, workspaceHint)
 	if !ok {
-		return "", "", time.Time{}, false
+		return "", time.Time{}, false
 	}
 
 	var (
 		bestHex   string
-		bestDir   string
 		bestMtime time.Time
 		found     bool
 	)
@@ -210,7 +116,6 @@ func NewestBuildRequestEntry(root, workspaceHint string, now time.Time) (string,
 
 				if !found || mtime.After(bestMtime) {
 					bestHex = stem
-					bestDir = m
 					bestMtime = mtime
 					found = true
 				}
@@ -219,10 +124,10 @@ func NewestBuildRequestEntry(root, workspaceHint string, now time.Time) (string,
 	}
 
 	if !found {
-		return "", "", time.Time{}, false
+		return "", time.Time{}, false
 	}
 
-	return bestHex, bestDir, bestMtime, true
+	return bestHex, bestMtime, true
 }
 
 // enumerateDDRoots lists workspace-sha dirs directly under root. workspaceHint

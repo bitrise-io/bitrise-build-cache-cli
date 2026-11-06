@@ -182,12 +182,6 @@ type ManifestEntryGroup struct {
 	// sidecar's own WrapperLink.InvocationID cannot win over the clone's
 	// manifest UUID in the resolution ladder.
 	preattachedSidecar *preattachedSidecar
-
-	// classification is populated only by SyntheticManifestGroup — overrides
-	// Command() so wrapperless pseudo-groups rendered from parsed
-	// build-request.json fields label as `prepareForIndexing Debug
-	// [IceCubesApp]` instead of the legacy bare `build`.
-	classification SyntheticClassification
 }
 
 type preattachedSidecar struct {
@@ -375,15 +369,8 @@ func (g ManifestEntryGroup) ManifestUUID() string {
 // Command returns empty when the primary carries no known action so the caller
 // skips PUT. Renders `<action> [<scheme> / <configuration>]` — Primary-only.
 // Each independent user action (IDE Clean, IDE Build, CLI invocation) is its
-// own group and lands as its own BE row. When a SyntheticClassification is
-// attached (SyntheticManifestGroup) the render uses the parsed build-request
-// labels instead so wrapperless sub-actions (indexbuild, prepareForIndexing,
-// archive, clean, …) are not mis-labelled as plain "build".
+// own group and lands as its own BE row.
 func (g ManifestEntryGroup) Command() string {
-	if !g.classification.IsEmpty() {
-		return renderSyntheticCommand(g.classification)
-	}
-
 	p := g.Primary()
 	if p.Command() == CommandUnknown {
 		return ""
@@ -403,35 +390,6 @@ func (g ManifestEntryGroup) Command() string {
 	}
 
 	return string(p.Command()) + " [" + strings.Join(parts, " / ") + "]"
-}
-
-// renderSyntheticCommand assembles the BE shortCommand for a wrapperless
-// pseudo-group. Rules:
-//   - Command wins over Action as the primary token; both empty → bare "build".
-//   - Configuration, when present, joins with a single space (`build Debug`).
-//   - Container, when present, joins in square brackets (`build [IceCubesApp]`).
-//
-// Unknown / vendor-specific action strings pass through verbatim — the enricher
-// does not gate on a known-action allowlist here because the classification is
-// authored by Xcode itself and the BE side already tolerates arbitrary tokens.
-func renderSyntheticCommand(c SyntheticClassification) string {
-	primary := c.Command
-	if primary == "" {
-		primary = c.Action
-	}
-	if primary == "" {
-		primary = string(CommandBuild)
-	}
-
-	out := primary
-	if c.Configuration != "" {
-		out += " " + c.Configuration
-	}
-	if c.Container != "" {
-		out += " [" + c.Container + "]"
-	}
-
-	return out
 }
 
 // FullCommand renders an argv-shaped xcodebuild invocation for the Primary
@@ -512,25 +470,6 @@ func (g ManifestEntryGroup) firstNonEmptyTokens() (string, string, string) {
 // HandledManifestStore cannot collide across the real/synthetic boundary.
 const SyntheticManifestGroupUUIDPrefix = "synthetic-"
 
-// SyntheticClassification carries the Xcode build-request.json fields the
-// proxy parsed for the ⌘B the pseudo-group is synthesizing. Each field is
-// optional; a fully-zero classification renders as the legacy bare "build"
-// fallback. Used by SyntheticManifestGroup to override the synthesized
-// group's Command() output for wrapperless sub-actions that would otherwise
-// mis-label as plain "build" (e.g. indexbuild, prepareForIndexing, archive).
-type SyntheticClassification struct {
-	Command       string
-	Action        string
-	Configuration string
-	Container     string
-}
-
-// IsEmpty reports whether every classification field is the zero value — the
-// render rule falls back to the bare "build" Command token then.
-func (c SyntheticClassification) IsEmpty() bool {
-	return c.Command == "" && c.Action == "" && c.Configuration == "" && c.Container == ""
-}
-
 // SyntheticManifestGroup builds a one-entry pseudo-group suitable for feeding
 // Enrich() when no LogStoreManifest.plist arrived. signature falls back to
 // "build" so Command()→CommandBuild and the enricher does not drop the group;
@@ -538,9 +477,7 @@ func (c SyntheticClassification) IsEmpty() bool {
 // overrideInvocationID, when non-empty, redirects the PUT at the ID of a
 // manifest-orphan that overlapped this pseudo-group's window — dedups the
 // Clean+Build-manifest-orphan + pseudo-group pair into a single BE row.
-// classification, when non-empty, overrides Command() with the Xcode action
-// labels parsed from build-request.json.
-func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature, scheme, overrideInvocationID string, classification SyntheticClassification) ManifestEntryGroup {
+func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature, scheme, overrideInvocationID string) ManifestEntryGroup {
 	if signature == "" {
 		signature = "build"
 	}
@@ -554,7 +491,6 @@ func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature
 			Stop:       stop,
 		}},
 		overrideInvocationID: overrideInvocationID,
-		classification:       classification,
 	}
 }
 

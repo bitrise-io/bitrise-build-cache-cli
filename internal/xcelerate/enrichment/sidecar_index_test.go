@@ -19,24 +19,16 @@ import (
 )
 
 type sidecarFixture struct {
-	SchemaVersion   int                             `json:"schema_version"`
-	SidecarUUID     string                          `json:"sidecar_uuid,omitempty"`
-	PeerAncestry    []string                        `json:"peer_ancestry"`
-	AcceptedAt      time.Time                       `json:"accepted_at"`
-	ClosedAt        time.Time                       `json:"closed_at"`
-	BlobStats       *blobstats.Snapshot             `json:"blobStats,omitempty"`
-	WrapperSession  *sidecarFixtureWrapper          `json:"wrapper_session,omitempty"`
-	DerivedDataPath string                          `json:"derived_data_path,omitempty"`
-	BuildRequestHex string                          `json:"build_request_hex,omitempty"`
-	BuildStartedAt  time.Time                       `json:"build_started_at,omitempty"`
-	BuildRequest    *sidecarFixtureBuildRequestInfo `json:"build_request,omitempty"`
-}
-
-type sidecarFixtureBuildRequestInfo struct {
-	Command       string `json:"command,omitempty"`
-	Action        string `json:"action,omitempty"`
-	Configuration string `json:"configuration,omitempty"`
-	Container     string `json:"container,omitempty"`
+	SchemaVersion   int                    `json:"schema_version"`
+	SidecarUUID     string                 `json:"sidecar_uuid,omitempty"`
+	PeerAncestry    []string               `json:"peer_ancestry"`
+	AcceptedAt      time.Time              `json:"accepted_at"`
+	ClosedAt        time.Time              `json:"closed_at"`
+	BlobStats       *blobstats.Snapshot    `json:"blobStats,omitempty"`
+	WrapperSession  *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
+	DerivedDataPath string                 `json:"derived_data_path,omitempty"`
+	BuildRequestHex string                 `json:"build_request_hex,omitempty"`
+	BuildStartedAt  time.Time              `json:"build_started_at,omitempty"`
 }
 
 type sidecarFixtureWrapper struct {
@@ -1215,103 +1207,4 @@ func TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations(t *testing.T
 	assert.Equal(t, int64(6), snap.Download.OpCount, "aggregated invo-B (2+4) must beat invo-A (5)")
 	assert.Equal(t, "invo-B", invocationID,
 		"winning InvocationID must be the larger-aggregate, not the single-sidecar-largest")
-}
-
-// TestSidecarIndex_Orphan_PicksEarliestClassification pins that when multiple
-// sidecars share an InvocationID but carry divergent build-request
-// classifications (e.g. a reseat flush under one Action followed by another
-// flush under a different one), the SidecarGroup emitted by
-// OrphanSidecarsGroupedByInvocation keeps the classification of the
-// earliest-accepted sidecar — the one that generated the ⌘B anchor.
-func TestSidecarIndex_Orphan_PicksEarliestClassification(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
-
-	// Earliest-accepted — this is the "canonical" classification for the group.
-	writeSidecar(t, dir, "earliest.json", sidecarFixture{
-		SchemaVersion:  2,
-		SidecarUUID:    "sidecar-early",
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-X"},
-		BuildRequest: &sidecarFixtureBuildRequestInfo{
-			Command:       "prepareForIndexing",
-			Action:        "indexbuild",
-			Configuration: "Debug",
-			Container:     "IceCubesApp",
-		},
-	})
-	// Later sidecar under the same InvocationID with a different classification —
-	// must not steal the earliest's label.
-	writeSidecar(t, dir, "later.json", sidecarFixture{
-		SchemaVersion:  2,
-		SidecarUUID:    "sidecar-late",
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base.Add(2 * time.Second),
-		ClosedAt:       base.Add(7 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-X"},
-		BuildRequest: &sidecarFixtureBuildRequestInfo{
-			Command:       "build",
-			Action:        "build",
-			Configuration: "Release",
-			Container:     "OtherApp",
-		},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	now := base.Add(60 * time.Second)
-	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
-
-	require.Len(t, groups, 1)
-	g := groups["invo-X"]
-	assert.Equal(t, "prepareForIndexing", g.BuildRequest.Command, "earliest-accepted sidecar supplies Command")
-	assert.Equal(t, "indexbuild", g.BuildRequest.Action)
-	assert.Equal(t, "Debug", g.BuildRequest.Configuration)
-	assert.Equal(t, "IceCubesApp", g.BuildRequest.Container)
-}
-
-// TestSidecarIndex_Orphan_FillsGapsFromLaterSidecar pins the gap-fill
-// behaviour: when the earliest-accepted sidecar has a zero-value classification
-// (legacy / pre-S6 flush) but a later sidecar under the same InvocationID
-// carries one, the later classification is adopted so the pseudo-group still
-// labels correctly.
-func TestSidecarIndex_Orphan_FillsGapsFromLaterSidecar(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "earliest-legacy.json", sidecarFixture{
-		SchemaVersion:  2,
-		SidecarUUID:    "sidecar-early",
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-X"},
-		// No BuildRequest — simulates a pre-S6 flush.
-	})
-	writeSidecar(t, dir, "later-with-class.json", sidecarFixture{
-		SchemaVersion:  2,
-		SidecarUUID:    "sidecar-late",
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base.Add(2 * time.Second),
-		ClosedAt:       base.Add(7 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-X"},
-		BuildRequest: &sidecarFixtureBuildRequestInfo{
-			Command:   "build",
-			Container: "MyApp",
-		},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	now := base.Add(60 * time.Second)
-	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
-
-	require.Len(t, groups, 1)
-	g := groups["invo-X"]
-	assert.Equal(t, "build", g.BuildRequest.Command, "later sidecar fills the earliest's empty classification gap")
-	assert.Equal(t, "MyApp", g.BuildRequest.Container)
 }
