@@ -88,6 +88,8 @@ func ReadBuildBoundaries(path string) ([]BuildBoundary, error) {
 	return out, nil
 }
 
+const buildDomainType = "Xcode.IDEActivityLogDomainType.BuildLog"
+
 // isBuildDomain filters the plist's logs map down to Build-domain entries.
 // domainType is the authoritative source when present
 // ("Xcode.IDEActivityLogDomainType.BuildLog"); className is the legacy
@@ -107,8 +109,6 @@ func isBuildDomain(className, domainType string) bool {
 		return false
 	}
 }
-
-const buildDomainType = "Xcode.IDEActivityLogDomainType.BuildLog"
 
 type buildManifestFile struct {
 	Logs map[string]buildManifestLog `plist:"logs"`

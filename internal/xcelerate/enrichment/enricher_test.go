@@ -817,7 +817,7 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 
 	require.Len(t, emitted, 1, "OnEmit must fire exactly once after a successful PUT")
 	assert.Equal(t, "manifest-anchor", emitted[0],
-		"OnEmit must receive the InvocationID actually sent — manifest UUID wins so the hex-bridge re-PUT lands on the same row")
+		"OnEmit must receive the InvocationID actually sent — manifest UUID wins so the boundary-bridge re-PUT lands on the same row")
 }
 
 func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {

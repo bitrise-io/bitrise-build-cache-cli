@@ -34,10 +34,9 @@ type Watcher struct {
 	Globs        []string
 	PollInterval time.Duration
 	// Handle receives manifestPath so the callback can resolve the sibling xcactivitylog.
-	// With per-entry groups as the default, a prep-Build's skipped PUT no longer
-	// shadows the real build — they fuse into one group only when scheme +
-	// Command + hex + sub-mergeMaxGap all agree, and otherwise each PUTs under
-	// its own UUID. handleGroup marks the group seen unconditionally after Handle.
+	// Each manifest entry is its own group; sub-build attribution is performed
+	// downstream via the plist-boundary bridge in scanOrphanSidecars. handleGroup
+	// marks the group seen unconditionally after Handle.
 	Handle func(manifestPath string, group ManifestEntryGroup)
 	Logger log.Logger
 
@@ -461,24 +460,28 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
+		// SWBBuildService opens auxiliary proxy connections (package resolution,
+		// workspace init, index scheduler) that idle without CAS transfer and
+		// close. The proxy's T2 anchored-empty terminal marker captures those
+		// for debug; synthesizing a bare `cmd=build` BE row from them would
+		// double-emit alongside the real manifest-sourced row. Drop + unlink —
+		// must run before tryBoundaryBridgeClone so a nil-blob orphan whose
+		// window happens to land inside a Build boundary still suppresses and
+		// unlinks (bridge's Enrich bails at the outcome gate without unlinking,
+		// leaving the sidecar to re-accumulate every tick for SessionSidecarMaxAge).
+		if group.Blob == nil || group.Blob.IsEmpty() {
+			logger.Debugf("Watcher: suppress zero-blob pseudo-group for InvocationID %s (no CAS transfer, %d sidecar(s))", invocationID, len(group.SidecarUUIDs))
+			unlinkSidecars(group.Paths, logger)
+
+			continue
+		}
+
 		if w.tryBoundaryBridgeClone(group, invocationID, logger) {
 			continue
 		}
 
 		if _, prior := w.recentEmissions[invocationID]; prior {
 			logger.Debugf("Watcher: skip pseudo-group — invocation %s already emitted this retention window", invocationID)
-
-			continue
-		}
-
-		// SWBBuildService opens auxiliary proxy connections (package resolution,
-		// workspace init, index scheduler) that idle without CAS transfer and
-		// close. The proxy's T2 anchored-empty terminal marker captures those
-		// for debug; synthesizing a bare `cmd=build` BE row from them would
-		// double-emit alongside the real manifest-sourced row. Drop + unlink.
-		if group.Blob == nil || group.Blob.IsEmpty() {
-			logger.Debugf("Watcher: suppress zero-blob pseudo-group for InvocationID %s (no CAS transfer, %d sidecar(s))", invocationID, len(group.SidecarUUIDs))
-			unlinkSidecars(group.Paths, logger)
 
 			continue
 		}
@@ -757,12 +760,8 @@ func (w *Watcher) canCorrelate(manifestPath string, group ManifestEntryGroup) bo
 }
 
 // groupFullySeen returns true only when every UUID in the group is already in
-// w.seen. The partial-overlap bypass surfaces a warm consecutive ⌘B that
-// canMerge fuses into a group whose first entry was emitted on a prior tick:
-// the fused group carries at least one unseen UUID (the new ⌘B's own entry),
-// so the gate must not drop it. Prep+real merge keeps clean semantics too —
-// on first sight both UUIDs are unseen, the group emits and both get marked;
-// on any later tick all UUIDs are seen and the gate skips.
+// w.seen. Defensive all-UUIDs-seen check — groups are always one entry post-S7
+// but the gate survives if grouping gains multi-entry shapes again.
 func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
 	if len(group.Entries) == 0 {
 		return false

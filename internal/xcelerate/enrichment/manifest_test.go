@@ -490,11 +490,13 @@ func TestFullCommand_SchemeOnlyNoWorkspaceOrProject(t *testing.T) {
 		"a known action is enough to render the xcodebuild argv form even without workspace/project/configuration")
 }
 
-// PR596 S7 removed the adjacency merge. The prep + real pair that used to
-// collapse into one BE row now surfaces as two — the dark-build / sub-build
-// attribution shifted to the watcher's plist-boundary bridge, which runs at
-// orphan-sidecar time, not here.
-func TestGroupManifestEntries_PrepPlusRealBuildSameHexSubSecondGap_Splits(t *testing.T) {
+// TestGroupManifestEntries_AlwaysOneGroupPerEntry pins the PR596 S7 invariant:
+// adjacency merging (canMerge) is removed and every manifest entry stands as
+// its own group regardless of scheme / Command / build-description hash / gap.
+// Sub-build attribution has shifted to the watcher's plist-boundary bridge in
+// scanOrphanSidecars. One regression pin covers the whole family of cases the
+// pre-S7 canMerge logic used to collapse.
+func TestGroupManifestEntries_AlwaysOneGroupPerEntry(t *testing.T) {
 	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
 		{UUID: "prep", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(500 * time.Millisecond)},
@@ -507,110 +509,4 @@ func TestGroupManifestEntries_PrepPlusRealBuildSameHexSubSecondGap_Splits(t *tes
 	require.Len(t, groups, 2, "canMerge removed in PR596 S7 — every manifest entry is its own group")
 	assert.Equal(t, []string{"prep"}, groups[0].UUIDs())
 	assert.Equal(t, []string{"real"}, groups[1].UUIDs())
-}
-
-// v7 fix: two ⌘Bs on the same xcbuilddata hash but >=3s apart no longer merge.
-func TestGroupManifestEntries_RapidConsecutiveSameHex_Splits(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	entries := []enrichment.ManifestEntry{
-		{UUID: "build1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(5 * time.Second)},
-		{UUID: "build2", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(10 * time.Second), Stop: base.Add(15 * time.Second)},
-	}
-
-	lookup := hashLookup(map[string]string{"build1": "abcd1234", "build2": "abcd1234"})
-
-	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2, "same hex but ≥3s apart → two user actions → two BE rows")
-	assert.Equal(t, []string{"build1"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"build2"}, groups[1].UUIDs())
-}
-
-// Clean + Build share a scheme and hex but differ in Command — two user
-// actions, two BE rows.
-func TestGroupManifestEntries_CleanAndBuildSameHash_Splits(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	entries := []enrichment.ManifestEntry{
-		{UUID: "clean", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(500 * time.Millisecond)},
-		{UUID: "build", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(1 * time.Second), Stop: base.Add(40 * time.Second)},
-	}
-
-	lookup := hashLookup(map[string]string{"clean": "abcd1234", "build": "abcd1234"})
-
-	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2)
-	assert.Equal(t, []string{"clean"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"build"}, groups[1].UUIDs())
-}
-
-// v6 RDE repro: two consecutive ⌘Bs with scheme=Models within a minute
-// previously merged into one 2-UUID group whose Primary.UUID shadowed the
-// second ⌘B's PUT. Distinct build-description hashes must split.
-func TestGroupManifestEntries_DifferentHex_Splits(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	entries := []enrichment.ManifestEntry{
-		{UUID: "build1", SchemeName: "Models", Signature: "Build Models", Status: "S", Start: base, Stop: base.Add(15 * time.Second)},
-		{UUID: "build2", SchemeName: "Models", Signature: "Build Models", Status: "S", Start: base.Add(20 * time.Second), Stop: base.Add(45 * time.Second)},
-	}
-
-	lookup := hashLookup(map[string]string{"build1": "aaaa1111", "build2": "bbbb2222"})
-
-	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2, "distinct xcbuilddata hashes split; both ⌘Bs land as their own BE row")
-	assert.Equal(t, []string{"build1"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"build2"}, groups[1].UUIDs())
-}
-
-// Empty hash on either side blocks the merge — the safe default.
-func TestGroupManifestEntries_EmptyHex_AlwaysSplits(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	entries := []enrichment.ManifestEntry{
-		{UUID: "u1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
-		{UUID: "u2", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(2 * time.Second), Stop: base.Add(3 * time.Second)},
-	}
-
-	// Both lookups return empty hash — reader miss / unparsed log.
-	lookup := func(_ enrichment.ManifestEntry) xcactivitylog.Metrics {
-		return xcactivitylog.Metrics{Outcome: xcactivitylog.OutcomeUnparsed}
-	}
-
-	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2, "no hex on either side → merge rule declines → each entry stands alone")
-	assert.Equal(t, []string{"u1"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"u2"}, groups[1].UUIDs())
-}
-
-// v7 reproducer: three ⌘Bs 10 s apart on the same xcbuilddata hash land as
-// three independent BE rows, not one merged burst.
-func TestGroupManifestEntries_ThreeCommandBsSameHash_SplitsIntoThree(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	entries := []enrichment.ManifestEntry{
-		{UUID: "b1", SchemeName: "S", Signature: "Build S", Status: "S", Start: base, Stop: base.Add(2 * time.Second)},
-		{UUID: "b2", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(12 * time.Second), Stop: base.Add(14 * time.Second)},
-		{UUID: "b3", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(24 * time.Second), Stop: base.Add(26 * time.Second)},
-	}
-
-	lookup := hashLookup(map[string]string{"b1": "deadbeef", "b2": "deadbeef", "b3": "deadbeef"})
-
-	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 3, "three ⌘Bs 10 s apart → three BE rows even on identical hex")
-	assert.Equal(t, []string{"b1"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"b2"}, groups[1].UUIDs())
-	assert.Equal(t, []string{"b3"}, groups[2].UUIDs())
-}
-
-// v6 reproducer: Clean then Build on the same scheme ~1 s apart — two user
-// actions, two BE rows. Hex is irrelevant when Command differs.
-func TestGroupManifestEntries_CleanThenBuildOneSecondApart_Splits(t *testing.T) {
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	entries := []enrichment.ManifestEntry{
-		{UUID: "clean", SchemeName: "S", Signature: "Cleaning project Foo with scheme S", Status: "S", Start: base, Stop: base.Add(500 * time.Millisecond)},
-		{UUID: "build", SchemeName: "S", Signature: "Build S", Status: "S", Start: base.Add(1500 * time.Millisecond), Stop: base.Add(10 * time.Second)},
-	}
-
-	lookup := hashLookup(map[string]string{"clean": "abcd1234", "build": "abcd1234"})
-
-	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2)
-	assert.Equal(t, []string{"clean"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"build"}, groups[1].UUIDs())
 }

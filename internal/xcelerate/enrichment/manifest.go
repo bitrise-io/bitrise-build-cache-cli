@@ -172,7 +172,7 @@ type ManifestEntryGroup struct {
 	// BE row.
 	overrideInvocationID string
 
-	// preattachedSidecar lets the hex-bridge path skip SidecarReader.Lookup
+	// preattachedSidecar lets the boundary-bridge path skip SidecarReader.Lookup
 	// and feed blob stats + consumed sidecar paths directly. When non-nil the
 	// enricher reads blob stats from here and consumes the listed paths on
 	// success, without going through the time-overlap Lookup — so the
@@ -493,13 +493,14 @@ func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature
 
 // CloneManifestGroupWithSidecar returns a group that shares src's manifest
 // identity (entries copied, not aliased) and carries a preattached sidecar
-// payload. Used by the hex-bridge path: scanOrphanSidecars has matched a
-// pseudo-group's build-request hex to a manifest emission, and must re-PUT
-// under the manifest's UUID with sidecar blob stats merged in. Because the
-// clone keeps the manifest's entries, Primary().UUID stays non-synthetic and
-// ManifestUUID() returns the manifest's UUID — the enricher's SidecarReader
-// lookup is bypassed via Preattached(), so the sidecar's own WrapperLink
-// InvocationID cannot win over the manifest UUID in the ladder.
+// payload. Used by the boundary-bridge path: scanOrphanSidecars has matched a
+// pseudo-group's time window to a Build boundary carried by a manifest
+// emission, and must re-PUT under the manifest's UUID with sidecar blob stats
+// merged in. Because the clone keeps the manifest's entries, Primary().UUID
+// stays non-synthetic and ManifestUUID() returns the manifest's UUID — the
+// enricher's SidecarReader lookup is bypassed via Preattached(), so the
+// sidecar's own WrapperLink InvocationID cannot win over the manifest UUID in
+// the ladder.
 func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snapshot, consumedPaths []string) ManifestEntryGroup {
 	entries := make([]ManifestEntry, len(src.Entries))
 	copy(entries, src.Entries)

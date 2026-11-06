@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
 // nonEmptySidecarBlob returns a Snapshot with a single Download op so it
@@ -1243,6 +1242,125 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweep_StillSuppressesZeroBlob(t *tes
 	assert.True(t, os.IsNotExist(err), "shutdown-swept zero-blob sidecar must be unlinked: %v", err)
 }
 
+// TestWatcher_scanOrphanSidecars_ZeroBlob_WithBoundaryMatch_StillSuppressedAndUnlinked
+// pins the S5 ordering regression guard: a zero-blob orphan whose time window
+// lands inside a reachable Build boundary must still suppress and unlink. The
+// zero-blob gate runs BEFORE tryBoundaryBridgeClone — otherwise the bridge
+// would preattach a nil blob, Enrich would bail at the outcome gate, and
+// sidecar paths would NEVER unlink (7-day accumulation + poisoned
+// recentEmissions entry suppressing legitimate residual synthesis).
+func TestWatcher_scanOrphanSidecars_ZeroBlob_WithBoundaryMatch_StillSuppressedAndUnlinked(t *testing.T) {
+	dd := t.TempDir()
+	const masterUUID = "AAAA-BUILD-MASTER"
+	const proxyID = "proxy-derived-id"
+
+	masterStart := fixtureNow.Add(-5 * time.Minute)
+	masterStop := fixtureNow.Add(-3 * time.Minute)
+	sidecarStart := masterStart.Add(30 * time.Second) // lands inside master's window
+
+	writeBuildBoundaryPlist(t, dd, masterUUID, "Build IceCubesApp", wallToCFAbs(masterStart), wallToCFAbs(masterStop))
+
+	path := filepath.Join(t.TempDir(), "sidecar-nil-blob.json")
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(10 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-nil"},
+			Paths:            []string{path},
+			DerivedDataPaths: []string{dd},
+			// Blob is nil — must suppress even though the boundary matches.
+		},
+	}}
+
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+		Handle: func(string, ManifestEntryGroup) {
+			t.Fatal("zero-blob orphan must not emit even when a Build boundary matches")
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+
+	// Seed master emission so tryBoundaryBridgeClone would succeed if the gate failed to hoist.
+	masterGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       masterUUID,
+			Signature:  "Build IceCubesApp",
+			SchemeName: "IceCubesApp",
+			Start:      masterStart,
+			Stop:       masterStop,
+		}},
+	}
+	w.RecordEmittedInvocationID(masterUUID, "", masterGroup, nil)
+
+	w.scanOrphanSidecars(false)
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked even though its window matched a Build boundary: %v", err)
+}
+
+// TestWatcher_scanOrphanSidecars_IsEmptyBlob_WithBoundaryMatch_StillSuppressedAndUnlinked
+// pins the companion case: an all-zeros Snapshot (IsEmpty()) with a matching
+// Build boundary is handled identically to the nil-blob variant.
+func TestWatcher_scanOrphanSidecars_IsEmptyBlob_WithBoundaryMatch_StillSuppressedAndUnlinked(t *testing.T) {
+	dd := t.TempDir()
+	const masterUUID = "AAAA-BUILD-MASTER"
+	const proxyID = "proxy-derived-id"
+
+	masterStart := fixtureNow.Add(-5 * time.Minute)
+	masterStop := fixtureNow.Add(-3 * time.Minute)
+	sidecarStart := masterStart.Add(30 * time.Second)
+
+	writeBuildBoundaryPlist(t, dd, masterUUID, "Build IceCubesApp", wallToCFAbs(masterStart), wallToCFAbs(masterStop))
+
+	path := filepath.Join(t.TempDir(), "sidecar-empty-snap.json")
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644))
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(10 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-empty"},
+			Paths:            []string{path},
+			Blob:             &blobstats.Snapshot{}, // non-nil but IsEmpty()
+			DerivedDataPaths: []string{dd},
+		},
+	}}
+
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+		Handle: func(string, ManifestEntryGroup) {
+			t.Fatal("IsEmpty() orphan must not emit even when a Build boundary matches")
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+
+	masterGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       masterUUID,
+			Signature:  "Build IceCubesApp",
+			SchemeName: "IceCubesApp",
+			Start:      masterStart,
+			Stop:       masterStop,
+		}},
+	}
+	w.RecordEmittedInvocationID(masterUUID, "", masterGroup, nil)
+
+	w.scanOrphanSidecars(false)
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "sidecar must be unlinked even though its window matched a Build boundary: %v", err)
+}
+
 type stubReader struct {
 	groups map[string]SidecarGroup
 	calls  []stubReaderCall
@@ -1628,32 +1746,6 @@ func TestWatcher_groupFullySeen_PartialOverlapEmits(t *testing.T) {
 	// Baseline: once every UUID is marked, the gate trips.
 	w.seen["u-fresh"] = struct{}{}
 	assert.True(t, w.groupFullySeen(fused), "once every UUID is seen the gate trips (second-tick replay is a no-op)")
-}
-
-// TestGroupManifestEntries_WarmConsecutiveCmdB_SplitsIntoDistinctGroups pins
-// the PR596 S7 fix for the warm consecutive ⌘B case: two builds landing
-// sub-second apart on the same scheme used to fuse via canMerge into one
-// group whose Primary UUID shadowed the second ⌘B's PUT. Removing canMerge
-// makes every plist entry stand as its own group — the warm re-⌘B naturally
-// surfaces as its own BE row without any gate bypass.
-func TestGroupManifestEntries_WarmConsecutiveCmdB_SplitsIntoDistinctGroups(t *testing.T) {
-	base := fixtureNow
-	entries := []ManifestEntry{
-		{UUID: "build1", SchemeName: "SharedScheme", Signature: "Build SharedScheme", Status: "S", Start: base, Stop: base.Add(1 * time.Second)},
-		{UUID: "build2", SchemeName: "SharedScheme", Signature: "Build SharedScheme", Status: "S", Start: base.Add(2 * time.Second), Stop: base.Add(3 * time.Second)},
-	}
-
-	// Supply a matching hash on both — pre-PR596-S7 this was the smoking gun
-	// for canMerge fusing them into one group. The lookup now rides along as
-	// a no-op (grouping no longer consults it).
-	lookup := func(e ManifestEntry) xcactivitylog.Metrics {
-		return xcactivitylog.Metrics{Outcome: xcactivitylog.OutcomeOK, BuildDescriptionHash: "abcd1234"}
-	}
-
-	groups := GroupManifestEntries(entries, WithMetricsLookup(lookup))
-	require.Len(t, groups, 2, "warm consecutive ⌘B must always surface as two independent BE rows")
-	assert.Equal(t, []string{"build1"}, groups[0].UUIDs())
-	assert.Equal(t, []string{"build2"}, groups[1].UUIDs())
 }
 
 // hasControllingStub is a SidecarReader whose Has response is driven by a

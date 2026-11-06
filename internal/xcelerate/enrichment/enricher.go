@@ -81,8 +81,8 @@ func (e *Enricher) now() time.Time {
 
 // resolveSidecar returns the sidecar blob + consumed paths + derived InvocationID
 // + found flag. Preattached groups short-circuit the time-overlap SidecarReader
-// lookup (hex-bridge path keeps the manifest UUID authoritative). Otherwise the
-// SidecarReader runs with a LookupFilter whose DerivedData + build-description
+// lookup (boundary-bridge path keeps the manifest UUID authoritative). Otherwise
+// the SidecarReader runs with a LookupFilter whose DerivedData + build-description
 // hash disambiguate parallel builds sharing a time window; both axes degrade
 // gracefully when either source is empty.
 func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup, buildDescriptionHash string) (*blobstats.Snapshot, []string, string, bool) {
@@ -392,10 +392,10 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 }
 
 // aggregateHitRate sums the compile-cache counters across every manifest entry
-// that carries a FileName and a known action. Most groups hold one entry; a
-// prep-Build + real-Build cluster (same scheme / Command / hex, <mergeMaxGap
-// apart) still aggregates. The lookup is the Watcher's per-tick cache so a
-// log is gunzipped at most once per scan; nil falls through to a direct read.
+// that carries a FileName and a known action. Groups hold one entry post-S7;
+// the sum form survives if grouping gains multi-entry shapes again. The lookup
+// is the Watcher's per-tick cache so a log is gunzipped at most once per scan;
+// nil falls through to a direct read.
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
 // last non-OK outcome so the existing gate in Enrich behaves as before.
