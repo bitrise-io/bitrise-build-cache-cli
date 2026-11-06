@@ -1763,7 +1763,7 @@ workflows:
         - content: |-
             #!/usr/bin/env bash
             set -exo pipefail
-            line=$(grep -F 'Invocation saved. Visit' "$BITRISE_DEPLOY_DIR/wrapper.log" | tail -n1)
+            line=$(grep -F 'Invocation saved. Visit' "$BITRISE_DEPLOY_DIR/wrapper.log" | tail -n1 | sed $'s/\x1b\\[[0-9;]*m//g')
             inv_id="${line##*/xcode/}"
             [[ -n "$inv_id" ]] || { echo "no Invocation saved line in wrapper.log"; exit 1; }
             envman add --key INVOCATION_ID --value "$inv_id"
