@@ -11,16 +11,16 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"howett.net/plist"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
-// CI writes many entries per xcodebuild invocation and timestamps them with
-// wall-clock skew, so the CI grouping window is wider than the local one.
-//
-//nolint:gochecknoglobals
-var (
-	LocalGroupTimeGap = 60 * time.Second
-	CIGroupTimeGap    = 5 * time.Minute
-)
+// MetricsLookup resolves an entry's xcactivitylog metrics. The Watcher wires
+// a per-tick cache so each log is gunzipped at most once per scan; nil
+// disables the lookup (grouping falls back to one-group-per-entry;
+// aggregateHitRate reads directly).
+type MetricsLookup func(entry ManifestEntry) xcactivitylog.Metrics
 
 type ManifestEntry struct {
 	UUID       string
@@ -40,6 +40,7 @@ const (
 	CommandBuild   Command = "build"
 	CommandTest    Command = "test"
 	CommandArchive Command = "archive"
+	CommandClean   Command = "clean"
 	CommandUnknown Command = ""
 )
 
@@ -50,12 +51,14 @@ func (m ManifestEntry) Command() Command {
 	}
 
 	switch strings.ToLower(strings.SplitN(source, " ", 2)[0]) {
-	case "build", "building", "cleaning", "clean":
+	case "build", "building":
 		return CommandBuild
 	case "test", "testing":
 		return CommandTest
 	case "archive", "archiving":
 		return CommandArchive
+	case "clean", "cleaning":
+		return CommandClean
 	default:
 		return CommandUnknown
 	}
@@ -69,6 +72,7 @@ const manifestStatusError = "E"
 var (
 	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
 	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
+	workspaceFromSignature     = regexp.MustCompile(`(?i)\bworkspace\s+(\S+)`)
 )
 
 // Configuration parses the configuration name out of Xcode's Signature string.
@@ -83,6 +87,18 @@ func (m ManifestEntry) Configuration() string {
 // Project parses the project name out of Xcode's Signature string.
 func (m ManifestEntry) Project() string {
 	if match := projectFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
+		return match[1]
+	}
+
+	return ""
+}
+
+// Workspace parses the workspace name out of Xcode's Signature string.
+// Signatures from `xcodebuild -workspace Foo.xcworkspace -scheme Bar` land as
+// "Building workspace Foo with scheme Bar" and omit any project/configuration
+// token, so FullCommand needs the workspace to render an argv-shaped command.
+func (m ManifestEntry) Workspace() string {
+	if match := workspaceFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
 		return match[1]
 	}
 
@@ -131,8 +147,10 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 }
 
 // ManifestEntryGroup is a set of ManifestEntry rows from the same xcodebuild
-// invocation and the same LogStoreManifest.plist. Grouping key is scheme +
-// time-gap cluster; group aggregation lets the watcher emit one PUT per
+// invocation and the same LogStoreManifest.plist. Default is one entry per
+// group; a prep-phase xcactivitylog fuses with its real-build companion only
+// when they share scheme + Command + non-empty BuildDescriptionHash and land
+// within mergeMaxGap. Group aggregation lets the watcher emit one PUT per
 // invocation instead of one per entry.
 //
 // Invariant (relied on by the enricher's sibling-log resolve): a group never
@@ -146,12 +164,46 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 //     renders "build [scheme / testPlan / config]" from argv, but the manifest
 //     carries only the scheme name, so wrapper-less analytics runs show a
 //     coarser command string.
-//   - The aggregate span (Start = min, Stop = max) is wide by design: a burst
-//     entry plus a late entry within TimeGap collapses into one group whose
-//     span covers both. Correlation uses that span, so overlap-based matching
-//     can pick a pending record that only overlaps part of the window.
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
+
+	// overrideInvocationID is set by SyntheticManifestGroup when the orphan
+	// sweep already identified a manifest-emitted InvocationID that overlaps
+	// this pseudo-group's time window. Enricher.Enrich reads it via
+	// OverrideInvocationID() to re-PUT under that ID instead of minting a new
+	// orphan — this collapses the manifest-orphan + pseudo-group pair into one
+	// BE row.
+	overrideInvocationID string
+
+	// preattachedSidecar lets the hex-bridge path skip SidecarReader.Lookup
+	// and feed blob stats + consumed sidecar paths directly. When non-nil the
+	// enricher reads blob stats from here and consumes the listed paths on
+	// success, without going through the time-overlap Lookup — so the
+	// sidecar's own WrapperLink.InvocationID cannot win over the clone's
+	// manifest UUID in the resolution ladder.
+	preattachedSidecar *preattachedSidecar
+}
+
+type preattachedSidecar struct {
+	Blob          *blobstats.Snapshot
+	ConsumedPaths []string
+}
+
+// Preattached returns the bundled sidecar blob + consumed paths when set by
+// CloneManifestGroupWithSidecar; nil otherwise.
+func (g ManifestEntryGroup) Preattached() (*blobstats.Snapshot, []string, bool) {
+	if g.preattachedSidecar == nil {
+		return nil, nil, false
+	}
+
+	return g.preattachedSidecar.Blob, g.preattachedSidecar.ConsumedPaths, true
+}
+
+// OverrideInvocationID returns the InvocationID the pseudo-group must PUT under,
+// or "" when no override was stamped. Only SyntheticManifestGroup populates
+// this; real manifest-derived groups return "".
+func (g ManifestEntryGroup) OverrideInvocationID() string {
+	return g.overrideInvocationID
 }
 
 func (g ManifestEntryGroup) UUIDs() []string {
@@ -214,6 +266,19 @@ func (g ManifestEntryGroup) Duration() time.Duration {
 	return stop.Sub(start)
 }
 
+// PrimarySpan is the time span of Primary() alone — the invocation anchor's
+// own build-action window, not the wider cluster that includes post-build
+// indexing / preview compiles. Used by the BE row payload so durationMs
+// reflects the build, not the aggregate cluster.
+func (g ManifestEntryGroup) PrimarySpan() time.Duration {
+	p := g.Primary()
+	if p.Start.IsZero() || p.Stop.IsZero() {
+		return 0
+	}
+
+	return p.Stop.Sub(p.Start)
+}
+
 // ErrorMessage returns the first non-empty entry message so a mixed-status
 // group surfaces failure signal while mirroring Success()'s AND semantics.
 func (g ManifestEntryGroup) ErrorMessage() string {
@@ -240,48 +305,71 @@ func (g ManifestEntryGroup) Success() bool {
 	return true
 }
 
-// Primary picks the outermost entry by command rank (archive > build > test >
-// unknown). Ties are broken by earliest Start.
+// commandRank orders Command values so the Primary picker ranks them:
+// archive > build > test > clean > unknown.
 //
 // Build outranks Test because build-for-testing and test share a scheme and
 // cluster into one group, and the test-without-building log never carries
 // compile-cache events — reading hit rate off the test entry pins the group
 // at 0 even when build-for-testing hit the cache.
+func commandRank(c Command) int {
+	switch c {
+	case CommandArchive:
+		return 3
+	case CommandBuild:
+		return 2
+	case CommandTest:
+		return 1
+	case CommandClean:
+		return 0
+	case CommandUnknown:
+		return -1
+	default:
+		return -1
+	}
+}
+
+// Primary picks the outermost entry by command rank (archive > build > test >
+// clean > unknown), then earliest Start, then lex-smallest UUID (deterministic
+// across Go-map iteration order).
 func (g ManifestEntryGroup) Primary() ManifestEntry {
 	if len(g.Entries) == 0 {
 		return ManifestEntry{}
 	}
 
-	rank := func(c Command) int {
-		switch c {
-		case CommandArchive:
-			return 3
-		case CommandBuild:
-			return 2
-		case CommandTest:
-			return 1
-		case CommandUnknown:
-			return 0
-		default:
-			return 0
-		}
-	}
-
 	best := g.Entries[0]
-	bestRank := rank(best.Command())
+	bestRank := commandRank(best.Command())
 
 	for _, e := range g.Entries[1:] {
-		r := rank(e.Command())
-		if r > bestRank || (r == bestRank && e.Start.Before(best.Start)) {
+		r := commandRank(e.Command())
+		switch {
+		case r > bestRank:
 			best = e
 			bestRank = r
+		case r == bestRank && e.Start.Before(best.Start):
+			best = e
+		case r == bestRank && e.Start.Equal(best.Start) && e.UUID < best.UUID:
+			best = e
 		}
 	}
 
 	return best
 }
 
-// Command returns empty when the primary is unknown so the caller skips PUT.
+// ManifestUUID returns Primary().UUID when the group is manifest-sourced, empty for SyntheticManifestGroup pseudo-groups.
+func (g ManifestEntryGroup) ManifestUUID() string {
+	uuid := g.Primary().UUID
+	if strings.HasPrefix(uuid, SyntheticManifestGroupUUIDPrefix) {
+		return ""
+	}
+
+	return uuid
+}
+
+// Command returns empty when the primary carries no known action so the caller
+// skips PUT. Renders `<action> [<scheme> / <configuration>]` — Primary-only.
+// Each independent user action (IDE Clean, IDE Build, CLI invocation) is its
+// own group and lands as its own BE row.
 func (g ManifestEntryGroup) Command() string {
 	p := g.Primary()
 	if p.Command() == CommandUnknown {
@@ -289,8 +377,8 @@ func (g ManifestEntryGroup) Command() string {
 	}
 
 	parts := make([]string, 0, 2)
-	if p.SchemeName != "" {
-		parts = append(parts, p.SchemeName)
+	if scheme := g.SchemeName(); scheme != "" {
+		parts = append(parts, scheme)
 	}
 
 	if cfg := p.Configuration(); cfg != "" {
@@ -304,89 +392,225 @@ func (g ManifestEntryGroup) Command() string {
 	return string(p.Command()) + " [" + strings.Join(parts, " / ") + "]"
 }
 
+// FullCommand renders an argv-shaped xcodebuild invocation for the Primary
+// action. -workspace / -project / -configuration are sourced via
+// firstNonEmptyTokens so a split-companion entry (e.g. clean sharing the
+// scheme group but carrying the project+configuration tokens Build omitted)
+// still contributes its metadata. Falls back to Primary().Signature verbatim
+// when Primary's command is Unknown and no ws/project/configuration could be
+// parsed.
 func (g ManifestEntryGroup) FullCommand() string {
 	p := g.Primary()
-	proj := p.Project()
-	cfg := p.Configuration()
+	ws, proj, cfg := g.firstNonEmptyTokens()
 
-	if proj == "" && cfg == "" {
+	if p.Command() == CommandUnknown && ws == "" && proj == "" && cfg == "" {
 		return p.Signature
 	}
 
-	parts := make([]string, 0, 3)
-	if proj != "" {
-		parts = append(parts, "-project "+proj)
+	parts := make([]string, 0, 5)
+	parts = append(parts, "xcodebuild")
+
+	if p.Command() != CommandUnknown {
+		parts = append(parts, string(p.Command()))
+	}
+
+	switch {
+	case ws != "":
+		parts = append(parts, "-workspace", ws)
+	case proj != "":
+		parts = append(parts, "-project", proj)
 	}
 
 	if p.SchemeName != "" {
-		parts = append(parts, "-scheme "+p.SchemeName)
+		parts = append(parts, "-scheme", p.SchemeName)
 	}
 
 	if cfg != "" {
-		parts = append(parts, "-configuration "+cfg)
+		parts = append(parts, "-configuration", cfg)
 	}
 
 	return strings.Join(parts, " ")
 }
 
+// firstNonEmptyTokens walks entries in Start order and picks the first
+// non-empty workspace, project, and configuration. Shared by FullCommand so a
+// split-companion entry still contributes its metadata when Primary's own
+// Signature omits a token.
+func (g ManifestEntryGroup) firstNonEmptyTokens() (string, string, string) {
+	ordered := append([]ManifestEntry(nil), g.Entries...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Start.Before(ordered[j].Start)
+	})
+
+	var ws, proj, cfg string
+
+	for _, e := range ordered {
+		if ws == "" {
+			ws = e.Workspace()
+		}
+
+		if proj == "" {
+			proj = e.Project()
+		}
+
+		if cfg == "" {
+			cfg = e.Configuration()
+		}
+
+		if ws != "" && proj != "" && cfg != "" {
+			break
+		}
+	}
+
+	return ws, proj, cfg
+}
+
+// SyntheticManifestGroupUUIDPrefix tags pseudo-groups synthesized from aged
+// orphan sidecars. Bare xcodebuild UUIDs never carry this prefix so the
+// HandledManifestStore cannot collide across the real/synthetic boundary.
+const SyntheticManifestGroupUUIDPrefix = "synthetic-"
+
+// SyntheticManifestGroup builds a one-entry pseudo-group suitable for feeding
+// Enrich() when no LogStoreManifest.plist arrived. signature falls back to
+// "build" so Command()→CommandBuild and the enricher does not drop the group;
+// scheme is stamped as SchemeName so the rendered command carries the scheme.
+// overrideInvocationID, when non-empty, redirects the PUT at the ID of a
+// manifest-orphan that overlapped this pseudo-group's window — dedups the
+// Clean+Build-manifest-orphan + pseudo-group pair into a single BE row.
+func SyntheticManifestGroup(sidecarUUID string, start, stop time.Time, signature, scheme, overrideInvocationID string) ManifestEntryGroup {
+	if signature == "" {
+		signature = "build"
+	}
+
+	return ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       SyntheticManifestGroupUUIDPrefix + sidecarUUID,
+			Signature:  signature,
+			SchemeName: scheme,
+			Start:      start,
+			Stop:       stop,
+		}},
+		overrideInvocationID: overrideInvocationID,
+	}
+}
+
+// CloneManifestGroupWithSidecar returns a group that shares src's manifest
+// identity (entries copied, not aliased) and carries a preattached sidecar
+// payload. Used by the hex-bridge path: scanOrphanSidecars has matched a
+// pseudo-group's build-request hex to a manifest emission, and must re-PUT
+// under the manifest's UUID with sidecar blob stats merged in. Because the
+// clone keeps the manifest's entries, Primary().UUID stays non-synthetic and
+// ManifestUUID() returns the manifest's UUID — the enricher's SidecarReader
+// lookup is bypassed via Preattached(), so the sidecar's own WrapperLink
+// InvocationID cannot win over the manifest UUID in the ladder.
+func CloneManifestGroupWithSidecar(src ManifestEntryGroup, blob *blobstats.Snapshot, consumedPaths []string) ManifestEntryGroup {
+	entries := make([]ManifestEntry, len(src.Entries))
+	copy(entries, src.Entries)
+
+	paths := append([]string(nil), consumedPaths...)
+
+	return ManifestEntryGroup{
+		Entries: entries,
+		preattachedSidecar: &preattachedSidecar{
+			Blob:          blob,
+			ConsumedPaths: paths,
+		},
+	}
+}
+
+// GroupOption configures GroupManifestEntries. Options are applied in order;
+// absent options preserve the pre-option behavior.
+type GroupOption func(*groupOptions)
+
+type groupOptions struct {
+	metricsLookup MetricsLookup
+}
+
+// WithMetricsLookup wires the per-entry BuildDescriptionHash source used by
+// the prep+real-build merge rule. Nil-tolerant: every entry stands on its own
+// when no lookup is wired (the Watcher installs one per-tick so a log is
+// gunzipped at most once per scan).
+func WithMetricsLookup(fn MetricsLookup) GroupOption {
+	return func(o *groupOptions) {
+		o.metricsLookup = fn
+	}
+}
+
+// mergeMaxGap is the sub-second-ish window inside which a prep xcactivitylog
+// and its real-build companion may fuse into one group. Anything beyond this
+// is a user action in its own right and lands as its own BE row.
+const mergeMaxGap = 3 * time.Second
+
 // GroupManifestEntries expects entries from a single manifest — see the
-// ManifestEntryGroup invariant.
-func GroupManifestEntries(entries []ManifestEntry, timeGap time.Duration) []ManifestEntryGroup {
+// ManifestEntryGroup invariant. Default is one entry per group; adjacent
+// entries (ordered by Start) merge iff they share SchemeName, Command, a
+// non-empty BuildDescriptionHash, and are less than mergeMaxGap apart.
+func GroupManifestEntries(entries []ManifestEntry, opts ...GroupOption) []ManifestEntryGroup {
 	if len(entries) == 0 {
 		return nil
 	}
 
-	byScheme := make(map[string][]ManifestEntry)
-	schemeOrder := make([]string, 0)
-
-	for _, e := range entries {
-		if _, seen := byScheme[e.SchemeName]; !seen {
-			schemeOrder = append(schemeOrder, e.SchemeName)
-		}
-
-		byScheme[e.SchemeName] = append(byScheme[e.SchemeName], e)
+	var cfg groupOptions
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 
-	out := make([]ManifestEntryGroup, 0, len(schemeOrder))
+	ordered := append([]ManifestEntry(nil), entries...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Start.Before(ordered[j].Start)
+	})
 
-	for _, scheme := range schemeOrder {
-		bucket := byScheme[scheme]
-		sort.SliceStable(bucket, func(i, j int) bool {
-			return bucket[i].Start.Before(bucket[j].Start)
-		})
+	out := make([]ManifestEntryGroup, 0, len(ordered))
+	current := ManifestEntryGroup{Entries: []ManifestEntry{ordered[0]}}
 
-		current := ManifestEntryGroup{Entries: []ManifestEntry{bucket[0]}}
-		currentStop := bucket[0].Stop
-
-		for _, e := range bucket[1:] {
-			gap := e.Start.Sub(currentStop)
-			if gap > timeGap {
-				out = append(out, current)
-				current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
-				currentStop = e.Stop
-
-				continue
-			}
-
+	for _, e := range ordered[1:] {
+		prev := current.Entries[len(current.Entries)-1]
+		if canMerge(prev, e, cfg.metricsLookup) {
 			current.Entries = append(current.Entries, e)
-			if e.Stop.After(currentStop) {
-				currentStop = e.Stop
-			}
+
+			continue
 		}
 
 		out = append(out, current)
+		current = ManifestEntryGroup{Entries: []ManifestEntry{e}}
 	}
+
+	out = append(out, current)
 
 	return out
 }
 
-func LoadManifestGrouped(path string, timeGap time.Duration) ([]ManifestEntryGroup, error) {
+// canMerge returns true when candidate should fuse into prev's group:
+// same SchemeName, same Command, same non-empty BuildDescriptionHash, and
+// candidate.Start − prev.Stop < mergeMaxGap. A nil lookup — or either side
+// carrying an empty hash — keeps them apart.
+func canMerge(prev, candidate ManifestEntry, lookup MetricsLookup) bool {
+	if lookup == nil {
+		return false
+	}
+	if prev.SchemeName != candidate.SchemeName {
+		return false
+	}
+	if prev.Command() != candidate.Command() {
+		return false
+	}
+
+	prevHash := lookup(prev).BuildDescriptionHash
+	candHash := lookup(candidate).BuildDescriptionHash
+	if prevHash == "" || candHash == "" || prevHash != candHash {
+		return false
+	}
+
+	return candidate.Start.Sub(prev.Stop) < mergeMaxGap
+}
+
+func LoadManifestGrouped(path string, opts ...GroupOption) ([]ManifestEntryGroup, error) {
 	entries, err := LoadManifest(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return GroupManifestEntries(entries, timeGap), nil
+	return GroupManifestEntries(entries, opts...), nil
 }
 
 func LoadManifest(path string) ([]ManifestEntry, error) {

@@ -35,11 +35,19 @@ const (
 	OutcomeReadError
 )
 
-// hitRateRegexp matches both the diagnostic-rendered ("note: ...") and bare
-// section-payload forms of the CompilationCacheMetrics line.
+// HitRateRegexp matches the CompilationCacheMetrics line in both its stdout
+// diagnostic form (`note: N hits / M cacheable tasks`) and its bare SLF
+// payload form inside an .xcactivitylog; the trailing `(NN%)` suffix only
+// appears in the SLF form, so it is optional.
 //
 //nolint:gochecknoglobals // compiled once, read-only
-var hitRateRegexp = regexp.MustCompile(`(\d+)\s+hits\s*/\s*(\d+)\s+cacheable\s+tasks\s*\(\s*(\d+)%\s*\)`)
+var HitRateRegexp = regexp.MustCompile(`(\d+)\s+hits\s*/\s*(\d+)\s+cacheable\s+tasks(?:\s*\(\s*\d+%\s*\))?`)
+
+// buildDescriptionHashRegexp captures the 32-hex build-description hash Xcode
+// writes into the log body as a plain ASCII substring.
+//
+//nolint:gochecknoglobals // compiled once, read-only
+var buildDescriptionHashRegexp = regexp.MustCompile(`Build description path: .*/XCBuildData/([0-9a-f]{32})\.xcbuilddata`)
 
 const largeLogThresholdBytes = 20 * 1024 * 1024
 
@@ -48,6 +56,10 @@ type Metrics struct {
 	Hits    int
 	Total   int
 	Outcome Outcome
+	// BuildDescriptionHash is the 32-hex `XCBuildData/<hash>.xcbuilddata`
+	// identifier Xcode prints in the log body. Best-effort; absence does NOT
+	// demote OutcomeOK.
+	BuildDescriptionHash string
 }
 
 // ReadCompilationCacheMetrics returns zero numbers + nil err for the
@@ -101,7 +113,12 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 		return Metrics{Outcome: OutcomeEmpty}, nil
 	}
 
-	if m := hitRateRegexp.FindSubmatch(body); m != nil {
+	var hash string
+	if m := buildDescriptionHashRegexp.FindSubmatch(body); m != nil {
+		hash = string(m[1])
+	}
+
+	if m := HitRateRegexp.FindSubmatch(body); m != nil {
 		h, _ := strconv.Atoi(string(m[1]))
 		tot, _ := strconv.Atoi(string(m[2]))
 
@@ -110,20 +127,33 @@ func readMetrics(path string, logger log.Logger) (Metrics, error) {
 			rate = float32(h) / float32(tot)
 		}
 
-		return Metrics{HitRate: rate, Hits: h, Total: tot, Outcome: OutcomeOK}, nil
+		return Metrics{HitRate: rate, Hits: h, Total: tot, Outcome: OutcomeOK, BuildDescriptionHash: hash}, nil
 	}
 
-	return Metrics{Outcome: OutcomeUnparsed}, nil
+	return Metrics{Outcome: OutcomeUnparsed, BuildDescriptionHash: hash}, nil
 }
 
 // ReadHitRateFromManifest resolves the sibling log path from manifestPath +
 // logFileName, reads CompilationCacheMetrics, and logs non-OK outcomes via
 // logger (debug for missing/empty, warn for unparsed with size hint, warn for
-// read errors). Returns 0 on any non-OK outcome. Empty inputs short-circuit as
-// OutcomeFileMissing without reading.
-func ReadHitRateFromManifest(manifestPath, logFileName string, logger log.Logger) (float32, Outcome) {
+// read errors). Returns 0 rate + empty hash on any non-OK outcome. Empty
+// inputs short-circuit as OutcomeFileMissing without reading.
+func ReadHitRateFromManifest(manifestPath, logFileName string, logger log.Logger) (float32, Outcome, string) {
+	m := ReadMetricsFromManifest(manifestPath, logFileName, logger)
+	if m.Outcome == OutcomeOK {
+		return m.HitRate, OutcomeOK, m.BuildDescriptionHash
+	}
+
+	return 0, m.Outcome, ""
+}
+
+// ReadMetricsFromManifest is the raw-counters sibling of ReadHitRateFromManifest.
+// Multi-action clusters sum Hits/Total across every parseable entry's log, so
+// callers need the integer counters to compute a weighted aggregate hit rate
+// — not just the per-log rate.
+func ReadMetricsFromManifest(manifestPath, logFileName string, logger log.Logger) Metrics {
 	if manifestPath == "" || logFileName == "" {
-		return 0, OutcomeFileMissing
+		return Metrics{Outcome: OutcomeFileMissing}
 	}
 
 	logPath := filepath.Join(filepath.Dir(manifestPath), logFileName)
@@ -149,9 +179,5 @@ func ReadHitRateFromManifest(manifestPath, logFileName string, logger log.Logger
 		}
 	}
 
-	if metrics.Outcome == OutcomeOK {
-		return metrics.HitRate, OutcomeOK
-	}
-
-	return 0, metrics.Outcome
+	return metrics
 }

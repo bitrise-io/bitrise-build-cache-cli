@@ -176,7 +176,7 @@ func TestReadHitRateFromManifest_OK(t *testing.T) {
 	manifestDir, manifestPath := newManifestFixture(t)
 	writeGzipped(t, manifestDir, "AAAA.xcactivitylog", []byte("note: 7 hits / 10 cacheable tasks (70%)"))
 
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
 	assert.Equal(t, xcactivitylog.OutcomeOK, outcome)
 	assert.InDelta(t, float32(0.7), rate, 0.001)
 	assert.NotContains(t, buf.String(), "[WARN]")
@@ -189,7 +189,7 @@ func TestReadHitRateFromManifest_FileMissing_Debug(t *testing.T) {
 	_, manifestPath := newManifestFixture(t)
 	// No sibling log written.
 
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
 	assert.Equal(t, xcactivitylog.OutcomeFileMissing, outcome)
 	assert.Zero(t, rate)
 	assert.NotContains(t, buf.String(), "[WARN]")
@@ -202,7 +202,7 @@ func TestReadHitRateFromManifest_Empty_Debug(t *testing.T) {
 	manifestDir, manifestPath := newManifestFixture(t)
 	require.NoError(t, os.WriteFile(filepath.Join(manifestDir, "AAAA.xcactivitylog"), nil, 0o644))
 
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
 	assert.Equal(t, xcactivitylog.OutcomeEmpty, outcome)
 	assert.Zero(t, rate)
 	assert.NotContains(t, buf.String(), "[WARN]")
@@ -215,7 +215,7 @@ func TestReadHitRateFromManifest_Unparsed_Warn(t *testing.T) {
 	manifestDir, manifestPath := newManifestFixture(t)
 	writeGzipped(t, manifestDir, "AAAA.xcactivitylog", []byte("random SLF noise no metrics line here\n"))
 
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
 	assert.Equal(t, xcactivitylog.OutcomeUnparsed, outcome)
 	assert.Zero(t, rate)
 	// Unparsed signals Xcode format drift — must surface as warn with size hint.
@@ -224,13 +224,13 @@ func TestReadHitRateFromManifest_Unparsed_Warn(t *testing.T) {
 }
 
 func TestReadHitRateFromManifest_EmptyManifestPath_FastReturn(t *testing.T) {
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest("", "AAAA.xcactivitylog", nil)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest("", "AAAA.xcactivitylog", nil)
 	assert.Equal(t, xcactivitylog.OutcomeFileMissing, outcome)
 	assert.Zero(t, rate)
 }
 
 func TestReadHitRateFromManifest_EmptyLogFileName_FastReturn(t *testing.T) {
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest("/tmp/LogStoreManifest.plist", "", nil)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest("/tmp/LogStoreManifest.plist", "", nil)
 	assert.Equal(t, xcactivitylog.OutcomeFileMissing, outcome)
 	assert.Zero(t, rate)
 }
@@ -239,9 +239,73 @@ func TestReadHitRateFromManifest_NilLogger_NoPanic(t *testing.T) {
 	manifestDir, manifestPath := newManifestFixture(t)
 	writeGzipped(t, manifestDir, "AAAA.xcactivitylog", []byte("note: 3 hits / 4 cacheable tasks (75%)"))
 
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", nil)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", nil)
 	assert.Equal(t, xcactivitylog.OutcomeOK, outcome)
 	assert.InDelta(t, float32(0.75), rate, 0.001)
+}
+
+func TestReadCompilationCacheMetrics_BuildDescriptionHash(t *testing.T) {
+	cases := []struct {
+		name       string
+		body       string
+		wantHash   string
+		wantOutcome xcactivitylog.Outcome
+	}{
+		{
+			name:        "with hit rate and hash",
+			body:        "header\nBuild description path: /Users/x/DD/Build/Intermediates.noindex/XCBuildData/ea6297e079ee1683905d008d83044b10.xcbuilddata\nnote: 7 hits / 10 cacheable tasks (70%)\n",
+			wantHash:    "ea6297e079ee1683905d008d83044b10",
+			wantOutcome: xcactivitylog.OutcomeOK,
+		},
+		{
+			name:        "hit rate without hash still OK",
+			body:        "note: 3 hits / 4 cacheable tasks (75%)",
+			wantHash:    "",
+			wantOutcome: xcactivitylog.OutcomeOK,
+		},
+		{
+			name:        "neither hit rate nor hash unparsed",
+			body:        "random SLF noise\n",
+			wantHash:    "",
+			wantOutcome: xcactivitylog.OutcomeUnparsed,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := writeGzipped(t, dir, "sample.xcactivitylog", []byte(tc.body))
+
+			m, err := xcactivitylog.ReadCompilationCacheMetrics(path)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantOutcome, m.Outcome)
+			assert.Equal(t, tc.wantHash, m.BuildDescriptionHash)
+		})
+	}
+}
+
+func TestReadHitRateFromManifest_ReturnsHashOnOK(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := log.NewLogger(log.WithOutput(buf))
+
+	manifestDir, manifestPath := newManifestFixture(t)
+	writeGzipped(t, manifestDir, "AAAA.xcactivitylog", []byte(
+		"Build description path: /Users/x/DD/Build/Intermediates.noindex/XCBuildData/ea6297e079ee1683905d008d83044b10.xcbuilddata\n"+
+			"note: 7 hits / 10 cacheable tasks (70%)\n",
+	))
+
+	rate, outcome, hash := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
+	assert.Equal(t, xcactivitylog.OutcomeOK, outcome)
+	assert.InDelta(t, float32(0.7), rate, 0.001)
+	assert.Equal(t, "ea6297e079ee1683905d008d83044b10", hash)
+}
+
+func TestReadHitRateFromManifest_EmptyHashOnNonOK(t *testing.T) {
+	_, manifestPath := newManifestFixture(t)
+
+	_, outcome, hash := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", nil)
+	assert.Equal(t, xcactivitylog.OutcomeFileMissing, outcome)
+	assert.Empty(t, hash)
 }
 
 func TestReadHitRateFromManifest_ReadFailure_Warn(t *testing.T) {
@@ -256,7 +320,7 @@ func TestReadHitRateFromManifest_ReadFailure_Warn(t *testing.T) {
 	require.NoError(t, os.Chmod(manifestDir, 0o000))
 	t.Cleanup(func() { _ = os.Chmod(manifestDir, 0o755) })
 
-	rate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
+	rate, outcome, _ := xcactivitylog.ReadHitRateFromManifest(manifestPath, "AAAA.xcactivitylog", logger)
 	assert.Equal(t, xcactivitylog.OutcomeReadError, outcome)
 	assert.Zero(t, rate)
 	assert.Contains(t, buf.String(), "xcactivitylog read failed")

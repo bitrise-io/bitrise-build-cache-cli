@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/google/uuid"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	pathsutil "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -36,6 +37,29 @@ type Enricher struct {
 	Health           *HealthWriter
 	Now              func() time.Time
 	XcresultParser   xcresult.Parser
+	SidecarReader    SidecarReader
+
+	// OnEmit fires after a successful PutInvocation with the ID actually sent,
+	// the manifest's build-description hash (empty if not extractable), and the
+	// group whose PUT just succeeded. The watcher wires this to its per-tick
+	// dedup set so an aged orphan sidecar sharing the ID with a manifest
+	// emission does not re-emit as a synthetic pseudo-group — and so the
+	// orphan sweep can bridge a pseudo-group back to the originating manifest
+	// via hex-exact match on buildDescriptionHash.
+	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup)
+
+	// metricsLookup is the per-tick xcactivitylog cache the Watcher installs
+	// via SetMetricsLookup before invoking Enrich; aggregateHitRate consults
+	// it so a single gunzip is shared with the grouping pass. nil = fall
+	// through to a direct ReadMetricsFromManifest read.
+	metricsLookup MetricsLookup
+}
+
+// SetMetricsLookup wires the Watcher's per-tick metrics cache. Called at scan
+// start; cleared at scan tail so a stale cache from one tick cannot leak into
+// the next.
+func (e *Enricher) SetMetricsLookup(lookup MetricsLookup) {
+	e.metricsLookup = lookup
 }
 
 func (e *Enricher) now() time.Time {
@@ -86,21 +110,69 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	hitRate, outcome := xcactivitylog.ReadHitRateFromManifest(manifestPath, group.Primary().FileName, logger)
-	if outcome != xcactivitylog.OutcomeOK {
-		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v (uuids=%v)", group.SchemeName(), outcome, group.UUIDs())
+	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
+
+	var (
+		sidecarBlob         *blobstats.Snapshot
+		consumedPaths       []string
+		sidecarInvocationID string
+		sidecarFound        bool
+	)
+	// Preattached short-circuits the time-overlap SidecarReader lookup so the
+	// hex-bridge path (CloneManifestGroupWithSidecar) PUTs under the manifest
+	// UUID instead of the sidecar's WrapperLink.InvocationID.
+	if blob, paths, ok := group.Preattached(); ok {
+		sidecarBlob = blob
+		consumedPaths = paths
+		sidecarFound = blob != nil
+	} else if e.SidecarReader != nil {
+		// DerivedData root + build-description hash disambiguate parallel builds
+		// that share a time window. Both axes degrade gracefully when either
+		// source is empty — see LookupFilter docs.
+		filter := LookupFilter{
+			DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
+		}
+		if buildDescriptionHash != "" {
+			filter.Hashes = []string{buildDescriptionHash}
+		}
+		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group, filter)
+	}
+
+	invocationID := group.ManifestUUID()
+	if invocationID == "" {
+		invocationID = group.OverrideInvocationID()
+	}
+	if invocationID == "" {
+		invocationID = sidecarInvocationID
+	}
+	if invocationID == "" {
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
 
 		return
 	}
 
-	invocationID := uuid.NewString()
+	// Synthetic (sidecar-sourced) groups and override-anchored PUTs carry their
+	// own data path — the xcactivitylog is only the authoritative source for
+	// real manifest-derived emissions.
+	hasAlternateDataSource := sidecarFound || group.OverrideInvocationID() != ""
+	if hitRateOutcome != xcactivitylog.OutcomeOK && !hasAlternateDataSource {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar / override (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
+
+		return
+	}
+
+	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
+		if total := sidecarBlob.Download.OpCount + sidecarBlob.Download.MissCount; total > 0 {
+			hitRate = float32(sidecarBlob.Download.OpCount) / float32(total)
+		}
+	}
 
 	var runErr error
 	if !group.Success() {
 		runErr = errors.New(group.ErrorMessage())
 	}
 
-	inv := analytics.NewInvocation(analytics.InvocationRunStats{
+	runStats := analytics.InvocationRunStats{
 		InvocationDate:   group.Start(),
 		InvocationID:     invocationID,
 		Duration:         group.Duration().Milliseconds(),
@@ -111,7 +183,10 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 		HitRate:          hitRate,
-	}, e.Auth, e.Metadata)
+		CacheBlobStats:   sidecarBlob,
+	}
+
+	inv := analytics.NewInvocation(runStats, e.Auth, e.Metadata)
 
 	e.attachXcresultSummary(manifestPath, group, inv)
 
@@ -120,14 +195,22 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
-		_ = e.recordWrapperlessFailure(invocationID, inv, err)
+		if persisted := e.recordWrapperlessFailure(invocationID, inv, err); persisted {
+			unlinkSidecars(consumedPaths, logger)
+		}
 
 		return
 	}
 
+	unlinkSidecars(consumedPaths, logger)
+
 	// matched=false always: matched groups short-circuit above and LastMatched
 	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
+
+	if e.OnEmit != nil {
+		e.OnEmit(invocationID, buildDescriptionHash, group)
+	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
 }
@@ -143,6 +226,9 @@ func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
 	return p
 }
 
+// recordWrapperlessFailure returns true when the enriched payload was persisted to
+// the retry store, so sidecar unlink can proceed; false when the record was
+// dropped and sidecars must be left for a later invocation to re-consume.
 func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.Invocation, putErr error) bool {
 	if e.Store == nil {
 		return false
@@ -175,57 +261,142 @@ func (e *Enricher) recordWrapperlessFailure(invocationID string, inv *analytics.
 	return true
 }
 
-// attachXcresultSummary populates inv.Targets/Failures from the xcresult bundle
-// Xcode writes next to the activity log. Silent no-op when parser is unset,
-// bundle is absent, or the summary is empty.
+func unlinkSidecars(paths []string, logger log.Logger) {
+	for _, p := range paths {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
+		}
+	}
+}
+
+// attachXcresultSummary merges xcresult bundles across every manifest entry
+// with a non-empty FileName. Each entry owns its own sibling bundle; a
+// clean+build+test cluster writes three bundles that must fuse into one BE row.
+// Targets dedup on Name (take the longest BuildDurationMs so a test action
+// does not overwrite the build action's measurement); Failures dedup on the
+// (TargetName, Message) pair. Silent no-op when parser is unset or every
+// bundle is absent/empty.
 func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntryGroup, inv *analytics.Invocation) {
-	if e.XcresultParser == nil {
+	if e.XcresultParser == nil || manifestPath == "" {
 		return
 	}
 
-	bundlePath := xcresultBundlePath(manifestPath, group)
-	if bundlePath == "" {
-		return
-	}
-	if _, err := os.Stat(bundlePath); err != nil {
-		return
+	manifestDir := filepath.Dir(manifestPath)
+	seenTargets := make(map[string]int, len(group.Entries))
+	seenFailures := make(map[string]struct{}, len(group.Entries))
+
+	for _, entry := range group.Entries {
+		if entry.FileName == "" {
+			continue
+		}
+
+		bundlePath := filepath.Join(manifestDir, strings.TrimSuffix(entry.FileName, filepath.Ext(entry.FileName))+".xcresult")
+		if _, err := os.Stat(bundlePath); err != nil {
+			continue
+		}
+
+		summary := e.XcresultParser.Parse(context.Background(), bundlePath)
+
+		for _, t := range summary.Targets {
+			if idx, ok := seenTargets[t.Name]; ok {
+				if t.BuildDurationMs > inv.Targets[idx].BuildDurationMs {
+					inv.Targets[idx].BuildDurationMs = t.BuildDurationMs
+				}
+
+				continue
+			}
+
+			seenTargets[t.Name] = len(inv.Targets)
+			inv.Targets = append(inv.Targets, analytics.TargetSummary{
+				Name:            t.Name,
+				BuildDurationMs: t.BuildDurationMs,
+			})
+		}
+		for _, f := range summary.Failures {
+			key := f.TargetName + "\x00" + f.Message
+			if _, ok := seenFailures[key]; ok {
+				continue
+			}
+
+			seenFailures[key] = struct{}{}
+			inv.Failures = append(inv.Failures, analytics.FailureSummary{
+				TargetName: f.TargetName,
+				Message:    f.Message,
+			})
+		}
 	}
 
-	summary := e.XcresultParser.Parse(context.Background(), bundlePath)
-	if len(summary.Targets) == 0 && len(summary.Failures) == 0 {
+	if len(inv.Targets) == 0 && len(inv.Failures) == 0 {
 		return
-	}
-
-	for _, t := range summary.Targets {
-		inv.Targets = append(inv.Targets, analytics.TargetSummary{
-			Name:            t.Name,
-			BuildDurationMs: t.BuildDurationMs,
-		})
-	}
-	for _, f := range summary.Failures {
-		inv.Failures = append(inv.Failures, analytics.FailureSummary{
-			TargetName: f.TargetName,
-			Message:    f.Message,
-		})
 	}
 
 	logOr(e.Logger).Debugf("Attached xcresult summary to invocation %s (targets=%d, failures=%d)", inv.InvocationID, len(inv.Targets), len(inv.Failures))
 }
 
-// xcresultBundlePath derives the sibling xcresult bundle path from the manifest
-// group's primary activity-log entry: same directory as the manifest, same
-// basename as the .xcactivitylog with the extension swapped for .xcresult.
-func xcresultBundlePath(manifestPath string, group ManifestEntryGroup) string {
+// aggregateHitRate sums the compile-cache counters across every manifest entry
+// that carries a FileName and a known action. Most groups hold one entry; a
+// prep-Build + real-Build cluster (same scheme / Command / hex, <mergeMaxGap
+// apart) still aggregates. The lookup is the Watcher's per-tick cache so a
+// log is gunzipped at most once per scan; nil falls through to a direct read.
+//
+// Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
+// last non-OK outcome so the existing gate in Enrich behaves as before.
+// BuildDescriptionHash is sourced from the first OK log in iteration order.
+func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger, lookup MetricsLookup) (float32, xcactivitylog.Outcome, string) {
 	if manifestPath == "" {
-		return ""
+		return 0, xcactivitylog.OutcomeFileMissing, ""
 	}
 
-	primary := group.Primary()
-	if primary.FileName == "" {
-		return ""
+	var (
+		sumHits  int
+		sumTotal int
+		hash     string
+		anyOK    bool
+		lastBad  = xcactivitylog.OutcomeFileMissing
+		sawAny   bool
+	)
+
+	for _, entry := range group.Entries {
+		if entry.FileName == "" || entry.Command() == CommandUnknown {
+			continue
+		}
+
+		sawAny = true
+
+		var m xcactivitylog.Metrics
+		if lookup != nil {
+			m = lookup(entry)
+		} else {
+			m = xcactivitylog.ReadMetricsFromManifest(manifestPath, entry.FileName, logger)
+		}
+
+		if m.Outcome != xcactivitylog.OutcomeOK {
+			lastBad = m.Outcome
+
+			continue
+		}
+
+		anyOK = true
+		sumHits += m.Hits
+		sumTotal += m.Total
+
+		if hash == "" && m.BuildDescriptionHash != "" {
+			hash = m.BuildDescriptionHash
+		}
 	}
 
-	base := strings.TrimSuffix(primary.FileName, filepath.Ext(primary.FileName))
+	if !sawAny {
+		return 0, xcactivitylog.OutcomeFileMissing, ""
+	}
 
-	return filepath.Join(filepath.Dir(manifestPath), base+".xcresult")
+	if !anyOK {
+		return 0, lastBad, ""
+	}
+
+	var rate float32
+	if sumTotal > 0 {
+		rate = float32(sumHits) / float32(sumTotal)
+	}
+
+	return rate, xcactivitylog.OutcomeOK, hash
 }

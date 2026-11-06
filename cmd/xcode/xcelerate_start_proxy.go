@@ -189,22 +189,35 @@ func StartXcodeCacheProxy(
 
 	emitter := bundle.emitter()
 
-	p := proxy.NewProxy(client, config.PushEnabled, initialLogger, loggerFactory, emitter)
+	sidecarOpts, peerListener := buildSidecarOptions(listener, initialLogger)
+	if peerListener != nil {
+		listener = peerListener
+	}
+
+	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
 
+	// Cancelled only after the final sweep so sidecars written during GracefulStop still get drained.
+	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelEnrich()
+
 	if bundle.enrichmentEnabled() {
-		go bundle.watcher(ctx, initialLogger).Run(ctx)
-		go bundle.retrier(initialLogger).Run(ctx)
+		go bundle.watcher(enrichCtx, initialLogger).Run(enrichCtx)
+		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
+
+	bgCtx := context.WithoutCancel(ctx)
 
 	go func() {
 		<-ctx.Done()
 		p.GracefulStop()
+		bundle.finalEnrichmentSweep(bgCtx, initialLogger)
+		cancelEnrich()
 	}()
 
 	serveErr := p.Serve(listener)
 
-	p.FlushCurrentSession(context.WithoutCancel(ctx))
+	p.FlushCurrentSession(bgCtx)
 
 	//nolint:wrapcheck
 	return serveErr
@@ -218,6 +231,7 @@ type analyticsBundle struct {
 	handledManifests *enrichment.HandledManifestStore
 	healthPath       string
 	homeDir          string
+	sessionsDir      string
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
@@ -264,6 +278,7 @@ func newAnalyticsBundle(
 		b.handledManifests = &enrichment.HandledManifestStore{Path: pathResolver.HandledManifestsFile()}
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
+		b.sessionsDir = pathResolver.XcelerateSessionsDir()
 	}
 
 	return b
@@ -296,6 +311,12 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	}
 	enricher.XcresultParser = xcresult.NewDefaultParser(logger)
 
+	var sidecarReader enrichment.SidecarReader
+	if b.sessionsDir != "" {
+		sidecarReader = enrichment.NewSidecarIndex(b.sessionsDir, logger)
+		enricher.SidecarReader = sidecarReader
+	}
+
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {
 			return false
@@ -311,7 +332,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		return matched
 	}
 
-	return &enrichment.Watcher{
+	w := &enrichment.Watcher{
 		HomeDir: b.homeDir,
 		Globs: []string{
 			enrichment.DefaultDerivedDataGlob,
@@ -321,19 +342,13 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		Logger:                logger,
 		MatchProbe:            matchProbe,
 		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
-		TimeGap:               watcherTimeGap(),
 		HandledStore:          b.handledManifests,
+		SidecarReader:         sidecarReader,
+		SetMetricsLookup:      enricher.SetMetricsLookup,
 	}
-}
+	enricher.OnEmit = w.RecordEmittedInvocationID
 
-// watcherTimeGap widens the manifest-grouping window on CI to absorb
-// wall-clock skew that a local machine doesn't have.
-func watcherTimeGap() time.Duration {
-	if configcommon.IsCI(utils.AllEnvs(), utils.DefaultOsProxy{}) {
-		return enrichment.CIGroupTimeGap
-	}
-
-	return enrichment.LocalGroupTimeGap
+	return w
 }
 
 func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
@@ -342,6 +357,15 @@ func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
 		Client: b.client,
 		Logger: logger,
 	}
+}
+
+func (b *analyticsBundle) finalEnrichmentSweep(ctx context.Context, logger log.Logger) {
+	if !b.enrichmentEnabled() {
+		return
+	}
+
+	b.watcher(ctx, logger).ScanOnce()
+	b.retrier(logger).Sweep()
 }
 
 type slimInvocationEmitter struct {
@@ -403,6 +427,33 @@ func getLogDir(osProxy utils.OsProxy) (string, error) {
 	}
 
 	return logDir, nil
+}
+
+// buildSidecarOptions sets up the per-connection sidecar writer and wraps
+// the listener with the peer-PID tagger. Falls back to a no-op SidecarOptions
+// (and nil wrapped listener) when the sessions dir can't be resolved.
+func buildSidecarOptions(listener net.Listener, logger log.Logger) (proxy.SidecarOptions, net.Listener) {
+	p, err := paths.Default()
+	if err != nil {
+		logger.Debugf("Sidecar writer disabled, cannot resolve paths: %v", err)
+
+		return proxy.SidecarOptions{}, nil
+	}
+
+	dir := p.XcelerateSessionsDir()
+	if err := paths.EnsureDir(utils.DefaultOsProxy{}, dir); err != nil {
+		logger.Warnf("Sidecar writer disabled, cannot create %s: %v", dir, err)
+
+		return proxy.SidecarOptions{}, nil
+	}
+
+	wrapped := proxy.NewPeerListener(listener)
+
+	return proxy.SidecarOptions{
+		Dir:                  dir,
+		Listener:             wrapped,
+		BuildRequestResolver: proxy.NewDefaultBuildRequestResolver(logger),
+	}, wrapped
 }
 
 // resolveInactivityTimeout parses TEST_BITRISE_XCELERATE_INACTIVITY_TIMEOUT off
