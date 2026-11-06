@@ -404,9 +404,8 @@ func (a *invocationAggregator) add(path string, s sessions.Sidecar) {
 }
 
 // appendUniqueDDPath keeps SidecarGroup.DerivedDataPaths deduped per-group so
-// the enricher's plist-boundary bridge (PR596 S7) can resolve each orphan
-// InvocationID back to the DD subtree whose Logs/Build/LogStoreManifest.plist
-// carries its enclosing master.
+// each orphan InvocationID resolves back to the DD subtree whose
+// Logs/Build/LogStoreManifest.plist landed its signals.
 func appendUniqueDDPath(g *SidecarGroup, dd string) {
 	if dd == "" {
 		return

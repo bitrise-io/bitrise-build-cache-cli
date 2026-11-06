@@ -491,7 +491,7 @@ func (w *Watcher) drainCrashFallbackChannel(logger log.Logger) {
 }
 
 // groupFullySeen returns true only when every UUID in the group is already in
-// w.seen. Defensive all-UUIDs-seen check — groups are always one entry post-S7
+// w.seen. Defensive all-UUIDs-seen check — groups are always one entry today
 // but the gate survives if grouping gains multi-entry shapes again.
 func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
 	if len(group.Entries) == 0 {

@@ -183,8 +183,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	e.upsertPayloadStore(invocationID, group, runStats, hitRateOutcome, sidecarBlob, PayloadStatusEmitted)
 	unlinkSidecars(consumedPaths, logger)
 
-	// matched=false always: matched groups short-circuit above and LastMatched
-	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	if e.OnEmit != nil {
@@ -411,9 +409,9 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 }
 
 // aggregateHitRate sums the compile-cache counters across every manifest entry
-// that carries a FileName and a known action. Groups hold one entry post-S7;
-// the sum form survives if grouping gains multi-entry shapes again. The lookup
-// is the Watcher's per-tick cache so a log is gunzipped at most once per scan;
+// that carries a FileName and a known action. Groups hold one entry today; the
+// sum form survives if grouping gains multi-entry shapes again. The lookup is
+// the Watcher's per-tick cache so a log is gunzipped at most once per scan;
 // nil falls through to a direct read.
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the

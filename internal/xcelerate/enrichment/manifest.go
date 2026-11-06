@@ -147,11 +147,9 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 
 // ManifestEntryGroup is a single ManifestEntry row from a single
 // LogStoreManifest.plist — one group per entry, one BE row per user action
-// Xcode's Report Navigator surfaces. The prior adjacency-based fusion rule
-// (same scheme + Command + BuildDescriptionHash within mergeMaxGap) was
-// subsumed by PR596 S7's plist-boundary attribution: sub-activities (dark
-// build, indexer) attribute via Logs/Build/LogStoreManifest.plist windows in
-// the watcher's orphan-bridge path instead of fusing at grouping time.
+// Xcode's Report Navigator surfaces. Sub-activities (dark build, indexer)
+// land as their own sidecars; the single-ID payload store owns cross-signal
+// attribution under the proxy-derived InvocationID.
 //
 // Invariant (relied on by the enricher's sibling-log resolve): a group never
 // mixes entries from different manifests.
@@ -430,11 +428,10 @@ type groupOptions struct {
 	metricsLookup MetricsLookup
 }
 
-// WithMetricsLookup wires the per-entry xcactivitylog metrics source. No
-// longer consulted at grouping time (PR596 S7 removed the prep+real-build
-// adjacency merge). Kept because the Enricher's hit-rate aggregation reads
-// through the same seam: WithMetricsLookup → SetMetricsLookup, and ripping it
-// out here would force every call site to build the lookup twice.
+// WithMetricsLookup wires the per-entry xcactivitylog metrics source. Not
+// consulted at grouping time; the Enricher's hit-rate aggregation reads
+// through the same seam (WithMetricsLookup → SetMetricsLookup) so call sites
+// build the lookup once.
 func WithMetricsLookup(fn MetricsLookup) GroupOption {
 	return func(o *groupOptions) {
 		o.metricsLookup = fn
