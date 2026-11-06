@@ -2396,3 +2396,122 @@ func TestWatcher_tryBoundaryBridgeClone_UsesLocalizationSignature(t *testing.T) 
 	assert.Equal(t, locUUID, synth.ManifestUUID())
 	assert.Equal(t, "Sync Localizations", synth.Command())
 }
+
+// TestWatcher_tryBoundaryBridgeClone_EmptyDDPathsFallsBackToHomeDir covers the
+// S9 motivation: orphan sidecars from Xcode.app's SWBBuildService XPC path
+// (SPM prep, signing, localization) have no xcodebuild in their ancestor
+// chain so -derivedDataPath never populated SidecarGroup.DerivedDataPaths.
+// The bridge must enumerate every DD root under HomeDir so the Package /
+// Signing / Localization plist boundary is still discoverable.
+func TestWatcher_tryBoundaryBridgeClone_EmptyDDPathsFallsBackToHomeDir(t *testing.T) {
+	home := t.TempDir()
+	dd := filepath.Join(home, "Library/Developer/Xcode/DerivedData/IceCubesApp-abc")
+	require.NoError(t, os.MkdirAll(dd, 0o755))
+
+	const packageUUID = "AAAA-PACKAGE-FALLBACK"
+	const proxyID = "proxy-id-fallback"
+
+	pkgStart := fixtureNow.Add(-2 * time.Minute)
+	pkgStop := fixtureNow.Add(-90 * time.Second)
+	sidecarStart := pkgStart.Add(10 * time.Second)
+
+	writeDomainBoundaryPlist(t, dd, "Package",
+		"IDEActivityLogPackageLoadLog", "Xcode.IDEActivityLogDomainType.PackageLog",
+		packageUUID, "Resolve Packages",
+		wallToCFAbs(pkgStart), wallToCFAbs(pkgStop))
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 4
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:        sidecarStart,
+			Stop:         sidecarStart.Add(5 * time.Second),
+			SidecarUUIDs: []string{"sidecar-fallback"},
+			Paths:        []string{"/tmp/sidecar-fallback.json"},
+			Blob:         sidecarBlob,
+			// DerivedDataPaths intentionally empty — this is the orphan XPC-path case.
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "fallback DD enumeration must still bridge the sidecar")
+	synth := handled[0]
+	assert.Equal(t, packageUUID, synth.ManifestUUID())
+	assert.Equal(t, "Resolve Packages", synth.Command())
+	assert.Equal(t, "Resolve Packages", synth.FullCommand())
+
+	_, ok := w.recentEmissions[proxyID]
+	assert.True(t, ok, "fallback-bridge must still stamp recentEmissions")
+}
+
+// TestWatcher_tryBoundaryBridgeClone_EmptyDDPathsNoMatchFallsThrough asserts
+// the empty-DD fallback stays silent when no plist under HomeDir encloses the
+// sidecar. The caller must then land on the slim pseudo-group path so
+// residual-only invocations still PUT, instead of being swallowed by a
+// spurious bridge-returns-true.
+func TestWatcher_tryBoundaryBridgeClone_EmptyDDPathsNoMatchFallsThrough(t *testing.T) {
+	home := t.TempDir()
+	dd := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-nomatch")
+	require.NoError(t, os.MkdirAll(dd, 0o755))
+
+	const unrelatedUUID = "ZZZZ-UNRELATED"
+	const proxyID = "proxy-id-no-match"
+
+	// Plist window is well before the sidecar — findEnclosingBoundary will miss.
+	pkgStart := fixtureNow.Add(-10 * time.Minute)
+	pkgStop := fixtureNow.Add(-9 * time.Minute)
+	sidecarStart := fixtureNow.Add(-30 * time.Second)
+
+	writeDomainBoundaryPlist(t, dd, "Package",
+		"IDEActivityLogPackageLoadLog", "Xcode.IDEActivityLogDomainType.PackageLog",
+		unrelatedUUID, "Resolve Packages",
+		wallToCFAbs(pkgStart), wallToCFAbs(pkgStop))
+
+	sidecarBlob := &blobstats.Snapshot{}
+	sidecarBlob.Download.OpCount = 2
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:        sidecarStart,
+			Stop:         sidecarStart.Add(2 * time.Second),
+			SidecarUUIDs: []string{"sidecar-no-match"},
+			Paths:        []string{"/tmp/sidecar-no-match.json"},
+			Blob:         sidecarBlob,
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "fallback miss must drop into the slim pseudo-group path")
+	synth := handled[0]
+	assert.NotEqual(t, unrelatedUUID, synth.ManifestUUID(), "slim pseudo-group must not steal the unrelated plist's UUID")
+	assert.Equal(t, string(CommandBuild), synth.Command(), "slim pseudo-group is the bare-build fallback")
+}

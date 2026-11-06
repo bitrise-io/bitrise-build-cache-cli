@@ -509,8 +509,17 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 // is the dominant observed case); mergeBlobs collapses that to the non-nil
 // side or nil-both.
 func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
-	if len(group.DerivedDataPaths) == 0 {
-		return false
+	// Orphan sidecars from Xcode.app's SWBBuildService XPC path (SPM prep,
+	// signing, localization) have no xcodebuild in their ancestor chain, so
+	// no -derivedDataPath flag was parsed into DerivedDataPaths. Fall back
+	// to every DD root under HomeDir so findEnclosingBoundary's time-window
+	// filter still has plists to search.
+	ddPaths := group.DerivedDataPaths
+	if len(ddPaths) == 0 {
+		ddPaths = w.allDerivedDataRoots(logger)
+		if len(ddPaths) == 0 {
+			return false
+		}
 	}
 
 	// Attribution anchor: BuildStartedAt is the earliest signal the proxy saw
@@ -523,7 +532,7 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 		return false
 	}
 
-	enclosing, boundaryDD, ok := w.findEnclosingBoundary(group.DerivedDataPaths, at, logger)
+	enclosing, boundaryDD, ok := w.findEnclosingBoundary(ddPaths, at, logger)
 	if !ok {
 		return false
 	}
@@ -584,6 +593,21 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 	}
 
 	return true
+}
+
+// allDerivedDataRoots enumerates every DerivedData subtree under HomeDir.
+// Fallback for orphan sidecars whose ancestor chain carries no xcodebuild
+// process (SWBBuildService XPC path for SPM prep / signing / localization
+// activity) so findEnclosingBoundary still has plists to search.
+func (w *Watcher) allDerivedDataRoots(logger log.Logger) []string {
+	matches, err := filepath.Glob(filepath.Join(w.HomeDir, "Library/Developer/Xcode/DerivedData/*"))
+	if err != nil {
+		logger.Debugf("Watcher: DD root enum glob failed: %s", err)
+
+		return nil
+	}
+
+	return matches
 }
 
 // copySnapshot defensively clones the master's stashed blob so mergeBlobs does
