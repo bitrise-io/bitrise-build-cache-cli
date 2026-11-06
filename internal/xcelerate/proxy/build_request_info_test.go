@@ -50,14 +50,29 @@ func TestNewBuildRequestInfoLoader_MissingReturnsEmptyAndCaches(t *testing.T) {
 	assert.Empty(t, qos)
 }
 
-func TestNewBuildRequestInfoLoader_EmptyInputsReturnEmpty(t *testing.T) {
+func TestNewBuildRequestInfoLoader_EmptyHexReturnsEmpty(t *testing.T) {
 	loader := proxy.NewBuildRequestInfoLoader(nil)
 
-	action, qos := loader("", "hex")
+	action, qos := loader("/tmp", "")
 	assert.Empty(t, action)
 	assert.Empty(t, qos)
+}
 
-	action, qos = loader("/tmp", "")
-	assert.Empty(t, action)
-	assert.Empty(t, qos)
+// IDE sidecars (SWBBuildService path) ship with ddPath == "". The loader must
+// enumerate the default DD root under $HOME and locate the hex there.
+func TestNewBuildRequestInfoLoader_EmptyDDPathEnumeratesHomeRoots(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	hex := "deadbeefdeadbeefdeadbeefdeadbeef"
+	workspace := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc123")
+	dir := filepath.Join(workspace, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "build-request.json"),
+		[]byte(`{"parameters":{"action":"build","qos":"default"}}`), 0o644))
+
+	loader := proxy.NewBuildRequestInfoLoader(nil)
+	action, qos := loader("", hex)
+	assert.Equal(t, "build", action)
+	assert.Equal(t, "default", qos)
 }

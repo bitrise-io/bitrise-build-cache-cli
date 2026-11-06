@@ -261,10 +261,13 @@ func labelForRowType(rt RowType, derivedDataPath string) string {
 		RowArchive:        "archive",
 		RowTest:           "test",
 		RowInstallHeaders: "install-headers",
+		// Keep the unclassified marker visible in BE rows so a classifier
+		// regression surfaces instead of masquerading as "build".
+		RowUnclassified: "unclassified",
 	}
 	label, ok := base[rt]
 	if !ok {
-		label = "build"
+		label = "unclassified"
 	}
 
 	if scheme == "" {
