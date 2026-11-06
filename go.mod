@@ -6,10 +6,10 @@ require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/huh/v2 v2.0.3
 	charm.land/lipgloss/v2 v2.0.6
-	cloud.google.com/go/longrunning v1.3.0
-	github.com/bazelbuild/remote-apis v0.0.0-20260331222004-becdd8f9ff81
+	cloud.google.com/go/longrunning v1.4.0
+	github.com/bazelbuild/remote-apis v0.0.0-20261020142950-c2c07e3d718d
 	github.com/beevik/etree v1.8.1
-	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.61
+	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.64
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.40
 	github.com/dustin/go-humanize v1.1.0
 	github.com/godbus/dbus/v5 v5.2.4
@@ -18,7 +18,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
-	github.com/klauspost/compress v1.18.7
+	github.com/klauspost/compress v1.20.3
 	github.com/pkg/xattr v0.4.12
 	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/spf13/cobra v1.10.2
@@ -29,9 +29,9 @@ require (
 	golang.org/x/mod v0.42.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
+	google.golang.org/genproto/googleapis/api v0.0.0-20260715232425-e75dac1f907d
 	google.golang.org/genproto/googleapis/bytestream v0.0.0-20251103181224-f26f9409b101
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260715232425-e75dac1f907d
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	howett.net/plist v1.0.1
