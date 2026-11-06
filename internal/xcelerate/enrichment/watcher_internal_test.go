@@ -1608,6 +1608,28 @@ func TestWatcher_ScanOnce_PreservesExistingState(t *testing.T) {
 	assert.Equal(t, before, handled, "subsequent ScanOnce must not re-emit already-seen uuids")
 }
 
+// TestWatcher_groupFullySeen_PartialOverlapEmits exercises the warm
+// consecutive ⌘B case: canMerge fuses the previous (already-seen) build with
+// a new build whose Start lands within mergeMaxGap of the previous Stop. The
+// fused group's Primary UUID is the already-emitted one, but the second
+// UUID is fresh — any-UUID-unseen must bypass the gate so the warm re-⌘B
+// still emits as a BE row.
+func TestWatcher_groupFullySeen_PartialOverlapEmits(t *testing.T) {
+	w := &Watcher{}
+	w.seen = map[string]struct{}{"u-prior": {}}
+
+	fused := ManifestEntryGroup{Entries: []ManifestEntry{
+		{UUID: "u-prior", Signature: "Build SharedScheme", Start: fixtureNow, Stop: fixtureNow.Add(time.Second)},
+		{UUID: "u-fresh", Signature: "Build SharedScheme", Start: fixtureNow.Add(2 * time.Second), Stop: fixtureNow.Add(3 * time.Second)},
+	}}
+
+	assert.False(t, w.groupFullySeen(fused), "fused warm-⌘B group with at least one unseen UUID must not be gated as already-seen")
+
+	// Baseline: once both UUIDs are marked, the gate trips.
+	w.seen["u-fresh"] = struct{}{}
+	assert.True(t, w.groupFullySeen(fused), "once every UUID is seen the gate trips (second-tick replay is a no-op)")
+}
+
 // hasControllingStub is a SidecarReader whose Has response is driven by a
 // per-scan atomic — tests flip the flag between scans to simulate a sidecar
 // materialising mid-retry-bucket.

@@ -693,17 +693,23 @@ func (w *Watcher) canCorrelate(manifestPath string, group ManifestEntryGroup) bo
 	return false
 }
 
-// groupFullySeen gates on Primary().UUID so the gate agrees with the PUT-side
-// identity (ManifestUUID → Primary().UUID). A late non-Primary entry joining
-// the cluster (post-build indexing, preview compile) does NOT re-open the
-// gate; a new Primary (new build action with higher command rank or earlier
-// Start) does, because it changes the group's identity.
+// groupFullySeen returns true only when every UUID in the group is already in
+// w.seen. The partial-overlap bypass surfaces a warm consecutive ⌘B that
+// canMerge fuses into a group whose first entry was emitted on a prior tick:
+// the fused group carries at least one unseen UUID (the new ⌘B's own entry),
+// so the gate must not drop it. Prep+real merge keeps clean semantics too —
+// on first sight both UUIDs are unseen, the group emits and both get marked;
+// on any later tick all UUIDs are seen and the gate skips.
 func (w *Watcher) groupFullySeen(group ManifestEntryGroup) bool {
 	if len(group.Entries) == 0 {
 		return false
 	}
 
-	_, ok := w.seen[group.Primary().UUID]
+	for _, uuid := range group.UUIDs() {
+		if _, ok := w.seen[uuid]; !ok {
+			return false
+		}
+	}
 
-	return ok
+	return true
 }
