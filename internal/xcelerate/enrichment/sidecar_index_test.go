@@ -28,6 +28,7 @@ type sidecarFixture struct {
 	WrapperSession  *sidecarFixtureWrapper `json:"wrapper_session,omitempty"`
 	DerivedDataPath string                 `json:"derived_data_path,omitempty"`
 	BuildRequestHex string                 `json:"build_request_hex,omitempty"`
+	BuildStartedAt  time.Time              `json:"build_started_at,omitempty"`
 }
 
 type sidecarFixtureWrapper struct {
@@ -266,6 +267,12 @@ func TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats(t *testing
 		"first-seen (lexical) nil-BlobStats sidecar's InvocationID wins when nothing has stats")
 }
 
+// TestSidecarIndex_TwoMatchesPickLargestBlob pins the anchorless-path winner:
+// both sidecars carry no WrapperSession, so both fall into the anchorless
+// bucket. There is no InvocationID to aggregate under, so the pre-reducer
+// largest-op tiebreak stays. Under the invocation-aggregator path this is
+// semantically distinct from TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations,
+// which proves the anchored-group aggregation beats the single-sidecar largest.
 func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
@@ -289,7 +296,7 @@ func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	require.True(t, ok)
 	assert.Len(t, paths, 2, "both overlapping sidecars must be unlinked")
 	require.NotNil(t, snap)
-	assert.Equal(t, int64(9), snap.Download.OpCount, "largest-op blob wins tie-break")
+	assert.Equal(t, int64(9), snap.Download.OpCount, "largest-op anchorless blob wins tie-break")
 	assert.Equal(t, int64(2), snap.Download.MissCount)
 	assert.Equal(t, int64(3), snap.Upload.OpCount)
 }
@@ -382,13 +389,132 @@ func TestSidecarIndex_OrphanSidecars_GroupsByInvocationID(t *testing.T) {
 	assert.Equal(t, int64(3), gX.Blob.Upload.OpCount)
 	assert.ElementsMatch(t, []string{"sidecar-a", "sidecar-b"}, gX.SidecarUUIDs)
 	assert.Len(t, gX.Paths, 2)
-	assert.Equal(t, base, gX.Start, "Start is earliest AcceptedAt in the group")
+	assert.Equal(t, base, gX.Start, "BuildStartedAt zero → AcceptedAt fallback branch: Start is earliest AcceptedAt in the group")
 	assert.Equal(t, base.Add(7*time.Second), gX.Stop, "Stop is latest ClosedAt in the group")
 
 	gY := groups["invocation-Y"]
 	require.NotNil(t, gY.Blob)
 	assert.Equal(t, int64(1), gY.Blob.Download.OpCount)
 	assert.Equal(t, []string{"sidecar-c"}, gY.SidecarUUIDs)
+}
+
+// TestSidecarIndex_OrphanSidecars_UsesBuildStartedAtWhenPresent pins the
+// per-build Start precedence: when every sidecar carries BuildStartedAt, the
+// pseudo-group's Start collapses to the earliest BuildStartedAt — NOT the
+// AcceptedAt (which, for a long-lived SWBBuildService daemon, would inflate
+// the Start-to-Stop window to the daemon's uptime).
+func TestSidecarIndex_OrphanSidecars_UsesBuildStartedAtWhenPresent(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-a",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		BuildStartedAt: base.Add(10 * time.Second),
+		ClosedAt:       base.Add(15 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-b",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		BuildStartedAt: base.Add(12 * time.Second),
+		ClosedAt:       base.Add(17 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
+
+	require.Len(t, groups, 1)
+	gX := groups["invocation-X"]
+	assert.Equal(t, base.Add(10*time.Second), gX.Start,
+		"Start must collapse to earliest BuildStartedAt, NOT AcceptedAt, when every sidecar carries the field")
+}
+
+// TestSidecarIndex_OrphanSidecars_FallsBackToAcceptedAtWhenBuildStartedAtZero
+// pins the backward-compat fallback: legacy sidecars written before this change
+// have zero BuildStartedAt, so the pseudo-group Start must fall back to the
+// earliest AcceptedAt exactly as before.
+func TestSidecarIndex_OrphanSidecars_FallsBackToAcceptedAtWhenBuildStartedAtZero(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-a",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-b",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(3 * time.Second),
+		ClosedAt:       base.Add(8 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
+
+	require.Len(t, groups, 1)
+	gX := groups["invocation-X"]
+	assert.Equal(t, base, gX.Start,
+		"zero BuildStartedAt on every sidecar → Start must fall back to earliest AcceptedAt (legacy semantics)")
+}
+
+// TestSidecarIndex_OrphanSidecars_MixedLegacyAndUpgraded guards against a
+// min()-style regression: when a legacy sidecar (zero BuildStartedAt) and an
+// upgraded sidecar (populated BuildStartedAt) share an InvocationID, the
+// legacy's daemon-start AcceptedAt must NOT under-cut the upgraded's per-
+// build BuildStartedAt. BuildStartedAt-first precedence: any sidecar in the
+// group carrying the field wins over all AcceptedAt values.
+func TestSidecarIndex_OrphanSidecars_MixedLegacyAndUpgraded(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+
+	// Upgraded: BuildStartedAt = T+5s, AcceptedAt = T+0s.
+	writeSidecar(t, dir, "upgraded.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-upgraded",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		BuildStartedAt: base.Add(5 * time.Second),
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+	// Legacy: BuildStartedAt zero, AcceptedAt = T+0s.
+	writeSidecar(t, dir, "legacy.json", sidecarFixture{
+		SchemaVersion:  2,
+		SidecarUUID:    "sidecar-legacy",
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(10 * time.Second),
+		BlobStats:      blob(1, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	now := base.Add(60 * time.Second)
+	groups := idx.OrphanSidecarsGroupedByInvocation(now, time.Second)
+
+	require.Len(t, groups, 1)
+	gX := groups["invocation-X"]
+	assert.Equal(t, base.Add(5*time.Second), gX.Start,
+		"when any sidecar carries BuildStartedAt, Start must collapse to the earliest BuildStartedAt — NOT the earliest AcceptedAt (would be T+0s, a min()-based regression)")
 }
 
 func TestSidecarIndex_OrphanSidecars_AgeGateFiltersFreshSidecars(t *testing.T) {
@@ -972,4 +1098,113 @@ func TestSidecarIndex_Has_SymmetricWithLookup(t *testing.T) {
 		groupFor(base, base.Add(10*time.Second)),
 		enrichment.LookupFilter{},
 	), "Has with empty filter must behave as pre-filter")
+}
+
+// blobWithHistograms constructs a Snapshot whose Download side carries a known
+// bucket distribution on LatencyMs. Lets the reducer merge test assert bucket
+// sums rather than only the top-level counters.
+func blobWithHistograms(downloadOps, uploadOps int64, latencyBucket, latencyCount int64) *blobstats.Snapshot {
+	counts := make([]int64, len(blobstats.LatencyMsBuckets)+1)
+	counts[latencyBucket] = latencyCount
+
+	return &blobstats.Snapshot{
+		Download: blobstats.DirectionSnapshot{
+			OpCount: downloadOps,
+			LatencyMs: blobstats.HistogramSnapshot{
+				Boundaries: blobstats.LatencyMsBuckets,
+				Counts:     counts,
+				Count:      latencyCount,
+				Sum:        latencyCount * blobstats.LatencyMsBuckets[latencyBucket],
+				Min:        blobstats.LatencyMsBuckets[latencyBucket],
+				Max:        blobstats.LatencyMsBuckets[latencyBucket],
+			},
+		},
+		Upload: blobstats.DirectionSnapshot{OpCount: uploadOps},
+	}
+}
+
+// TestSidecarIndex_Lookup_SumsOverlappingSidecarsUnderSameInvocationID pins
+// the PR596 S4 fix: pre-fix Lookup picked the single largest-op sidecar and
+// discarded the rest. The proxy now flushes multiple delta sidecars per build
+// (per-conn-flush + reseat-flush), so the manifest PUT must aggregate every
+// sidecar under the same InvocationID. Counters AND the latency histogram
+// bucket counts must sum.
+func TestSidecarIndex_Lookup_SumsOverlappingSidecarsUnderSameInvocationID(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+
+	firstPath := writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blobWithHistograms(3, 2, 1, 2),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "same-invo"},
+	})
+	secondPath := writeSidecar(t, dir, "b.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(time.Second),
+		ClosedAt:       base.Add(6 * time.Second),
+		BlobStats:      blobWithHistograms(5, 4, 1, 3),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "same-invo"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
+	require.True(t, ok)
+	assert.ElementsMatch(t, []string{firstPath, secondPath}, paths,
+		"both sidecars under the same InvocationID must be unlinked")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(8), snap.Download.OpCount, "Download.OpCount must sum 3+5")
+	assert.Equal(t, int64(6), snap.Upload.OpCount, "Upload.OpCount must sum 2+4")
+	assert.Equal(t, int64(5), snap.Download.LatencyMs.Counts[1],
+		"bucket index 1 (8 ms) counts sum 2+3")
+	assert.Equal(t, int64(5), snap.Download.LatencyMs.Count,
+		"histogram Count must sum across sidecars")
+	assert.Equal(t, "same-invo", invocationID)
+}
+
+// TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations guards the
+// winner-pick path: when two InvocationIDs overlap the group, the larger
+// aggregated op-total wins — even if the OTHER InvocationID has the single
+// largest sidecar. Pre-fix Lookup would have picked the InvoA sidecar (size 5)
+// and ignored the two InvoB sidecars (2+4=6).
+func TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+
+	writeSidecar(t, dir, "a.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base,
+		ClosedAt:       base.Add(5 * time.Second),
+		BlobStats:      blob(5, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-A"},
+	})
+	writeSidecar(t, dir, "b1.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(time.Second),
+		ClosedAt:       base.Add(6 * time.Second),
+		BlobStats:      blob(2, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-B"},
+	})
+	writeSidecar(t, dir, "b2.json", sidecarFixture{
+		SchemaVersion:  2,
+		PeerAncestry:   []string{"xcodebuild"},
+		AcceptedAt:     base.Add(2 * time.Second),
+		ClosedAt:       base.Add(7 * time.Second),
+		BlobStats:      blob(4, 0, 0),
+		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-B"},
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(7*time.Second)), enrichment.LookupFilter{})
+	require.True(t, ok)
+	assert.Len(t, paths, 3, "every overlapping sidecar is consumed regardless of which InvocationID wins")
+	require.NotNil(t, snap)
+	assert.Equal(t, int64(6), snap.Download.OpCount, "aggregated invo-B (2+4) must beat invo-A (5)")
+	assert.Equal(t, "invo-B", invocationID,
+		"winning InvocationID must be the larger-aggregate, not the single-sidecar-largest")
 }

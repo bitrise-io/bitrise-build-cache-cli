@@ -48,7 +48,9 @@ func (a *Activator) Link(_ context.Context, projectPath string) (LinkResult, err
 	}
 	logger.Debugf("Override xcconfig: %s", overridePath)
 
-	result, err := xa.Link(osProxy, xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath})
+	params := xa.LinkParams{ProjectPath: projectPath, OverrideXCConfigPath: overridePath}
+
+	result, err := xa.Link(osProxy, params)
 	if err != nil {
 		return LinkResult{}, fmt.Errorf("link %s: %w", projectPath, err)
 	}

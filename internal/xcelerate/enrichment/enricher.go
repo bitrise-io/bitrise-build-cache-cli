@@ -14,9 +14,11 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	pathsutil "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
@@ -40,13 +42,20 @@ type Enricher struct {
 	SidecarReader    SidecarReader
 
 	// OnEmit fires after a successful PutInvocation with the ID actually sent,
-	// the manifest's build-description hash (empty if not extractable), and the
-	// group whose PUT just succeeded. The watcher wires this to its per-tick
-	// dedup set so an aged orphan sidecar sharing the ID with a manifest
-	// emission does not re-emit as a synthetic pseudo-group — and so the
-	// orphan sweep can bridge a pseudo-group back to the originating manifest
-	// via hex-exact match on buildDescriptionHash.
-	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup)
+	// the manifest's build-description hash (empty if not extractable), the
+	// group whose PUT just succeeded, and the master's sidecar blob (nil when
+	// the master had no sidecar / no CAS traffic). The watcher wires this to
+	// its per-tick dedup set so an aged orphan sidecar sharing the ID with a
+	// manifest emission does not re-emit as a synthetic pseudo-group — and so
+	// the orphan sweep can bridge a pseudo-group back to the originating
+	// manifest via hex-exact match on buildDescriptionHash. The master blob
+	// is stashed so the S7 boundary-bridge clone can sum it with the orphan's
+	// own snapshot (warm rebuilds carry traffic on both sides).
+	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup, masterBlob *blobstats.Snapshot)
+
+	// LocalLogAppender appends a Record on each successful wrapperless PUT so
+	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
+	LocalLogAppender invocationlog.Appender
 
 	// metricsLookup is the per-tick xcactivitylog cache the Watcher installs
 	// via SetMetricsLookup before invoking Enrich; aggregateHitRate consults
@@ -68,6 +77,30 @@ func (e *Enricher) now() time.Time {
 	}
 
 	return time.Now()
+}
+
+// resolveSidecar returns the sidecar blob + consumed paths + derived InvocationID
+// + found flag. Preattached groups short-circuit the time-overlap SidecarReader
+// lookup (boundary-bridge path keeps the manifest UUID authoritative). Otherwise
+// the SidecarReader runs with a LookupFilter whose DerivedData + build-description
+// hash disambiguate parallel builds sharing a time window; both axes degrade
+// gracefully when either source is empty.
+func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup, buildDescriptionHash string) (*blobstats.Snapshot, []string, string, bool) {
+	if blob, paths, ok := group.Preattached(); ok {
+		return blob, paths, "", blob != nil
+	}
+	if e.SidecarReader == nil {
+		return nil, nil, "", false
+	}
+
+	filter := LookupFilter{
+		DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
+	}
+	if buildDescriptionHash != "" {
+		filter.Hashes = []string{buildDescriptionHash}
+	}
+
+	return e.SidecarReader.Lookup(group, filter)
 }
 
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
@@ -118,25 +151,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarInvocationID string
 		sidecarFound        bool
 	)
-	// Preattached short-circuits the time-overlap SidecarReader lookup so the
-	// hex-bridge path (CloneManifestGroupWithSidecar) PUTs under the manifest
-	// UUID instead of the sidecar's WrapperLink.InvocationID.
-	if blob, paths, ok := group.Preattached(); ok {
-		sidecarBlob = blob
-		consumedPaths = paths
-		sidecarFound = blob != nil
-	} else if e.SidecarReader != nil {
-		// DerivedData root + build-description hash disambiguate parallel builds
-		// that share a time window. Both axes degrade gracefully when either
-		// source is empty — see LookupFilter docs.
-		filter := LookupFilter{
-			DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
-		}
-		if buildDescriptionHash != "" {
-			filter.Hashes = []string{buildDescriptionHash}
-		}
-		sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.SidecarReader.Lookup(group, filter)
-	}
+	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.resolveSidecar(manifestPath, group, buildDescriptionHash)
 
 	invocationID := group.ManifestUUID()
 	if invocationID == "" {
@@ -209,10 +224,53 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	if e.OnEmit != nil {
-		e.OnEmit(invocationID, buildDescriptionHash, group)
+		e.OnEmit(invocationID, buildDescriptionHash, group, sidecarBlob)
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
+	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
+
+	e.appendLocalLog(invocationID, command, group, runStats, inv)
+}
+
+// VisitURL is the invocation-detail URL rendered in the Visit line + the
+// stop-proxy stdout summary.
+func VisitURL(invocationID string) string {
+	return "https://app.bitrise.io/build-cache/invocations/xcode/" + invocationID
+}
+
+// appendLocalLog surfaces the wrapperless row in `bitrise-build-cache invocations
+// list`. Failures are warn-only — the analytics PUT is already durable.
+func (e *Enricher) appendLocalLog(invocationID, command string, group ManifestEntryGroup, runStats analytics.InvocationRunStats, inv *analytics.Invocation) {
+	if e.LocalLogAppender == nil {
+		return
+	}
+
+	rec := invocations.Record{
+		InvocationID: invocationID,
+		Command:      command,
+		Tool:         invocations.ToolXcode,
+		ToolVersion:  e.XcodeVersion,
+		CLIVersion:   inv.CLIVersion,
+		StartedAt:    group.Start().UTC(),
+		FinishedAt:   group.Stop().UTC(),
+		ExitCode:     exitCodeFromRun(runStats),
+		CIProvider:   e.Metadata.CIProvider,
+		Username:     inv.Username,
+		HitRate:      runStats.HitRate,
+	}
+
+	if err := e.LocalLogAppender.Append(rec); err != nil {
+		logOr(e.Logger).Warnf("Failed to append wrapperless invocation to local log: %s", err)
+	}
+}
+
+func exitCodeFromRun(runStats analytics.InvocationRunStats) int {
+	if runStats.Success {
+		return 0
+	}
+
+	return 1
 }
 
 // GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
@@ -334,10 +392,10 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 }
 
 // aggregateHitRate sums the compile-cache counters across every manifest entry
-// that carries a FileName and a known action. Most groups hold one entry; a
-// prep-Build + real-Build cluster (same scheme / Command / hex, <mergeMaxGap
-// apart) still aggregates. The lookup is the Watcher's per-tick cache so a
-// log is gunzipped at most once per scan; nil falls through to a direct read.
+// that carries a FileName and a known action. Groups hold one entry post-S7;
+// the sum form survives if grouping gains multi-entry shapes again. The lookup
+// is the Watcher's per-tick cache so a log is gunzipped at most once per scan;
+// nil falls through to a direct read.
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
 // last non-OK outcome so the existing gate in Enrich behaves as before.

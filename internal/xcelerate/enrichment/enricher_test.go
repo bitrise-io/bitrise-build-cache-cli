@@ -802,7 +802,9 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 		Store:         store,
 		Client:        mock,
 		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: "sidecar-id"},
-		OnEmit:        func(id string, _ string, _ enrichment.ManifestEntryGroup) { emitted = append(emitted, id) },
+		OnEmit: func(id string, _ string, _ enrichment.ManifestEntryGroup, _ *blobstats.Snapshot) {
+			emitted = append(emitted, id)
+		},
 	}
 
 	now := time.Now()
@@ -815,7 +817,7 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 
 	require.Len(t, emitted, 1, "OnEmit must fire exactly once after a successful PUT")
 	assert.Equal(t, "manifest-anchor", emitted[0],
-		"OnEmit must receive the InvocationID actually sent — manifest UUID wins so the hex-bridge re-PUT lands on the same row")
+		"OnEmit must receive the InvocationID actually sent — manifest UUID wins so the boundary-bridge re-PUT lands on the same row")
 }
 
 func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
@@ -829,7 +831,9 @@ func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
 	e := &enrichment.Enricher{
 		Store:  store,
 		Client: mock,
-		OnEmit: func(id string, _ string, _ enrichment.ManifestEntryGroup) { emitted = append(emitted, id) },
+		OnEmit: func(id string, _ string, _ enrichment.ManifestEntryGroup, _ *blobstats.Snapshot) {
+			emitted = append(emitted, id)
+		},
 	}
 
 	now := time.Now()

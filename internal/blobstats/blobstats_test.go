@@ -320,3 +320,61 @@ func Test_DirectionSnapshot_ProfileLine(t *testing.T) {
 		assert.Contains(t, line, "latency p50 <=4ms", "latency still counts small ops")
 	})
 }
+
+// Test_MergeDirectionSnapshots_SumsCountsAndHistograms pins the PR596 S4
+// reducer invariant: the enrichment path merges per-InvocationID sidecar
+// snapshots cross-sidecar, so counters AND latency / size / throughput
+// histograms must sum element-wise. Throughput percentiles re-derive from the
+// merged histogram buckets because raw samples don't travel on the wire.
+func Test_MergeDirectionSnapshots_SumsCountsAndHistograms(t *testing.T) {
+	a := blobstats.NewCollector()
+	a.Download.RecordTransfer(128*1024, 10*time.Millisecond) // 8 ms bucket, ~12 MB/s
+	a.Download.RecordTransfer(128*1024, 10*time.Millisecond)
+	a.Download.RecordMiss()
+	a.Download.RecordMiss()
+
+	b := blobstats.NewCollector()
+	b.Download.RecordTransfer(128*1024, 10*time.Millisecond)
+	b.Download.RecordMiss()
+
+	snapA := a.Snapshot().Download
+	snapB := b.Snapshot().Download
+
+	merged := blobstats.MergeDirectionSnapshots(snapA, snapB, nil)
+
+	assert.Equal(t, snapA.OpCount+snapB.OpCount, merged.OpCount, "OpCount must sum")
+	assert.Equal(t, snapA.MissCount+snapB.MissCount, merged.MissCount, "MissCount must sum")
+	assert.Equal(t, snapA.BytesTotal+snapB.BytesTotal, merged.BytesTotal, "BytesTotal must sum")
+
+	// LatencyMs bucket index 1 (≤ 8 ms) is where 10 ms lands (actually index 2 — >8 ≤16).
+	// Three 10 ms samples land in bucket 2; counts must sum.
+	assert.Equal(t, int64(3), merged.LatencyMs.Count, "histogram Count must sum")
+	assert.Equal(t, snapA.LatencyMs.Counts[2]+snapB.LatencyMs.Counts[2], merged.LatencyMs.Counts[2],
+		"per-bucket histogram counts must sum")
+
+	// Throughput percentiles are bucket-derived on merge; the three samples all
+	// land in the same throughput bucket, so p50 reports as its upper bound
+	// (not a raw sample).
+	assert.Equal(t, int64(3), merged.Throughput.Histogram.Count)
+	assert.Positive(t, merged.Throughput.P50BytesPerSec, "percentile re-derived from merged histogram bucket bound")
+}
+
+// Test_MergeDirectionSnapshots_OneSideEmpty pins the merge identity: merging a
+// populated snapshot with a zero-value DirectionSnapshot must yield the
+// populated snapshot's values unchanged.
+func Test_MergeDirectionSnapshots_OneSideEmpty(t *testing.T) {
+	c := blobstats.NewCollector()
+	c.Download.RecordTransfer(64*1024, 8*time.Millisecond)
+	populated := c.Snapshot().Download
+
+	empty := blobstats.DirectionSnapshot{}
+
+	merged := blobstats.MergeDirectionSnapshots(populated, empty, nil)
+	assert.Equal(t, populated.OpCount, merged.OpCount)
+	assert.Equal(t, populated.BytesTotal, merged.BytesTotal)
+	assert.Equal(t, populated.LatencyMs.Count, merged.LatencyMs.Count)
+
+	// Symmetric: empty on the left too.
+	mergedSym := blobstats.MergeDirectionSnapshots(empty, populated, nil)
+	assert.Equal(t, populated.OpCount, mergedSym.OpCount)
+}

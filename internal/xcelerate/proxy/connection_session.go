@@ -15,8 +15,13 @@ import (
 // perConnIdleThreshold is the per-connection inactivity window after which an
 // intermediate sidecar is flushed. The wrapper's own inactivity timer sits on
 // top of SetSession; this one runs independently and covers the IDE plugin
-// case where ConnEnd only fires when Xcode fully quits.
+// case where ConnEnd only fires when Xcode fully quits. Under the manifest-
+// anchored InvocationID scheme the sidecar no longer dictates identity, so
+// the 15s window is enough to keep intermediate flushes rare on a quiet IDE.
 const perConnIdleThreshold = 15 * time.Second
+
+// derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush path so quiet derived-ID connections surface on disk.
+const derivedIDFlushMultiplier = 3
 
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
 // Per-conn accounting runs additively alongside the global p.sessionState,
@@ -70,11 +75,25 @@ type connectionSession struct {
 	// repeatedly across the connection's lifetime.
 	terminalOnce sync.Once
 
+	// anchoredEmptyOnce guards the terminal marker written by flushIdle when a
+	// connection anchored a derivedInvocationID but then stayed idle past
+	// derivedIDFlushMultiplier * threshold with no activity to flush. The gate
+	// is sticky (anchoredAndAged stays true on every subsequent idle tick), so
+	// without the Once we would emit an empty sidecar per tick until ConnEnd.
+	anchoredEmptyOnce sync.Once
+
 	// Zero lastActivityAt means no cache RPC ran (health probe, aborted
 	// dial); flushTerminal suppresses the sidecar write in that case. Also
 	// drives the idle check for intermediate flushes.
 	activityMu     sync.Mutex
 	lastActivityAt time.Time
+
+	// buildStartedAt is stamped when the connection first anchors a
+	// derivedInvocationID (TagConn) and re-stamped on every ⌘B edge
+	// (ResolveAndMaybeReseat). Enriches the pseudo-group Start so a long-lived
+	// SWBBuildService daemon's AcceptedAt doesn't inflate per-build duration to
+	// the daemon's uptime. Guarded by activityMu.
+	buildStartedAt time.Time
 }
 
 func (c *connectionSession) markActivity() {
@@ -124,6 +143,25 @@ func (c *connectionSession) buildRequestHexSnapshot() string {
 	defer c.activityMu.Unlock()
 
 	return c.buildRequestHex
+}
+
+// buildStartedAtSnapshot returns the current buildStartedAt under the activity
+// mutex so a concurrent reseat cannot tear the read.
+func (c *connectionSession) buildStartedAtSnapshot() time.Time {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	return c.buildStartedAt
+}
+
+// setBuildStartedAt stores the per-build start timestamp under the activity
+// mutex. Called at TagConn time when the first derivedInvocationID is anchored
+// and re-stamped by ResolveAndMaybeReseat on every ⌘B edge.
+func (c *connectionSession) setBuildStartedAt(t time.Time) {
+	c.activityMu.Lock()
+	defer c.activityMu.Unlock()
+
+	c.buildStartedAt = t
 }
 
 func (c *connectionSession) hadActivity() bool {
@@ -327,6 +365,12 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 	cs.ancestryEntries = h.resolveEntries(pc.peerPID)
 	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
 	cs.derivedDataPath = h.resolveDerivedDataPath(cs.ancestryEntries)
+	// Skip stamping when derivation produced no ID — health probes and
+	// wrapper-owned conns have no row to attribute, and a zero start keeps
+	// OrphanSidecarsGroupedByInvocation falling back to AcceptedAt.
+	if cs.derivedInvocationID != "" {
+		cs.setBuildStartedAt(time.Now())
+	}
 	h.registry.put(cs)
 
 	return contextWithSession(ctx, cs)
@@ -429,6 +473,7 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	// enricher keys on it to bridge pseudo-group PUTs back to the manifest row.
 	oldID := cs.invocationID()
 	oldHex := cs.buildRequestHexSnapshot()
+	oldBuildStartedAt := cs.buildStartedAtSnapshot()
 
 	if !cs.swapBuildRequestHex(hex) {
 		return false
@@ -440,11 +485,12 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	if h.writer != nil {
 		old := cs.swapState()
 		if !old.getStats().blobStats.IsEmpty() {
-			sidecar := newSessionSidecar(cs, old, time.Now(), false, sidecarIdentity{InvocationID: oldID, BuildRequestHex: oldHex})
+			sidecar := newSessionSidecar(cs, old, time.Now(), false, sidecarIdentity{InvocationID: oldID, BuildRequestHex: oldHex, BuildStartedAt: oldBuildStartedAt})
 			h.writer.write(sidecar)
 		}
 	}
 
+	cs.setBuildStartedAt(time.Now())
 	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, hex))
 
 	return true
@@ -476,7 +522,7 @@ func (h *sidecarStatsHandler) flushTerminal(cs *connectionSession) {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
+		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
 		h.writer.write(sidecar)
 	})
 }
@@ -503,16 +549,25 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 			continue
 		}
 
-		// Skip-empty check runs BEFORE the swap so a connection that only
-		// saw hadActivity-flipping health traffic (markActivity set, no op
-		// recorded yet) keeps its counters across the next tick instead of
-		// draining to an empty intermediate.
-		if cs.state.Load().getStats().blobStats.IsEmpty() {
+		hasActivity := !cs.state.Load().getStats().blobStats.IsEmpty()
+		anchoredAndAged := cs.derivedInvocationID != "" &&
+			!cs.hadActivityWithin(threshold*derivedIDFlushMultiplier, now)
+		if !hasActivity && !anchoredAndAged {
+			continue
+		}
+
+		if !hasActivity {
+			cs.anchoredEmptyOnce.Do(func() {
+				old := cs.swapState()
+				sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
+				h.writer.write(sidecar)
+			})
+
 			continue
 		}
 
 		old := cs.swapState()
-		sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot()})
+		sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
 		h.writer.write(sidecar)
 	}
 }

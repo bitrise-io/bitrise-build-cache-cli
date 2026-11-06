@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
@@ -196,13 +198,16 @@ func StartXcodeCacheProxy(
 
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
+	p.FlushHook = func(hookCtx context.Context) []string {
+		return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
+	}
 
 	// Cancelled only after the final sweep so sidecars written during GracefulStop still get drained.
 	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelEnrich()
 
 	if bundle.enrichmentEnabled() {
-		go bundle.watcher(enrichCtx, initialLogger).Run(enrichCtx)
+		go bundle.ensureWatcher(enrichCtx, initialLogger).Run(enrichCtx)
 		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
 
@@ -235,6 +240,13 @@ type analyticsBundle struct {
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
+
+	// watcherInstance is the single live enrichment.Watcher. Run drives the
+	// background ticker; ScanOnce / ScanOnceWithEmit cover shutdown sweep and
+	// flush-session RPC. Sharing one instance keeps seen / recentEmissions /
+	// tickEmittedIDs singular so the flush path cannot re-emit a sidecar the
+	// background path already handled.
+	watcherInstance *enrichment.Watcher
 }
 
 func newAnalyticsBundle(
@@ -296,7 +308,13 @@ func (b *analyticsBundle) enrichmentEnabled() bool {
 	return b.client != nil && b.pending != nil && b.homeDir != ""
 }
 
-func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enrichment.Watcher {
+// ensureWatcher lazily builds the single shared *enrichment.Watcher. Idempotent
+// so tests seeding b.watcherInstance directly stay in control.
+func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) *enrichment.Watcher {
+	if b.watcherInstance != nil {
+		return b.watcherInstance
+	}
+
 	enricher := &enrichment.Enricher{
 		Store:            b.pending,
 		Client:           b.client,
@@ -316,6 +334,7 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 		sidecarReader = enrichment.NewSidecarIndex(b.sessionsDir, logger)
 		enricher.SidecarReader = sidecarReader
 	}
+	enricher.LocalLogAppender = invocationlog.Default(logger)
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {
@@ -348,6 +367,8 @@ func (b *analyticsBundle) watcher(ctx context.Context, logger log.Logger) *enric
 	}
 	enricher.OnEmit = w.RecordEmittedInvocationID
 
+	b.watcherInstance = w
+
 	return w
 }
 
@@ -364,8 +385,34 @@ func (b *analyticsBundle) finalEnrichmentSweep(ctx context.Context, logger log.L
 		return
 	}
 
-	b.watcher(ctx, logger).ScanOnce()
+	b.ensureWatcher(ctx, logger).ScanOnce()
 	b.retrier(logger).Sweep()
+}
+
+// flushEnrichmentSweep runs a synchronous one-shot scan on the shared Watcher
+// and returns the invocation IDs emitted during this sweep.
+func (b *analyticsBundle) flushEnrichmentSweep(ctx context.Context, logger log.Logger) []string {
+	if !b.enrichmentEnabled() {
+		return nil
+	}
+
+	var (
+		mu  sync.Mutex
+		ids []string
+	)
+	collect := func(id string) {
+		mu.Lock()
+		ids = append(ids, id)
+		mu.Unlock()
+	}
+
+	b.ensureWatcher(ctx, logger).ScanOnceWithEmit(collect)
+	b.retrier(logger).Sweep()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	return append([]string(nil), ids...)
 }
 
 type slimInvocationEmitter struct {

@@ -148,7 +148,7 @@ func Test_analyticsBundle_watcher_populatedFields(t *testing.T) {
 	home := t.TempDir()
 	b := newBundleForTest(t, home, "")
 
-	w := b.watcher(t.Context(), bundleTestLogger)
+	w := b.ensureWatcher(t.Context(), bundleTestLogger)
 
 	require.NotNil(t, w)
 	assert.Equal(t, home, w.HomeDir)
@@ -162,7 +162,7 @@ func Test_analyticsBundle_watcher_globsIncludeManagedDD(t *testing.T) {
 	home := t.TempDir()
 	b := newBundleForTest(t, home, "")
 
-	w := b.watcher(t.Context(), bundleTestLogger)
+	w := b.ensureWatcher(t.Context(), bundleTestLogger)
 
 	require.NotNil(t, w)
 	assert.Contains(t, w.Globs, enrichment.DefaultDerivedDataGlob,
@@ -183,7 +183,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsTrueOnOverlap(t *testing.T) 
 		HitRate:      0.5,
 	}))
 
-	w := b.watcher(t.Context(), bundleTestLogger)
+	w := b.ensureWatcher(t.Context(), bundleTestLogger)
 
 	// Entry that fully overlaps the pending record's window.
 	entry := enrichment.ManifestEntry{
@@ -205,7 +205,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T)
 		Duration:     60_000,
 	}))
 
-	w := b.watcher(t.Context(), bundleTestLogger)
+	w := b.ensureWatcher(t.Context(), bundleTestLogger)
 
 	// Entry far in the future — no overlap.
 	entry := enrichment.ManifestEntry{
@@ -221,7 +221,7 @@ func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testi
 	b := newBundleForTest(t, home, "")
 	b.pending = nil
 
-	w := b.watcher(t.Context(), bundleTestLogger)
+	w := b.ensureWatcher(t.Context(), bundleTestLogger)
 
 	entry := enrichment.ManifestEntry{
 		UUID:  "u1",
