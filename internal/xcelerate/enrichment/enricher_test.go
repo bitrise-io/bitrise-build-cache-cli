@@ -544,7 +544,7 @@ func TestEnricher_SidecarPopulatesCacheBlobStats(t *testing.T) {
 	assert.Equal(t, int64(4), captured.CacheBlobStats.Upload.OpCount)
 }
 
-func TestEnricher_ManifestUUIDWinsOverSidecarInvocationID(t *testing.T) {
+func TestEnricher_SidecarInvocationIDWinsOverManifestUUID(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -571,8 +571,8 @@ func TestEnricher_ManifestUUIDWinsOverSidecarInvocationID(t *testing.T) {
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Equal(t, "manifest-anchor", captured.InvocationID,
-		"manifest's xcactivitylog UUID is the authoritative BE identity; sidecar blob stats attach to this row via Lookup, and the hex-bridge later re-PUTs under the same ID (ID-match guard then skips the duplicate)")
+	assert.Equal(t, sidecarID, captured.InvocationID,
+		"sidecar's proxy-derived InvocationID is the authoritative BE identity so DataTransfer rows (joined by ToolInvocationId proxy-stamped) link to the invocation row; plist UUID lives in the payload metadata only")
 }
 
 func TestEnricher_NoSidecarReaderLeavesCacheBlobStatsNil(t *testing.T) {
@@ -769,8 +769,8 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 	}))
 
 	require.Len(t, emitted, 1, "OnEmit must fire exactly once after a successful PUT")
-	assert.Equal(t, "manifest-anchor", emitted[0],
-		"OnEmit must receive the InvocationID actually sent — manifest UUID wins so the boundary-bridge re-PUT lands on the same row")
+	assert.Equal(t, "sidecar-id", emitted[0],
+		"OnEmit must receive the sidecar's proxy-derived InvocationID (BE DataTransfer rows are joined on the ToolInvocationId the proxy stamped, which is this one — plist UUID would blank the Uploads/Downloads tiles)")
 }
 
 func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
@@ -819,7 +819,7 @@ func TestEnricher_EmptyGroup_NoOp(t *testing.T) {
 	assert.Zero(t, puts)
 }
 
-func TestEnricher_PutsUnderManifestUUID_WhenManifestPresent(t *testing.T) {
+func TestEnricher_PutsUnderSidecarInvocationID_WhenSidecarPresent(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
 	var captured analytics.Invocation
@@ -845,7 +845,8 @@ func TestEnricher_PutsUnderManifestUUID_WhenManifestPresent(t *testing.T) {
 		Stop:      now.Add(time.Second),
 	}))
 
-	assert.Equal(t, "manifest-uuid", captured.InvocationID)
+	assert.Equal(t, "test-sidecar-id", captured.InvocationID,
+		"PUT identity must come from the sidecar's proxy-derived InvocationID; plist UUID is payload metadata only (see BE DataTransfer ToolInvocationId join)")
 }
 
 func TestEnricher_FallsBackToManifestUUID_WhenNoSidecar(t *testing.T) {
