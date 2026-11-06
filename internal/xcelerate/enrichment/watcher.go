@@ -155,7 +155,7 @@ func (w *Watcher) Run(ctx context.Context) {
 	w.seen = make(map[string]struct{})
 	seeded := w.seedSeenFromStore()
 	if !seeded {
-		w.scan(true, false)
+		w.scan(true)
 	}
 	w.scanMu.Unlock()
 
@@ -168,7 +168,7 @@ func (w *Watcher) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			w.scanMu.Lock()
-			w.scan(false, false)
+			w.scan(false)
 			w.scanMu.Unlock()
 		}
 	}
@@ -182,7 +182,7 @@ func (w *Watcher) ScanOnce() {
 	defer w.scanMu.Unlock()
 
 	w.ensureMaps()
-	w.scan(false, true)
+	w.scan(false)
 }
 
 // ScanOnceWithEmit runs one synchronous pass against the live Watcher state,
@@ -199,7 +199,7 @@ func (w *Watcher) ScanOnceWithEmit(onEmitted func(string)) {
 		defer w.emitObserver.Store(nil)
 	}
 
-	w.scan(false, true)
+	w.scan(false)
 }
 
 func (w *Watcher) ensureMaps() {
@@ -231,7 +231,7 @@ func (w *Watcher) seedSeenFromStore() bool {
 	return len(records) > 0
 }
 
-func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
+func (w *Watcher) scan(seedOnly bool) {
 	logger := logOr(w.Logger)
 
 	w.tickEmittedIDs = make(map[string]struct{})
@@ -308,7 +308,7 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	}
 
 	if !seedOnly {
-		w.scanOrphanSidecars(forceSynthesize)
+		w.scanOrphanSidecars()
 	}
 
 	w.logStalledIfSuspicious(logger, totalMatches, len(targets))
@@ -347,11 +347,7 @@ func cachedMetricsLookup(cache map[string]xcactivitylog.Metrics, manifestPath st
 // Sidecars left on disk at this point are ones the manifest-driven Enrich
 // path did not consume via SidecarReader.Lookup (consumed sidecars are
 // unlinked synchronously inside Handle before this function runs).
-//
-// forceSynthesize is retained as a hint for a future immediate-emit mode on
-// shutdown; the classifier path already fires per tick, so the flag is a
-// no-op today.
-func (w *Watcher) scanOrphanSidecars(_ bool) {
+func (w *Watcher) scanOrphanSidecars() {
 	if w.SessionsDir == "" || w.OrphanEmitter == nil {
 		return
 	}

@@ -216,17 +216,15 @@ func (e *Enricher) EmitOrphan(group *ProxyIDGroup) {
 
 	command := labelForRowType(group.Primary, group.DerivedDataPath)
 	merged := MergedPayload{
-		Blob:         group.Blob,
-		Scheme:       schemeFromDerivedData(group.DerivedDataPath),
-		Command:      command,
-		Start:        group.Start,
-		Stop:         group.Stop,
-		DurationMs:   durationMs(group.Start, group.Stop),
-		SuccessKnown: true,
-		Success:      true,
+		Blob:       group.Blob,
+		Scheme:     schemeFromDerivedData(group.DerivedDataPath),
+		Command:    command,
+		Start:      group.Start,
+		Stop:       group.Stop,
+		DurationMs: durationMs(group.Start, group.Stop),
 	}
 
-	e.upsertOrphanPayload(group.InvocationID, merged, PayloadStatusPendingTerminal)
+	e.upsertPayload(group.InvocationID, merged, PayloadStatusPendingTerminal)
 
 	inv := merged.ToInvocation(group.InvocationID, e.Auth, e.Metadata, e.XcodeVersion, e.XcodeBuildNumber)
 	if err := e.Client.PutInvocation(inv); err != nil {
@@ -235,7 +233,7 @@ func (e *Enricher) EmitOrphan(group *ProxyIDGroup) {
 		return
 	}
 
-	e.upsertOrphanPayload(group.InvocationID, merged, PayloadStatusEmitted)
+	e.upsertPayload(group.InvocationID, merged, PayloadStatusEmitted)
 	unlinkSidecars(group.SidecarPaths, logger)
 
 	if e.OnEmit != nil {
@@ -316,9 +314,10 @@ func durationMs(start, stop time.Time) int64 {
 	return stop.Sub(start).Milliseconds()
 }
 
-// upsertOrphanPayload writes a PayloadRecord for the orphan path. Silent
-// no-op when PayloadStore is nil (test fixtures that only observe the PUT).
-func (e *Enricher) upsertOrphanPayload(invocationID string, merged MergedPayload, status PayloadStatus) {
+// upsertPayload writes a PayloadRecord for any caller that already has a
+// built MergedPayload. Silent no-op when PayloadStore is nil (test fixtures
+// that only observe the PUT).
+func (e *Enricher) upsertPayload(invocationID string, merged MergedPayload, status PayloadStatus) {
 	if e.PayloadStore == nil {
 		return
 	}
@@ -331,16 +330,16 @@ func (e *Enricher) upsertOrphanPayload(invocationID string, merged MergedPayload
 	}
 
 	if err := e.PayloadStore.Upsert(rec); err != nil {
-		logOr(e.Logger).Debugf("payload store upsert orphan %s status=%s failed: %s", invocationID, status, err)
+		logOr(e.Logger).Debugf("payload store upsert %s status=%s failed: %s", invocationID, status, err)
 	}
 }
 
 // EmitCrashFallback re-emits a PayloadStore record whose crash-fallback timer
-// fired. Ruleset §4: a crash must be reported, not silently dropped. Reads
-// the last-known merged payload from the ledger and PUTs it; a successful PUT
-// marks the record Emitted (cancels any future timer); a failed PUT leaves it
-// at PendingTerminal for the next scan. Silent no-op when any dependency
-// is nil or the record is already Emitted.
+// fired — a crash must be reported, not silently dropped. Reads the last-known
+// merged payload from the ledger and PUTs it; a successful PUT marks the
+// record Emitted (cancels any future timer); a failed PUT leaves it at
+// PendingTerminal for the next scan. Silent no-op when any dependency is nil
+// or the record is already Emitted.
 func (e *Enricher) EmitCrashFallback(invocationID string) {
 	if e == nil || e.PayloadStore == nil || e.Client == nil || invocationID == "" {
 		return
@@ -532,16 +531,7 @@ func (e *Enricher) upsertPayloadStore(
 		merged.ErrorMessage = runStats.Error.Error()
 	}
 
-	rec := PayloadRecord{
-		InvocationID:  invocationID,
-		LastUpdatedAt: e.now(),
-		Status:        status,
-		Merged:        merged,
-	}
-
-	if err := e.PayloadStore.Upsert(rec); err != nil {
-		logOr(e.Logger).Debugf("payload store upsert %s status=%s failed: %s", invocationID, status, err)
-	}
+	e.upsertPayload(invocationID, merged, status)
 }
 
 // attachXcresultSummary merges xcresult bundles across every manifest entry

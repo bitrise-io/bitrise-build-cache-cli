@@ -78,7 +78,7 @@ func TestWatcher_scan_FiresImmediately_OnFreshEntry(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	assert.Equal(t, []string{uuid}, handled, "single-ID pipeline fires every manifest group immediately")
 	assert.Contains(t, w.seen, uuid)
@@ -147,7 +147,7 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	assert.ElementsMatch(t, []string{"UUID-DEFAULT", "UUID-MANAGED"}, handled,
 		"both glob roots must be observed on a single scan")
@@ -169,7 +169,7 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	assert.Contains(t, handled, uuid, "nil Globs must fall back to DefaultDerivedDataGlob")
 }
@@ -189,7 +189,7 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	assert.Equal(t, []string{"UUID-PACKAGE"}, handled,
 		"Logs/Package/ manifest (Xcode 26 package builds) must match the default glob")
@@ -242,7 +242,7 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	loaded, err := store.Load()
 	require.NoError(t, err)
@@ -309,7 +309,7 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsThreeGroups(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	require.Len(t, groups, 3, "one group per entry when no MetricsLookup is installed")
 	assert.Equal(t, []string{"u1"}, groups[0].UUIDs())
@@ -338,12 +338,12 @@ func TestWatcher_scan_AppendingLateEntry_EmitsOnlyTheNewOne(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 	require.Equal(t, 2, handleCalls, "initial scan emits one group per entry")
 
 	writeMultiEntryManifest(t, derivedRoot, "u1", "u2", "u3")
 
-	w.scan(false, false)
+	w.scan(false)
 	require.Equal(t, 3, handleCalls, "second scan emits only the newly-appended entry — prior UUIDs are seen")
 	assert.Equal(t, []string{"u3"}, lastUUIDs)
 }
@@ -423,7 +423,7 @@ func TestWatcher_scan_NewPrimaryTriggersReemit(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 	require.Equal(t, 1, handleCalls, "initial scan emits build-anchored group")
 	require.Equal(t, "u-build", lastPrimaryUUID)
 
@@ -434,7 +434,7 @@ func TestWatcher_scan_NewPrimaryTriggersReemit(t *testing.T) {
 		{UUID: "u-archive", Signature: "Archive SharedScheme", StartOffset: 20, StopOffset: 40},
 	})
 
-	w.scan(false, false)
+	w.scan(false)
 	require.Equal(t, 2, handleCalls, "the new Archive entry emits as its own group")
 	assert.Equal(t, "u-archive", lastPrimaryUUID, "second emission is the Archive-anchored group")
 }
@@ -454,7 +454,7 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	assert.Zero(t, handles, "entries older than HandledManifestMaxAge must be skipped, not resurrected as orphans")
 	assert.Empty(t, w.seen, "stale entries must not be marked seen either")
@@ -508,7 +508,7 @@ func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	assert.Equal(t, []string{"UUID-PROJECT-LOCAL"}, handled,
 		"sidecar-advertised project-local DD must be globbed on top of HOME-relative defaults")
@@ -549,7 +549,7 @@ func TestWatcher_scan_StalledDiagnostic_EmitsWhenZeroManifestsWithPendingSidecar
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	var found bool
 	for _, line := range logger.lines {
@@ -574,8 +574,8 @@ func TestWatcher_scan_StalledDiagnostic_RateLimitedToOncePerMinute(t *testing.T)
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
-	w.scan(false, false) // same-tick: must stay silent
+	w.scan(false)
+	w.scan(false) // same-tick: must stay silent
 
 	diagCount := 0
 	for _, line := range logger.lines {
@@ -586,7 +586,7 @@ func TestWatcher_scan_StalledDiagnostic_RateLimitedToOncePerMinute(t *testing.T)
 	assert.Equal(t, 1, diagCount, "second scan at same timestamp must not re-emit (rate limited)")
 
 	now = fixtureNow.Add(zeroMatchStallInterval + time.Second)
-	w.scan(false, false)
+	w.scan(false)
 
 	diagCount = 0
 	for _, line := range logger.lines {
@@ -608,7 +608,7 @@ func TestWatcher_scan_StalledDiagnostic_SilentWhenNoSidecars(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	w.scan(false, false)
+	w.scan(false)
 
 	for _, line := range logger.lines {
 		assert.NotContains(t, line, "0 manifests",
@@ -628,7 +628,7 @@ func TestWatcher_scan_SidecarAbsentOrEmpty_NoExtraGlobs(t *testing.T) {
 	}
 	w.seen = map[string]struct{}{}
 
-	assert.NotPanics(t, func() { w.scan(false, false) }, "nil hints must not break the scan")
+	assert.NotPanics(t, func() { w.scan(false) }, "nil hints must not break the scan")
 }
 
 func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
@@ -721,7 +721,7 @@ func TestWatcher_scanOrphanSidecars_FiresEmitterPerAggregatedGroup(t *testing.T)
 	w.seen = map[string]struct{}{}
 	w.tickEmittedIDs = map[string]struct{}{}
 
-	w.scanOrphanSidecars(false)
+	w.scanOrphanSidecars()
 
 	require.Len(t, captured, 1, "orphan emitter must fire once for the DarkBuild group")
 	assert.Equal(t, "inv-dark", captured[0].InvocationID)
@@ -758,7 +758,7 @@ func TestWatcher_scanOrphanSidecars_SkipsTickEmitted(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.tickEmittedIDs = map[string]struct{}{"inv-main": {}}
 
-	w.scanOrphanSidecars(false)
+	w.scanOrphanSidecars()
 
 	assert.Zero(t, fired, "orphan emitter must not fire for an ID already emitted this tick")
 }
@@ -792,7 +792,7 @@ func TestWatcher_scanOrphanSidecars_SuppressesZeroBlob(t *testing.T) {
 	w.seen = map[string]struct{}{}
 	w.tickEmittedIDs = map[string]struct{}{}
 
-	w.scanOrphanSidecars(false)
+	w.scanOrphanSidecars()
 
 	assert.Zero(t, fired, "zero-blob orphan must not PUT")
 	entries, err := os.ReadDir(sessionsDir)
