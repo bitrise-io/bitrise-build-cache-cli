@@ -366,7 +366,7 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 	groups := w.SidecarReader.OrphanSidecarsGroupedByInvocation(w.now(), minAge)
 	for invocationID, group := range groups {
 		if _, emitted := w.tickEmittedIDs[invocationID]; emitted {
-			logger.Debugf("Watcher: skip synthetic pseudo-group for InvocationID %s (manifest path emitted this tick)", invocationID)
+			logger.Debugf("Watcher: skip orphan for InvocationID %s (manifest path emitted this tick)", invocationID)
 
 			continue
 		}
@@ -374,165 +374,21 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 			continue
 		}
 
-		// SWBBuildService opens auxiliary proxy connections (package resolution,
-		// workspace init, index scheduler) that idle without CAS transfer and
-		// close. The proxy's T2 anchored-empty terminal marker captures those
-		// for debug; synthesizing a bare `cmd=build` BE row from them would
-		// double-emit alongside the real manifest-sourced row. Drop + unlink —
-		// must run before tryBoundaryBridgeClone so a nil-blob orphan whose
-		// window happens to land inside a Build boundary still suppresses and
-		// unlinks (bridge's Enrich bails at the outcome gate without unlinking,
-		// leaving the sidecar to re-accumulate every tick for SessionSidecarMaxAge).
 		if group.Blob == nil || group.Blob.IsEmpty() {
-			logger.Debugf("Watcher: suppress zero-blob pseudo-group for InvocationID %s (no CAS transfer, %d sidecar(s))", invocationID, len(group.SidecarUUIDs))
+			logger.Debugf("Watcher: suppress zero-blob orphan for InvocationID %s (no CAS transfer, %d sidecar(s))", invocationID, len(group.SidecarUUIDs))
 			unlinkSidecars(group.Paths, logger)
 
 			continue
 		}
 
-		if w.tryBoundaryBridgeClone(group, invocationID, logger) {
-			continue
-		}
-
-		// No boundary match: the orphan sidecar is held open by the payload
-		// store; the 60s crash-fallback (or a later plist arrival) will
-		// carry it to a PUT. No bare-build fallthrough — pre-ruleset emits
-		// left duplicate rows under the ordering bug (see
+		// Single-ID payload store merges orphan sidecar signals under the
+		// proxy-derived InvocationID; the 60s crash-fallback carries the
+		// record to a PUT if no plist ever lands. No synthetic emission path
+		// here — pre-ruleset emits produced the ordering bug (see
 		// project_wrapperless_cas_pipeline_and_ruleset).
-		logger.Debugf("Watcher: orphan sidecar held for InvocationID %s (%d sidecar(s)) — awaiting boundary or crash-fallback",
+		logger.Debugf("Watcher: orphan sidecar held for InvocationID %s (%d sidecar(s)) — payload store owns the merge",
 			invocationID, len(group.SidecarUUIDs))
 	}
-}
-
-// tryBoundaryBridgeClone emits a non-Build SyntheticBoundaryGroup when the
-// orphan sidecar's time window overlaps a non-Build boundary (Package /
-// Signing / Localization). Build-domain boundaries are handled by the
-// single-ID payload store merge. Returns true when a non-Build emission
-// landed, false otherwise.
-func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
-	// Orphan sidecars from Xcode.app's SWBBuildService XPC path (SPM prep,
-	// signing, localization) have no xcodebuild in their ancestor chain, so
-	// no -derivedDataPath flag was parsed into DerivedDataPaths. Fall back
-	// to every DD root under HomeDir so findEnclosingBoundary's time-window
-	// filter still has plists to search.
-	ddPaths := group.DerivedDataPaths
-	if len(ddPaths) == 0 {
-		ddPaths = w.allDerivedDataRoots(logger)
-		if len(ddPaths) == 0 {
-			return false
-		}
-	}
-
-	// Attribution anchor: BuildStartedAt is the earliest signal the proxy saw
-	// the build action begin; falls back to AcceptedAt via SidecarGroup.Start.
-	// We use the group's Start so the attribution window matches the plist's
-	// own recording window — a sidecar that started before master stop but
-	// flushed after it still attributes.
-	at := group.Start
-	if at.IsZero() {
-		return false
-	}
-
-	enclosing, boundaryDD, ok := w.findEnclosingBoundary(ddPaths, at, logger)
-	if !ok {
-		return false
-	}
-
-	// Non-Build domains (Package / Signing / Localization) fire on Xcode
-	// launch without a user ⌘B. Synthesize a group anchored at the boundary's
-	// own UUID with a label sourced from the boundary's Signature.
-	if enclosing.Domain != DomainBuild {
-		synth := SyntheticBoundaryGroup(enclosing, group.Blob, group.Paths)
-		logger.Debugf("Watcher: boundary-bridged pseudo-group for %s domain — sidecar at=%s matched boundary UUID %s signature=%q via %s (InvocationID %s)",
-			enclosing.Domain, at.Format(time.RFC3339), enclosing.UniqueIdentifier, enclosing.Signature, boundaryDD, invocationID)
-		if w.Handle != nil {
-			w.Handle("", synth)
-		}
-
-		return true
-	}
-
-	// Build-domain boundaries no longer re-PUT under the master manifest
-	// UUID — the single-ID payload store aggregates sidecar + xcactivitylog
-	// signals under the proxy-derived InvocationID instead. The remaining
-	// bridge path handles only non-Build domains above.
-	logger.Debugf("Watcher: build-domain boundary %s matched in %s for InvocationID %s — single-ID pipeline handles the merge",
-		enclosing.UniqueIdentifier, boundaryDD, invocationID)
-
-	return false
-}
-
-// allDerivedDataRoots enumerates every DerivedData subtree under HomeDir.
-// Fallback for orphan sidecars whose ancestor chain carries no xcodebuild
-// process (SWBBuildService XPC path for SPM prep / signing / localization
-// activity) so findEnclosingBoundary still has plists to search.
-func (w *Watcher) allDerivedDataRoots(logger log.Logger) []string {
-	matches, err := filepath.Glob(filepath.Join(w.HomeDir, "Library/Developer/Xcode/DerivedData/*"))
-	if err != nil {
-		logger.Debugf("Watcher: DD root enum glob failed: %s", err)
-
-		return nil
-	}
-
-	return matches
-}
-
-// findEnclosingBoundary walks each DerivedData root the sidecar carried and
-// reads every sibling Logs/<subdir>/LogStoreManifest.plist for attribution-
-// eligible boundaries (Build + Package + Signing + Localization — see
-// classifyDomain). Returns the most-recent-preceding entry whose window
-// encloses at (within DefaultAttributionGrace of its Stop), alongside the DD
-// path that supplied it for log context. Returns ok=false when no DD root
-// yields a plist or no boundary in any plist encloses at.
-//
-// Domain precedence is NOT applied — Start order alone picks the winner so
-// a Build boundary that started AFTER a still-running Package activity
-// correctly steals its sub-sidecars. SPM prep activities run only on Xcode
-// launch and are long-closed by the time ⌘B fires, so this is the natural
-// precedence.
-func (w *Watcher) findEnclosingBoundary(ddPaths []string, at time.Time, logger log.Logger) (Boundary, string, bool) {
-	var (
-		best     Boundary
-		bestDD   string
-		found    bool
-		hadPlist bool
-	)
-
-	for _, dd := range ddPaths {
-		plistMatches, err := filepath.Glob(filepath.Join(dd, "Logs", "*", "LogStoreManifest.plist"))
-		if err != nil {
-			logger.Debugf("Watcher: boundary glob under %s failed: %s", dd, err)
-
-			continue
-		}
-
-		for _, plistPath := range plistMatches {
-			boundaries, err := ReadBoundaries(plistPath)
-			if err != nil {
-				logger.Debugf("Watcher: boundary read %s failed: %s", plistPath, err)
-
-				continue
-			}
-			hadPlist = true
-
-			boundary, ok := EnclosingBoundary(boundaries, at, DefaultAttributionGrace)
-			if !ok {
-				continue
-			}
-
-			if !found || boundary.Start.After(best.Start) {
-				best = boundary
-				bestDD = dd
-				found = true
-			}
-		}
-	}
-
-	if !hadPlist {
-		return Boundary{}, "", false
-	}
-
-	return best, bestDD, found
 }
 
 // logStalledIfSuspicious emits a once-per-minute diagnostic when a scan found

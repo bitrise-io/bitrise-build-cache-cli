@@ -76,7 +76,6 @@ func TestReadBoundaries_ParsesIDEMaster(t *testing.T) {
 	require.Len(t, got, 1)
 
 	assert.Equal(t, "AAAA-IDE-BUILD", got[0].UniqueIdentifier)
-	assert.Equal(t, enrichment.DomainBuild, got[0].Domain)
 	assert.Equal(t, "Build IceCubesApp", got[0].Signature)
 	assert.Equal(t, "IceCubesApp", got[0].SchemeName)
 	assert.Equal(t, "S", got[0].Status)
@@ -84,12 +83,10 @@ func TestReadBoundaries_ParsesIDEMaster(t *testing.T) {
 	assert.True(t, got[0].Stop.After(got[0].Start))
 }
 
-// TestReadBoundaries_MultiDomainOrder (the renamed/rescoped successor of
-// TestReadBuildBoundaries_FiltersPackageSigningLocalization) pins S8's
-// semantics: all four attribution-eligible domains surface — Build, Package,
-// Signing, Localization — sorted by Start ascending, each tagged with its
-// Domain so the bridge can label the BE row with the right short command.
-func TestReadBoundaries_MultiDomainOrder(t *testing.T) {
+// TestReadBoundaries_FiltersNonBuildDomains pins the Build-only policy: the
+// single-ID pipeline owns cross-signal attribution, so Package / Signing /
+// Localization entries no longer surface through ReadBoundaries.
+func TestReadBoundaries_FiltersNonBuildDomains(t *testing.T) {
 	path := writeBoundaryPlist(t, `
 		<key>AAAA-BUILD</key>
 		<dict>
@@ -127,57 +124,11 @@ func TestReadBoundaries_MultiDomainOrder(t *testing.T) {
 
 	got, err := enrichment.ReadBoundaries(path)
 	require.NoError(t, err)
-	require.Len(t, got, 4, "all four attribution-eligible domains must surface")
-
-	assert.Equal(t, "PACKAGE-LOAD", got[0].UniqueIdentifier, "Start-ascending order places Package first")
-	assert.Equal(t, enrichment.DomainPackage, got[0].Domain)
-	assert.Equal(t, "Resolve Packages", got[0].Signature)
-
-	assert.Equal(t, "SIGNING", got[1].UniqueIdentifier)
-	assert.Equal(t, enrichment.DomainSigning, got[1].Domain)
-	assert.Equal(t, "Update Signing", got[1].Signature)
-
-	assert.Equal(t, "LOCALIZATION", got[2].UniqueIdentifier)
-	assert.Equal(t, enrichment.DomainLocalization, got[2].Domain)
-	assert.Equal(t, "Sync Localizations", got[2].Signature)
-
-	assert.Equal(t, "AAAA-BUILD", got[3].UniqueIdentifier)
-	assert.Equal(t, enrichment.DomainBuild, got[3].Domain)
-}
-
-// TestReadBoundaries_FiltersUnknownDomains pins the inverse of the multi-
-// domain acceptance: classNames / domainTypes outside the attribution set
-// (plain xcactivitylog sections with no matching domainType) still drop so
-// unknown entries don't leak into the bridge's enclosing lookup.
-func TestReadBoundaries_FiltersUnknownDomains(t *testing.T) {
-	path := writeBoundaryPlist(t, `
-		<key>AAAA-BUILD</key>
-		<dict>
-			<key>className</key><string>IDEActivityLogSection</string>
-			<key>domainType</key><string>Xcode.IDEActivityLogDomainType.BuildLog</string>
-			<key>timeStartedRecording</key><real>762345678.5</real>
-			<key>timeStoppedRecording</key><real>762345688.75</real>
-			<key>signature</key><string>Build Scheme</string>
-		</dict>
-		<key>UNKNOWN</key>
-		<dict>
-			<key>className</key><string>IDESomethingElse</string>
-			<key>domainType</key><string>Xcode.IDEActivityLogDomainType.MysteryLog</string>
-			<key>timeStartedRecording</key><real>762345670.0</real>
-			<key>timeStoppedRecording</key><real>762345672.0</real>
-			<key>signature</key><string>Mystery</string>
-		</dict>
-`)
-
-	got, err := enrichment.ReadBoundaries(path)
-	require.NoError(t, err)
-	require.Len(t, got, 1, "unrecognized domainType must not attribute — only Build/Package/Signing/Localization")
+	require.Len(t, got, 1, "Build-only policy: non-Build domains must be filtered")
 	assert.Equal(t, "AAAA-BUILD", got[0].UniqueIdentifier)
 }
 
 func TestReadBoundaries_LegacyClassNameFallbackWhenDomainTypeMissing(t *testing.T) {
-	// Older Xcode versions omit domainType; the className allow-list covers
-	// the four attribution-eligible families.
 	path := writeBoundaryPlist(t, `
 		<key>CLI-BUILD</key>
 		<dict>
@@ -193,26 +144,12 @@ func TestReadBoundaries_LegacyClassNameFallbackWhenDomainTypeMissing(t *testing.
 			<key>timeStoppedRecording</key><real>762345672.0</real>
 			<key>signature</key><string>Resolve Packages</string>
 		</dict>
-		<key>LEGACY-SIGNING</key>
-		<dict>
-			<key>className</key><string>IDEActivityLogProvisioningSection</string>
-			<key>timeStartedRecording</key><real>762345671.0</real>
-			<key>timeStoppedRecording</key><real>762345673.0</real>
-			<key>signature</key><string>Update Signing</string>
-		</dict>
 `)
 
 	got, err := enrichment.ReadBoundaries(path)
 	require.NoError(t, err)
-	require.Len(t, got, 3)
-
-	byUUID := map[string]enrichment.Boundary{}
-	for _, b := range got {
-		byUUID[b.UniqueIdentifier] = b
-	}
-	assert.Equal(t, enrichment.DomainBuild, byUUID["CLI-BUILD"].Domain)
-	assert.Equal(t, enrichment.DomainPackage, byUUID["LEGACY-PACKAGE"].Domain)
-	assert.Equal(t, enrichment.DomainSigning, byUUID["LEGACY-SIGNING"].Domain)
+	require.Len(t, got, 1, "only CLI-BUILD surfaces; non-Build className drops")
+	assert.Equal(t, "CLI-BUILD", got[0].UniqueIdentifier)
 }
 
 func TestReadBoundaries_SortedByStartAscending(t *testing.T) {

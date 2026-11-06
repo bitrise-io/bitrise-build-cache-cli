@@ -28,24 +28,16 @@ var acceptedAncestors = map[string]struct{}{
 	"Xcode":      {},
 }
 
-// LookupFilter tightens sidecar-to-group matching with DerivedData and
-// build-description-hash equality. Both axes follow the same rule: empty on
-// either side (filter or sidecar) skips that axis and falls back to the
-// pre-existing ancestry + time-overlap match. This is required so IDE flows
-// (which may not carry a DD path on every sidecar, and whose early sidecars
-// can flush before the build-description hash is known) and the orphan
-// scan path (which has no manifest to source DD from) do not regress.
+// LookupFilter tightens sidecar-to-group matching with DerivedData equality.
+// Empty on either side (filter or sidecar) skips the axis and falls back to
+// the ancestry + time-overlap match. This is required so IDE flows (which
+// may not carry a DD path on every sidecar) and the orphan scan path (which
+// has no manifest to source DD from) do not regress.
 type LookupFilter struct {
 	// DerivedData is the DD root parsed from the group's manifest path; empty
 	// on sidecar-only orphan paths. The filter is honored only when both this
 	// and the sidecar's DerivedDataPath are non-empty.
 	DerivedData string
-	// Hashes is the set of acceptable build-description hashes (today: one,
-	// aggregated from the group's manifest entries by the Enricher). A
-	// non-empty slice is required to activate the hex axis; a sidecar whose
-	// BuildRequestHex is empty is NOT filtered out — the sidecar simply does
-	// not have the information to disambiguate.
-	Hashes []string
 }
 
 // SidecarReader resolves sidecars left by the proxy that overlap a manifest
@@ -149,12 +141,9 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 		if !overlapsClosed(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
-		// DerivedData + hex equality tighten disambiguation for parallel builds.
-		// Both axes honor the empty-means-skip rule — see LookupFilter docs.
+		// DerivedData equality tightens disambiguation for parallel builds.
+		// Empty-means-skip rule — see LookupFilter docs.
 		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
-			continue
-		}
-		if len(filter.Hashes) > 0 && s.BuildRequestHex != "" && !hexMatches(s.BuildRequestHex, filter.Hashes) {
 			continue
 		}
 
@@ -653,24 +642,6 @@ func (i *sidecarIndex) PendingCount() int {
 func ancestryMatches(ancestry []string) bool {
 	for _, a := range ancestry {
 		if _, ok := acceptedAncestors[a]; ok {
-			return true
-		}
-	}
-
-	return false
-}
-
-// hexMatches reports whether sidecarHex equals any of hashes. Both sides are
-// compared verbatim — Xcode's BuildDescriptionHash is already lowercase hex, so
-// no normalisation is applied. Shared by Lookup / Has (DD+hex filter axis) and
-// the Watcher's hex-bridge path so the equality contract has a single owner.
-func hexMatches(sidecarHex string, hashes []string) bool {
-	if sidecarHex == "" {
-		return false
-	}
-
-	for _, h := range hashes {
-		if h == sidecarHex {
 			return true
 		}
 	}

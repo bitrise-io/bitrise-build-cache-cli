@@ -12,7 +12,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"howett.net/plist"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
@@ -163,13 +162,6 @@ func WalkManifests(homeDir string, globs []string, logger log.Logger, visit func
 // analytics runs show a coarser command string.
 type ManifestEntryGroup struct {
 	Entries []ManifestEntry
-
-	// commandLabel overrides Command()'s first-word verb lookup so a non-Build
-	// boundary (Package / Signing / Localization) renders with its own plist
-	// signature ("Resolve Packages", "Update Signing", ...) instead of
-	// returning CommandUnknown and being dropped by the enricher gate. Set
-	// only by SyntheticBoundaryGroup; empty for every other construction path.
-	commandLabel string
 }
 
 func (g ManifestEntryGroup) UUIDs() []string {
@@ -332,15 +324,7 @@ func (g ManifestEntryGroup) ManifestUUID() string {
 // skips PUT. Renders `<action> [<scheme> / <configuration>]` — Primary-only.
 // Each independent user action (IDE Clean, IDE Build, CLI invocation) is its
 // own group and lands as its own BE row.
-//
-// commandLabel wins when set — used by SyntheticBoundaryGroup to surface
-// non-Build boundaries ("Resolve Packages" etc.) which the first-word verb
-// switch cannot classify.
 func (g ManifestEntryGroup) Command() string {
-	if g.commandLabel != "" {
-		return g.commandLabel
-	}
-
 	p := g.Primary()
 	if p.Command() == CommandUnknown {
 		return ""
@@ -369,15 +353,7 @@ func (g ManifestEntryGroup) Command() string {
 // still contributes its metadata. Falls back to Primary().Signature verbatim
 // when Primary's command is Unknown and no ws/project/configuration could be
 // parsed.
-//
-// commandLabel-anchored groups (SyntheticBoundaryGroup) carry no xcodebuild
-// argv — the activity was not invoked by the user — so FullCommand returns
-// the label verbatim.
 func (g ManifestEntryGroup) FullCommand() string {
-	if g.commandLabel != "" {
-		return g.commandLabel
-	}
-
 	p := g.Primary()
 	ws, proj, cfg := g.firstNonEmptyTokens()
 
@@ -441,51 +417,6 @@ func (g ManifestEntryGroup) firstNonEmptyTokens() (string, string, string) {
 	}
 
 	return ws, proj, cfg
-}
-
-// SyntheticBoundaryGroup builds a boundary-anchored pseudo-group for a non-
-// Build-domain activity (Package / Signing / Localization) whose recording
-// window enclosed an orphan sidecar. The boundary's UniqueIdentifier becomes
-// the PUT's InvocationID (via Primary().UUID → ManifestUUID()) and its
-// Signature drives the rendered short command, so the BE row reads "Resolve
-// Packages" / "Update Signing" / "Sync Localizations" instead of the fallback
-// bare "build". commandLabel is set so Command()/FullCommand() return the
-// label rather than returning "" for an unknown first-word verb.
-func SyntheticBoundaryGroup(b Boundary, _ *blobstats.Snapshot, _ []string) ManifestEntryGroup {
-	label := b.Signature
-	if label == "" {
-		label = defaultLabelForDomain(b.Domain)
-	}
-
-	return ManifestEntryGroup{
-		Entries: []ManifestEntry{{
-			UUID:       b.UniqueIdentifier,
-			Signature:  b.Signature,
-			SchemeName: b.SchemeName,
-			Status:     b.Status,
-			Start:      b.Start,
-			Stop:       b.Stop,
-		}},
-		commandLabel: label,
-	}
-}
-
-// defaultLabelForDomain is the fallback rendered when a boundary carries no
-// Signature (older Xcode versions omit it for sub-activities). Keeps the BE
-// row readable rather than falling through to an empty command.
-func defaultLabelForDomain(d Domain) string {
-	switch d {
-	case DomainPackage:
-		return "Resolve Packages"
-	case DomainSigning:
-		return "Update Signing"
-	case DomainLocalization:
-		return "Sync Localizations"
-	case DomainBuild:
-		return string(CommandBuild)
-	default:
-		return string(d)
-	}
 }
 
 // GroupOption configures GroupManifestEntries. Preserved as the extension

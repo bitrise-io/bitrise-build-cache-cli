@@ -79,18 +79,15 @@ func (e *Enricher) now() time.Time {
 }
 
 // resolveSidecar runs the SidecarReader with a LookupFilter whose DerivedData
-// + build-description hash disambiguate parallel builds sharing a time window;
-// both axes degrade gracefully when either source is empty.
-func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup, buildDescriptionHash string) (*blobstats.Snapshot, []string, string, bool) {
+// disambiguates parallel builds sharing a time window; the axis degrades
+// gracefully when either source is empty.
+func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
 	if e.SidecarReader == nil {
 		return nil, nil, "", false
 	}
 
 	filter := LookupFilter{
 		DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
-	}
-	if buildDescriptionHash != "" {
-		filter.Hashes = []string{buildDescriptionHash}
 	}
 
 	return e.SidecarReader.Lookup(group, filter)
@@ -112,7 +109,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
+	hitRate, hitRateOutcome := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
 
 	var (
 		sidecarBlob         *blobstats.Snapshot
@@ -120,7 +117,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarInvocationID string
 		sidecarFound        bool
 	)
-	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.resolveSidecar(manifestPath, group, buildDescriptionHash)
+	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.resolveSidecar(manifestPath, group)
 
 	invocationID := group.ManifestUUID()
 	if invocationID == "" {
@@ -421,16 +418,14 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
 // last non-OK outcome so the existing gate in Enrich behaves as before.
-// BuildDescriptionHash is sourced from the first OK log in iteration order.
-func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger, lookup MetricsLookup) (float32, xcactivitylog.Outcome, string) {
+func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger, lookup MetricsLookup) (float32, xcactivitylog.Outcome) {
 	if manifestPath == "" {
-		return 0, xcactivitylog.OutcomeFileMissing, ""
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	var (
 		sumHits  int
 		sumTotal int
-		hash     string
 		anyOK    bool
 		lastBad  = xcactivitylog.OutcomeFileMissing
 		sawAny   bool
@@ -459,18 +454,14 @@ func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.
 		anyOK = true
 		sumHits += m.Hits
 		sumTotal += m.Total
-
-		if hash == "" && m.BuildDescriptionHash != "" {
-			hash = m.BuildDescriptionHash
-		}
 	}
 
 	if !sawAny {
-		return 0, xcactivitylog.OutcomeFileMissing, ""
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	if !anyOK {
-		return 0, lastBad, ""
+		return 0, lastBad
 	}
 
 	var rate float32
@@ -478,5 +469,5 @@ func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.
 		rate = float32(sumHits) / float32(sumTotal)
 	}
 
-	return rate, xcactivitylog.OutcomeOK, hash
+	return rate, xcactivitylog.OutcomeOK
 }

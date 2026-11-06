@@ -9,35 +9,13 @@ import (
 	"howett.net/plist"
 )
 
-// Domain classifies a LogStoreManifest.plist entry by the user action that
-// recorded it. Attribution bridging treats each domain differently:
-// DomainBuild entries pair with the enricher's manifest emissions (dark build
-// + indexer traffic attribute back to a ⌘B); the other three fire on Xcode
-// launch without a user ⌘B and only surface when an orphan sidecar's window
-// lands inside their recording boundary.
-type Domain string
-
-const (
-	DomainBuild        Domain = "build"
-	DomainPackage      Domain = "package"
-	DomainSigning      Domain = "signing"
-	DomainLocalization Domain = "localization"
-)
-
-// Boundary is a single attribution-eligible entry from
-// `<DerivedData>/Logs/<subdir>/LogStoreManifest.plist`. It represents one
-// recording window Xcode's IDE Report Navigator surfaces: either a Build
-// master (per-⌘B) or an SPM/signing/localization sub-activity that fires on
-// Xcode launch.
-//
-// Sub-activities landing at time T within [Start, Stop+grace] attribute to
-// this boundary — the PR596 S7+S8 algorithm. Domain lets the watcher's bridge
-// path render the right label ("Resolve Packages", "Update Signing", "Sync
-// Localizations") for pre-build CAS traffic that would otherwise fall through
-// to a bare "build" row.
+// Boundary is a single Build-domain entry from
+// `<DerivedData>/Logs/Build/LogStoreManifest.plist`. It represents one
+// recording window Xcode's IDE Report Navigator surfaces for a ⌘B master
+// build. Non-Build domain entries (Package / Signing / Localization) are no
+// longer surfaced — the single-ID payload store owns cross-signal attribution.
 type Boundary struct {
 	UniqueIdentifier string
-	Domain           Domain
 	Signature        string
 	SchemeName       string
 	Status           string
@@ -45,20 +23,16 @@ type Boundary struct {
 	Stop             time.Time
 }
 
-// ReadBoundaries parses the plist at path and returns entries across all
-// attribution-eligible domains (Build, Package, Signing, Localization) sorted
-// by Start ascending. Empty plist (no logs yet) returns (nil, nil); parse
-// failure propagates err. Missing file returns the underlying os error so
-// callers can distinguish "no DD / no builds yet" (ENOENT) from a real decode
-// failure.
+// ReadBoundaries parses the plist at path and returns Build-domain entries
+// sorted by Start ascending. Empty plist (no logs yet) returns (nil, nil);
+// parse failure propagates err. Missing file returns the underlying os error
+// so callers can distinguish "no DD / no builds yet" (ENOENT) from a real
+// decode failure.
 //
-// Each domain is identified by the authoritative domainType field when
-// present, with a className fallback for older Xcode versions whose plist
-// omits domainType:
-//   - Build:        IDEActivityLogSection / IDECommandLineBuildLog
-//   - Package:      IDEActivityLogPackageLoadLog / IDEActivityLogPackageResolutionSection
-//   - Signing:      IDEActivityLogProvisioningSection / IDEActivityLogSigningSection
-//   - Localization: IDEActivityLogLocalizationSection / IDEActivityLogExportLocalizationsSection
+// Build-domain detection uses the authoritative domainType field when
+// present, with a className fallback for older Xcode versions:
+//   - domainType: Xcode.IDEActivityLogDomainType.BuildLog
+//   - className:  IDEActivityLogSection / IDECommandLineBuildLog
 func ReadBoundaries(path string) ([]Boundary, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -74,8 +48,7 @@ func ReadBoundaries(path string) ([]Boundary, error) {
 	out := make([]Boundary, 0, len(raw.Logs))
 
 	for uuid, entry := range raw.Logs {
-		domain, ok := classifyDomain(entry.ClassName, entry.DomainType)
-		if !ok {
+		if !isBuildDomain(entry.ClassName, entry.DomainType) {
 			continue
 		}
 
@@ -86,7 +59,6 @@ func ReadBoundaries(path string) ([]Boundary, error) {
 
 		out = append(out, Boundary{
 			UniqueIdentifier: uuid,
-			Domain:           domain,
 			Signature:        entry.Signature,
 			SchemeName:       entry.SchemeName,
 			Status:           status,
@@ -102,44 +74,18 @@ func ReadBoundaries(path string) ([]Boundary, error) {
 	return out, nil
 }
 
-const (
-	buildDomainType        = "Xcode.IDEActivityLogDomainType.BuildLog"
-	packageDomainType      = "Xcode.IDEActivityLogDomainType.PackageLog"
-	signingDomainType      = "Xcode.IDEActivityLogDomainType.ProvisioningLog"
-	localizationDomainType = "Xcode.IDEActivityLogDomainType.LocalizationLog"
-)
+const buildDomainType = "Xcode.IDEActivityLogDomainType.BuildLog"
 
-// classifyDomain maps a plist entry to its attribution Domain. domainType is
-// authoritative when present; className is the legacy fallback for older
-// Xcode versions whose plist omits it. Returns ok=false for classNames /
-// domainTypes outside the attribution-eligible set so callers skip the entry.
-func classifyDomain(className, domainType string) (Domain, bool) {
+func isBuildDomain(className, domainType string) bool {
 	if domainType != "" {
-		switch domainType {
-		case buildDomainType:
-			return DomainBuild, true
-		case packageDomainType:
-			return DomainPackage, true
-		case signingDomainType:
-			return DomainSigning, true
-		case localizationDomainType:
-			return DomainLocalization, true
-		default:
-			return "", false
-		}
+		return domainType == buildDomainType
 	}
 
 	switch className {
 	case "IDEActivityLogSection", "IDECommandLineBuildLog":
-		return DomainBuild, true
-	case "IDEActivityLogPackageLoadLog", "IDEActivityLogPackageResolutionSection":
-		return DomainPackage, true
-	case "IDEActivityLogProvisioningSection", "IDEActivityLogSigningSection":
-		return DomainSigning, true
-	case "IDEActivityLogLocalizationSection", "IDEActivityLogExportLocalizationsSection":
-		return DomainLocalization, true
+		return true
 	default:
-		return "", false
+		return false
 	}
 }
 
