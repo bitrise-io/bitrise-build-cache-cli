@@ -41,17 +41,16 @@ type Enricher struct {
 	XcresultParser   xcresult.Parser
 	SidecarReader    SidecarReader
 
-	// OnEmit fires after a successful PutInvocation with the ID actually sent,
-	// the manifest's build-description hash (empty if not extractable), the
-	// group whose PUT just succeeded, and the master's sidecar blob (nil when
-	// the master had no sidecar / no CAS traffic). The watcher wires this to
-	// its per-tick dedup set so an aged orphan sidecar sharing the ID with a
-	// manifest emission does not re-emit as a synthetic pseudo-group — and so
-	// the orphan sweep can bridge a pseudo-group back to the originating
-	// manifest via hex-exact match on buildDescriptionHash. The master blob
-	// is stashed so the S7 boundary-bridge clone can sum it with the orphan's
-	// own snapshot (warm rebuilds carry traffic on both sides).
-	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup, masterBlob *blobstats.Snapshot)
+	// PayloadStore is the single-ID merge ledger. When non-nil, every
+	// enrichment signal (sidecar lookup, manifest entry, xcactivitylog metric,
+	// xcresult summary) is upserted into the store keyed by the proxy-derived
+	// InvocationID before the PUT runs. Final PUTs mark the record as emitted
+	// so the crash-fallback sweep knows to skip them.
+	PayloadStore *PayloadStore
+
+	// OnEmit fires after a successful PutInvocation with the ID actually sent
+	// so the Watcher can mark it in the per-tick dedup set.
+	OnEmit func(invocationID string)
 
 	// LocalLogAppender appends a Record on each successful wrapperless PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
@@ -79,25 +78,16 @@ func (e *Enricher) now() time.Time {
 	return time.Now()
 }
 
-// resolveSidecar returns the sidecar blob + consumed paths + derived InvocationID
-// + found flag. Preattached groups short-circuit the time-overlap SidecarReader
-// lookup (boundary-bridge path keeps the manifest UUID authoritative). Otherwise
-// the SidecarReader runs with a LookupFilter whose DerivedData + build-description
-// hash disambiguate parallel builds sharing a time window; both axes degrade
+// resolveSidecar runs the SidecarReader with a LookupFilter whose DerivedData
+// disambiguates parallel builds sharing a time window; the axis degrades
 // gracefully when either source is empty.
-func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup, buildDescriptionHash string) (*blobstats.Snapshot, []string, string, bool) {
-	if blob, paths, ok := group.Preattached(); ok {
-		return blob, paths, "", blob != nil
-	}
+func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup) (*blobstats.Snapshot, []string, string, bool) {
 	if e.SidecarReader == nil {
 		return nil, nil, "", false
 	}
 
 	filter := LookupFilter{
 		DerivedData: pathsutil.DerivedDataFromManifestPath(manifestPath),
-	}
-	if buildDescriptionHash != "" {
-		filter.Hashes = []string{buildDescriptionHash}
 	}
 
 	return e.SidecarReader.Lookup(group, filter)
@@ -112,18 +102,6 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	var (
-		pending []PendingRecord
-		err     error
-	)
-
-	if e.Store != nil {
-		pending, err = e.Store.Load()
-		if err != nil {
-			logger.Warnf("Failed to load pending invocations for enrichment: %s", err)
-		}
-	}
-
 	command := group.Command()
 	if command == "" {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: side-effect only (uuids=%v)", group.SchemeName(), group.UUIDs())
@@ -131,19 +109,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	if pendingID, matched := Correlate(GroupCorrelationSpan(group), pending); matched {
-		// Re-PUT would clobber the wrapper's rich row under BE last-write-wins.
-		logger.Debugf("Enrichment PUT skipped for %s: pending record already claims this invocation", pendingID)
-		if e.Store != nil {
-			if err := e.Store.Remove(pendingID); err != nil {
-				logger.Warnf("Failed to remove pending after skipping enrichment for %s: %s", pendingID, err)
-			}
-		}
-
-		return
-	}
-
-	hitRate, hitRateOutcome, buildDescriptionHash := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
+	hitRate, hitRateOutcome := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
 
 	var (
 		sidecarBlob         *blobstats.Snapshot
@@ -151,27 +117,22 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		sidecarInvocationID string
 		sidecarFound        bool
 	)
-	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.resolveSidecar(manifestPath, group, buildDescriptionHash)
+	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarFound = e.resolveSidecar(manifestPath, group)
 
-	invocationID := group.ManifestUUID()
+	invocationID := sidecarInvocationID
 	if invocationID == "" {
-		invocationID = group.OverrideInvocationID()
+		invocationID = group.ManifestUUID()
 	}
 	if invocationID == "" {
-		invocationID = sidecarInvocationID
-	}
-	if invocationID == "" {
-		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (manifest / override / sidecar all empty)", group.SchemeName(), command)
+		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (sidecar / manifest both empty)", group.SchemeName(), command)
 
 		return
 	}
 
-	// Synthetic (sidecar-sourced) groups and override-anchored PUTs carry their
-	// own data path — the xcactivitylog is only the authoritative source for
-	// real manifest-derived emissions.
-	hasAlternateDataSource := sidecarFound || group.OverrideInvocationID() != ""
-	if hitRateOutcome != xcactivitylog.OutcomeOK && !hasAlternateDataSource {
-		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar / override (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
+	// Sidecar-sourced groups carry their own data path — the xcactivitylog is
+	// only the authoritative source for real manifest-derived emissions.
+	if hitRateOutcome != xcactivitylog.OutcomeOK && !sidecarFound {
+		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
 
 		return
 	}
@@ -207,6 +168,8 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	TickAttempt(e.Health, e.Logger, e.now())
 
+	e.upsertPayloadStore(invocationID, group, runStats, hitRateOutcome, sidecarBlob, PayloadStatusPendingTerminal)
+
 	if err := e.Client.PutInvocation(*inv); err != nil {
 		logger.Warnf("Failed to PUT enriched invocation %s: %s", invocationID, err)
 		TickFailure(e.Health, e.Logger, e.now(), err)
@@ -217,14 +180,13 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
+	e.upsertPayloadStore(invocationID, group, runStats, hitRateOutcome, sidecarBlob, PayloadStatusEmitted)
 	unlinkSidecars(consumedPaths, logger)
 
-	// matched=false always: matched groups short-circuit above and LastMatched
-	// is reserved for correlated re-PUTs, which no longer happen.
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	if e.OnEmit != nil {
-		e.OnEmit(invocationID, buildDescriptionHash, group, sidecarBlob)
+		e.OnEmit(invocationID)
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))
@@ -237,6 +199,209 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 // stop-proxy stdout summary.
 func VisitURL(invocationID string) string {
 	return "https://app.bitrise.io/build-cache/invocations/xcode/" + invocationID
+}
+
+// EmitOrphan is the single-ID pipeline's orphan-sidecar PUT. The Watcher
+// hands in a *ProxyIDGroup built by GroupSidecarsByProxyID; EmitOrphan builds
+// a minimal analytics.Invocation from the aggregated signals, upserts the
+// payload store as PendingTerminal, PUTs under the proxy InvocationID, and
+// upserts Emitted on success. Sidecar paths are unlinked after a successful
+// PUT. Silent no-op when Client is nil (test fixtures).
+func (e *Enricher) EmitOrphan(group *ProxyIDGroup) {
+	if e == nil || group == nil || e.Client == nil || group.InvocationID == "" {
+		return
+	}
+
+	logger := logOr(e.Logger)
+
+	command := labelForRowType(group.Primary, group.DerivedDataPath)
+	merged := MergedPayload{
+		Blob:         group.Blob,
+		Scheme:       schemeFromDerivedData(group.DerivedDataPath),
+		Command:      command,
+		Start:        group.Start,
+		Stop:         group.Stop,
+		DurationMs:   durationMs(group.Start, group.Stop),
+		OrphanOrigin: true,
+	}
+
+	e.upsertPayload(group.InvocationID, merged, PayloadStatusPendingTerminal)
+
+	inv := merged.ToInvocation(group.InvocationID, e.Auth, e.Metadata, e.XcodeVersion, e.XcodeBuildNumber)
+	if err := e.Client.PutInvocation(inv); err != nil {
+		logger.Warnf("Failed to PUT orphan invocation %s: %s", group.InvocationID, err)
+
+		return
+	}
+
+	e.upsertPayload(group.InvocationID, merged, PayloadStatusEmitted)
+	unlinkSidecars(group.SidecarPaths, logger)
+
+	if e.OnEmit != nil {
+		e.OnEmit(group.InvocationID)
+	}
+
+	logger.Infof("Enriched orphan PUT %s (wrapperless rowtype=%s cmd=%s sidecars=%d)",
+		group.InvocationID, group.Primary, command, len(group.SidecarPaths))
+	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(group.InvocationID))
+}
+
+// labelForRowType maps a classified RowType to the `command` string the BE
+// row carries. Scheme suffix comes from the DerivedData basename when
+// available; otherwise the bare label travels alone.
+func labelForRowType(rt RowType, derivedDataPath string) string {
+	scheme := schemeFromDerivedData(derivedDataPath)
+	base := map[RowType]string{
+		RowMainBuild:      "build",
+		RowDarkBuild:      "build",
+		RowIndexer:        "indexing",
+		RowPackageResolve: "resolve-packages",
+		RowSigning:        "signing",
+		RowLocalization:   "localization",
+		RowClean:          "clean",
+		RowArchive:        "archive",
+		RowTest:           "test",
+		RowInstallHeaders: "install-headers",
+		// Keep the unclassified marker visible in BE rows so a classifier
+		// regression surfaces instead of masquerading as "build".
+		RowUnclassified: "unclassified",
+	}
+	label, ok := base[rt]
+	if !ok {
+		label = "unclassified"
+	}
+
+	if scheme == "" {
+		return label
+	}
+
+	return label + " [" + scheme + "]"
+}
+
+// schemeFromDerivedData parses the <scheme>-<hash> DerivedData basename into
+// a scheme name. Returns "" when the DD path does not match the
+// <scheme>-<hash> shape (direct `xcodebuild -derivedDataPath ./foo` lands as
+// "foo", which carries no scheme hint).
+func schemeFromDerivedData(dd string) string {
+	if dd == "" {
+		return ""
+	}
+
+	base := filepath.Base(dd)
+	// Xcode's layout is <SchemeOrWorkspace>-<alphanumHash>. Trim the trailing
+	// -<hash> if present.
+	if idx := strings.LastIndex(base, "-"); idx > 0 {
+		candidate := base[idx+1:]
+		if len(candidate) >= 20 && isAlnum(candidate) {
+			return base[:idx]
+		}
+	}
+
+	return base
+}
+
+func isAlnum(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+
+	return true
+}
+
+func durationMs(start, stop time.Time) int64 {
+	if start.IsZero() || stop.IsZero() || !stop.After(start) {
+		return 0
+	}
+
+	return stop.Sub(start).Milliseconds()
+}
+
+// upsertPayload writes a PayloadRecord for any caller that already has a
+// built MergedPayload. Silent no-op when PayloadStore is nil (test fixtures
+// that only observe the PUT).
+func (e *Enricher) upsertPayload(invocationID string, merged MergedPayload, status PayloadStatus) {
+	if e.PayloadStore == nil {
+		return
+	}
+
+	rec := PayloadRecord{
+		InvocationID:  invocationID,
+		LastUpdatedAt: e.now(),
+		Status:        status,
+		Merged:        merged,
+	}
+
+	if err := e.PayloadStore.Upsert(rec); err != nil {
+		logOr(e.Logger).Debugf("payload store upsert %s status=%s failed: %s", invocationID, status, err)
+	}
+}
+
+// EmitCrashFallback re-emits a PayloadStore record whose crash-fallback timer
+// fired — a crash must be reported, not silently dropped. Reads the last-known
+// merged payload from the ledger and PUTs it; a successful PUT marks the
+// record Emitted (cancels any future timer); a failed PUT leaves it at
+// PendingTerminal for the next scan. Silent no-op when any dependency is nil
+// or the record is already Emitted.
+func (e *Enricher) EmitCrashFallback(invocationID string) {
+	if e == nil || e.PayloadStore == nil || e.Client == nil || invocationID == "" {
+		return
+	}
+
+	logger := logOr(e.Logger)
+
+	records, err := e.PayloadStore.Load()
+	if err != nil {
+		logger.Debugf("crash-fallback load payload store for %s failed: %s", invocationID, err)
+
+		return
+	}
+
+	var rec PayloadRecord
+	found := false
+	for _, r := range records {
+		if r.InvocationID == invocationID {
+			rec = r
+			found = true
+
+			break
+		}
+	}
+
+	if !found {
+		logger.Debugf("crash-fallback: no payload record for %s — nothing to re-emit", invocationID)
+
+		return
+	}
+
+	if rec.Status == PayloadStatusEmitted {
+		return
+	}
+
+	inv := rec.Merged.ToInvocation(invocationID, e.Auth, e.Metadata, e.XcodeVersion, e.XcodeBuildNumber)
+
+	if err := e.Client.PutInvocation(inv); err != nil {
+		logger.Warnf("crash-fallback PUT %s failed: %s", invocationID, err)
+
+		return
+	}
+
+	if err := e.PayloadStore.Upsert(PayloadRecord{
+		InvocationID:  invocationID,
+		LastUpdatedAt: e.now(),
+		Status:        PayloadStatusEmitted,
+		Merged:        rec.Merged,
+	}); err != nil {
+		logger.Debugf("crash-fallback upsert Emitted for %s failed: %s", invocationID, err)
+	}
+
+	logger.Infof("Crash-fallback PUT %s (no terminal signal within window)", invocationID)
+	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
+
+	if e.OnEmit != nil {
+		e.OnEmit(invocationID)
+	}
 }
 
 // appendLocalLog surfaces the wrapperless row in `bitrise-build-cache invocations
@@ -271,17 +436,6 @@ func exitCodeFromRun(runStats analytics.InvocationRunStats) int {
 	}
 
 	return 1
-}
-
-// GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
-// Start/Stop over primary metadata) so Correlate can overlap-match against
-// pending records. See ManifestEntryGroup for the wide-span trade-off.
-func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
-	p := g.Primary()
-	p.Start = g.Start()
-	p.Stop = g.Stop()
-
-	return p
 }
 
 // recordWrapperlessFailure returns true when the enriched payload was persisted to
@@ -325,6 +479,63 @@ func unlinkSidecars(paths []string, logger log.Logger) {
 			logger.Warnf("Failed to remove consumed sidecar %s: %s", p, err)
 		}
 	}
+}
+
+// outcomeLabel maps an xcactivitylog.Outcome to a stable string label for
+// the payload store so analytics can key on it without depending on the int
+// representation.
+func outcomeLabel(o xcactivitylog.Outcome) string {
+	switch o {
+	case xcactivitylog.OutcomeOK:
+		return "ok"
+	case xcactivitylog.OutcomeFileMissing:
+		return "file_missing"
+	case xcactivitylog.OutcomeEmpty:
+		return "empty"
+	case xcactivitylog.OutcomeUnparsed:
+		return "unparsed"
+	case xcactivitylog.OutcomeReadError:
+		return "read_error"
+	default:
+		return "unknown"
+	}
+}
+
+// upsertPayloadStore merges the current signals into the single-ID ledger
+// under invocationID. Called twice per emission: once before PUT (status =
+// PendingTerminal) and once after a successful PUT (status = Emitted). A nil
+// store is a silent no-op.
+func (e *Enricher) upsertPayloadStore(
+	invocationID string,
+	group ManifestEntryGroup,
+	runStats analytics.InvocationRunStats,
+	logOutcome xcactivitylog.Outcome,
+	sidecarBlob *blobstats.Snapshot,
+	status PayloadStatus,
+) {
+	if e == nil || e.PayloadStore == nil || invocationID == "" {
+		return
+	}
+
+	merged := MergedPayload{
+		Blob:         sidecarBlob,
+		HitRate:      runStats.HitRate,
+		HitRateKnown: logOutcome == xcactivitylog.OutcomeOK,
+		Scheme:       group.SchemeName(),
+		Command:      runStats.Command,
+		FullCommand:  runStats.FullCommand,
+		Start:        group.Start(),
+		Stop:         group.Stop(),
+		DurationMs:   runStats.Duration,
+		LogOutcome:   outcomeLabel(logOutcome),
+		SuccessKnown: true,
+		Success:      runStats.Success,
+	}
+	if runStats.Error != nil {
+		merged.ErrorMessage = runStats.Error.Error()
+	}
+
+	e.upsertPayload(invocationID, merged, status)
 }
 
 // attachXcresultSummary merges xcresult bundles across every manifest entry
@@ -392,23 +603,21 @@ func (e *Enricher) attachXcresultSummary(manifestPath string, group ManifestEntr
 }
 
 // aggregateHitRate sums the compile-cache counters across every manifest entry
-// that carries a FileName and a known action. Groups hold one entry post-S7;
-// the sum form survives if grouping gains multi-entry shapes again. The lookup
-// is the Watcher's per-tick cache so a log is gunzipped at most once per scan;
+// that carries a FileName and a known action. Groups hold one entry today; the
+// sum form survives if grouping gains multi-entry shapes again. The lookup is
+// the Watcher's per-tick cache so a log is gunzipped at most once per scan;
 // nil falls through to a direct read.
 //
 // Outcome is OutcomeOK when at least one entry parsed; otherwise returns the
 // last non-OK outcome so the existing gate in Enrich behaves as before.
-// BuildDescriptionHash is sourced from the first OK log in iteration order.
-func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger, lookup MetricsLookup) (float32, xcactivitylog.Outcome, string) {
+func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.Logger, lookup MetricsLookup) (float32, xcactivitylog.Outcome) {
 	if manifestPath == "" {
-		return 0, xcactivitylog.OutcomeFileMissing, ""
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	var (
 		sumHits  int
 		sumTotal int
-		hash     string
 		anyOK    bool
 		lastBad  = xcactivitylog.OutcomeFileMissing
 		sawAny   bool
@@ -437,18 +646,14 @@ func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.
 		anyOK = true
 		sumHits += m.Hits
 		sumTotal += m.Total
-
-		if hash == "" && m.BuildDescriptionHash != "" {
-			hash = m.BuildDescriptionHash
-		}
 	}
 
 	if !sawAny {
-		return 0, xcactivitylog.OutcomeFileMissing, ""
+		return 0, xcactivitylog.OutcomeFileMissing
 	}
 
 	if !anyOK {
-		return 0, lastBad, ""
+		return 0, lastBad
 	}
 
 	var rate float32
@@ -456,5 +661,5 @@ func aggregateHitRate(manifestPath string, group ManifestEntryGroup, logger log.
 		rate = float32(sumHits) / float32(sumTotal)
 	}
 
-	return rate, xcactivitylog.OutcomeOK, hash
+	return rate, xcactivitylog.OutcomeOK
 }

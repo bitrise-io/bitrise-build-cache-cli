@@ -330,6 +330,13 @@ type sidecarStatsHandler struct {
 	// Injectable so the tick cadence and plist/glob I/O can be tested
 	// synchronously without a filesystem.
 	buildRequestResolver BuildRequestResolver
+
+	// buildRequestInfo resolves (action, qos) from <DD>/.../<hex>.xcbuilddata/
+	// build-request.json, caching per (DD,hex) so a central-scheduled flush
+	// doesn't redo the same read for every outstanding session. Injectable so
+	// tests run without touching disk. nil leaves the sidecar's action/qos
+	// fields empty.
+	buildRequestInfo func(ddPath, hex string) (action, qos string)
 }
 
 // BuildRequestResolver returns the newest <32-hex>.xcbuilddata stem scoped to
@@ -445,6 +452,24 @@ func isIDEAncestry(entries []AncestryEntry) bool {
 	return hasIDE
 }
 
+// identityFor builds the sidecarIdentity carrying the pre-swap or current
+// (InvocationID, hex, buildStartedAt) triple, resolving action/qos from the
+// cached build-request.json loader when wired.
+func (h *sidecarStatsHandler) identityFor(cs *connectionSession, invocationID, hex string, buildStartedAt time.Time) sidecarIdentity {
+	action, qos := "", ""
+	if h != nil && h.buildRequestInfo != nil && cs != nil && hex != "" && cs.derivedDataPath != "" {
+		action, qos = h.buildRequestInfo(cs.derivedDataPath, hex)
+	}
+
+	return sidecarIdentity{
+		InvocationID:       invocationID,
+		BuildRequestHex:    hex,
+		BuildStartedAt:     buildStartedAt,
+		BuildRequestAction: action,
+		BuildRequestQoS:    qos,
+	}
+}
+
 // ResolveAndMaybeReseat is called by the per-conn flush timer (same cadence,
 // coalesced into one tick). For an IDE peer with a changed build-request hex
 // it re-derives the InvocationID so subsequent RPCs land on a fresh BE row;
@@ -468,14 +493,16 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 		return false
 	}
 
-	// Snapshot the OLD identity BEFORE swapBuildRequestHex mutates state so the
-	// flushed sidecar carries the hex that generated its blob stats — the
-	// enricher keys on it to bridge pseudo-group PUTs back to the manifest row.
+	// Snapshot the OLD identity so the flushed sidecar carries the hex that
+	// generated its blob stats — the enricher keys on it to bridge
+	// pseudo-group PUTs back to the manifest row.
 	oldID := cs.invocationID()
 	oldHex := cs.buildRequestHexSnapshot()
 	oldBuildStartedAt := cs.buildStartedAtSnapshot()
 
-	if !cs.swapBuildRequestHex(hex) {
+	// No fresh edge → no reseat. Compare under the snapshot to avoid touching
+	// state when nothing changed.
+	if oldHex == hex {
 		return false
 	}
 
@@ -485,15 +512,20 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	if h.writer != nil {
 		old := cs.swapState()
 		if !old.getStats().blobStats.IsEmpty() {
-			sidecar := newSessionSidecar(cs, old, time.Now(), false, sidecarIdentity{InvocationID: oldID, BuildRequestHex: oldHex, BuildStartedAt: oldBuildStartedAt})
+			sidecar := newSessionSidecar(cs, old, time.Now(), false, h.identityFor(cs, oldID, oldHex, oldBuildStartedAt))
 			h.writer.write(sidecar)
 		}
 	}
 
+	// Install the new identity BEFORE the hex swap. Any RPC that races the
+	// reseat and reads the new hex must also see the new InvocationID; the
+	// reverse order would attribute the first post-swap RPC's bytes to the
+	// stale ID when the per-tick flush runs.
+	newID := h.derivePeerInvocationID(cs.ancestryEntries, hex)
+	cs.setInvocationID(newID)
 	cs.setBuildStartedAt(time.Now())
-	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, hex))
 
-	return true
+	return cs.swapBuildRequestHex(hex)
 }
 
 // HandleConn flushes the per-conn sidecar on *grpcstats.ConnEnd. ConnBegin is
@@ -522,7 +554,7 @@ func (h *sidecarStatsHandler) flushTerminal(cs *connectionSession) {
 			return
 		}
 
-		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
+		sidecar := newSessionSidecar(cs, cs.state.Load(), time.Now(), true, h.identityFor(cs, cs.invocationID(), cs.buildRequestHexSnapshot(), cs.buildStartedAtSnapshot()))
 		h.writer.write(sidecar)
 	})
 }
@@ -559,7 +591,7 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		if !hasActivity {
 			cs.anchoredEmptyOnce.Do(func() {
 				old := cs.swapState()
-				sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
+				sidecar := newSessionSidecar(cs, old, now, false, h.identityFor(cs, cs.invocationID(), cs.buildRequestHexSnapshot(), cs.buildStartedAtSnapshot()))
 				h.writer.write(sidecar)
 			})
 
@@ -567,7 +599,7 @@ func (h *sidecarStatsHandler) flushIdle(now time.Time, threshold time.Duration) 
 		}
 
 		old := cs.swapState()
-		sidecar := newSessionSidecar(cs, old, now, false, sidecarIdentity{InvocationID: cs.invocationID(), BuildRequestHex: cs.buildRequestHexSnapshot(), BuildStartedAt: cs.buildStartedAtSnapshot()})
+		sidecar := newSessionSidecar(cs, old, now, false, h.identityFor(cs, cs.invocationID(), cs.buildRequestHexSnapshot(), cs.buildStartedAtSnapshot()))
 		h.writer.write(sidecar)
 	}
 }

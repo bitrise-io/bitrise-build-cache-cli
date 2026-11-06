@@ -220,10 +220,9 @@ func TestPrimary_HigherRankWinsOverUnknown(t *testing.T) {
 	assert.Equal(t, "build [S]", g.Command())
 }
 
-// PR596 S7 removed the adjacency merge, so prep + real with identical hex
-// now land as two independent BE rows — each entry stands on its own group.
-// Sub-activity attribution happens at the watcher's orphan-bridge path via
-// plist-boundary windows, not at grouping time.
+// Prep + real with identical hex land as two independent BE rows — each
+// manifest entry stands on its own group. Sub-activity attribution lives in
+// the sidecar aggregator, not at grouping time.
 func TestGroupManifestEntries_PrepPlusRealBuild_Splits(t *testing.T) {
 	base := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
@@ -234,7 +233,7 @@ func TestGroupManifestEntries_PrepPlusRealBuild_Splits(t *testing.T) {
 	lookup := hashLookup(map[string]string{"prep": "abcd1234", "real": "abcd1234"})
 
 	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2, "canMerge removed in PR596 S7 — every manifest entry is its own group")
+	require.Len(t, groups, 2, "every manifest entry is its own group")
 	assert.Equal(t, []string{"prep"}, groups[0].UUIDs())
 	assert.Equal(t, []string{"real"}, groups[1].UUIDs())
 }
@@ -373,40 +372,6 @@ func TestPrimary_CleanBeatsUnknown(t *testing.T) {
 		"Clean must outrank Unknown so a Clean+Unknown group still PUTs with command=clean")
 }
 
-func TestSyntheticManifestGroup_PopulatesBuildCommandAndSpan(t *testing.T) {
-	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
-	stop := start.Add(45 * time.Second)
-	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "", "", "")
-
-	require.Len(t, g.Entries, 1)
-	assert.Equal(t, enrichment.SyntheticManifestGroupUUIDPrefix+"abc-123", g.Entries[0].UUID,
-		"synthetic UUID must carry the sentinel prefix so it never collides with Xcode bare UUIDs")
-	assert.Equal(t, enrichment.CommandBuild, g.Entries[0].Command(),
-		"empty signature must fall back to \"build\" so the enricher does not drop the group")
-	assert.Equal(t, start, g.Start())
-	assert.Equal(t, stop, g.Stop())
-	assert.Equal(t, "build", g.Command(), "FullCommand+scheme-less synthesis must land as a bare \"build\"")
-	assert.Empty(t, g.OverrideInvocationID(), "no override stamped")
-}
-
-func TestSyntheticManifestGroup_WithSignatureAndSchemeRendersFullCommand(t *testing.T) {
-	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
-	stop := start.Add(45 * time.Second)
-	g := enrichment.SyntheticManifestGroup("abc-123", start, stop, "Build IceCubesApp", "IceCubesApp", "")
-
-	require.Len(t, g.Entries, 1)
-	assert.Equal(t, enrichment.CommandBuild, g.Entries[0].Command())
-	assert.Equal(t, "build [IceCubesApp]", g.Command(),
-		"signature+scheme must render as the real action+scheme command")
-}
-
-func TestSyntheticManifestGroup_StampsOverrideInvocationID(t *testing.T) {
-	start := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
-	stop := start.Add(1 * time.Second)
-	g := enrichment.SyntheticManifestGroup("sidecar-x", start, stop, "", "", "override-id")
-
-	assert.Equal(t, "override-id", g.OverrideInvocationID())
-}
 
 func TestManifestEntryGroup_Primary_StableAcrossShuffledInput(t *testing.T) {
 	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
@@ -439,17 +404,6 @@ func TestManifestEntryGroup_Primary_StableAcrossShuffledInput(t *testing.T) {
 		assert.Equal(t, "aaa-first", p,
 			"Primary() must pick the lex-smallest UUID at tied rank+Start regardless of input order")
 	}
-}
-
-// TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic ensures the sentinel-
-// prefixed pseudo-group UUID does not accidentally land as a BE InvocationID.
-func TestManifestEntryGroup_ManifestUUID_EmptyForSynthetic(t *testing.T) {
-	start := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-	stop := start.Add(10 * time.Second)
-	g := enrichment.SyntheticManifestGroup("sidecar-xyz", start, stop, "", "", "")
-
-	assert.Empty(t, g.ManifestUUID(),
-		"synthetic pseudo-group UUIDs carry the sentinel prefix; ManifestUUID must return empty so the enricher falls through to override/sidecar")
 }
 
 // TestManifestEntryGroup_ManifestUUID_ReturnsPrimaryForManifestSourced is the
@@ -490,12 +444,10 @@ func TestFullCommand_SchemeOnlyNoWorkspaceOrProject(t *testing.T) {
 		"a known action is enough to render the xcodebuild argv form even without workspace/project/configuration")
 }
 
-// TestGroupManifestEntries_AlwaysOneGroupPerEntry pins the PR596 S7 invariant:
-// adjacency merging (canMerge) is removed and every manifest entry stands as
-// its own group regardless of scheme / Command / build-description hash / gap.
-// Sub-build attribution has shifted to the watcher's plist-boundary bridge in
-// scanOrphanSidecars. One regression pin covers the whole family of cases the
-// pre-S7 canMerge logic used to collapse.
+// TestGroupManifestEntries_AlwaysOneGroupPerEntry pins the invariant:
+// every manifest entry stands as its own group regardless of scheme / Command /
+// build-description hash / gap. Sub-build attribution lives in the sidecar
+// aggregator, not at grouping time.
 func TestGroupManifestEntries_AlwaysOneGroupPerEntry(t *testing.T) {
 	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	entries := []enrichment.ManifestEntry{
@@ -506,7 +458,7 @@ func TestGroupManifestEntries_AlwaysOneGroupPerEntry(t *testing.T) {
 	lookup := hashLookup(map[string]string{"prep": "abcd1234", "real": "abcd1234"})
 
 	groups := enrichment.GroupManifestEntries(entries, enrichment.WithMetricsLookup(lookup))
-	require.Len(t, groups, 2, "canMerge removed in PR596 S7 — every manifest entry is its own group")
+	require.Len(t, groups, 2, "every manifest entry is its own group")
 	assert.Equal(t, []string{"prep"}, groups[0].UUIDs())
 	assert.Equal(t, []string{"real"}, groups[1].UUIDs())
 }

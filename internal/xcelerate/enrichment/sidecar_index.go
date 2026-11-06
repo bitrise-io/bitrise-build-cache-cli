@@ -28,24 +28,16 @@ var acceptedAncestors = map[string]struct{}{
 	"Xcode":      {},
 }
 
-// LookupFilter tightens sidecar-to-group matching with DerivedData and
-// build-description-hash equality. Both axes follow the same rule: empty on
-// either side (filter or sidecar) skips that axis and falls back to the
-// pre-existing ancestry + time-overlap match. This is required so IDE flows
-// (which may not carry a DD path on every sidecar, and whose early sidecars
-// can flush before the build-description hash is known) and the orphan
-// scan path (which has no manifest to source DD from) do not regress.
+// LookupFilter tightens sidecar-to-group matching with DerivedData equality.
+// Empty on either side (filter or sidecar) skips the axis and falls back to
+// the ancestry + time-overlap match. This is required so IDE flows (which
+// may not carry a DD path on every sidecar) and the orphan scan path (which
+// has no manifest to source DD from) do not regress.
 type LookupFilter struct {
 	// DerivedData is the DD root parsed from the group's manifest path; empty
 	// on sidecar-only orphan paths. The filter is honored only when both this
 	// and the sidecar's DerivedDataPath are non-empty.
 	DerivedData string
-	// Hashes is the set of acceptable build-description hashes (today: one,
-	// aggregated from the group's manifest entries by the Enricher). A
-	// non-empty slice is required to activate the hex axis; a sidecar whose
-	// BuildRequestHex is empty is NOT filtered out — the sidecar simply does
-	// not have the information to disambiguate.
-	Hashes []string
 }
 
 // SidecarReader resolves sidecars left by the proxy that overlap a manifest
@@ -58,14 +50,6 @@ type LookupFilter struct {
 // LookupFilter (zero value) preserves pre-existing behavior.
 type SidecarReader interface {
 	Lookup(group ManifestEntryGroup, filter LookupFilter) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
-
-	// Has returns true when a sidecar overlapping the group's time window exists
-	// on disk with a non-empty WrapperSession.InvocationID. Side-effect free —
-	// used by the watcher's retry bucket to short-circuit orphan-mint without
-	// consuming sidecar paths. MaxCorrelationRetries is the sole safety net
-	// against a group deferring forever if the matching sidecar never arrives;
-	// Has itself has no bound.
-	Has(group ManifestEntryGroup, filter LookupFilter) bool
 
 	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
 	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
@@ -157,12 +141,9 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 		if !overlapsClosed(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
-		// DerivedData + hex equality tighten disambiguation for parallel builds.
-		// Both axes honor the empty-means-skip rule — see LookupFilter docs.
+		// DerivedData equality tightens disambiguation for parallel builds.
+		// Empty-means-skip rule — see LookupFilter docs.
 		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
-			continue
-		}
-		if len(filter.Hashes) > 0 && s.BuildRequestHex != "" && !hexMatches(s.BuildRequestHex, filter.Hashes) {
 			continue
 		}
 
@@ -312,57 +293,6 @@ func pickAnchorlessWinner(anchorless []sidecarMatch) *blobstats.Snapshot {
 	return best
 }
 
-// Has walks i.dir once and returns true on the first sidecar whose
-// AcceptedAt/ClosedAt window overlaps the group AND whose
-// WrapperSession.InvocationID is non-empty. No file is unlinked or recorded.
-// Honors the same empty-means-skip rule as Lookup on DerivedData + hex.
-func (i *sidecarIndex) Has(group ManifestEntryGroup, filter LookupFilter) bool {
-	logger := logOr(i.logger)
-
-	if i.dir == "" {
-		return false
-	}
-
-	entries, err := os.ReadDir(i.dir)
-	if err != nil {
-		logger.Debugf("Sidecar index read %s for Has: %s", i.dir, err)
-
-		return false
-	}
-
-	groupStart := group.Start()
-	groupStop := group.Stop()
-
-	var versionSkipped bool
-	for _, de := range entries {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
-			continue
-		}
-
-		path := filepath.Join(i.dir, de.Name())
-		s, ok := loadSidecar(path, logger, &versionSkipped)
-		if !ok {
-			continue
-		}
-		if !overlapsPotential(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
-			continue
-		}
-		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
-			continue
-		}
-		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
-			continue
-		}
-		if len(filter.Hashes) > 0 && s.BuildRequestHex != "" && !hexMatches(s.BuildRequestHex, filter.Hashes) {
-			continue
-		}
-
-		return true
-	}
-
-	return false
-}
-
 func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {
 	logger := logOr(i.logger)
 
@@ -474,9 +404,8 @@ func (a *invocationAggregator) add(path string, s sessions.Sidecar) {
 }
 
 // appendUniqueDDPath keeps SidecarGroup.DerivedDataPaths deduped per-group so
-// the enricher's plist-boundary bridge (PR596 S7) can resolve each orphan
-// InvocationID back to the DD subtree whose Logs/Build/LogStoreManifest.plist
-// carries its enclosing master.
+// each orphan InvocationID resolves back to the DD subtree whose
+// Logs/Build/LogStoreManifest.plist landed its signals.
 func appendUniqueDDPath(g *SidecarGroup, dd string) {
 	if dd == "" {
 		return
@@ -586,7 +515,9 @@ func mergeProtocolSnapshots(a, b *blobstats.ProtocolSnapshot, logger log.Logger)
 
 // loadSidecar reads + unmarshals + gates on schema / ancestry. Returns ok=false
 // (sidecar must be skipped) for any filter miss; versionSkipped tracks the
-// "logged once per Lookup" promise for schema-too-new.
+// "logged once per Lookup" promise for schema-too-new. Pre-v3 sidecars are
+// rejected with a once-per-scan warn so stale on-disk state from an older
+// proxy is visible but never parsed.
 func loadSidecar(path string, logger log.Logger, versionSkipped *bool) (sessions.Sidecar, bool) {
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -605,6 +536,15 @@ func loadSidecar(path string, logger log.Logger, versionSkipped *bool) (sessions
 	if s.SchemaVersion > supportedSidecarSchema {
 		if !*versionSkipped {
 			logger.Debugf("Sidecar %s schema_version=%d > %d, leaving on disk", path, s.SchemaVersion, supportedSidecarSchema)
+			*versionSkipped = true
+		}
+
+		return sessions.Sidecar{}, false
+	}
+
+	if s.SchemaVersion < supportedSidecarSchema {
+		if !*versionSkipped {
+			logger.Warnf("Sidecar %s schema_version=%d < %d, pre-v3 sidecars are no longer parsed", path, s.SchemaVersion, supportedSidecarSchema)
 			*versionSkipped = true
 		}
 
@@ -708,24 +648,6 @@ func ancestryMatches(ancestry []string) bool {
 	return false
 }
 
-// hexMatches reports whether sidecarHex equals any of hashes. Both sides are
-// compared verbatim — Xcode's BuildDescriptionHash is already lowercase hex, so
-// no normalisation is applied. Shared by Lookup / Has (DD+hex filter axis) and
-// the Watcher's hex-bridge path so the equality contract has a single owner.
-func hexMatches(sidecarHex string, hashes []string) bool {
-	if sidecarHex == "" {
-		return false
-	}
-
-	for _, h := range hashes {
-		if h == sidecarHex {
-			return true
-		}
-	}
-
-	return false
-}
-
 // overlapsClosed uses the half-open window [AcceptedAt, ClosedAt) ∩ [groupStart, groupStop).
 // Any zero timestamp disqualifies the sidecar — used by Lookup, which reads
 // stats and so must wait for a closed, final sidecar.
@@ -735,23 +657,4 @@ func overlapsClosed(accepted, closed, groupStart, groupStop time.Time) bool {
 	}
 
 	return accepted.Before(groupStop) && groupStart.Before(closed)
-}
-
-// overlapsPotential answers "could this (possibly-open) sidecar still correlate
-// to the group?" — used by Has to defer the retry bucket while a sidecar is
-// still open. An open sidecar whose AcceptedAt sits before the group's stop
-// counts: its final ClosedAt will land somewhere after now, so the window
-// overlap can only be settled once the sidecar closes.
-func overlapsPotential(accepted, closed, groupStart, groupStop time.Time) bool {
-	if accepted.IsZero() || groupStart.IsZero() || groupStop.IsZero() {
-		return false
-	}
-	if accepted.After(groupStop) {
-		return false
-	}
-	if !closed.IsZero() {
-		return overlapsClosed(accepted, closed, groupStart, groupStop)
-	}
-
-	return true
 }

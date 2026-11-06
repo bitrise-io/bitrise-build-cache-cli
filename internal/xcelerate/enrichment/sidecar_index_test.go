@@ -88,7 +88,7 @@ func TestSidecarIndex_AncestryRejectedWhenNoAcceptedAnchor(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"swift-driver", "clang"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
@@ -104,7 +104,7 @@ func TestSidecarIndex_AncestryAcceptsXcodeIDE(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"SWBBuildService", "Xcode"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
@@ -123,7 +123,7 @@ func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
@@ -139,7 +139,7 @@ func TestSidecarIndex_SingleMatchPopulatesBlobAndPath(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	path := writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(10 * time.Second),
@@ -160,7 +160,7 @@ func TestSidecarIndex_WrapperLinkInvocationIDSurfaced(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
 		ClosedAt:       base.Add(5 * time.Second),
@@ -183,7 +183,7 @@ func TestSidecarIndex_Lookup_SurfacesInvocationIDFromNilBlobStatsSidecar(t *test
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
 	path := writeSidecar(t, dir, "nil-stats.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"Xcode", "SWBBuildService"},
 		AcceptedAt:     base,
 		ClosedAt:       base.Add(10 * time.Second),
@@ -208,7 +208,7 @@ func TestSidecarIndex_Lookup_StatsBearingWinsInvocationIDOverNilBlobStats(t *tes
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "nil-stats.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
 		ClosedAt:       base.Add(5 * time.Second),
@@ -216,7 +216,7 @@ func TestSidecarIndex_Lookup_StatsBearingWinsInvocationIDOverNilBlobStats(t *tes
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "nil-id"},
 	})
 	writeSidecar(t, dir, "stats.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(time.Second),
 		ClosedAt:       base.Add(6 * time.Second),
@@ -242,7 +242,7 @@ func TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats(t *testing
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
 		ClosedAt:       base.Add(5 * time.Second),
@@ -250,7 +250,7 @@ func TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats(t *testing
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "first-id"},
 	})
 	writeSidecar(t, dir, "b.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(time.Second),
 		ClosedAt:       base.Add(6 * time.Second),
@@ -277,14 +277,14 @@ func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	writeSidecar(t, dir, "small.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
 		BlobStats:     blob(2, 1, 1),
 	})
 	writeSidecar(t, dir, "large.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base.Add(6 * time.Second),
 		ClosedAt:      base.Add(10 * time.Second),
@@ -305,7 +305,7 @@ func TestSidecarIndex_FutureSchemaSkippedAndLeftOnDisk(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	futurePath := writeSidecar(t, dir, "future.json", sidecarFixture{
-		SchemaVersion: 3,
+		SchemaVersion: 4,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
@@ -320,13 +320,32 @@ func TestSidecarIndex_FutureSchemaSkippedAndLeftOnDisk(t *testing.T) {
 	assert.NoError(t, err, "future-schema sidecar must remain on disk")
 }
 
+func TestSidecarIndex_PreV3SchemaRejected(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	stalePath := writeSidecar(t, dir, "stale.json", sidecarFixture{
+		SchemaVersion: 2,
+		PeerAncestry:  []string{"xcodebuild"},
+		AcceptedAt:    base,
+		ClosedAt:      base.Add(5 * time.Second),
+		BlobStats:     blob(99, 0, 0),
+	})
+
+	idx := enrichment.NewSidecarIndex(dir, nil)
+	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
+	assert.False(t, ok, "pre-v3 sidecars must not surface a lookup hit")
+
+	_, err := os.Stat(stalePath)
+	assert.NoError(t, err, "pre-v3 sidecar must remain on disk so follow-on tooling can inspect it")
+}
+
 func TestSidecarIndex_CorruptJSONTolerated(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	corrupt := filepath.Join(dir, "bad.json")
 	require.NoError(t, os.WriteFile(corrupt, []byte("{not-json"), 0o600))
 	path := writeSidecar(t, dir, "good.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
@@ -349,7 +368,7 @@ func TestSidecarIndex_OrphanSidecars_GroupsByInvocationID(t *testing.T) {
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-a",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -358,7 +377,7 @@ func TestSidecarIndex_OrphanSidecars_GroupsByInvocationID(t *testing.T) {
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
 	})
 	writeSidecar(t, dir, "b.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-b",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(2 * time.Second),
@@ -367,7 +386,7 @@ func TestSidecarIndex_OrphanSidecars_GroupsByInvocationID(t *testing.T) {
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
 	})
 	writeSidecar(t, dir, "c.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-c",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -408,7 +427,7 @@ func TestSidecarIndex_OrphanSidecars_UsesBuildStartedAtWhenPresent(t *testing.T)
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-a",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -418,7 +437,7 @@ func TestSidecarIndex_OrphanSidecars_UsesBuildStartedAtWhenPresent(t *testing.T)
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
 	})
 	writeSidecar(t, dir, "b.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-b",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -447,7 +466,7 @@ func TestSidecarIndex_OrphanSidecars_FallsBackToAcceptedAtWhenBuildStartedAtZero
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-a",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -456,7 +475,7 @@ func TestSidecarIndex_OrphanSidecars_FallsBackToAcceptedAtWhenBuildStartedAtZero
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
 	})
 	writeSidecar(t, dir, "b.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-b",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(3 * time.Second),
@@ -487,7 +506,7 @@ func TestSidecarIndex_OrphanSidecars_MixedLegacyAndUpgraded(t *testing.T) {
 
 	// Upgraded: BuildStartedAt = T+5s, AcceptedAt = T+0s.
 	writeSidecar(t, dir, "upgraded.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-upgraded",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -498,7 +517,7 @@ func TestSidecarIndex_OrphanSidecars_MixedLegacyAndUpgraded(t *testing.T) {
 	})
 	// Legacy: BuildStartedAt zero, AcceptedAt = T+0s.
 	writeSidecar(t, dir, "legacy.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-legacy",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -522,7 +541,7 @@ func TestSidecarIndex_OrphanSidecars_AgeGateFiltersFreshSidecars(t *testing.T) {
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "fresh.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-fresh",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -543,7 +562,7 @@ func TestSidecarIndex_OrphanSidecars_IgnoresSidecarsWithoutInvocationID(t *testi
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "unanchored.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		SidecarUUID:   "sidecar-no-id",
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
@@ -552,7 +571,7 @@ func TestSidecarIndex_OrphanSidecars_IgnoresSidecarsWithoutInvocationID(t *testi
 		// WrapperSession nil — peer-ancestry anchoring failed on the proxy side.
 	})
 	writeSidecar(t, dir, "blank-id.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-blank",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -572,7 +591,7 @@ func TestSidecarIndex_OrphanSidecars_WarnsOnAgedSidecarsWithoutInvocationID(t *t
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "aged-anchored.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-anchored",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -581,7 +600,7 @@ func TestSidecarIndex_OrphanSidecars_WarnsOnAgedSidecarsWithoutInvocationID(t *t
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
 	})
 	writeSidecar(t, dir, "aged-unanchored.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		SidecarUUID:   "sidecar-unanchored",
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
@@ -590,7 +609,7 @@ func TestSidecarIndex_OrphanSidecars_WarnsOnAgedSidecarsWithoutInvocationID(t *t
 		// WrapperSession nil — peer-ancestry anchoring failed on the proxy side.
 	})
 	writeSidecar(t, dir, "fresh-unanchored.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		SidecarUUID:   "sidecar-fresh",
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base.Add(58 * time.Second),
@@ -614,7 +633,7 @@ func TestSidecarIndex_OrphanSidecars_SchemaFilterRespected(t *testing.T) {
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "future.json", sidecarFixture{
-		SchemaVersion:  3,
+		SchemaVersion:  4,
 		SidecarUUID:    "sidecar-future",
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
@@ -623,7 +642,7 @@ func TestSidecarIndex_OrphanSidecars_SchemaFilterRespected(t *testing.T) {
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invocation-X"},
 	})
 	writeSidecar(t, dir, "wrong-ancestry.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		SidecarUUID:    "sidecar-wrong",
 		PeerAncestry:   []string{"ssh"},
 		AcceptedAt:     base,
@@ -644,18 +663,18 @@ func TestSidecarIndex_PendingDerivedDataPaths_DedupedAndSkipsEmpty(t *testing.T)
 
 	// Two sidecars share a DD path; a third has none; a fourth differs.
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		SchemaVersion: 3, AcceptedAt: base, ClosedAt: base.Add(time.Second),
 		DerivedDataPath: "/project/DD",
 	})
 	writeSidecar(t, dir, "b.json", sidecarFixture{
-		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		SchemaVersion: 3, AcceptedAt: base, ClosedAt: base.Add(time.Second),
 		DerivedDataPath: "/project/DD",
 	})
 	writeSidecar(t, dir, "c.json", sidecarFixture{
-		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		SchemaVersion: 3, AcceptedAt: base, ClosedAt: base.Add(time.Second),
 	})
 	writeSidecar(t, dir, "d.json", sidecarFixture{
-		SchemaVersion: 2, AcceptedAt: base, ClosedAt: base.Add(time.Second),
+		SchemaVersion: 3, AcceptedAt: base, ClosedAt: base.Add(time.Second),
 		DerivedDataPath: "/other/DD",
 	})
 
@@ -669,86 +688,6 @@ func TestSidecarIndex_PendingDerivedDataPaths_EmptyDirReturnsNil(t *testing.T) {
 	assert.Empty(t, idx.PendingDerivedDataPaths())
 }
 
-func TestSidecarIndex_Has_ReturnsTrueOnOverlap(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "overlap.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(10 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second)), enrichment.LookupFilter{}),
-		"overlapping sidecar with anchored InvocationID must register as Has=true")
-}
-
-func TestSidecarIndex_Has_ReturnsFalseWhenNoOverlap(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.False(t, idx.Has(groupFor(base.Add(10*time.Second), base.Add(20*time.Second)), enrichment.LookupFilter{}),
-		"non-overlapping group must register as Has=false")
-}
-
-func TestSidecarIndex_Has_ReturnsFalseWhenInvocationIDBlank(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	// WrapperSession present but InvocationID blank — proxy ancestry gate
-	// failed; sidecar carries no correlatable identity, so Has must say no.
-	writeSidecar(t, dir, "blank.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: ""},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.False(t, idx.Has(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{}),
-		"sidecar with blank InvocationID must not satisfy Has — nothing to correlate on")
-}
-
-// TestSidecarIndex_Has_ReturnsTrueForOpenSidecarPotentialOverlap pins the
-// Option-A fix: an open sidecar (ClosedAt zero) whose AcceptedAt sits inside
-// the manifest group's window must count as a potential overlap, so the retry
-// bucket defers minting an orphan until the sidecar closes.
-func TestSidecarIndex_Has_ReturnsTrueForOpenSidecarPotentialOverlap(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-	groupStart := base
-	groupStop := base.Add(10 * time.Second)
-
-	writeSidecar(t, dir, "open.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     groupStart.Add(-time.Second),
-		ClosedAt:       time.Time{},
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "open-id"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.True(t, idx.Has(groupFor(groupStart, groupStop), enrichment.LookupFilter{}),
-		"open sidecar whose Start precedes group.Stop must count as potential overlap so retry bucket defers")
-}
-
 // TestSidecarIndex_Lookup_StillSkipsOpenSidecar pins the Lookup semantics are
 // unchanged by the Option-A fix: Lookup reads stats, so an open sidecar
 // (ClosedAt zero) is still skipped — only closed sidecars contribute to the
@@ -760,7 +699,7 @@ func TestSidecarIndex_Lookup_StillSkipsOpenSidecar(t *testing.T) {
 	groupStop := base.Add(10 * time.Second)
 
 	writeSidecar(t, dir, "open.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     groupStart.Add(-time.Second),
 		ClosedAt:       time.Time{},
@@ -776,74 +715,6 @@ func TestSidecarIndex_Lookup_StillSkipsOpenSidecar(t *testing.T) {
 	assert.Empty(t, invocationID)
 }
 
-// TestSidecarIndex_Has_ReturnsFalseForOpenSidecarAfterGroupStop pins the
-// upper bound of the potential-overlap window: an open sidecar whose
-// AcceptedAt sits strictly after group.Stop cannot possibly correlate even
-// after it closes, so Has must still say no.
-func TestSidecarIndex_Has_ReturnsFalseForOpenSidecarAfterGroupStop(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-	groupStart := base
-	groupStop := base.Add(5 * time.Second)
-
-	writeSidecar(t, dir, "after.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     groupStop.Add(time.Second),
-		ClosedAt:       time.Time{},
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "after-id"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.False(t, idx.Has(groupFor(groupStart, groupStop), enrichment.LookupFilter{}),
-		"open sidecar that started after group.Stop can never overlap — Has must say no")
-}
-
-// TestSidecarIndex_Has_ReturnsTrueForClosedSidecar_SameAsBeforeFix guards the
-// pre-fix behaviour for closed sidecars: an in-range closed sidecar still
-// resolves to Has=true via overlapsClosed inside overlapsPotential.
-func TestSidecarIndex_Has_ReturnsTrueForClosedSidecar_SameAsBeforeFix(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "closed.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(10 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "closed-id"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second)), enrichment.LookupFilter{}),
-		"closed in-range sidecar must still satisfy Has — regression guard for the pre-fix behaviour")
-}
-
-func TestSidecarIndex_Has_DoesNotConsume(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	path := writeSidecar(t, dir, "pinned.json", sidecarFixture{
-		SchemaVersion:  2,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{}))
-
-	// Call again — same answer, file still on disk, no side effect anywhere.
-	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{}))
-
-	_, err := os.Stat(path)
-	assert.NoError(t, err, "Has must be side-effect free; sidecar file must remain for a later Lookup")
-}
-
 // TestSidecarIndex_Lookup_FiltersDifferentDerivedData pins the core
 // parallel-build disambiguation: a sidecar whose DD root differs from the
 // filter must be rejected even when its time window overlaps.
@@ -853,7 +724,7 @@ func TestSidecarIndex_Lookup_FiltersDifferentDerivedData(t *testing.T) {
 
 	// Two overlapping sidecars on different DD roots — a parallel build.
 	writeSidecar(t, dir, "projA.json", sidecarFixture{
-		SchemaVersion:   2,
+		SchemaVersion:   3,
 		PeerAncestry:    []string{"xcodebuild"},
 		AcceptedAt:      base,
 		ClosedAt:        base.Add(10 * time.Second),
@@ -862,7 +733,7 @@ func TestSidecarIndex_Lookup_FiltersDifferentDerivedData(t *testing.T) {
 		DerivedDataPath: "/dd/A",
 	})
 	ourPath := writeSidecar(t, dir, "projB.json", sidecarFixture{
-		SchemaVersion:   2,
+		SchemaVersion:   3,
 		PeerAncestry:    []string{"xcodebuild"},
 		AcceptedAt:      base,
 		ClosedAt:        base.Add(10 * time.Second),
@@ -891,7 +762,7 @@ func TestSidecarIndex_Lookup_EmptyFilterDDSkipsDDCheck(t *testing.T) {
 	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:   2,
+		SchemaVersion:   3,
 		PeerAncestry:    []string{"xcodebuild"},
 		AcceptedAt:      base,
 		ClosedAt:        base.Add(5 * time.Second),
@@ -919,7 +790,7 @@ func TestSidecarIndex_Lookup_EmptySidecarDDSkipsDDCheck(t *testing.T) {
 	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "legacy.json", sidecarFixture{
-		SchemaVersion: 2,
+		SchemaVersion: 3,
 		PeerAncestry:  []string{"xcodebuild"},
 		AcceptedAt:    base,
 		ClosedAt:      base.Add(5 * time.Second),
@@ -935,169 +806,6 @@ func TestSidecarIndex_Lookup_EmptySidecarDDSkipsDDCheck(t *testing.T) {
 	require.True(t, ok, "sidecar with empty DerivedDataPath must not be filtered out — nothing to disambiguate against")
 	require.NotNil(t, snap)
 	assert.Equal(t, int64(7), snap.Download.OpCount)
-}
-
-// TestSidecarIndex_Lookup_FiltersMismatchHash pins the hex axis: when the
-// sidecar's BuildRequestHex is present and does not match any entry in
-// filter.Hashes, the sidecar is skipped.
-func TestSidecarIndex_Lookup_FiltersMismatchHash(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "other-hex.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(10 * time.Second),
-		BlobStats:       blob(9, 1, 2),
-		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	})
-	ourPath := writeSidecar(t, dir, "our-hex.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(10 * time.Second),
-		BlobStats:       blob(1, 0, 0),
-		BuildRequestHex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, _, ok := idx.Lookup(
-		groupFor(base, base.Add(10*time.Second)),
-		enrichment.LookupFilter{Hashes: []string{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
-	)
-	require.True(t, ok)
-	require.Equal(t, []string{ourPath}, paths, "only the hex-matching sidecar may be consumed")
-	require.NotNil(t, snap)
-	assert.Equal(t, int64(1), snap.Download.OpCount)
-}
-
-// TestSidecarIndex_Lookup_EmptyFilterHashesSkipsHexCheck pins the filter-side
-// degrade: empty Hashes skips the hex axis entirely.
-func TestSidecarIndex_Lookup_EmptyFilterHashesSkipsHexCheck(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(5 * time.Second),
-		BlobStats:       blob(2, 0, 0),
-		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, _, ok := idx.Lookup(
-		groupFor(base, base.Add(5*time.Second)),
-		enrichment.LookupFilter{},
-	)
-	assert.True(t, ok, "empty Hashes must not reject a sidecar whose hex is set")
-}
-
-// TestSidecarIndex_Lookup_EmptySidecarHexSkipsHexCheck pins the sidecar-side
-// degrade on the hex axis: a sidecar without BuildRequestHex is not filtered
-// out even when the filter sets Hashes.
-func TestSidecarIndex_Lookup_EmptySidecarHexSkipsHexCheck(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "legacy.json", sidecarFixture{
-		SchemaVersion: 2,
-		PeerAncestry:  []string{"xcodebuild"},
-		AcceptedAt:    base,
-		ClosedAt:      base.Add(5 * time.Second),
-		BlobStats:     blob(4, 0, 0),
-		// BuildRequestHex intentionally empty — legacy sidecar predates hex field.
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, _, ok := idx.Lookup(
-		groupFor(base, base.Add(5*time.Second)),
-		enrichment.LookupFilter{Hashes: []string{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
-	)
-	assert.True(t, ok, "sidecar with empty BuildRequestHex must not be filtered out — nothing to disambiguate")
-}
-
-// TestSidecarIndex_Lookup_BothFiltersRespected pins that both axes AND together:
-// one sidecar passes DD but fails hex, another passes hex but fails DD, a third
-// passes both. Only the third survives.
-func TestSidecarIndex_Lookup_BothFiltersRespected(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "dd-only.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(5 * time.Second),
-		BlobStats:       blob(5, 0, 0),
-		DerivedDataPath: "/dd/A",
-		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	})
-	writeSidecar(t, dir, "hex-only.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(5 * time.Second),
-		BlobStats:       blob(6, 0, 0),
-		DerivedDataPath: "/dd/B",
-		BuildRequestHex: "cccccccccccccccccccccccccccccccc",
-	})
-	ourPath := writeSidecar(t, dir, "both.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(5 * time.Second),
-		BlobStats:       blob(1, 0, 0),
-		DerivedDataPath: "/dd/A",
-		BuildRequestHex: "cccccccccccccccccccccccccccccccc",
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, _, ok := idx.Lookup(
-		groupFor(base, base.Add(5*time.Second)),
-		enrichment.LookupFilter{
-			DerivedData: "/dd/A",
-			Hashes:      []string{"cccccccccccccccccccccccccccccccc"},
-		},
-	)
-	require.True(t, ok)
-	require.Equal(t, []string{ourPath}, paths, "only the DD+hex double-matching sidecar may survive")
-	require.NotNil(t, snap)
-	assert.Equal(t, int64(1), snap.Download.OpCount)
-}
-
-// TestSidecarIndex_Has_SymmetricWithLookup pins that Has enforces the same
-// filter semantics as Lookup so the Watcher's canCorrelate deferral and the
-// Enricher's actual consumption agree.
-func TestSidecarIndex_Has_SymmetricWithLookup(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "wrong-dd.json", sidecarFixture{
-		SchemaVersion:   2,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(10 * time.Second),
-		BlobStats:       blob(2, 0, 0),
-		WrapperSession:  &sidecarFixtureWrapper{InvocationID: "wrong"},
-		DerivedDataPath: "/dd/other",
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-
-	// Filter wants DD A — the only sidecar has DD other. Has must say no.
-	assert.False(t, idx.Has(
-		groupFor(base, base.Add(10*time.Second)),
-		enrichment.LookupFilter{DerivedData: "/dd/A"},
-	), "Has must honor DD filter mismatch, same as Lookup")
-
-	// Empty filter DD or empty sidecar DD — both fall back to overlap-only match.
-	assert.True(t, idx.Has(
-		groupFor(base, base.Add(10*time.Second)),
-		enrichment.LookupFilter{},
-	), "Has with empty filter must behave as pre-filter")
 }
 
 // blobWithHistograms constructs a Snapshot whose Download side carries a known
@@ -1134,7 +842,7 @@ func TestSidecarIndex_Lookup_SumsOverlappingSidecarsUnderSameInvocationID(t *tes
 	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
 
 	firstPath := writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
 		ClosedAt:       base.Add(5 * time.Second),
@@ -1142,7 +850,7 @@ func TestSidecarIndex_Lookup_SumsOverlappingSidecarsUnderSameInvocationID(t *tes
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "same-invo"},
 	})
 	secondPath := writeSidecar(t, dir, "b.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(time.Second),
 		ClosedAt:       base.Add(6 * time.Second),
@@ -1175,7 +883,7 @@ func TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations(t *testing.T
 	base := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
 
 	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base,
 		ClosedAt:       base.Add(5 * time.Second),
@@ -1183,7 +891,7 @@ func TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations(t *testing.T
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-A"},
 	})
 	writeSidecar(t, dir, "b1.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(time.Second),
 		ClosedAt:       base.Add(6 * time.Second),
@@ -1191,7 +899,7 @@ func TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations(t *testing.T
 		WrapperSession: &sidecarFixtureWrapper{InvocationID: "invo-B"},
 	})
 	writeSidecar(t, dir, "b2.json", sidecarFixture{
-		SchemaVersion:  2,
+		SchemaVersion:  3,
 		PeerAncestry:   []string{"xcodebuild"},
 		AcceptedAt:     base.Add(2 * time.Second),
 		ClosedAt:       base.Add(7 * time.Second),

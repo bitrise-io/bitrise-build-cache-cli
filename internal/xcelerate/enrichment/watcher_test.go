@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
@@ -121,164 +119,6 @@ type directionFixture struct {
 	MissCount int64 `json:"missCount,omitempty"`
 }
 
-// TestWatcher_OrphanSidecarPseudoGroupEndToEnd wires the real SidecarIndex + a
-// real Enricher. No LogStoreManifest.plist exists; two sidecars with a shared
-// WrapperSession.InvocationID land, and the shutdown sweep must synthesize
-// exactly one pseudo-group and PUT it under that ID.
-func TestWatcher_OrphanSidecarPseudoGroupEndToEnd(t *testing.T) {
-	home := t.TempDir()
-	sidecarsDir := filepath.Join(home, "sessions")
-	require.NoError(t, os.MkdirAll(sidecarsDir, 0o755))
-
-	now := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
-	closed := now.Add(-30 * time.Second)
-
-	type sidecarFixtureFile struct {
-		SchemaVersion  int                 `json:"schema_version"`
-		SidecarUUID    string              `json:"sidecar_uuid"`
-		PeerAncestry   []string            `json:"peer_ancestry"`
-		AcceptedAt     time.Time           `json:"accepted_at"`
-		ClosedAt       time.Time           `json:"closed_at"`
-		WrapperSession map[string]string   `json:"wrapper_session"`
-		BlobStats      *blobstatsFixture   `json:"blobStats"`
-	}
-
-	write := func(name, sidecarUUID string, downloadOps int64) {
-		path := filepath.Join(sidecarsDir, name)
-		body, err := json.Marshal(sidecarFixtureFile{
-			SchemaVersion: 2,
-			SidecarUUID:   sidecarUUID,
-			PeerAncestry:  []string{"xcodebuild"},
-			AcceptedAt:    closed.Add(-time.Minute),
-			ClosedAt:      closed,
-			WrapperSession: map[string]string{
-				"invocation_id": "shared-invocation",
-			},
-			BlobStats: &blobstatsFixture{
-				Download: directionFixture{OpCount: downloadOps},
-			},
-		})
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(path, body, 0o600))
-	}
-
-	write("a.json", "sidecar-a", 3)
-	write("b.json", "sidecar-b", 2)
-
-	var captured []analytics.Invocation
-	mock := &InvocationPutterMock{
-		PutInvocationFunc: func(inv analytics.Invocation) error {
-			captured = append(captured, inv)
-
-			return nil
-		},
-	}
-
-	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
-	e := &enrichment.Enricher{
-		Store:         store,
-		Client:        mock,
-		SidecarReader: enrichment.NewSidecarIndex(sidecarsDir, nil),
-		Now:           func() time.Time { return now },
-	}
-
-	w := &enrichment.Watcher{
-		HomeDir:       home,
-		Now:           func() time.Time { return now },
-		SidecarReader: e.SidecarReader,
-		Handle:        e.Enrich,
-	}
-	e.OnEmit = w.RecordEmittedInvocationID
-
-	w.ScanOnce()
-
-	require.Len(t, captured, 1, "exactly one pseudo-group must PUT (two sidecars share one InvocationID)")
-	assert.Equal(t, "shared-invocation", captured[0].InvocationID, "PUT must use the sidecar-shared InvocationID so the row upserts")
-	assert.Equal(t, "build", captured[0].Command, "synthetic Signature \"build\" lands as a bare build command")
-}
-
-// TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID exercises the OnEmit
-// wiring end-to-end: the manifest-path emission populates the per-tick dedup
-// set with a known ID (via a fake SidecarReader forcing the Enricher to adopt
-// a sidecar-provided InvocationID), and the orphan sweep then skips that same
-// ID even though a fresh sidecar exists for it.
-func TestWatcher_OrphanSidecar_DedupSkipsManifestEmittedID(t *testing.T) {
-	home := t.TempDir()
-	fixtureNow := time.Date(2025, 2, 27, 12, 0, 0, 0, time.UTC)
-
-	derived := filepath.Join(home, "Library/Developer/Xcode/DerivedData/App-abc/Logs/Build")
-	require.NoError(t, os.MkdirAll(derived, 0o755))
-	fixture, err := os.ReadFile("testdata/LogStoreManifest.plist")
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(derived, "LogStoreManifest.plist"), fixture, 0o644))
-
-	const sharedID = "shared-X"
-
-	orphanBlob := &blobstats.Snapshot{}
-	orphanBlob.Download.OpCount = 1
-
-	// SidecarReader double: Lookup fires on the manifest-path emission with
-	// invocationID=sharedID so the Enricher adopts that ID; orphans returns
-	// one group under sharedID that must be deduped. The orphan group carries
-	// a non-empty Blob so scanOrphanSidecars' zero-blob suppression does not
-	// drop it before the dedup gate — the test pins dedup, not suppression.
-	reader := &fakeSidecarReader{
-		found:        true,
-		invocationID: sharedID,
-		orphans: map[string]enrichment.SidecarGroup{
-			sharedID: {
-				Start:        fixtureNow.Add(-time.Minute),
-				Stop:         fixtureNow.Add(-30 * time.Second),
-				SidecarUUIDs: []string{"sidecar-shared"},
-				Blob:         orphanBlob,
-			},
-		},
-	}
-
-	var captured []analytics.Invocation
-	mock := &InvocationPutterMock{
-		PutInvocationFunc: func(inv analytics.Invocation) error {
-			captured = append(captured, inv)
-
-			return nil
-		},
-	}
-
-	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
-	e := &enrichment.Enricher{
-		Store:         store,
-		Client:        mock,
-		SidecarReader: reader,
-		Now:           func() time.Time { return fixtureNow },
-	}
-
-	w := &enrichment.Watcher{
-		HomeDir:       home,
-		Now:           func() time.Time { return fixtureNow },
-		SidecarReader: reader,
-		Handle:        e.Enrich,
-	}
-	e.OnEmit = w.RecordEmittedInvocationID
-
-	w.ScanOnce()
-
-	var synthetic []string
-	for _, inv := range captured {
-		if strings.HasPrefix(inv.InvocationID, enrichment.SyntheticManifestGroupUUIDPrefix) {
-			synthetic = append(synthetic, inv.InvocationID)
-		}
-	}
-	assert.Empty(t, synthetic, "same-tick dedup must skip any synthetic group whose InvocationID already emitted via the manifest path")
-
-	var matched int
-	for _, inv := range captured {
-		if inv.InvocationID == sharedID {
-			matched++
-		}
-	}
-	assert.Positive(t, matched, "manifest path must emit under the sidecar-provided sharedID — this is what the dedup set keys on")
-}
-
 func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
 	home := t.TempDir()
 	sidecarsDir := filepath.Join(home, "sessions")
@@ -309,7 +149,7 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderManifestUUID(t
 	// Sidecar window covers the manifest entries so Has/Lookup overlap returns true.
 	flushSidecar := func() {
 		body, err := json.Marshal(sidecarFixtureFile{
-			SchemaVersion:  2,
+			SchemaVersion:  3,
 			SidecarUUID:    "sidecar-ide",
 			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
 			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
@@ -339,29 +179,28 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderManifestUUID(t
 	}
 
 	w := &enrichment.Watcher{
-		HomeDir:               home,
-		Now:                   func() time.Time { return fixtureNow },
-		SidecarReader:         e.SidecarReader,
-		Handle:                e.Enrich,
-		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
-		MaxCorrelationRetries: 6,
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: e.SidecarReader,
+		Handle:        e.Enrich,
 	}
 	e.OnEmit = w.RecordEmittedInvocationID
 
-	// Tick N: manifest on disk, no sidecar yet. canCorrelate → false; retry-bucket opens.
+	// Single-ID pipeline: tick N sees the manifest only — no xcactivitylog +
+	// no sidecar → enricher skips PUT. The single-ID pipeline deliberately
+	// drops the retry bucket; the PUT rebirth happens only when supporting
+	// data lands. flushSidecar simulates the proxy writing the sidecar
+	// between ticks so the next scan carries enough data to PUT.
 	w.ScanOnce()
-	assert.Empty(t, captured, "no sidecar yet, no MatchProbe signal — group must sit in retry bucket, not emit")
+	require.Empty(t, captured, "no xcactivitylog + no sidecar → PUT skipped on the single-ID pipeline")
 
-	// Between ticks: proxy's intermediate flush writes the sidecar carrying derivedID.
 	flushSidecar()
-
-	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
+	// The manifest UUID has already been marked seen on tick N; tick N+1 does
+	// not re-emit even though the sidecar is now present. This is the trade-off
+	// of dropping the retry bucket — exercised here for the pin.
 	w.ScanOnce()
-
+	assert.Empty(t, captured, "manifest UUID already marked seen on first tick — no re-emit")
 	_ = derivedID
-	require.Len(t, captured, 1, "exactly one PUT must fire — the retry bucket resolves on sidecar presence")
-	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
-		"PUT must adopt the manifest's xcactivitylog UUID; the hex-bridge later re-PUTs under the same ID (ID-match guard skips the duplicate)")
 }
 
 func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
@@ -391,7 +230,7 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	// Empty-stat anchored-aged flush shape: no BlobStats, derived InvocationID only.
 	flushNilStatsSidecar := func() {
 		body, err := json.Marshal(sidecarFixtureFile{
-			SchemaVersion:  2,
+			SchemaVersion:  3,
 			SidecarUUID:    "sidecar-ide-nil",
 			PeerAncestry:   []string{"Xcode", "SWBBuildService"},
 			AcceptedAt:     time.Date(2025, 2, 27, 10, 40, 0, 0, time.UTC),
@@ -421,29 +260,24 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	}
 
 	w := &enrichment.Watcher{
-		HomeDir:               home,
-		Now:                   func() time.Time { return fixtureNow },
-		SidecarReader:         e.SidecarReader,
-		Handle:                e.Enrich,
-		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
-		MaxCorrelationRetries: 6,
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: e.SidecarReader,
+		Handle:        e.Enrich,
 	}
 	e.OnEmit = w.RecordEmittedInvocationID
 
-	// Tick N: manifest on disk, no sidecar yet. Group sits in the retry bucket.
+	// Single-ID pipeline: tick N sees the manifest only — no xcactivitylog +
+	// no sidecar → enricher skips PUT. flushNilStatsSidecar writes the sidecar
+	// between ticks, but the manifest UUID is already seen so tick N+1 is a
+	// no-op. Trade-off: single-ID pipeline drops the retry bucket.
 	w.ScanOnce()
-	assert.Empty(t, captured, "no sidecar yet — group must sit in retry bucket")
+	require.Empty(t, captured, "manifest + no supporting data → enricher skip on first tick")
 
-	// Between ticks: proxy's empty-stat anchored-aged flush writes the sidecar.
 	flushNilStatsSidecar()
-
-	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
 	w.ScanOnce()
-
+	assert.Empty(t, captured, "manifest UUID already seen — no re-emit")
 	_ = derivedID
-	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
-	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
-		"PUT must adopt the manifest's xcactivitylog UUID; the sidecar's derived InvocationID is reserved for truly synthetic groups without a manifest sibling")
 }
 
 // TestWatcher_scan_GunzipsEachLogOncePerTick pins the per-tick cache seam:

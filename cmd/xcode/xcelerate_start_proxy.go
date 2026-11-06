@@ -38,6 +38,13 @@ import (
 const (
 	proxyOut = "proxy-%s-out.log"
 	proxyErr = "proxy-err.log"
+
+	// crashFallbackChannelCapacity bounds the per-record fallback queue. One
+	// IDE Xcode session produces dozens of distinct proxy-IDs across a day;
+	// the drain runs on every tick, so overflow is harmless. The AfterFunc
+	// logs at Debug when a drop happens so operators can tell "was the queue
+	// full when this record's fallback fired" without instrumenting the ledger.
+	crashFallbackChannelCapacity = 256
 )
 
 //go:generate moq -rm -stub -pkg mocks -out ./mocks/kv_storage.go ./../../proto/kv_storage KVStorageClient
@@ -229,17 +236,19 @@ func StartXcodeCacheProxy(
 }
 
 type analyticsBundle struct {
-	client           *analytics.Client
-	authProvider     *live.Bound
-	metadata         configcommon.CacheConfigMetadata
-	pending          *enrichment.Store
-	handledManifests *enrichment.HandledManifestStore
-	healthPath       string
-	homeDir          string
-	sessionsDir      string
-	xcodeVersion     string
-	xcodeBuildNumber string
-	logger           log.Logger
+	client               *analytics.Client
+	authProvider         *live.Bound
+	metadata             configcommon.CacheConfigMetadata
+	pending              *enrichment.Store
+	handledManifests     *enrichment.HandledManifestStore
+	payloadStore         *enrichment.PayloadStore
+	crashFallbackChannel chan string
+	healthPath           string
+	homeDir              string
+	sessionsDir          string
+	xcodeVersion         string
+	xcodeBuildNumber     string
+	logger               log.Logger
 
 	// watcherInstance is the single live enrichment.Watcher. Run drives the
 	// background ticker; ScanOnce / ScanOnceWithEmit cover shutdown sweep and
@@ -288,6 +297,13 @@ func newAnalyticsBundle(
 	} else {
 		b.pending = &enrichment.Store{Path: pathResolver.PendingInvocationsFile()}
 		b.handledManifests = &enrichment.HandledManifestStore{Path: pathResolver.HandledManifestsFile()}
+		b.crashFallbackChannel = make(chan string, crashFallbackChannelCapacity)
+		b.payloadStore = &enrichment.PayloadStore{
+			Path:                 pathResolver.PayloadStoreFile(),
+			CrashFallbackTimeout: enrichment.DefaultCrashFallbackTimeout,
+			CrashFallbackChannel: b.crashFallbackChannel,
+			Logger:               logger,
+		}
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
 		b.sessionsDir = pathResolver.XcelerateSessionsDir()
@@ -323,6 +339,7 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 		XcodeVersion:     b.xcodeVersion,
 		XcodeBuildNumber: b.xcodeBuildNumber,
 		Logger:           logger,
+		PayloadStore:     b.payloadStore,
 	}
 	if b.healthPath != "" {
 		enricher.Health = &enrichment.HealthWriter{Path: b.healthPath}
@@ -336,34 +353,21 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 	}
 	enricher.LocalLogAppender = invocationlog.Default(logger)
 
-	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
-		if b.pending == nil {
-			return false
-		}
-
-		records, err := b.pending.Load()
-		if err != nil {
-			return false
-		}
-
-		_, matched := enrichment.Correlate(enrichment.GroupCorrelationSpan(group), records)
-
-		return matched
-	}
-
 	w := &enrichment.Watcher{
 		HomeDir: b.homeDir,
 		Globs: []string{
 			enrichment.DefaultDerivedDataGlob,
 			paths.XcodeManagedDerivedDataManifestGlobRelative,
 		},
-		Handle:                enricher.Enrich,
-		Logger:                logger,
-		MatchProbe:            matchProbe,
-		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
-		HandledStore:          b.handledManifests,
-		SidecarReader:         sidecarReader,
-		SetMetricsLookup:      enricher.SetMetricsLookup,
+		Handle:               enricher.Enrich,
+		Logger:               logger,
+		HandledStore:         b.handledManifests,
+		CrashFallbackChannel: b.crashFallbackChannel,
+		CrashFallback:        enricher.EmitCrashFallback,
+		SessionsDir:          b.sessionsDir,
+		OrphanEmitter:        enricher.EmitOrphan,
+		SidecarReader:        sidecarReader,
+		SetMetricsLookup:     enricher.SetMetricsLookup,
 	}
 	enricher.OnEmit = w.RecordEmittedInvocationID
 

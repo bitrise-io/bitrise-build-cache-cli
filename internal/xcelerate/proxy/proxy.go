@@ -206,6 +206,7 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
 		buildRequestResolver:       opts.BuildRequestResolver,
+		buildRequestInfo:           NewBuildRequestInfoLoader(p.logger),
 	}
 
 	p.perConnFlushTimer = time.AfterFunc(perConnIdleThreshold, p.firePerConnFlush)
