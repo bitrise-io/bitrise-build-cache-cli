@@ -24,8 +24,10 @@ type buildRequestInfoCache struct {
 }
 
 // NewBuildRequestInfoLoader returns a cached loader that reads action/qos
-// from <DD>/.../<hex>.xcbuilddata/build-request.json. Missing or malformed
-// files cache the empty tuple so a repeat miss doesn't retry disk every tick.
+// from <DD>/.../<hex>.xcbuilddata/build-request.json. Positive results are
+// cached; ErrNotFound is not — Xcode may write build-request.json a few ms
+// after the first sidecar flush, and a poisoned cache would strand that hex
+// as unclassified for the rest of the build.
 func NewBuildRequestInfoLoader(logger log.Logger) func(ddPath, hex string) (string, string) {
 	c := &buildRequestInfoCache{
 		logger: logger,
@@ -56,7 +58,11 @@ func (c *buildRequestInfoCache) load(ddPath, hex string) (string, string) {
 
 	info, err := c.resolve(ddPath, hex)
 	if err != nil {
-		if c.logger != nil && !errors.Is(err, buildrequest.ErrNotFound) {
+		if errors.Is(err, buildrequest.ErrNotFound) {
+			return "", ""
+		}
+
+		if c.logger != nil {
 			c.logger.Debugf("proxy build-request load %s/%s failed: %s", ddPath, hex, err)
 		}
 

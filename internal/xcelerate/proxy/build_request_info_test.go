@@ -35,7 +35,7 @@ func TestNewBuildRequestInfoLoader_ReadsAndCaches(t *testing.T) {
 	assert.Equal(t, "default", qos)
 }
 
-func TestNewBuildRequestInfoLoader_MissingReturnsEmptyAndCaches(t *testing.T) {
+func TestNewBuildRequestInfoLoader_MissingRetriesOnNextCall(t *testing.T) {
 	dd := t.TempDir()
 	hex := "ffffffffffffffffffffffffffffffff"
 
@@ -44,10 +44,17 @@ func TestNewBuildRequestInfoLoader_MissingReturnsEmptyAndCaches(t *testing.T) {
 	assert.Empty(t, action)
 	assert.Empty(t, qos)
 
-	// Second call still returns empty via cache.
+	// Xcode may write build-request.json a few ms after the first sidecar
+	// flush — the loader must NOT cache the miss and must pick up the file on
+	// the next call.
+	dir := filepath.Join(dd, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "build-request.json"),
+		[]byte(`{"parameters":{"action":"build","qos":"prepareForIndexing"}}`), 0o644))
+
 	action, qos = loader(dd, hex)
-	assert.Empty(t, action)
-	assert.Empty(t, qos)
+	assert.Equal(t, "build", action)
+	assert.Equal(t, "prepareForIndexing", qos)
 }
 
 func TestNewBuildRequestInfoLoader_EmptyHexReturnsEmpty(t *testing.T) {
