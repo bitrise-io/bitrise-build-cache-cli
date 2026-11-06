@@ -493,14 +493,16 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 		return false
 	}
 
-	// Snapshot the OLD identity BEFORE swapBuildRequestHex mutates state so the
-	// flushed sidecar carries the hex that generated its blob stats — the
-	// enricher keys on it to bridge pseudo-group PUTs back to the manifest row.
+	// Snapshot the OLD identity so the flushed sidecar carries the hex that
+	// generated its blob stats — the enricher keys on it to bridge
+	// pseudo-group PUTs back to the manifest row.
 	oldID := cs.invocationID()
 	oldHex := cs.buildRequestHexSnapshot()
 	oldBuildStartedAt := cs.buildStartedAtSnapshot()
 
-	if !cs.swapBuildRequestHex(hex) {
+	// No fresh edge → no reseat. Compare under the snapshot to avoid touching
+	// state when nothing changed.
+	if oldHex == hex {
 		return false
 	}
 
@@ -515,10 +517,15 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 		}
 	}
 
+	// Install the new identity BEFORE the hex swap. Any RPC that races the
+	// reseat and reads the new hex must also see the new InvocationID; the
+	// reverse order would attribute the first post-swap RPC's bytes to the
+	// stale ID when the per-tick flush runs.
+	newID := h.derivePeerInvocationID(cs.ancestryEntries, hex)
+	cs.setInvocationID(newID)
 	cs.setBuildStartedAt(time.Now())
-	cs.setInvocationID(h.derivePeerInvocationID(cs.ancestryEntries, hex))
 
-	return true
+	return cs.swapBuildRequestHex(hex)
 }
 
 // HandleConn flushes the per-conn sidecar on *grpcstats.ConnEnd. ConnBegin is
