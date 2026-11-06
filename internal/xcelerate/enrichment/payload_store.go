@@ -43,6 +43,12 @@ const (
 // MergedPayload holds the union of every signal the enricher has merged for a
 // given proxy-derived InvocationID. The PUT at emission time is rebuilt from
 // these fields; the store itself never persists a full analytics.Invocation.
+//
+// OrphanOrigin distinguishes "no plist landed, we labelled from sidecars only"
+// (orphan path) from "sidecars arrived but no terminal signal inside the
+// crash-fallback window" (crash path). Both leave Success=false, but the BE
+// row should carry a distinct error tag so a late-plist IDE build and a
+// mid-build xcodebuild crash are not conflated.
 type MergedPayload struct {
 	Blob         *blobstats.Snapshot `json:"blob,omitempty"`
 	HitRate      float32             `json:"hit_rate,omitempty"`
@@ -57,6 +63,7 @@ type MergedPayload struct {
 	Success      bool                `json:"success,omitempty"`
 	SuccessKnown bool                `json:"success_known,omitempty"`
 	ErrorMessage string              `json:"error_message,omitempty"`
+	OrphanOrigin bool                `json:"orphan_origin,omitempty"`
 }
 
 // PayloadRecord is one NDJSON line — one proxy-derived InvocationID's merged
@@ -69,16 +76,21 @@ type PayloadRecord struct {
 }
 
 // ToInvocation rebuilds an analytics.Invocation from a MergedPayload keyed
-// under invocationID. Used by the crash-fallback re-emit path: when no
-// terminal plist lands inside CrashFallbackTimeout, the last-known merged
-// signal becomes the BE row. The returned run stats carry Success=false with
-// a "wrapperless_crash_fallback" error when the merged payload has no
-// positive success signal.
+// under invocationID. Used by both the orphan PUT path (no plist landed) and
+// the crash-fallback re-emit path (no terminal signal inside the fallback
+// window). When Success is not known, the error tag reflects which path
+// produced the row: "orphan_no_plist" for orphan emissions,
+// "wrapperless_crash_fallback" for the timer-driven re-emit. Analysts can
+// then tell a late-plist IDE build from a mid-build xcodebuild crash.
 func (p MergedPayload) ToInvocation(invocationID string, cred auth.Credential, md configcommon.CacheConfigMetadata, xcodeVersion, xcodeBuildNumber string) analytics.Invocation {
 	success := p.SuccessKnown && p.Success
 	errText := p.ErrorMessage
 	if !p.SuccessKnown {
-		errText = "wrapperless_crash_fallback"
+		if p.OrphanOrigin {
+			errText = "orphan_no_plist"
+		} else {
+			errText = "wrapperless_crash_fallback"
+		}
 	}
 
 	duration := p.DurationMs

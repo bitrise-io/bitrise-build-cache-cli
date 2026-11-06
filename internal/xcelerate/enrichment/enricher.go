@@ -216,12 +216,13 @@ func (e *Enricher) EmitOrphan(group *ProxyIDGroup) {
 
 	command := labelForRowType(group.Primary, group.DerivedDataPath)
 	merged := MergedPayload{
-		Blob:       group.Blob,
-		Scheme:     schemeFromDerivedData(group.DerivedDataPath),
-		Command:    command,
-		Start:      group.Start,
-		Stop:       group.Stop,
-		DurationMs: durationMs(group.Start, group.Stop),
+		Blob:         group.Blob,
+		Scheme:       schemeFromDerivedData(group.DerivedDataPath),
+		Command:      command,
+		Start:        group.Start,
+		Stop:         group.Stop,
+		DurationMs:   durationMs(group.Start, group.Stop),
+		OrphanOrigin: true,
 	}
 
 	e.upsertPayload(group.InvocationID, merged, PayloadStatusPendingTerminal)

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
 
@@ -175,5 +177,29 @@ func TestPayloadStore_UpsertStampsLastUpdatedAt(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 	assert.True(t, records[0].LastUpdatedAt.Equal(explicit))
+}
+
+func TestMergedPayload_ToInvocationOrphanOriginTaggedDistinctly(t *testing.T) {
+	cred := auth.Credential{}
+	md := configcommon.CacheConfigMetadata{}
+
+	orphan := enrichment.MergedPayload{OrphanOrigin: true}
+	crash := enrichment.MergedPayload{}
+
+	orphanInv := orphan.ToInvocation("id-orphan", cred, md, "", "")
+	crashInv := crash.ToInvocation("id-crash", cred, md, "", "")
+
+	assert.Equal(t, "orphan_no_plist", orphanInv.Error)
+	assert.Equal(t, "wrapperless_crash_fallback", crashInv.Error)
+}
+
+func TestMergedPayload_ToInvocationSuccessKnownNoErrorTag(t *testing.T) {
+	cred := auth.Credential{}
+	md := configcommon.CacheConfigMetadata{}
+
+	ok := enrichment.MergedPayload{SuccessKnown: true, Success: true}
+	inv := ok.ToInvocation("id-ok", cred, md, "", "")
+
+	assert.Empty(t, inv.Error, "SuccessKnown+Success must not synthesize an error tag")
 }
 
