@@ -22,12 +22,11 @@ import (
 const DefaultCrashFallbackTimeout = 60 * time.Second
 
 // PayloadStatus tracks where a PayloadRecord sits in the single-ID merge-and-
-// re-PUT lifecycle: Open while sidecars still accumulate, PendingTerminal once
-// the terminal plist or crash-fallback fires, Emitted once the BE PUT lands.
+// re-PUT lifecycle: PendingTerminal once the terminal plist or crash-fallback
+// is queued, Emitted once the BE PUT lands.
 type PayloadStatus string
 
 const (
-	PayloadStatusOpen            PayloadStatus = "open"
 	PayloadStatusPendingTerminal PayloadStatus = "pending_terminal"
 	PayloadStatusEmitted         PayloadStatus = "emitted"
 )
@@ -36,21 +35,19 @@ const (
 // given proxy-derived InvocationID. The PUT at emission time is rebuilt from
 // these fields; the store itself never persists a full analytics.Invocation.
 type MergedPayload struct {
-	Blob            *blobstats.Snapshot `json:"blob,omitempty"`
-	HitRate         float32             `json:"hit_rate,omitempty"`
-	HitRateKnown    bool                `json:"hit_rate_known,omitempty"`
-	Action          string              `json:"action,omitempty"`
-	Scheme          string              `json:"scheme,omitempty"`
-	Command         string              `json:"command,omitempty"`
-	FullCommand     string              `json:"full_command,omitempty"`
-	Start           time.Time           `json:"start,omitempty"`
-	Stop            time.Time           `json:"stop,omitempty"`
-	DurationMs      int64               `json:"duration_ms,omitempty"`
-	LogOutcome      string              `json:"log_outcome,omitempty"`
-	XcresultSummary string              `json:"xcresult_summary,omitempty"`
-	Success         bool                `json:"success,omitempty"`
-	SuccessKnown    bool                `json:"success_known,omitempty"`
-	ErrorMessage    string              `json:"error_message,omitempty"`
+	Blob         *blobstats.Snapshot `json:"blob,omitempty"`
+	HitRate      float32             `json:"hit_rate,omitempty"`
+	HitRateKnown bool                `json:"hit_rate_known,omitempty"`
+	Scheme       string              `json:"scheme,omitempty"`
+	Command      string              `json:"command,omitempty"`
+	FullCommand  string              `json:"full_command,omitempty"`
+	Start        time.Time           `json:"start,omitempty"`
+	Stop         time.Time           `json:"stop,omitempty"`
+	DurationMs   int64               `json:"duration_ms,omitempty"`
+	LogOutcome   string              `json:"log_outcome,omitempty"`
+	Success      bool                `json:"success,omitempty"`
+	SuccessKnown bool                `json:"success_known,omitempty"`
+	ErrorMessage string              `json:"error_message,omitempty"`
 }
 
 // PayloadRecord is one NDJSON line — one proxy-derived InvocationID's merged
@@ -257,67 +254,8 @@ func (s *PayloadStore) Remove(invocationID string) error {
 	return s.writeAtomicLocked(kept)
 }
 
-// MergeInto applies src on top of dst in-place, following merge-rules:
-//   - Blob snapshots sum via mergeBlobs
-//   - Non-zero times narrow Start / widen Stop
-//   - Non-empty strings win when dst is empty; later signals overwrite
-//     Command/FullCommand (these come from the authoritative manifest)
-//   - DurationMs: widen (prefer the larger of the two)
-//   - Bool flags: later known wins.
-func MergeInto(dst *MergedPayload, src MergedPayload) {
-	dst.Blob = mergeBlobs(dst.Blob, src.Blob, nil)
-
-	if src.HitRateKnown {
-		dst.HitRate = src.HitRate
-		dst.HitRateKnown = true
-	}
-
-	if src.Action != "" {
-		dst.Action = src.Action
-	}
-	if src.Scheme != "" {
-		dst.Scheme = src.Scheme
-	}
-	if src.Command != "" {
-		dst.Command = src.Command
-	}
-	if src.FullCommand != "" {
-		dst.FullCommand = src.FullCommand
-	}
-
-	if !src.Start.IsZero() {
-		if dst.Start.IsZero() || src.Start.Before(dst.Start) {
-			dst.Start = src.Start
-		}
-	}
-	if !src.Stop.IsZero() {
-		if dst.Stop.IsZero() || src.Stop.After(dst.Stop) {
-			dst.Stop = src.Stop
-		}
-	}
-	if src.DurationMs > dst.DurationMs {
-		dst.DurationMs = src.DurationMs
-	}
-
-	if src.LogOutcome != "" {
-		dst.LogOutcome = src.LogOutcome
-	}
-	if src.XcresultSummary != "" {
-		dst.XcresultSummary = src.XcresultSummary
-	}
-
-	if src.SuccessKnown {
-		dst.Success = src.Success
-		dst.SuccessKnown = true
-	}
-	if src.ErrorMessage != "" {
-		dst.ErrorMessage = src.ErrorMessage
-	}
-}
-
-// generic helper would need reflect / json.RawMessage indirection just to share ~40 lines.
-//
 //nolint:dupl // NDJSON writeAtomic is intentionally per-type — extracting to a
+// generic helper would need reflect / json.RawMessage indirection just to share ~40 lines.
 func (s *PayloadStore) writeAtomicLocked(records []PayloadRecord) error {
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
 		return fmt.Errorf("mkdir payload store dir: %w", err)
