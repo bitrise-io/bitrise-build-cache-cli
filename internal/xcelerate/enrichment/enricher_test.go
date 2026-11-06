@@ -849,6 +849,46 @@ func TestEnricher_PutsUnderSidecarInvocationID_WhenSidecarPresent(t *testing.T) 
 		"PUT identity must come from the sidecar's proxy-derived InvocationID; plist UUID is payload metadata only (see BE DataTransfer ToolInvocationId join)")
 }
 
+// TestEnricher_ManifestOnlyFallback_PutsUnderManifestUUID pins the one
+// documented carve-out from the single-ID ruleset's "sidecar InvocationID
+// anchors the PUT" rule: when no sidecar landed at all for the manifest
+// group, the manifest UUID anchors the BE row. Every other path must prefer
+// the sidecar's WrapperSession.InvocationID.
+func TestEnricher_ManifestOnlyFallback_PutsUnderManifestUUID(t *testing.T) {
+	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	// Sidecar reader returns found=false with an empty invocationID — the
+	// manifest-only carve-out.
+	e := &enrichment.Enricher{
+		Store:         store,
+		Client:        mock,
+		SidecarReader: &fakeSidecarReader{found: false, invocationID: ""},
+	}
+
+	now := time.Now()
+	manifestPath, logName := stageOKLog(t)
+	e.Enrich(manifestPath, singleEntryGroup(enrichment.ManifestEntry{
+		UUID:      "manifest-uuid",
+		Signature: "Build S",
+		FileName:  logName,
+		Start:     now,
+		Stop:      now.Add(time.Second),
+	}))
+
+	require.Len(t, mock.PutInvocationCalls(), 1)
+	assert.Equal(t, "manifest-uuid", captured.InvocationID,
+		"manifest-only carve-out: no sidecar → manifest UUID is the PUT key")
+}
+
 func TestEnricher_FallsBackToManifestUUID_WhenNoSidecar(t *testing.T) {
 	store := &enrichment.Store{Path: filepath.Join(t.TempDir(), "pending.ndjson")}
 
