@@ -3,23 +3,18 @@ package enrichment
 import (
 	"context"
 	"path/filepath"
-	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
 
 const DefaultPollInterval = 5 * time.Second
 
 const DefaultDerivedDataGlob = "Library/Developer/Xcode/DerivedData/*/Logs/*/LogStoreManifest.plist"
-
-const DefaultMaxCorrelationRetries = 6
 
 type Watcher struct {
 	HomeDir      string
@@ -31,12 +26,6 @@ type Watcher struct {
 	// marks the group seen unconditionally after Handle.
 	Handle func(manifestPath string, group ManifestEntryGroup)
 	Logger log.Logger
-
-	// MatchProbe returns true when a pending record for the group
-	// exists and Handle would enrich under that record's InvocationID.
-	// nil disables the retry bucket: groups fire immediately on first sight.
-	MatchProbe            func(group ManifestEntryGroup) bool
-	MaxCorrelationRetries int
 
 	// HandledStore persists the seen-UUID set across restarts. nil disables
 	// persistence (seen stays in-memory only) — this is the pre-persistence
@@ -71,8 +60,7 @@ type Watcher struct {
 	// cache — a log is gunzipped at most once per tick.
 	SetMetricsLookup func(MetricsLookup)
 
-	seen    map[string]struct{}
-	retries map[string]int
+	seen map[string]struct{}
 
 	// tickEmittedIDs collects InvocationIDs the Enricher emitted via the
 	// manifest path during the current scan tick so scanOrphanSidecars can
@@ -145,15 +133,6 @@ func (w *Watcher) markGroupHandled(group ManifestEntryGroup) {
 	}
 }
 
-// groupKey sorts a defensive copy so a future UUIDs() sharing its backing
-// array can't mutate the group and so the key survives entry reordering.
-func groupKey(group ManifestEntryGroup) string {
-	uuids := append([]string(nil), group.UUIDs()...)
-	sort.Strings(uuids)
-
-	return strings.Join(uuids, "\x00")
-}
-
 func (w *Watcher) Run(ctx context.Context) {
 	if w.PollInterval == 0 {
 		w.PollInterval = DefaultPollInterval
@@ -161,7 +140,6 @@ func (w *Watcher) Run(ctx context.Context) {
 
 	w.scanMu.Lock()
 	w.seen = make(map[string]struct{})
-	w.retries = make(map[string]int)
 	seeded := w.seedSeenFromStore()
 	if !seeded {
 		w.scan(true, false)
@@ -214,9 +192,6 @@ func (w *Watcher) ScanOnceWithEmit(onEmitted func(string)) {
 func (w *Watcher) ensureMaps() {
 	if w.seen == nil {
 		w.seen = make(map[string]struct{})
-	}
-	if w.retries == nil {
-		w.retries = make(map[string]int)
 	}
 }
 
@@ -633,51 +608,11 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 		return
 	}
 
-	key := groupKey(group)
-
-	if synthetic || w.Handle == nil || w.MaxCorrelationRetries == 0 || !w.hasCorrelationSignal() {
-		if w.Handle != nil {
-			logger.Debugf("Watcher: handle-and-mark (no retry bucket) scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
-			w.Handle(manifestPath, group)
-		}
-		w.markGroupHandled(group)
-
-		return
-	}
-
-	if _, pending := w.retries[key]; pending {
-		switch {
-		case w.canCorrelate(manifestPath, group):
-			logger.Debugf("Watcher: pending match resolved scheme=%s attempts_left=%d uuids=%v", group.SchemeName(), w.retries[key], group.UUIDs())
-			w.Handle(manifestPath, group)
-			w.markGroupHandled(group)
-			delete(w.retries, key)
-		case w.retries[key] > 0:
-			w.retries[key]--
-			logger.Debugf("Watcher: pending still unmatched, decrement scheme=%s attempts_left=%d", group.SchemeName(), w.retries[key])
-		default:
-			logger.Debugf("Watcher: pending retries exhausted, minting orphan scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
-			w.Handle(manifestPath, group)
-			w.markGroupHandled(group)
-			delete(w.retries, key)
-		}
-
-		return
-	}
-
-	// First-pass also consults the sidecar reader so a fast-flushing sidecar
-	// (IDE flow: manifest lands, sidecar flushed on next idle beat) can
-	// short-circuit the retry setup entirely.
-	if w.canCorrelate(manifestPath, group) {
-		logger.Debugf("Watcher: first-pass match scheme=%s uuids=%v", group.SchemeName(), group.UUIDs())
+	if w.Handle != nil {
+		logger.Debugf("Watcher: handle-and-mark scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
 		w.Handle(manifestPath, group)
-		w.markGroupHandled(group)
-
-		return
 	}
-
-	w.retries[key] = w.MaxCorrelationRetries
-	logger.Debugf("Watcher: unmatched, opening retry bucket scheme=%s attempts_left=%d", group.SchemeName(), w.MaxCorrelationRetries)
+	w.markGroupHandled(group)
 }
 
 // drainCrashFallbackChannel non-blockingly reads every ripe InvocationID the
@@ -697,30 +632,6 @@ func (w *Watcher) drainCrashFallbackChannel(logger log.Logger) {
 			return
 		}
 	}
-}
-
-// hasCorrelationSignal is true when at least one of {MatchProbe, SidecarReader}
-// could possibly answer "yes" to canCorrelate. Neither wired → the retry bucket
-// has no signal to resolve on, so skip it and fire-and-mark immediately.
-func (w *Watcher) hasCorrelationSignal() bool {
-	return w.MatchProbe != nil || w.SidecarReader != nil
-}
-
-// canCorrelate: pending-record probe matches OR a sidecar overlapping the
-// window is on disk. Side-effect free (Lookup consumes later). Supplies the
-// DerivedData filter axis from manifestPath so parallel builds on different DD
-// roots do not falsely satisfy each other's retry buckets. The Hashes axis is
-// Enricher-only (buildDescriptionHash is sourced from metricsLookup, which
-// only runs at emission time) so Has operates on DD alone.
-func (w *Watcher) canCorrelate(manifestPath string, group ManifestEntryGroup) bool {
-	if w.MatchProbe != nil && w.MatchProbe(group) {
-		return true
-	}
-	if w.SidecarReader != nil && w.SidecarReader.Has(group, LookupFilter{DerivedData: paths.DerivedDataFromManifestPath(manifestPath)}) {
-		return true
-	}
-
-	return false
 }
 
 // groupFullySeen returns true only when every UUID in the group is already in

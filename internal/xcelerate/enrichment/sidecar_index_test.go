@@ -688,86 +688,6 @@ func TestSidecarIndex_PendingDerivedDataPaths_EmptyDirReturnsNil(t *testing.T) {
 	assert.Empty(t, idx.PendingDerivedDataPaths())
 }
 
-func TestSidecarIndex_Has_ReturnsTrueOnOverlap(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "overlap.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(10 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second)), enrichment.LookupFilter{}),
-		"overlapping sidecar with anchored InvocationID must register as Has=true")
-}
-
-func TestSidecarIndex_Has_ReturnsFalseWhenNoOverlap(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "a.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.False(t, idx.Has(groupFor(base.Add(10*time.Second), base.Add(20*time.Second)), enrichment.LookupFilter{}),
-		"non-overlapping group must register as Has=false")
-}
-
-func TestSidecarIndex_Has_ReturnsFalseWhenInvocationIDBlank(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	// WrapperSession present but InvocationID blank — proxy ancestry gate
-	// failed; sidecar carries no correlatable identity, so Has must say no.
-	writeSidecar(t, dir, "blank.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: ""},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.False(t, idx.Has(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{}),
-		"sidecar with blank InvocationID must not satisfy Has — nothing to correlate on")
-}
-
-// TestSidecarIndex_Has_ReturnsTrueForOpenSidecarPotentialOverlap pins the
-// Option-A fix: an open sidecar (ClosedAt zero) whose AcceptedAt sits inside
-// the manifest group's window must count as a potential overlap, so the retry
-// bucket defers minting an orphan until the sidecar closes.
-func TestSidecarIndex_Has_ReturnsTrueForOpenSidecarPotentialOverlap(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-	groupStart := base
-	groupStop := base.Add(10 * time.Second)
-
-	writeSidecar(t, dir, "open.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     groupStart.Add(-time.Second),
-		ClosedAt:       time.Time{},
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "open-id"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.True(t, idx.Has(groupFor(groupStart, groupStop), enrichment.LookupFilter{}),
-		"open sidecar whose Start precedes group.Stop must count as potential overlap so retry bucket defers")
-}
-
 // TestSidecarIndex_Lookup_StillSkipsOpenSidecar pins the Lookup semantics are
 // unchanged by the Option-A fix: Lookup reads stats, so an open sidecar
 // (ClosedAt zero) is still skipped — only closed sidecars contribute to the
@@ -793,74 +713,6 @@ func TestSidecarIndex_Lookup_StillSkipsOpenSidecar(t *testing.T) {
 	assert.Empty(t, paths)
 	assert.Nil(t, snap)
 	assert.Empty(t, invocationID)
-}
-
-// TestSidecarIndex_Has_ReturnsFalseForOpenSidecarAfterGroupStop pins the
-// upper bound of the potential-overlap window: an open sidecar whose
-// AcceptedAt sits strictly after group.Stop cannot possibly correlate even
-// after it closes, so Has must still say no.
-func TestSidecarIndex_Has_ReturnsFalseForOpenSidecarAfterGroupStop(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-	groupStart := base
-	groupStop := base.Add(5 * time.Second)
-
-	writeSidecar(t, dir, "after.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     groupStop.Add(time.Second),
-		ClosedAt:       time.Time{},
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "after-id"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.False(t, idx.Has(groupFor(groupStart, groupStop), enrichment.LookupFilter{}),
-		"open sidecar that started after group.Stop can never overlap — Has must say no")
-}
-
-// TestSidecarIndex_Has_ReturnsTrueForClosedSidecar_SameAsBeforeFix guards the
-// pre-fix behaviour for closed sidecars: an in-range closed sidecar still
-// resolves to Has=true via overlapsClosed inside overlapsPotential.
-func TestSidecarIndex_Has_ReturnsTrueForClosedSidecar_SameAsBeforeFix(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "closed.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(10 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "closed-id"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	assert.True(t, idx.Has(groupFor(base.Add(2*time.Second), base.Add(8*time.Second)), enrichment.LookupFilter{}),
-		"closed in-range sidecar must still satisfy Has — regression guard for the pre-fix behaviour")
-}
-
-func TestSidecarIndex_Has_DoesNotConsume(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
-
-	path := writeSidecar(t, dir, "pinned.json", sidecarFixture{
-		SchemaVersion:  3,
-		PeerAncestry:   []string{"xcodebuild"},
-		AcceptedAt:     base,
-		ClosedAt:       base.Add(5 * time.Second),
-		BlobStats:      blob(1, 0, 0),
-		WrapperSession: &sidecarFixtureWrapper{InvocationID: "derived-xyz"},
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{}))
-
-	// Call again — same answer, file still on disk, no side effect anywhere.
-	require.True(t, idx.Has(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{}))
-
-	_, err := os.Stat(path)
-	assert.NoError(t, err, "Has must be side-effect free; sidecar file must remain for a later Lookup")
 }
 
 // TestSidecarIndex_Lookup_FiltersDifferentDerivedData pins the core
@@ -1085,38 +937,6 @@ func TestSidecarIndex_Lookup_BothFiltersRespected(t *testing.T) {
 	require.Equal(t, []string{ourPath}, paths, "only the DD+hex double-matching sidecar may survive")
 	require.NotNil(t, snap)
 	assert.Equal(t, int64(1), snap.Download.OpCount)
-}
-
-// TestSidecarIndex_Has_SymmetricWithLookup pins that Has enforces the same
-// filter semantics as Lookup so the Watcher's canCorrelate deferral and the
-// Enricher's actual consumption agree.
-func TestSidecarIndex_Has_SymmetricWithLookup(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-
-	writeSidecar(t, dir, "wrong-dd.json", sidecarFixture{
-		SchemaVersion:   3,
-		PeerAncestry:    []string{"xcodebuild"},
-		AcceptedAt:      base,
-		ClosedAt:        base.Add(10 * time.Second),
-		BlobStats:       blob(2, 0, 0),
-		WrapperSession:  &sidecarFixtureWrapper{InvocationID: "wrong"},
-		DerivedDataPath: "/dd/other",
-	})
-
-	idx := enrichment.NewSidecarIndex(dir, nil)
-
-	// Filter wants DD A — the only sidecar has DD other. Has must say no.
-	assert.False(t, idx.Has(
-		groupFor(base, base.Add(10*time.Second)),
-		enrichment.LookupFilter{DerivedData: "/dd/A"},
-	), "Has must honor DD filter mismatch, same as Lookup")
-
-	// Empty filter DD or empty sidecar DD — both fall back to overlap-only match.
-	assert.True(t, idx.Has(
-		groupFor(base, base.Add(10*time.Second)),
-		enrichment.LookupFilter{},
-	), "Has with empty filter must behave as pre-filter")
 }
 
 // blobWithHistograms constructs a Snapshot whose Download side carries a known

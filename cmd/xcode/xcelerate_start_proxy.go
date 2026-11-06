@@ -351,36 +351,19 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 	}
 	enricher.LocalLogAppender = invocationlog.Default(logger)
 
-	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
-		if b.pending == nil {
-			return false
-		}
-
-		records, err := b.pending.Load()
-		if err != nil {
-			return false
-		}
-
-		_, matched := enrichment.Correlate(enrichment.GroupCorrelationSpan(group), records)
-
-		return matched
-	}
-
 	w := &enrichment.Watcher{
 		HomeDir: b.homeDir,
 		Globs: []string{
 			enrichment.DefaultDerivedDataGlob,
 			paths.XcodeManagedDerivedDataManifestGlobRelative,
 		},
-		Handle:                enricher.Enrich,
-		Logger:                logger,
-		MatchProbe:            matchProbe,
-		MaxCorrelationRetries: enrichment.DefaultMaxCorrelationRetries,
-		HandledStore:          b.handledManifests,
-		PayloadStore:          b.payloadStore,
-		CrashFallbackChannel:  b.crashFallbackChannel,
-		SidecarReader:         sidecarReader,
-		SetMetricsLookup:      enricher.SetMetricsLookup,
+		Handle:               enricher.Enrich,
+		Logger:               logger,
+		HandledStore:         b.handledManifests,
+		PayloadStore:         b.payloadStore,
+		CrashFallbackChannel: b.crashFallbackChannel,
+		SidecarReader:        sidecarReader,
+		SetMetricsLookup:     enricher.SetMetricsLookup,
 	}
 	enricher.OnEmit = w.RecordEmittedInvocationID
 

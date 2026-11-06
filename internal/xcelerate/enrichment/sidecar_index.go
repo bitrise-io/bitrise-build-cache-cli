@@ -59,14 +59,6 @@ type LookupFilter struct {
 type SidecarReader interface {
 	Lookup(group ManifestEntryGroup, filter LookupFilter) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
 
-	// Has returns true when a sidecar overlapping the group's time window exists
-	// on disk with a non-empty WrapperSession.InvocationID. Side-effect free —
-	// used by the watcher's retry bucket to short-circuit orphan-mint without
-	// consuming sidecar paths. MaxCorrelationRetries is the sole safety net
-	// against a group deferring forever if the matching sidecar never arrives;
-	// Has itself has no bound.
-	Has(group ManifestEntryGroup, filter LookupFilter) bool
-
 	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
 	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
 	// Ignores manifest correlation entirely — the result is "orphan-eligible":
@@ -310,57 +302,6 @@ func pickAnchorlessWinner(anchorless []sidecarMatch) *blobstats.Snapshot {
 	}
 
 	return best
-}
-
-// Has walks i.dir once and returns true on the first sidecar whose
-// AcceptedAt/ClosedAt window overlaps the group AND whose
-// WrapperSession.InvocationID is non-empty. No file is unlinked or recorded.
-// Honors the same empty-means-skip rule as Lookup on DerivedData + hex.
-func (i *sidecarIndex) Has(group ManifestEntryGroup, filter LookupFilter) bool {
-	logger := logOr(i.logger)
-
-	if i.dir == "" {
-		return false
-	}
-
-	entries, err := os.ReadDir(i.dir)
-	if err != nil {
-		logger.Debugf("Sidecar index read %s for Has: %s", i.dir, err)
-
-		return false
-	}
-
-	groupStart := group.Start()
-	groupStop := group.Stop()
-
-	var versionSkipped bool
-	for _, de := range entries {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
-			continue
-		}
-
-		path := filepath.Join(i.dir, de.Name())
-		s, ok := loadSidecar(path, logger, &versionSkipped)
-		if !ok {
-			continue
-		}
-		if !overlapsPotential(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
-			continue
-		}
-		if s.WrapperSession == nil || s.WrapperSession.InvocationID == "" {
-			continue
-		}
-		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
-			continue
-		}
-		if len(filter.Hashes) > 0 && s.BuildRequestHex != "" && !hexMatches(s.BuildRequestHex, filter.Hashes) {
-			continue
-		}
-
-		return true
-	}
-
-	return false
 }
 
 func (i *sidecarIndex) OrphanSidecarsGroupedByInvocation(now time.Time, minAge time.Duration) map[string]SidecarGroup {
@@ -746,23 +687,4 @@ func overlapsClosed(accepted, closed, groupStart, groupStop time.Time) bool {
 	}
 
 	return accepted.Before(groupStop) && groupStart.Before(closed)
-}
-
-// overlapsPotential answers "could this (possibly-open) sidecar still correlate
-// to the group?" — used by Has to defer the retry bucket while a sidecar is
-// still open. An open sidecar whose AcceptedAt sits before the group's stop
-// counts: its final ClosedAt will land somewhere after now, so the window
-// overlap can only be settled once the sidecar closes.
-func overlapsPotential(accepted, closed, groupStart, groupStop time.Time) bool {
-	if accepted.IsZero() || groupStart.IsZero() || groupStop.IsZero() {
-		return false
-	}
-	if accepted.After(groupStop) {
-		return false
-	}
-	if !closed.IsZero() {
-		return overlapsClosed(accepted, closed, groupStart, groupStop)
-	}
-
-	return true
 }

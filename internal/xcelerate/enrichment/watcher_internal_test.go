@@ -59,38 +59,11 @@ func pickUUID(t *testing.T, home string) string {
 	return entries[0].UUID
 }
 
-func TestWatcher_scan_MatchedEntry_FiresImmediately(t *testing.T) {
-	home := t.TempDir()
-	writeFixtureManifest(t, home)
-
-	var calls int
-	var uuids []string
-	w := &Watcher{
-		Now:     func() time.Time { return fixtureNow },
-		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
-			calls++
-			uuids = append(uuids, g.UUIDs()...)
-		},
-		MatchProbe:            func(ManifestEntryGroup) bool { return true },
-		MaxCorrelationRetries: 3,
-	}
-	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
-
-	w.scan(false, false)
-
-	assert.Positive(t, calls)
-	assert.Empty(t, w.retries)
-	assert.Len(t, w.seen, len(uuids))
-}
-
-func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
+func TestWatcher_scan_FiresImmediately_OnFreshEntry(t *testing.T) {
 	home := t.TempDir()
 	writeFixtureManifest(t, home)
 	uuid := pickUUID(t, home)
 
-	var scans int
 	var handled []string
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
@@ -100,29 +73,12 @@ func TestWatcher_scan_UnmatchedEntry_HeldForRetries(t *testing.T) {
 				handled = append(handled, uuid)
 			}
 		},
-		MatchProbe: func(g ManifestEntryGroup) bool {
-			if !groupContainsUUID(g, uuid) {
-				return true
-			}
-
-			return scans >= 3
-		},
-		MaxCorrelationRetries: 3,
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
-	scans = 1
 	w.scan(false, false)
-	assert.Empty(t, handled, "held on first scan while MatchProbe still false")
 
-	scans = 2
-	w.scan(false, false)
-	assert.Empty(t, handled, "still held on second scan")
-
-	scans = 3
-	w.scan(false, false)
-	assert.Equal(t, []string{uuid}, handled, "fires on the scan MatchProbe first returns true")
+	assert.Equal(t, []string{uuid}, handled, "single-ID pipeline fires every manifest group immediately")
 	assert.Contains(t, w.seen, uuid)
 }
 
@@ -134,144 +90,6 @@ func groupContainsUUID(g ManifestEntryGroup, uuid string) bool {
 	}
 
 	return false
-}
-
-func TestWatcher_scan_UnmatchedEntry_MintedAsOrphanAfterMaxRetries(t *testing.T) {
-	home := t.TempDir()
-	writeFixtureManifest(t, home)
-	uuid := pickUUID(t, home)
-
-	var handled []string
-	w := &Watcher{
-		Now:     func() time.Time { return fixtureNow },
-		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
-			if groupContainsUUID(g, uuid) {
-				handled = append(handled, uuid)
-			}
-		},
-		MatchProbe: func(g ManifestEntryGroup) bool {
-			return !groupContainsUUID(g, uuid)
-		},
-		MaxCorrelationRetries: 2,
-	}
-	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
-
-	// MaxCorrelationRetries=2 gives 2 retry scans held after the fresh sight,
-	// and orphan-fires on the next (4th total) scan.
-	w.scan(false, false)
-	assert.Empty(t, handled, "first sight: buckets the group for retry")
-	assert.NotEmpty(t, w.retries, "retry bucket must contain the held group")
-	assert.NotContains(t, w.seen, uuid)
-
-	w.scan(false, false)
-	assert.Empty(t, handled, "retry scan 1: decrements 2->1, still held")
-
-	w.scan(false, false)
-	assert.Empty(t, handled, "retry scan 2: decrements 1->0, still held")
-
-	w.scan(false, false)
-	assert.Equal(t, []string{uuid}, handled, "retries exhausted: mints as orphan")
-	assert.Contains(t, w.seen, uuid)
-}
-
-func TestWatcher_scan_ZeroRetries_MintsImmediately(t *testing.T) {
-	home := t.TempDir()
-	writeFixtureManifest(t, home)
-	uuid := pickUUID(t, home)
-
-	var handled []string
-	w := &Watcher{
-		Now:     func() time.Time { return fixtureNow },
-		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
-			if groupContainsUUID(g, uuid) {
-				handled = append(handled, uuid)
-			}
-		},
-		MatchProbe: func(ManifestEntryGroup) bool { return false },
-		// MaxCorrelationRetries = 0 → opt out; fires immediately.
-	}
-	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
-
-	w.scan(false, false)
-
-	assert.Equal(t, []string{uuid}, handled)
-	assert.Contains(t, w.seen, uuid)
-}
-
-func TestWatcher_scan_NilMatchProbe_FiresImmediately(t *testing.T) {
-	home := t.TempDir()
-	writeFixtureManifest(t, home)
-	uuid := pickUUID(t, home)
-
-	var handled []string
-	w := &Watcher{
-		Now:     func() time.Time { return fixtureNow },
-		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
-			if groupContainsUUID(g, uuid) {
-				handled = append(handled, uuid)
-			}
-		},
-		MatchProbe:            nil,
-		MaxCorrelationRetries: 6,
-	}
-	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
-
-	w.scan(false, false)
-
-	assert.Equal(t, []string{uuid}, handled)
-	assert.Contains(t, w.seen, uuid)
-}
-
-func TestWatcher_scan_SeedOnlyDoesNotPopulateRetries(t *testing.T) {
-	home := t.TempDir()
-	writeFixtureManifest(t, home)
-	uuid := pickUUID(t, home)
-
-	var handled []string
-	w := &Watcher{
-		Now:     func() time.Time { return fixtureNow },
-		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) {
-			handled = append(handled, g.UUIDs()...)
-		},
-		MatchProbe:            func(ManifestEntryGroup) bool { return false },
-		MaxCorrelationRetries: 6,
-	}
-	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
-
-	w.scan(true, false)
-
-	assert.Empty(t, handled, "seed scan must not emit")
-	assert.Contains(t, w.seen, uuid)
-	assert.Empty(t, w.retries, "seed scan must not populate retries")
-}
-
-func TestWatcher_scan_PendingUUIDNotSkippedBySeenCheck(t *testing.T) {
-	home := t.TempDir()
-	writeFixtureManifest(t, home)
-	uuid := pickUUID(t, home)
-
-	w := &Watcher{
-		Now:                   func() time.Time { return fixtureNow },
-		HomeDir:               home,
-		Handle:                func(string, ManifestEntryGroup) {},
-		MatchProbe:            func(ManifestEntryGroup) bool { return false },
-		MaxCorrelationRetries: 6,
-	}
-	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
-
-	w.scan(false, false)
-
-	assert.NotEmpty(t, w.retries, "held groups must land in retries after first unmatched scan")
-	assert.NotContains(t, w.seen, uuid, "unmatched uuid must NOT be in seen (otherwise second scan is skipped)")
 }
 
 // writeInlineManifest writes a minimal manifest with a single entry named uuid at
@@ -326,7 +144,6 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -349,7 +166,6 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -370,7 +186,6 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -424,7 +239,6 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 		Now:          func() time.Time { return fixtureNow },
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -492,7 +306,6 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsThreeGroups(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -522,7 +335,6 @@ func TestWatcher_scan_AppendingLateEntry_EmitsOnlyTheNewOne(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 	require.Equal(t, 2, handleCalls, "initial scan emits one group per entry")
@@ -608,7 +420,6 @@ func TestWatcher_scan_NewPrimaryTriggersReemit(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 	require.Equal(t, 1, handleCalls, "initial scan emits build-anchored group")
@@ -640,7 +451,6 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 		Now:     func() time.Time { return time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC) },
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -658,8 +468,6 @@ type sidecarReaderStub struct {
 func (s *sidecarReaderStub) Lookup(ManifestEntryGroup, LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	return nil, nil, "", false
 }
-
-func (s *sidecarReaderStub) Has(ManifestEntryGroup, LookupFilter) bool { return false }
 
 func (s *sidecarReaderStub) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]SidecarGroup {
 	return nil
@@ -697,7 +505,6 @@ func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
 		},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -739,7 +546,6 @@ func TestWatcher_scan_StalledDiagnostic_EmitsWhenZeroManifestsWithPendingSidecar
 		Handle:        func(string, ManifestEntryGroup) {},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -765,7 +571,6 @@ func TestWatcher_scan_StalledDiagnostic_RateLimitedToOncePerMinute(t *testing.T)
 		Handle:        func(string, ManifestEntryGroup) {},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 	w.scan(false, false) // same-tick: must stay silent
@@ -800,7 +605,6 @@ func TestWatcher_scan_StalledDiagnostic_SilentWhenNoSidecars(t *testing.T) {
 		Handle:        func(string, ManifestEntryGroup) {},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	w.scan(false, false)
 
@@ -821,7 +625,6 @@ func TestWatcher_scan_SidecarAbsentOrEmpty_NoExtraGlobs(t *testing.T) {
 		Handle:        func(string, ManifestEntryGroup) {},
 	}
 	w.seen = map[string]struct{}{}
-	w.retries = map[string]int{}
 
 	assert.NotPanics(t, func() { w.scan(false, false) }, "nil hints must not break the scan")
 }

@@ -56,49 +56,6 @@ func stageOKLog(t *testing.T) (string, string) {
 	return filepath.Join(manifestDir, "LogStoreManifest.plist"), logName
 }
 
-func TestEnricher_MatchedPendingSkipsPUTAndPrunesRecord(t *testing.T) {
-	dir := t.TempDir()
-	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
-
-	base := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
-	require.NoError(t, store.Append(enrichment.PendingRecord{
-		InvocationID: "kept-id",
-		StartTime:    base,
-		Duration:     10_000,
-	}))
-
-	puts := 0
-	mock := &InvocationPutterMock{
-		PutInvocationFunc: func(_ analytics.Invocation) error {
-			puts++
-
-			return nil
-		},
-	}
-
-	e := &enrichment.Enricher{
-		Store:            store,
-		Client:           mock,
-		XcodeVersion:     "16.2",
-		XcodeBuildNumber: "16C5032a",
-	}
-
-	e.Enrich("", singleEntryGroup(enrichment.ManifestEntry{
-		UUID:       "manifest-uuid",
-		Signature:  "Build MyScheme",
-		SchemeName: "MyScheme",
-		Status:     "S",
-		Start:      base.Add(2 * time.Second),
-		Stop:       base.Add(8 * time.Second),
-	}))
-
-	assert.Zero(t, puts, "matched pending record must yield the InvocationID to the wrapper; re-PUT would clobber the rich row")
-
-	remaining, err := store.Load()
-	require.NoError(t, err)
-	assert.Empty(t, remaining, "matched pending entry must be pruned")
-}
-
 func TestEnricher_NoMatchPutsUnderManifestUUID(t *testing.T) {
 	dir := t.TempDir()
 	store := &enrichment.Store{Path: filepath.Join(dir, "pending.ndjson")}
@@ -533,10 +490,6 @@ type fakeSidecarReader struct {
 
 func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup, _ enrichment.LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
 	return f.blob, f.paths, f.invocationID, f.found
-}
-
-func (f *fakeSidecarReader) Has(_ enrichment.ManifestEntryGroup, _ enrichment.LookupFilter) bool {
-	return false
 }
 
 func (f *fakeSidecarReader) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]enrichment.SidecarGroup {

@@ -154,8 +154,6 @@ func Test_analyticsBundle_watcher_populatedFields(t *testing.T) {
 	assert.Equal(t, home, w.HomeDir)
 	assert.NotNil(t, w.Handle, "Watcher.Handle must be wired to Enricher.Enrich")
 	assert.Same(t, bundleTestLogger, w.Logger)
-	assert.NotNil(t, w.MatchProbe)
-	assert.Equal(t, enrichment.DefaultMaxCorrelationRetries, w.MaxCorrelationRetries)
 }
 
 func Test_analyticsBundle_watcher_globsIncludeManagedDD(t *testing.T) {
@@ -169,66 +167,6 @@ func Test_analyticsBundle_watcher_globsIncludeManagedDD(t *testing.T) {
 		"default Library/Developer DerivedData glob must be observed")
 	assert.Contains(t, w.Globs, paths.XcodeManagedDerivedDataManifestGlobRelative,
 		"wrapper-managed .bitrise/cache/xcode-dd glob must be observed")
-}
-
-func Test_analyticsBundle_watcher_matchProbe_returnsTrueOnOverlap(t *testing.T) {
-	home := t.TempDir()
-	b := newBundleForTest(t, home, "")
-
-	start := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	require.NoError(t, b.pending.Append(enrichment.PendingRecord{
-		InvocationID: "inv-1",
-		StartTime:    start,
-		Duration:     60_000, // ms — 1 minute window
-		HitRate:      0.5,
-	}))
-
-	w := b.ensureWatcher(t.Context(), bundleTestLogger)
-
-	// Entry that fully overlaps the pending record's window.
-	entry := enrichment.ManifestEntry{
-		UUID:  "u1",
-		Start: start.Add(5 * time.Second),
-		Stop:  start.Add(30 * time.Second),
-	}
-	assert.True(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
-}
-
-func Test_analyticsBundle_watcher_matchProbe_returnsFalseOnNoMatch(t *testing.T) {
-	home := t.TempDir()
-	b := newBundleForTest(t, home, "")
-
-	start := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
-	require.NoError(t, b.pending.Append(enrichment.PendingRecord{
-		InvocationID: "inv-1",
-		StartTime:    start,
-		Duration:     60_000,
-	}))
-
-	w := b.ensureWatcher(t.Context(), bundleTestLogger)
-
-	// Entry far in the future — no overlap.
-	entry := enrichment.ManifestEntry{
-		UUID:  "u1",
-		Start: start.Add(1 * time.Hour),
-		Stop:  start.Add(1 * time.Hour).Add(1 * time.Minute),
-	}
-	assert.False(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
-}
-
-func Test_analyticsBundle_watcher_matchProbe_returnsFalseWhenPendingNil(t *testing.T) {
-	home := t.TempDir()
-	b := newBundleForTest(t, home, "")
-	b.pending = nil
-
-	w := b.ensureWatcher(t.Context(), bundleTestLogger)
-
-	entry := enrichment.ManifestEntry{
-		UUID:  "u1",
-		Start: time.Now(),
-		Stop:  time.Now().Add(time.Minute),
-	}
-	assert.False(t, w.MatchProbe(enrichment.ManifestEntryGroup{Entries: []enrichment.ManifestEntry{entry}}))
 }
 
 func Test_analyticsBundle_retrier_populatedFields(t *testing.T) {

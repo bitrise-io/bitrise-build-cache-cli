@@ -105,33 +105,9 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 		return
 	}
 
-	var (
-		pending []PendingRecord
-		err     error
-	)
-
-	if e.Store != nil {
-		pending, err = e.Store.Load()
-		if err != nil {
-			logger.Warnf("Failed to load pending invocations for enrichment: %s", err)
-		}
-	}
-
 	command := group.Command()
 	if command == "" {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: side-effect only (uuids=%v)", group.SchemeName(), group.UUIDs())
-
-		return
-	}
-
-	if pendingID, matched := Correlate(GroupCorrelationSpan(group), pending); matched {
-		// Re-PUT would clobber the wrapper's rich row under BE last-write-wins.
-		logger.Debugf("Enrichment PUT skipped for %s: pending record already claims this invocation", pendingID)
-		if e.Store != nil {
-			if err := e.Store.Remove(pendingID); err != nil {
-				logger.Warnf("Failed to remove pending after skipping enrichment for %s: %s", pendingID, err)
-			}
-		}
 
 		return
 	}
@@ -262,17 +238,6 @@ func exitCodeFromRun(runStats analytics.InvocationRunStats) int {
 	}
 
 	return 1
-}
-
-// GroupCorrelationSpan collapses a group into a ManifestEntry (aggregate
-// Start/Stop over primary metadata) so Correlate can overlap-match against
-// pending records. See ManifestEntryGroup for the wide-span trade-off.
-func GroupCorrelationSpan(g ManifestEntryGroup) ManifestEntry {
-	p := g.Primary()
-	p.Start = g.Start()
-	p.Stop = g.Stop()
-
-	return p
 }
 
 // recordWrapperlessFailure returns true when the enriched payload was persisted to

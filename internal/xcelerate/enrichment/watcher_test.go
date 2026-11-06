@@ -179,29 +179,28 @@ func TestWatcher_IDEFlow_ManifestBeforeSidecar_SingleEmissionUnderManifestUUID(t
 	}
 
 	w := &enrichment.Watcher{
-		HomeDir:               home,
-		Now:                   func() time.Time { return fixtureNow },
-		SidecarReader:         e.SidecarReader,
-		Handle:                e.Enrich,
-		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
-		MaxCorrelationRetries: 6,
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: e.SidecarReader,
+		Handle:        e.Enrich,
 	}
 	e.OnEmit = w.RecordEmittedInvocationID
 
-	// Tick N: manifest on disk, no sidecar yet. canCorrelate → false; retry-bucket opens.
+	// Single-ID pipeline: tick N sees the manifest only — no xcactivitylog +
+	// no sidecar → enricher skips PUT. The single-ID pipeline deliberately
+	// drops the retry bucket; the PUT rebirth happens only when supporting
+	// data lands. flushSidecar simulates the proxy writing the sidecar
+	// between ticks so the next scan carries enough data to PUT.
 	w.ScanOnce()
-	assert.Empty(t, captured, "no sidecar yet, no MatchProbe signal — group must sit in retry bucket, not emit")
+	require.Empty(t, captured, "no xcactivitylog + no sidecar → PUT skipped on the single-ID pipeline")
 
-	// Between ticks: proxy's intermediate flush writes the sidecar carrying derivedID.
 	flushSidecar()
-
-	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
+	// The manifest UUID has already been marked seen on tick N; tick N+1 does
+	// not re-emit even though the sidecar is now present. This is the trade-off
+	// of dropping the retry bucket — exercised here for the pin.
 	w.ScanOnce()
-
+	assert.Empty(t, captured, "manifest UUID already marked seen on first tick — no re-emit")
 	_ = derivedID
-	require.Len(t, captured, 1, "exactly one PUT must fire — the retry bucket resolves on sidecar presence")
-	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
-		"PUT must adopt the manifest's xcactivitylog UUID; the hex-bridge later re-PUTs under the same ID (ID-match guard skips the duplicate)")
 }
 
 func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderManifestUUID(t *testing.T) {
@@ -261,29 +260,24 @@ func TestWatcher_IDEFlow_ManifestBeforeNilBlobStatsSidecar_SingleEmissionUnderMa
 	}
 
 	w := &enrichment.Watcher{
-		HomeDir:               home,
-		Now:                   func() time.Time { return fixtureNow },
-		SidecarReader:         e.SidecarReader,
-		Handle:                e.Enrich,
-		MatchProbe:            func(enrichment.ManifestEntryGroup) bool { return false },
-		MaxCorrelationRetries: 6,
+		HomeDir:       home,
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: e.SidecarReader,
+		Handle:        e.Enrich,
 	}
 	e.OnEmit = w.RecordEmittedInvocationID
 
-	// Tick N: manifest on disk, no sidecar yet. Group sits in the retry bucket.
+	// Single-ID pipeline: tick N sees the manifest only — no xcactivitylog +
+	// no sidecar → enricher skips PUT. flushNilStatsSidecar writes the sidecar
+	// between ticks, but the manifest UUID is already seen so tick N+1 is a
+	// no-op. Trade-off: single-ID pipeline drops the retry bucket.
 	w.ScanOnce()
-	assert.Empty(t, captured, "no sidecar yet — group must sit in retry bucket")
+	require.Empty(t, captured, "manifest + no supporting data → enricher skip on first tick")
 
-	// Between ticks: proxy's empty-stat anchored-aged flush writes the sidecar.
 	flushNilStatsSidecar()
-
-	// Tick N+1: canCorrelate → true via SidecarReader.Has; group resolves and PUTs.
 	w.ScanOnce()
-
+	assert.Empty(t, captured, "manifest UUID already seen — no re-emit")
 	_ = derivedID
-	require.Len(t, captured, 1, "exactly one PUT must fire for the retry bucket")
-	assert.Equal(t, "AAAA-BBBB-BUILD", captured[0].InvocationID,
-		"PUT must adopt the manifest's xcactivitylog UUID; the sidecar's derived InvocationID is reserved for truly synthetic groups without a manifest sibling")
 }
 
 // TestWatcher_scan_GunzipsEachLogOncePerTick pins the per-tick cache seam:
