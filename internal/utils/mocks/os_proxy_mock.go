@@ -34,6 +34,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			HostnameFunc: func() (string, error) {
 //				panic("mock out the Hostname method")
 //			},
+//			LstatFunc: func(name string) (os.FileInfo, error) {
+//				panic("mock out the Lstat method")
+//			},
 //			MkdirAllFunc: func(name string, mode os.FileMode) error {
 //				panic("mock out the MkdirAll method")
 //			},
@@ -45,6 +48,9 @@ var _ utils.OsProxy = &OsProxyMock{}
 //			},
 //			ReadFileIfExistsFunc: func(name string) (string, bool, error) {
 //				panic("mock out the ReadFileIfExists method")
+//			},
+//			ReadlinkFunc: func(name string) (string, error) {
+//				panic("mock out the Readlink method")
 //			},
 //			RemoveFunc: func(name string) error {
 //				panic("mock out the Remove method")
@@ -86,6 +92,9 @@ type OsProxyMock struct {
 	// HostnameFunc mocks the Hostname method.
 	HostnameFunc func() (string, error)
 
+	// LstatFunc mocks the Lstat method.
+	LstatFunc func(name string) (os.FileInfo, error)
+
 	// MkdirAllFunc mocks the MkdirAll method.
 	MkdirAllFunc func(name string, mode os.FileMode) error
 
@@ -97,6 +106,9 @@ type OsProxyMock struct {
 
 	// ReadFileIfExistsFunc mocks the ReadFileIfExists method.
 	ReadFileIfExistsFunc func(name string) (string, bool, error)
+
+	// ReadlinkFunc mocks the Readlink method.
+	ReadlinkFunc func(name string) (string, error)
 
 	// RemoveFunc mocks the Remove method.
 	RemoveFunc func(name string) error
@@ -137,6 +149,11 @@ type OsProxyMock struct {
 		// Hostname holds details about calls to the Hostname method.
 		Hostname []struct {
 		}
+		// Lstat holds details about calls to the Lstat method.
+		Lstat []struct {
+			// Name is the name argument value.
+			Name string
+		}
 		// MkdirAll holds details about calls to the MkdirAll method.
 		MkdirAll []struct {
 			// Name is the name argument value.
@@ -160,6 +177,11 @@ type OsProxyMock struct {
 		}
 		// ReadFileIfExists holds details about calls to the ReadFileIfExists method.
 		ReadFileIfExists []struct {
+			// Name is the name argument value.
+			Name string
+		}
+		// Readlink holds details about calls to the Readlink method.
+		Readlink []struct {
 			// Name is the name argument value.
 			Name string
 		}
@@ -201,10 +223,12 @@ type OsProxyMock struct {
 	lockFindProcess      sync.RWMutex
 	lockGetwd            sync.RWMutex
 	lockHostname         sync.RWMutex
+	lockLstat            sync.RWMutex
 	lockMkdirAll         sync.RWMutex
 	lockOpenFile         sync.RWMutex
 	lockReadDir          sync.RWMutex
 	lockReadFileIfExists sync.RWMutex
+	lockReadlink         sync.RWMutex
 	lockRemove           sync.RWMutex
 	lockRename           sync.RWMutex
 	lockStat             sync.RWMutex
@@ -358,6 +382,38 @@ func (mock *OsProxyMock) HostnameCalls() []struct {
 	return calls
 }
 
+// Lstat calls LstatFunc.
+func (mock *OsProxyMock) Lstat(name string) (os.FileInfo, error) {
+	if mock.LstatFunc == nil {
+		panic("OsProxyMock.LstatFunc: method is nil but OsProxy.Lstat was just called")
+	}
+	callInfo := struct {
+		Name string
+	}{
+		Name: name,
+	}
+	mock.lockLstat.Lock()
+	mock.calls.Lstat = append(mock.calls.Lstat, callInfo)
+	mock.lockLstat.Unlock()
+	return mock.LstatFunc(name)
+}
+
+// LstatCalls gets all the calls that were made to Lstat.
+// Check the length with:
+//
+//	len(mockedOsProxy.LstatCalls())
+func (mock *OsProxyMock) LstatCalls() []struct {
+	Name string
+} {
+	var calls []struct {
+		Name string
+	}
+	mock.lockLstat.RLock()
+	calls = mock.calls.Lstat
+	mock.lockLstat.RUnlock()
+	return calls
+}
+
 // MkdirAll calls MkdirAllFunc.
 func (mock *OsProxyMock) MkdirAll(name string, mode os.FileMode) error {
 	if mock.MkdirAllFunc == nil {
@@ -495,6 +551,38 @@ func (mock *OsProxyMock) ReadFileIfExistsCalls() []struct {
 	mock.lockReadFileIfExists.RLock()
 	calls = mock.calls.ReadFileIfExists
 	mock.lockReadFileIfExists.RUnlock()
+	return calls
+}
+
+// Readlink calls ReadlinkFunc.
+func (mock *OsProxyMock) Readlink(name string) (string, error) {
+	if mock.ReadlinkFunc == nil {
+		panic("OsProxyMock.ReadlinkFunc: method is nil but OsProxy.Readlink was just called")
+	}
+	callInfo := struct {
+		Name string
+	}{
+		Name: name,
+	}
+	mock.lockReadlink.Lock()
+	mock.calls.Readlink = append(mock.calls.Readlink, callInfo)
+	mock.lockReadlink.Unlock()
+	return mock.ReadlinkFunc(name)
+}
+
+// ReadlinkCalls gets all the calls that were made to Readlink.
+// Check the length with:
+//
+//	len(mockedOsProxy.ReadlinkCalls())
+func (mock *OsProxyMock) ReadlinkCalls() []struct {
+	Name string
+} {
+	var calls []struct {
+		Name string
+	}
+	mock.lockReadlink.RLock()
+	calls = mock.calls.Readlink
+	mock.lockReadlink.RUnlock()
 	return calls
 }
 

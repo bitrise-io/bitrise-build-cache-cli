@@ -46,6 +46,13 @@ func TestPaths_xcelerate(t *testing.T) {
 	assert.Equal(t, "/h/.bitrise-xcelerate/bin/xcodebuild", p.XcelerateBinFile("xcodebuild"))
 }
 
+func TestPaths_xcodeApp(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t, "/h/.bitrise-xcelerate/xcode-app.xcconfig", p.XcodeAppOverrideXCConfigFile())
+	assert.Equal(t, ".bitrise-build-cache.xcconfig", XcodeAppSiblingXCConfigFileName)
+}
+
 func TestPaths_proxySocket(t *testing.T) {
 	p := FromHome("/h")
 
@@ -87,6 +94,10 @@ func TestPaths_xcelerateEnrichment(t *testing.T) {
 
 func TestRepoLocalConfigPath(t *testing.T) {
 	assert.Equal(t, "/repo/.bitrise-build-cache/xcode-build.json", RepoLocalConfigPath("/repo", "xcode-build.json"))
+}
+
+func TestXcodeSelectLinkCASPluginPath(t *testing.T) {
+	assert.Equal(t, "/var/db/xcode_select_link/usr/lib/libToolchainCASPlugin.dylib", XcodeSelectLinkCASPluginPath())
 }
 
 type osDirMaker struct{}

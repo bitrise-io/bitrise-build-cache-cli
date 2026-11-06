@@ -40,6 +40,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			WriteFileFunc: os.WriteFile,
 			RenameFunc:    os.Rename,
 			RemoveFunc:    os.Remove,
+			LstatFunc:     func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
 		}
 
 		err := xcode.ActivateXcodeCommandFn(
