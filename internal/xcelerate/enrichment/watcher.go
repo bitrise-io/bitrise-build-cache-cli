@@ -46,6 +46,16 @@ type Watcher struct {
 	// used by tests that only care about the channel read side.
 	CrashFallback func(invocationID string)
 
+	// SessionsDir is the on-disk sidecar directory the single-ID aggregator
+	// reads through GroupSidecarsByProxyID. Empty disables the orphan-sidecar
+	// PUT path.
+	SessionsDir string
+
+	// OrphanEmitter is called once per aggregated proxy-ID group the orphan
+	// scan surfaces. Wired to Enricher.EmitOrphan in production. nil skips the
+	// PUT path and leaves sidecars on disk.
+	OrphanEmitter func(group *ProxyIDGroup)
+
 	// SidecarReader feeds two scan-tail paths: (a) per-scan DerivedDataPath
 	// hints turn each unique DD path into a <DD>/Logs/*/LogStoreManifest.plist
 	// glob, layered on top of the HOME-relative defaults so a direct
@@ -332,69 +342,47 @@ func cachedMetricsLookup(cache map[string]xcactivitylog.Metrics, manifestPath st
 	}
 }
 
-// scanOrphanSidecars synthesizes pseudo-groups from aged orphan sidecars whose
-// WrapperSession.InvocationID is populated and was NOT already emitted via the
-// manifest path this tick. forceSynthesize drops the minAge gate — used by the
-// shutdown sweep so a sidecar that just closed still lands before exit.
+// scanOrphanSidecars reads the sessions dir with GroupSidecarsByProxyID and
+// drives OrphanEmitter once per aggregated group whose InvocationID did NOT
+// emit through the manifest path this tick. The classifier-derived Primary
+// RowType rides into OrphanEmitter so the PUT's command label matches the
+// row-type table in the single-ID ruleset.
 //
-// Two emission shapes:
-//   - Boundary-bridge: the sidecar's time window lands inside a Build boundary
-//     recorded in a reachable Logs/Build/LogStoreManifest.plist (PR596 S7).
-//     Clone that manifest group, attach the sidecar blob stats, PUT under the
-//     boundary's UniqueIdentifier so the BE overwrite carries a superset of
-//     the manifest row. Attributes dark-build CAS traffic and indexer activity
-//     that landed between master start and (master stop + grace) back to the
-//     master Build entry's UUID instead of minting a parallel orphan row.
-//   - No match: fall through to a slim SyntheticManifestGroup under the
-//     proxy-derived InvocationID (separate BE row). Applies when no plist
-//     ever landed (CLI xcodebuild with no DerivedData) or the sidecar lands
-//     outside every known Build boundary's window+grace.
+// Sidecars left on disk at this point are ones the manifest-driven Enrich
+// path did not consume via SidecarReader.Lookup (consumed sidecars are
+// unlinked synchronously inside Handle before this function runs).
 //
-// Sidecars left on disk at this point are ones the manifest-driven Enrich path
-// did not consume via SidecarReader.Lookup (consumed sidecars are unlinked
-// synchronously inside Handle before this function runs).
-func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
-	if w.SidecarReader == nil {
+// forceSynthesize is retained as a hint for a future immediate-emit mode on
+// shutdown; the classifier path already fires per tick, so the flag is a
+// no-op today.
+func (w *Watcher) scanOrphanSidecars(_ bool) {
+	if w.SessionsDir == "" || w.OrphanEmitter == nil {
 		return
 	}
 
 	logger := logOr(w.Logger)
 
-	pollInterval := w.PollInterval
-	if pollInterval == 0 {
-		pollInterval = DefaultPollInterval
-	}
-
-	minAge := 2 * pollInterval
-	if forceSynthesize {
-		minAge = 0
-	}
-
-	groups := w.SidecarReader.OrphanSidecarsGroupedByInvocation(w.now(), minAge)
+	groups := GroupSidecarsByProxyID(w.SessionsDir, logger)
 	for invocationID, group := range groups {
 		if _, emitted := w.tickEmittedIDs[invocationID]; emitted {
 			logger.Debugf("Watcher: skip orphan for InvocationID %s (manifest path emitted this tick)", invocationID)
 
 			continue
 		}
-		if len(group.SidecarUUIDs) == 0 {
+
+		if group == nil || len(group.SidecarPaths) == 0 {
 			continue
 		}
 
 		if group.Blob == nil || group.Blob.IsEmpty() {
-			logger.Debugf("Watcher: suppress zero-blob orphan for InvocationID %s (no CAS transfer, %d sidecar(s))", invocationID, len(group.SidecarUUIDs))
-			unlinkSidecars(group.Paths, logger)
+			logger.Debugf("Watcher: suppress zero-blob orphan for InvocationID %s (no CAS transfer, %d sidecar(s))",
+				invocationID, len(group.SidecarPaths))
+			unlinkSidecars(group.SidecarPaths, logger)
 
 			continue
 		}
 
-		// Single-ID payload store merges orphan sidecar signals under the
-		// proxy-derived InvocationID; the 60s crash-fallback carries the
-		// record to a PUT if no plist ever lands. No synthetic emission path
-		// here — pre-ruleset emits produced the ordering bug (see
-		// project_wrapperless_cas_pipeline_and_ruleset).
-		logger.Debugf("Watcher: orphan sidecar held for InvocationID %s (%d sidecar(s)) — payload store owns the merge",
-			invocationID, len(group.SidecarUUIDs))
+		w.OrphanEmitter(group)
 	}
 }
 

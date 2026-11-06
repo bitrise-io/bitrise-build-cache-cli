@@ -3,6 +3,7 @@
 package enrichment_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,6 +14,47 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 )
+
+func TestEnricher_EmitOrphanPUTsUnderProxyInvocationID(t *testing.T) {
+	dir := t.TempDir()
+	pstore := &enrichment.PayloadStore{Path: filepath.Join(dir, "payload.ndjson")}
+
+	// Place a sidecar file so EmitOrphan's successful PUT can unlink it.
+	sidecarPath := filepath.Join(dir, "sidecar.json")
+	require.NoError(t, os.WriteFile(sidecarPath, []byte(`{}`), 0o600))
+
+	var captured analytics.Invocation
+	mock := &InvocationPutterMock{
+		PutInvocationFunc: func(inv analytics.Invocation) error {
+			captured = inv
+
+			return nil
+		},
+	}
+
+	e := &enrichment.Enricher{Client: mock, PayloadStore: pstore}
+	e.EmitOrphan(&enrichment.ProxyIDGroup{
+		InvocationID:    "orphan-id",
+		Primary:         enrichment.RowDarkBuild,
+		Start:           time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC),
+		Stop:            time.Date(2026, 11, 6, 10, 0, 5, 0, time.UTC),
+		SidecarPaths:    []string{sidecarPath},
+		DerivedDataPath: "/x/Library/Developer/Xcode/DerivedData/Seek-abcdefghijklmnopqrstuv",
+	})
+
+	require.Len(t, mock.PutInvocationCalls(), 1, "orphan emit must PUT exactly once")
+	assert.Equal(t, "orphan-id", captured.InvocationID)
+	assert.Contains(t, captured.Command, "build", "DarkBuild RowType → build label")
+	assert.Contains(t, captured.Command, "Seek", "scheme from DD basename rides into command label")
+
+	records, err := pstore.Load()
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.Equal(t, enrichment.PayloadStatusEmitted, records[0].Status)
+
+	_, statErr := os.Stat(sidecarPath)
+	assert.True(t, os.IsNotExist(statErr), "sidecar must be unlinked on successful PUT")
+}
 
 func TestEnricher_EmitCrashFallbackRePUTsPendingRecord(t *testing.T) {
 	dir := t.TempDir()

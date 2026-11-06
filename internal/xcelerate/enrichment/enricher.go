@@ -201,6 +201,140 @@ func VisitURL(invocationID string) string {
 	return "https://app.bitrise.io/build-cache/invocations/xcode/" + invocationID
 }
 
+// EmitOrphan is the single-ID pipeline's orphan-sidecar PUT. The Watcher
+// hands in a *ProxyIDGroup built by GroupSidecarsByProxyID; EmitOrphan builds
+// a minimal analytics.Invocation from the aggregated signals, upserts the
+// payload store as PendingTerminal, PUTs under the proxy InvocationID, and
+// upserts Emitted on success. Sidecar paths are unlinked after a successful
+// PUT. Silent no-op when Client is nil (test fixtures).
+func (e *Enricher) EmitOrphan(group *ProxyIDGroup) {
+	if e == nil || group == nil || e.Client == nil || group.InvocationID == "" {
+		return
+	}
+
+	logger := logOr(e.Logger)
+
+	command := labelForRowType(group.Primary, group.DerivedDataPath)
+	merged := MergedPayload{
+		Blob:         group.Blob,
+		Scheme:       schemeFromDerivedData(group.DerivedDataPath),
+		Command:      command,
+		Start:        group.Start,
+		Stop:         group.Stop,
+		DurationMs:   durationMs(group.Start, group.Stop),
+		SuccessKnown: true,
+		Success:      true,
+	}
+
+	e.upsertOrphanPayload(group.InvocationID, merged, PayloadStatusPendingTerminal)
+
+	inv := merged.ToInvocation(group.InvocationID, e.Auth, e.Metadata, e.XcodeVersion, e.XcodeBuildNumber)
+	if err := e.Client.PutInvocation(inv); err != nil {
+		logger.Warnf("Failed to PUT orphan invocation %s: %s", group.InvocationID, err)
+
+		return
+	}
+
+	e.upsertOrphanPayload(group.InvocationID, merged, PayloadStatusEmitted)
+	unlinkSidecars(group.SidecarPaths, logger)
+
+	if e.OnEmit != nil {
+		e.OnEmit(group.InvocationID)
+	}
+
+	logger.Infof("Enriched orphan PUT %s (wrapperless rowtype=%s cmd=%s sidecars=%d)",
+		group.InvocationID, group.Primary, command, len(group.SidecarPaths))
+	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(group.InvocationID))
+}
+
+// labelForRowType maps a classified RowType to the `command` string the BE
+// row carries. Scheme suffix comes from the DerivedData basename when
+// available; otherwise the bare label travels alone.
+func labelForRowType(rt RowType, derivedDataPath string) string {
+	scheme := schemeFromDerivedData(derivedDataPath)
+	base := map[RowType]string{
+		RowMainBuild:      "build",
+		RowDarkBuild:      "build",
+		RowIndexer:        "indexing",
+		RowPackageResolve: "resolve-packages",
+		RowSigning:        "signing",
+		RowLocalization:   "localization",
+		RowClean:          "clean",
+		RowArchive:        "archive",
+		RowTest:           "test",
+		RowInstallHeaders: "install-headers",
+	}
+	label, ok := base[rt]
+	if !ok {
+		label = "build"
+	}
+
+	if scheme == "" {
+		return label
+	}
+
+	return label + " [" + scheme + "]"
+}
+
+// schemeFromDerivedData parses the <scheme>-<hash> DerivedData basename into
+// a scheme name. Returns "" when the DD path does not match the
+// <scheme>-<hash> shape (direct `xcodebuild -derivedDataPath ./foo` lands as
+// "foo", which carries no scheme hint).
+func schemeFromDerivedData(dd string) string {
+	if dd == "" {
+		return ""
+	}
+
+	base := filepath.Base(dd)
+	// Xcode's layout is <SchemeOrWorkspace>-<alphanumHash>. Trim the trailing
+	// -<hash> if present.
+	if idx := strings.LastIndex(base, "-"); idx > 0 {
+		candidate := base[idx+1:]
+		if len(candidate) >= 20 && isAlnum(candidate) {
+			return base[:idx]
+		}
+	}
+
+	return base
+}
+
+func isAlnum(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+
+	return true
+}
+
+func durationMs(start, stop time.Time) int64 {
+	if start.IsZero() || stop.IsZero() || !stop.After(start) {
+		return 0
+	}
+
+	return stop.Sub(start).Milliseconds()
+}
+
+// upsertOrphanPayload writes a PayloadRecord for the orphan path. Silent
+// no-op when PayloadStore is nil (test fixtures that only observe the PUT).
+func (e *Enricher) upsertOrphanPayload(invocationID string, merged MergedPayload, status PayloadStatus) {
+	if e.PayloadStore == nil {
+		return
+	}
+
+	rec := PayloadRecord{
+		InvocationID:  invocationID,
+		LastUpdatedAt: e.now(),
+		Status:        status,
+		Merged:        merged,
+	}
+
+	if err := e.PayloadStore.Upsert(rec); err != nil {
+		logOr(e.Logger).Debugf("payload store upsert orphan %s status=%s failed: %s", invocationID, status, err)
+	}
+}
+
 // EmitCrashFallback re-emits a PayloadStore record whose crash-fallback timer
 // fired. Ruleset §4: a crash must be reported, not silently dropped. Reads
 // the last-known merged payload from the ledger and PUTs it; a successful PUT

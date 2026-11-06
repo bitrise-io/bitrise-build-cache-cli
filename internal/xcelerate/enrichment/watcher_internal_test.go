@@ -4,6 +4,7 @@ package enrichment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
 )
 
 // nonEmptySidecarBlob returns a Snapshot with a single Download op so it
@@ -678,3 +680,122 @@ func TestWatcher_ScanOnceWithEmit_InvokesObserver(t *testing.T) {
 	assert.Empty(t, observed, "observer must not persist past ScanOnceWithEmit")
 }
 
+func writeOrphanSidecar(t *testing.T, dir, name string, s sessions.Sidecar) {
+	t.Helper()
+	body, err := json.Marshal(s)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), body, 0o600))
+}
+
+// TestWatcher_scanOrphanSidecars_FiresEmitterPerAggregatedGroup pins the
+// single-ID orphan path: GroupSidecarsByProxyID walks the sessions dir, and
+// each per-InvocationID group fires OrphanEmitter exactly once with the
+// classifier-derived Primary RowType.
+func TestWatcher_scanOrphanSidecars_FiresEmitterPerAggregatedGroup(t *testing.T) {
+	sessionsDir := t.TempDir()
+	base := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
+
+	writeOrphanSidecar(t, sessionsDir, "dark.json", sessions.Sidecar{
+		SchemaVersion:      3,
+		SidecarUUID:        "sc-dark",
+		PeerPID:            11,
+		PeerAncestry:       []string{"xcodebuild"},
+		AcceptedAt:         base,
+		ClosedAt:           base.Add(5 * time.Second),
+		BlobStats:          nonEmptySidecarBlob(),
+		WrapperSession:     &sessions.WrapperLink{InvocationID: "inv-dark"},
+		DerivedDataPath:    "/x/DD",
+		BuildRequestAction: "build",
+		BuildRequestQoS:    "default",
+	})
+
+	var captured []*ProxyIDGroup
+	w := &Watcher{
+		Now:         func() time.Time { return base.Add(time.Minute) },
+		HomeDir:     t.TempDir(),
+		SessionsDir: sessionsDir,
+		OrphanEmitter: func(g *ProxyIDGroup) {
+			captured = append(captured, g)
+		},
+	}
+	w.seen = map[string]struct{}{}
+	w.tickEmittedIDs = map[string]struct{}{}
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, captured, 1, "orphan emitter must fire once for the DarkBuild group")
+	assert.Equal(t, "inv-dark", captured[0].InvocationID)
+	assert.Equal(t, RowDarkBuild, captured[0].Primary)
+}
+
+// TestWatcher_scanOrphanSidecars_SkipsTickEmitted pins the dedup contract:
+// an orphan group whose InvocationID already emitted via the manifest path
+// this tick must not fire the orphan emitter again.
+func TestWatcher_scanOrphanSidecars_SkipsTickEmitted(t *testing.T) {
+	sessionsDir := t.TempDir()
+	base := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
+
+	writeOrphanSidecar(t, sessionsDir, "main.json", sessions.Sidecar{
+		SchemaVersion:      3,
+		SidecarUUID:        "sc-main",
+		PeerPID:            10,
+		PeerAncestry:       []string{"xcodebuild"},
+		AcceptedAt:         base,
+		ClosedAt:           base.Add(5 * time.Second),
+		BlobStats:          nonEmptySidecarBlob(),
+		WrapperSession:     &sessions.WrapperLink{InvocationID: "inv-main"},
+		DerivedDataPath:    "/x/DD",
+		BuildRequestAction: "build",
+	})
+
+	var fired int
+	w := &Watcher{
+		Now:           func() time.Time { return base.Add(time.Minute) },
+		HomeDir:       t.TempDir(),
+		SessionsDir:   sessionsDir,
+		OrphanEmitter: func(*ProxyIDGroup) { fired++ },
+	}
+	w.seen = map[string]struct{}{}
+	w.tickEmittedIDs = map[string]struct{}{"inv-main": {}}
+
+	w.scanOrphanSidecars(false)
+
+	assert.Zero(t, fired, "orphan emitter must not fire for an ID already emitted this tick")
+}
+
+// TestWatcher_scanOrphanSidecars_SuppressesZeroBlob pins the zero-CAS gate:
+// a sidecar with no blob transfer is noise and unlinks instead of PUTting.
+func TestWatcher_scanOrphanSidecars_SuppressesZeroBlob(t *testing.T) {
+	sessionsDir := t.TempDir()
+	base := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
+
+	writeOrphanSidecar(t, sessionsDir, "zero.json", sessions.Sidecar{
+		SchemaVersion:      3,
+		SidecarUUID:        "sc-zero",
+		PeerPID:            12,
+		PeerAncestry:       []string{"xcodebuild"},
+		AcceptedAt:         base,
+		ClosedAt:           base.Add(5 * time.Second),
+		WrapperSession:     &sessions.WrapperLink{InvocationID: "inv-zero"},
+		DerivedDataPath:    "/x/DD",
+		BuildRequestAction: "build",
+		// No BlobStats — zero-blob gate.
+	})
+
+	var fired int
+	w := &Watcher{
+		Now:           func() time.Time { return base.Add(time.Minute) },
+		HomeDir:       t.TempDir(),
+		SessionsDir:   sessionsDir,
+		OrphanEmitter: func(*ProxyIDGroup) { fired++ },
+	}
+	w.seen = map[string]struct{}{}
+	w.tickEmittedIDs = map[string]struct{}{}
+
+	w.scanOrphanSidecars(false)
+
+	assert.Zero(t, fired, "zero-blob orphan must not PUT")
+	entries, err := os.ReadDir(sessionsDir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "zero-blob orphan sidecars must be unlinked")
+}

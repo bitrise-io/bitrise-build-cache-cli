@@ -363,6 +363,8 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 		PayloadStore:         b.payloadStore,
 		CrashFallbackChannel: b.crashFallbackChannel,
 		CrashFallback:        enricher.EmitCrashFallback,
+		SessionsDir:          b.sessionsDir,
+		OrphanEmitter:        enricher.EmitOrphan,
 		SidecarReader:        sidecarReader,
 		SetMetricsLookup:     enricher.SetMetricsLookup,
 	}
