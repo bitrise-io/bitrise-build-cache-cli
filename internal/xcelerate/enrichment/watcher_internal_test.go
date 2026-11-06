@@ -859,7 +859,7 @@ func TestWatcher_ScanOnceWithEmit_InvokesObserver(t *testing.T) {
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(_ string, g ManifestEntryGroup) {
-			w.RecordEmittedInvocationID("inv-"+g.UUIDs()[0], "", g, nil)
+			w.RecordEmittedInvocationID("inv-" + g.UUIDs()[0])
 		},
 	}
 

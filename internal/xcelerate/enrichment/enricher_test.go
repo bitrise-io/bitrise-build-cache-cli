@@ -802,7 +802,7 @@ func TestEnricher_OnEmit_FiresWithPUTInvocationID(t *testing.T) {
 		Store:         store,
 		Client:        mock,
 		SidecarReader: &fakeSidecarReader{found: true, blob: blobSnapshotWith(1, 0, 0), invocationID: "sidecar-id"},
-		OnEmit: func(id string, _ string, _ enrichment.ManifestEntryGroup, _ *blobstats.Snapshot) {
+		OnEmit: func(id string) {
 			emitted = append(emitted, id)
 		},
 	}
@@ -831,7 +831,7 @@ func TestEnricher_OnEmit_DoesNotFireOnPutFailure(t *testing.T) {
 	e := &enrichment.Enricher{
 		Store:  store,
 		Client: mock,
-		OnEmit: func(id string, _ string, _ enrichment.ManifestEntryGroup, _ *blobstats.Snapshot) {
+		OnEmit: func(id string) {
 			emitted = append(emitted, id)
 		},
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
@@ -21,13 +20,6 @@ const DefaultPollInterval = 5 * time.Second
 const DefaultDerivedDataGlob = "Library/Developer/Xcode/DerivedData/*/Logs/*/LogStoreManifest.plist"
 
 const DefaultMaxCorrelationRetries = 6
-
-// RecentEmissionsRetention bounds how long a manifest-emission is kept in
-// Watcher.recentEmissions so scanOrphanSidecars can dedup a pseudo-group PUT
-// across scan ticks. Covers the typical manifest-orphan-mint → sidecar-flush
-// gap on the IDE flow (orphan mints ~30s after first sighting; sidecar flushes
-// seconds-to-minutes after build end).
-const RecentEmissionsRetention = 10 * time.Minute
 
 type Watcher struct {
 	HomeDir      string
@@ -87,18 +79,13 @@ type Watcher struct {
 	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
 	tickEmittedIDs map[string]struct{}
 
-	// recentEmissions holds IDs the manifest path just PUT; scanOrphanSidecars
-	// consults it to skip clobbering pseudo-group PUTs. Pruned at scan start by
-	// RecentEmissionsRetention.
-	recentEmissions map[string]emissionRecord
-
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
 	lastStalledLogAt time.Time
 
 	// scanMu serializes Run's ticker-driven scans with external one-shot calls
 	// (ScanOnce, ScanOnceWithEmit) so background + flush-session paths cannot
-	// race over seen / recentEmissions / tickEmittedIDs.
+	// race over seen / tickEmittedIDs.
 	scanMu sync.Mutex
 
 	// emitObserver is a transient callback installed by ScanOnceWithEmit that
@@ -108,70 +95,22 @@ type Watcher struct {
 	emitObserver atomic.Pointer[func(string)]
 }
 
-// emissionRecord pairs a manifest-emitted group with the time it was recorded
-// so Watcher.recentEmissions can age out stale entries beyond RecentEmissionsRetention.
-// BuildDescriptionHash lets scanOrphanSidecars key a hex-exact match against the
-// sidecar's recorded build-request hex. MasterBlob is the sidecar snapshot the
-// master emission already carried (nil when the master ran with no CAS/KV
-// traffic); tryBoundaryBridgeClone sums it with the orphan's blob so a
-// warm-rebuild master's bytes are not dropped on the S7 boundary-bridge clone.
-type emissionRecord struct {
-	group                ManifestEntryGroup
-	emittedAt            time.Time
-	BuildDescriptionHash string
-	MasterBlob           *blobstats.Snapshot
-}
-
-// RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
-// the per-tick dedup set that scanOrphanSidecars reads: a sidecar whose ID
-// just emitted via the manifest path must not re-emit as a pseudo-group. It
-// also stashes the emitted group in recentEmissions so scanOrphanSidecars can
-// find an overlapping manifest window and skip clobbering the authoritative row.
-// buildDescriptionHash may be empty — hash extraction is best-effort.
-// masterBlob is the sidecar snapshot the master emission already carried, so
-// tryBoundaryBridgeClone can sum it with the orphan's blob on a clone instead
-// of dropping the master's own bytes. nil when the master had no sidecar.
-func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptionHash string, group ManifestEntryGroup, masterBlob *blobstats.Snapshot) {
+// RecordEmittedInvocationID feeds the per-tick dedup set that
+// scanOrphanSidecars reads: a sidecar whose ID just emitted via the manifest
+// path must not re-emit as a pseudo-group. Payload-store ledger owns
+// cross-tick dedup now; this helper exists only to populate tickEmittedIDs
+// and fire the observer.
+func (w *Watcher) RecordEmittedInvocationID(invocationID string) {
 	if invocationID == "" {
 		return
 	}
 
-	now := w.now()
 	if w.tickEmittedIDs != nil {
 		w.tickEmittedIDs[invocationID] = struct{}{}
-	}
-	if w.recentEmissions != nil {
-		// Empty hash from a hex-bridge re-PUT must not clobber the originating emit's hash.
-		if buildDescriptionHash == "" {
-			if prior, ok := w.recentEmissions[invocationID]; ok && prior.BuildDescriptionHash != "" {
-				buildDescriptionHash = prior.BuildDescriptionHash
-			}
-		}
-		w.recentEmissions[invocationID] = emissionRecord{
-			group:                group,
-			emittedAt:            now,
-			BuildDescriptionHash: buildDescriptionHash,
-			MasterBlob:           masterBlob,
-		}
 	}
 
 	if cb := w.emitObserver.Load(); cb != nil {
 		(*cb)(invocationID)
-	}
-}
-
-// pruneRecentEmissions drops recentEmissions entries older than
-// RecentEmissionsRetention. Called at scan start — the retention window is the
-// upper bound on the manifest-orphan-mint → sidecar-flush gap we're willing to
-// correlate across.
-func (w *Watcher) pruneRecentEmissions() {
-	cutoff := w.now().Add(-RecentEmissionsRetention)
-	if w.recentEmissions != nil {
-		for id, rec := range w.recentEmissions {
-			if rec.emittedAt.Before(cutoff) {
-				delete(w.recentEmissions, id)
-			}
-		}
 	}
 }
 
@@ -223,7 +162,6 @@ func (w *Watcher) Run(ctx context.Context) {
 	w.scanMu.Lock()
 	w.seen = make(map[string]struct{})
 	w.retries = make(map[string]int)
-	w.recentEmissions = make(map[string]emissionRecord)
 	seeded := w.seedSeenFromStore()
 	if !seeded {
 		w.scan(true, false)
@@ -280,9 +218,6 @@ func (w *Watcher) ensureMaps() {
 	if w.retries == nil {
 		w.retries = make(map[string]int)
 	}
-	if w.recentEmissions == nil {
-		w.recentEmissions = make(map[string]emissionRecord)
-	}
 }
 
 // seedSeenFromStore returns true when HandledStore contributed at least one
@@ -317,11 +252,6 @@ func (w *Watcher) scan(seedOnly, forceSynthesize bool) {
 	}()
 
 	w.drainCrashFallbackChannel(logger)
-
-	if w.recentEmissions == nil {
-		w.recentEmissions = make(map[string]emissionRecord)
-	}
-	w.pruneRecentEmissions()
 
 	// metricsCache is scoped to this scan tick: a log gunzipped by grouping
 	// (hex-aware split) is reused by aggregateHitRate. Cleared at scan tail so
@@ -499,22 +429,11 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 	}
 }
 
-// tryBoundaryBridgeClone dispatches a manifest-UUID-anchored clone when the
-// orphan sidecar's time window overlaps a Build boundary carried by one of
-// the DerivedData paths the sidecar itself recorded (PR596 S7). Returns true
-// when a clone was dispatched (caller must continue). Returns false when no
-// boundary encloses the sidecar, or when the enclosing boundary's UUID has
-// already been PUT this retention window — in which case the caller falls
-// through to the slim pseudo-group path so residual sidecars land under their
-// proxy-derived InvocationID as post-build activity, rather than clobbering
-// Path A's blob stats under BE last-write-wins.
-//
-// Blob merge: the clone sums the master's blob (stashed in emissionRecord by
-// RecordEmittedInvocationID) with the orphan's own snapshot via mergeBlobs so
-// a warm-rebuild master that itself carried traffic doesn't get its bytes
-// dropped on the re-PUT. Either side may be nil (cold-master-plus-dark-build
-// is the dominant observed case); mergeBlobs collapses that to the non-nil
-// side or nil-both.
+// tryBoundaryBridgeClone emits a non-Build SyntheticBoundaryGroup when the
+// orphan sidecar's time window overlaps a non-Build boundary (Package /
+// Signing / Localization). Build-domain boundaries are handled by the
+// single-ID payload store merge. Returns true when a non-Build emission
+// landed, false otherwise.
 func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
 	// Orphan sidecars from Xcode.app's SWBBuildService XPC path (SPM prep,
 	// signing, localization) have no xcodebuild in their ancestor chain, so
@@ -544,28 +463,15 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 		return false
 	}
 
-	// Non-Build domains (Package / Signing / Localization) fire on Xcode launch
-	// without a user ⌘B, so they never flow through the enricher's manifest
-	// emission path and never populate recentEmissions. Synthesize a group
-	// anchored at the boundary's own UUID with a label sourced from the
-	// boundary's Signature, bypassing the recentEmissions lookup entirely.
+	// Non-Build domains (Package / Signing / Localization) fire on Xcode
+	// launch without a user ⌘B. Synthesize a group anchored at the boundary's
+	// own UUID with a label sourced from the boundary's Signature.
 	if enclosing.Domain != DomainBuild {
 		synth := SyntheticBoundaryGroup(enclosing, group.Blob, group.Paths)
 		logger.Debugf("Watcher: boundary-bridged pseudo-group for %s domain — sidecar at=%s matched boundary UUID %s signature=%q via %s (InvocationID %s)",
 			enclosing.Domain, at.Format(time.RFC3339), enclosing.UniqueIdentifier, enclosing.Signature, boundaryDD, invocationID)
 		if w.Handle != nil {
 			w.Handle("", synth)
-		}
-
-		// Residual sidecars sharing this proxy-side InvocationID must skip the
-		// slim pseudo-group path. MasterBlob stays nil — there is no "master"
-		// emission for a non-Build boundary; the synth group's attached blob IS
-		// the data path.
-		if w.recentEmissions != nil {
-			w.recentEmissions[invocationID] = emissionRecord{
-				group:     synth,
-				emittedAt: w.now(),
-			}
 		}
 
 		return true
