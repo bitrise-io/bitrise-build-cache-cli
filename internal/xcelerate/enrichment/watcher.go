@@ -11,6 +11,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 )
@@ -104,11 +105,15 @@ type Watcher struct {
 // emissionRecord pairs a manifest-emitted group with the time it was recorded
 // so Watcher.recentEmissions can age out stale entries beyond RecentEmissionsRetention.
 // BuildDescriptionHash lets scanOrphanSidecars key a hex-exact match against the
-// sidecar's recorded build-request hex.
+// sidecar's recorded build-request hex. MasterBlob is the sidecar snapshot the
+// master emission already carried (nil when the master ran with no CAS/KV
+// traffic); tryBoundaryBridgeClone sums it with the orphan's blob so a
+// warm-rebuild master's bytes are not dropped on the S7 boundary-bridge clone.
 type emissionRecord struct {
 	group                ManifestEntryGroup
 	emittedAt            time.Time
 	BuildDescriptionHash string
+	MasterBlob           *blobstats.Snapshot
 }
 
 // RecordEmittedInvocationID is wired as the Enricher's OnEmit hook. It feeds
@@ -117,7 +122,10 @@ type emissionRecord struct {
 // also stashes the emitted group in recentEmissions so scanOrphanSidecars can
 // find an overlapping manifest window and skip clobbering the authoritative row.
 // buildDescriptionHash may be empty — hash extraction is best-effort.
-func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptionHash string, group ManifestEntryGroup) {
+// masterBlob is the sidecar snapshot the master emission already carried, so
+// tryBoundaryBridgeClone can sum it with the orphan's blob on a clone instead
+// of dropping the master's own bytes. nil when the master had no sidecar.
+func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptionHash string, group ManifestEntryGroup, masterBlob *blobstats.Snapshot) {
 	if invocationID == "" {
 		return
 	}
@@ -133,7 +141,12 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string, buildDescriptio
 				buildDescriptionHash = prior.BuildDescriptionHash
 			}
 		}
-		w.recentEmissions[invocationID] = emissionRecord{group: group, emittedAt: now, BuildDescriptionHash: buildDescriptionHash}
+		w.recentEmissions[invocationID] = emissionRecord{
+			group:                group,
+			emittedAt:            now,
+			BuildDescriptionHash: buildDescriptionHash,
+			MasterBlob:           masterBlob,
+		}
 	}
 
 	if cb := w.emitObserver.Load(); cb != nil {
@@ -486,12 +499,12 @@ func (w *Watcher) scanOrphanSidecars(forceSynthesize bool) {
 // proxy-derived InvocationID as post-build activity, rather than clobbering
 // Path A's blob stats under BE last-write-wins.
 //
-// Known gap: the clone substitutes the orphan's blob snapshot verbatim — it
-// does NOT sum with the master's own blob via MergeDirectionSnapshots. Fine
-// on the dominant observed case (main build does 0 CAS while dark build does
-// all of it) but understates on warm cached rebuilds where both carry traffic.
-// Follow-up ticket should persist the master's blob in emissionRecord and
-// merge pairwise here.
+// Blob merge: the clone sums the master's blob (stashed in emissionRecord by
+// RecordEmittedInvocationID) with the orphan's own snapshot via mergeBlobs so
+// a warm-rebuild master that itself carried traffic doesn't get its bytes
+// dropped on the re-PUT. Either side may be nil (cold-master-plus-dark-build
+// is the dominant observed case); mergeBlobs collapses that to the non-nil
+// side or nil-both.
 func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string, logger log.Logger) bool {
 	if len(group.DerivedDataPaths) == 0 {
 		return false
@@ -523,7 +536,8 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 		return false
 	}
 
-	clone := CloneManifestGroupWithSidecar(emission.group, group.Blob, group.Paths)
+	mergedBlob := mergeBlobs(copySnapshot(emission.MasterBlob), group.Blob, logger)
+	clone := CloneManifestGroupWithSidecar(emission.group, mergedBlob, group.Paths)
 	logger.Debugf("Watcher: boundary-bridged pseudo-group — sidecar at=%s matched master UUID %s via %s (InvocationID %s)", at.Format(time.RFC3339), enclosing.UniqueIdentifier, boundaryDD, invocationID)
 	if w.Handle != nil {
 		w.Handle("", clone)
@@ -531,10 +545,28 @@ func (w *Watcher) tryBoundaryBridgeClone(group SidecarGroup, invocationID string
 
 	// Residual sidecars sharing this proxy-side InvocationID must skip the slim pseudo-group path.
 	if w.recentEmissions != nil {
-		w.recentEmissions[invocationID] = emissionRecord{group: emission.group, emittedAt: w.now(), BuildDescriptionHash: emission.BuildDescriptionHash}
+		w.recentEmissions[invocationID] = emissionRecord{
+			group:                emission.group,
+			emittedAt:            w.now(),
+			BuildDescriptionHash: emission.BuildDescriptionHash,
+			MasterBlob:           emission.MasterBlob,
+		}
 	}
 
 	return true
+}
+
+// copySnapshot defensively clones the master's stashed blob so mergeBlobs does
+// not mutate the emissionRecord's own snapshot (mergeBlobs overwrites the
+// a-side fields in place). nil in, nil out.
+func copySnapshot(s *blobstats.Snapshot) *blobstats.Snapshot {
+	if s == nil {
+		return nil
+	}
+
+	cp := *s
+
+	return &cp
 }
 
 // findEnclosingBuildBoundary walks each DerivedData root the sidecar carried

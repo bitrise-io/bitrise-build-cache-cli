@@ -42,13 +42,16 @@ type Enricher struct {
 	SidecarReader    SidecarReader
 
 	// OnEmit fires after a successful PutInvocation with the ID actually sent,
-	// the manifest's build-description hash (empty if not extractable), and the
-	// group whose PUT just succeeded. The watcher wires this to its per-tick
-	// dedup set so an aged orphan sidecar sharing the ID with a manifest
-	// emission does not re-emit as a synthetic pseudo-group — and so the
-	// orphan sweep can bridge a pseudo-group back to the originating manifest
-	// via hex-exact match on buildDescriptionHash.
-	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup)
+	// the manifest's build-description hash (empty if not extractable), the
+	// group whose PUT just succeeded, and the master's sidecar blob (nil when
+	// the master had no sidecar / no CAS traffic). The watcher wires this to
+	// its per-tick dedup set so an aged orphan sidecar sharing the ID with a
+	// manifest emission does not re-emit as a synthetic pseudo-group — and so
+	// the orphan sweep can bridge a pseudo-group back to the originating
+	// manifest via hex-exact match on buildDescriptionHash. The master blob
+	// is stashed so the S7 boundary-bridge clone can sum it with the orphan's
+	// own snapshot (warm rebuilds carry traffic on both sides).
+	OnEmit func(invocationID string, buildDescriptionHash string, group ManifestEntryGroup, masterBlob *blobstats.Snapshot)
 
 	// LocalLogAppender appends a Record on each successful wrapperless PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
@@ -221,7 +224,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	TickSuccess(e.Health, e.Logger, e.now(), false)
 
 	if e.OnEmit != nil {
-		e.OnEmit(invocationID, buildDescriptionHash, group)
+		e.OnEmit(invocationID, buildDescriptionHash, group, sidecarBlob)
 	}
 
 	logger.Infof("Enriched invocation PUT %s (wrapperless scheme=%s cmd=%s entries=%d)", invocationID, group.SchemeName(), command, len(group.Entries))

@@ -860,7 +860,7 @@ func TestWatcher_ScanOnceWithEmit_InvokesObserver(t *testing.T) {
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Handle: func(_ string, g ManifestEntryGroup) {
-			w.RecordEmittedInvocationID("inv-"+g.UUIDs()[0], "", g)
+			w.RecordEmittedInvocationID("inv-"+g.UUIDs()[0], "", g, nil)
 		},
 	}
 
@@ -996,7 +996,7 @@ func TestWatcher_scanOrphanSidecars_SameTickDedupSkipsManifestEmittedID(t *testi
 		handled = append(handled, g)
 		// Only the real manifest entries invoke the manifest-side side-effect; synthetic groups must not loop-feed the dedup set.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID("id-manifest", "", g)
+			w.RecordEmittedInvocationID("id-manifest", "", g, nil)
 		}
 	}
 
@@ -1305,7 +1305,7 @@ func TestWatcher_scanOrphanSidecars_SkipsPseudoGroup_WhenManifestAlreadyEmittedU
 		// Only the real manifest group feeds the dedup set — the pseudo-group
 		// that comes later must not re-populate it.
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(sharedID, "", g)
+			w.RecordEmittedInvocationID(sharedID, "", g, nil)
 		}
 	}
 
@@ -1352,7 +1352,7 @@ func TestWatcher_scanOrphanSidecars_FreshInvocationID_EmitsEvenOnTimeOverlap(t *
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			// The previously-emitted build sits in recentEmissions under its OWN
 			// InvocationID, different from the sidecar's.
-			w.RecordEmittedInvocationID("old-build-id", "", g)
+			w.RecordEmittedInvocationID("old-build-id", "", g, nil)
 		}
 	}
 
@@ -1398,7 +1398,7 @@ func TestWatcher_scanOrphanSidecars_FallsBackToBareBuild_WhenNoOverlap(t *testin
 		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			pseudo = &g
 		} else {
-			w.RecordEmittedInvocationID("build-orphan-elsewhere", "", g)
+			w.RecordEmittedInvocationID("build-orphan-elsewhere", "", g, nil)
 		}
 	}
 
@@ -1434,7 +1434,7 @@ func TestWatcher_scanOrphanSidecars_ShutdownSweepStaysSidecarAnchored(t *testing
 		if strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
 			pseudo = &g
 		} else {
-			w.RecordEmittedInvocationID("would-have-been-override", "", g)
+			w.RecordEmittedInvocationID("would-have-been-override", "", g, nil)
 		}
 	}
 
@@ -1489,7 +1489,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_WithinRetention(t *testing.T)
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(sharedID, "", g)
+			w.RecordEmittedInvocationID(sharedID, "", g, nil)
 		}
 	}
 
@@ -1541,7 +1541,7 @@ func TestWatcher_scanOrphanSidecars_CrossTickDedup_ExpiresAfterRetention(t *test
 	w.Handle = func(_ string, g ManifestEntryGroup) {
 		handled = append(handled, g)
 		if !strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix) {
-			w.RecordEmittedInvocationID(sharedID, "", g)
+			w.RecordEmittedInvocationID(sharedID, "", g, nil)
 		}
 	}
 
@@ -1913,7 +1913,7 @@ func TestWatcher_scanOrphanSidecars_BoundaryBridge_ClonesManifestGroup(t *testin
 			Stop:       masterStop,
 		}},
 	}
-	w.RecordEmittedInvocationID(masterUUID, "", masterGroup)
+	w.RecordEmittedInvocationID(masterUUID, "", masterGroup, nil)
 
 	w.scanOrphanSidecars(false)
 
@@ -2020,4 +2020,83 @@ func TestWatcher_scanOrphanSidecars_BoundaryBridge_DefersWhenMasterNotYetEmitted
 	require.Len(t, handled, 1, "deferred bridge falls through to the slim synthetic path, not a clone")
 	g := handled[0]
 	assert.True(t, strings.HasPrefix(g.Entries[0].UUID, SyntheticManifestGroupUUIDPrefix), "fallback is the slim synthetic pseudo-group when master emission not yet recorded")
+}
+
+// TestWatcher_scanOrphanSidecars_BoundaryBridge_SumsMasterAndOrphanBlobs pins
+// the warm-rebuild case: the master itself already carried non-zero CAS traffic
+// (stashed on emissionRecord.MasterBlob via OnEmit), and a dark build fires
+// inside its window carrying more traffic. The clone must sum both sides via
+// mergeBlobs so the master's bytes are not dropped under BE last-write-wins.
+// Guards the gap flagged in bda12f9772c's commit body.
+func TestWatcher_scanOrphanSidecars_BoundaryBridge_SumsMasterAndOrphanBlobs(t *testing.T) {
+	dd := t.TempDir()
+	const masterUUID = "AAAA-BUILD-MASTER"
+	const proxyID = "proxy-derived-id"
+
+	masterStart := fixtureNow.Add(-5 * time.Minute)
+	masterStop := fixtureNow.Add(-3 * time.Minute)
+	sidecarStart := masterStart.Add(30 * time.Second)
+
+	writeBuildBoundaryPlist(t, dd, masterUUID, "Build IceCubesApp", wallToCFAbs(masterStart), wallToCFAbs(masterStop))
+
+	masterBlob := &blobstats.Snapshot{}
+	masterBlob.Download.OpCount = 10
+	masterBlob.Download.BytesTotal = 1024
+
+	orphanBlob := &blobstats.Snapshot{}
+	orphanBlob.Download.OpCount = 20
+	orphanBlob.Download.BytesTotal = 4096
+
+	reader := &stubReader{groups: map[string]SidecarGroup{
+		proxyID: {
+			Start:            sidecarStart,
+			Stop:             sidecarStart.Add(10 * time.Second),
+			SidecarUUIDs:     []string{"sidecar-warm"},
+			Paths:            []string{"/tmp/sidecar-warm.json"},
+			Blob:             orphanBlob,
+			DerivedDataPaths: []string{dd},
+		},
+	}}
+
+	var handled []ManifestEntryGroup
+	w := &Watcher{
+		HomeDir:       t.TempDir(),
+		Now:           func() time.Time { return fixtureNow },
+		SidecarReader: reader,
+	}
+	w.seen = map[string]struct{}{}
+	w.retries = map[string]int{}
+	w.recentEmissions = map[string]emissionRecord{}
+	w.Handle = func(_ string, g ManifestEntryGroup) {
+		handled = append(handled, g)
+	}
+
+	masterGroup := ManifestEntryGroup{
+		Entries: []ManifestEntry{{
+			UUID:       masterUUID,
+			Signature:  "Build IceCubesApp",
+			SchemeName: "IceCubesApp",
+			Start:      masterStart,
+			Stop:       masterStop,
+		}},
+	}
+	// Stash the master's own blob — the enricher's OnEmit does the same in production.
+	w.RecordEmittedInvocationID(masterUUID, "", masterGroup, masterBlob)
+
+	w.scanOrphanSidecars(false)
+
+	require.Len(t, handled, 1, "boundary-bridge must emit exactly one cloned group")
+	clone := handled[0]
+	assert.Equal(t, masterUUID, clone.ManifestUUID(), "clone keeps master UUID")
+
+	blob, _, ok := clone.Preattached()
+	require.True(t, ok, "clone must carry a preattached sidecar payload")
+	require.NotNil(t, blob, "merged blob must not be nil")
+
+	assert.Equal(t, int64(30), blob.Download.OpCount, "master+orphan Download.OpCount sums to 10+20")
+	assert.Equal(t, int64(5120), blob.Download.BytesTotal, "master+orphan Download.BytesTotal sums to 1024+4096")
+
+	// Master snapshot stays intact — mergeBlobs must not mutate the stashed emissionRecord.MasterBlob.
+	assert.Equal(t, int64(10), masterBlob.Download.OpCount, "master's stashed blob must not be mutated by the merge")
+	assert.Equal(t, int64(1024), masterBlob.Download.BytesTotal, "master's stashed blob bytes must not be mutated")
 }
