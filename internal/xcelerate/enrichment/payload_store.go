@@ -355,8 +355,11 @@ func (s *PayloadStore) Remove(invocationID string) error {
 	return s.writeAtomicLocked(kept)
 }
 
-//nolint:dupl // NDJSON writeAtomic is intentionally per-type — extracting to a
-// generic helper would need reflect / json.RawMessage indirection just to share ~40 lines.
+// writeAtomicLocked rewrites the payload store NDJSON to an adjacent tempfile
+// and rename-swaps it in. Intentionally per-type: a generic helper would need
+// reflect / json.RawMessage indirection just to share ~40 lines.
+//
+//nolint:dupl // per-type NDJSON writer; see package-level rationale above
 func (s *PayloadStore) writeAtomicLocked(records []PayloadRecord) error {
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
 		return fmt.Errorf("mkdir payload store dir: %w", err)
