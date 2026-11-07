@@ -24,7 +24,10 @@ type Watcher struct {
 	// xcactivitylog. Each manifest entry is its own group; sub-build
 	// attribution lives in scanOrphanSidecars via GroupSidecarsByProxyID.
 	// handleGroup marks the group seen unconditionally after Handle.
-	Handle func(manifestPath string, group ManifestEntryGroup)
+	// Handle returns true when emission was deferred for a non-terminal
+	// sidecar. In that case handleGroup leaves the UUID unmarked so the next
+	// scan tick re-enters and re-tries once every sidecar has flushed terminal.
+	Handle func(manifestPath string, group ManifestEntryGroup) (deferred bool)
 	Logger log.Logger
 
 	// HandledStore persists the seen-UUID set across restarts. nil disables
@@ -476,9 +479,15 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 		return
 	}
 
+	deferred := false
 	if w.Handle != nil {
 		logger.Debugf("Watcher: handle-and-mark scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
-		w.Handle(manifestPath, group)
+		deferred = w.Handle(manifestPath, group)
+	}
+	if deferred {
+		logger.Debugf("Watcher: defer manifest scheme=%s uuids=%v (sidecar still accumulating)", group.SchemeName(), group.UUIDs())
+
+		return
 	}
 	w.markGroupHandled(group)
 }

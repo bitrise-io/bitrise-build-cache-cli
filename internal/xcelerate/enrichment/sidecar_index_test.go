@@ -64,7 +64,7 @@ func TestSidecarIndex_EmptyDirReturnsNotFound(t *testing.T) {
 	dir := t.TempDir()
 	idx := enrichment.NewSidecarIndex(dir, nil)
 
-	snap, paths, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)), enrichment.LookupFilter{})
+	snap, paths, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok)
 	assert.Empty(t, paths)
 	assert.Nil(t, snap)
@@ -73,14 +73,14 @@ func TestSidecarIndex_EmptyDirReturnsNotFound(t *testing.T) {
 func TestSidecarIndex_MissingDirReturnsNotFound(t *testing.T) {
 	idx := enrichment.NewSidecarIndex(filepath.Join(t.TempDir(), "nope"), nil)
 
-	_, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)), enrichment.LookupFilter{})
+	_, _, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok)
 }
 
 func TestSidecarIndex_EmptyDirStringReturnsNotFound(t *testing.T) {
 	idx := enrichment.NewSidecarIndex("", nil)
 
-	_, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)), enrichment.LookupFilter{})
+	_, _, _, _, ok := idx.Lookup(groupFor(time.Now(), time.Now().Add(time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok)
 }
 
@@ -96,7 +96,7 @@ func TestSidecarIndex_AncestryRejectedWhenNoAcceptedAnchor(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)), enrichment.LookupFilter{})
+	_, _, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok)
 }
 
@@ -112,7 +112,7 @@ func TestSidecarIndex_AncestryAcceptsXcodeIDE(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)), enrichment.LookupFilter{})
+	snap, _, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	require.NotNil(t, snap)
 	assert.Equal(t, int64(3), snap.Download.OpCount)
@@ -131,7 +131,7 @@ func TestSidecarIndex_NonOverlappingSidecarIgnored(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, _, ok := idx.Lookup(groupFor(base.Add(10*time.Second), base.Add(20*time.Second)), enrichment.LookupFilter{})
+	_, _, _, _, ok := idx.Lookup(groupFor(base.Add(10*time.Second), base.Add(20*time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok)
 }
 
@@ -147,7 +147,7 @@ func TestSidecarIndex_SingleMatchPopulatesBlobAndPath(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, _, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)), enrichment.LookupFilter{})
+	snap, paths, _, _, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Equal(t, []string{path}, paths)
 	require.NotNil(t, snap)
@@ -169,7 +169,7 @@ func TestSidecarIndex_WrapperLinkInvocationIDSurfaced(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, invocationID, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
+	_, _, invocationID, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Equal(t, "deadbeef-1111-4222-8333-444455556666", invocationID, "WrapperLink.InvocationID must be surfaced to callers")
 }
@@ -192,7 +192,7 @@ func TestSidecarIndex_Lookup_SurfacesInvocationIDFromNilBlobStatsSidecar(t *test
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)), enrichment.LookupFilter{})
+	snap, paths, invocationID, _, ok := idx.Lookup(groupFor(base.Add(time.Second), base.Add(9*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok, "overlapping sidecar must be found even when BlobStats is nil")
 	assert.Nil(t, snap, "no stats-bearing sidecar overlapped — snapshot stays nil")
 	assert.Equal(t, []string{path}, paths)
@@ -225,7 +225,7 @@ func TestSidecarIndex_Lookup_StatsBearingWinsInvocationIDOverNilBlobStats(t *tes
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
+	snap, paths, invocationID, _, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Len(t, paths, 2, "both overlapping sidecars must be consumed")
 	require.NotNil(t, snap)
@@ -259,7 +259,7 @@ func TestSidecarIndex_Lookup_FirstSeenInvocationIDWhenAllNilBlobStats(t *testing
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
+	snap, paths, invocationID, _, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Len(t, paths, 2)
 	assert.Nil(t, snap, "no sidecar carried stats")
@@ -292,7 +292,7 @@ func TestSidecarIndex_TwoMatchesPickLargestBlob(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)), enrichment.LookupFilter{})
+	snap, paths, _, _, ok := idx.Lookup(groupFor(base, base.Add(10*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Len(t, paths, 2, "both overlapping sidecars must be unlinked")
 	require.NotNil(t, snap)
@@ -313,7 +313,7 @@ func TestSidecarIndex_FutureSchemaSkippedAndLeftOnDisk(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
+	_, _, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok)
 
 	_, err := os.Stat(futurePath)
@@ -332,7 +332,7 @@ func TestSidecarIndex_PreV3SchemaRejected(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	_, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
+	_, _, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
 	assert.False(t, ok, "pre-v3 sidecars must not surface a lookup hit")
 
 	_, err := os.Stat(stalePath)
@@ -353,7 +353,7 @@ func TestSidecarIndex_CorruptJSONTolerated(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
+	snap, paths, _, _, ok := idx.Lookup(groupFor(base, base.Add(5*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Equal(t, []string{path}, paths)
 	require.NotNil(t, snap)
@@ -708,7 +708,7 @@ func TestSidecarIndex_Lookup_StillSkipsOpenSidecar(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(groupFor(groupStart, groupStop), enrichment.LookupFilter{})
+	snap, paths, invocationID, _, ok := idx.Lookup(groupFor(groupStart, groupStop), enrichment.LookupFilter{})
 	assert.False(t, ok, "open sidecar must not satisfy Lookup — stats aren't final yet")
 	assert.Empty(t, paths)
 	assert.Nil(t, snap)
@@ -743,7 +743,7 @@ func TestSidecarIndex_Lookup_FiltersDifferentDerivedData(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(
+	snap, paths, invocationID, _, ok := idx.Lookup(
 		groupFor(base, base.Add(10*time.Second)),
 		enrichment.LookupFilter{DerivedData: "/dd/B"},
 	)
@@ -771,7 +771,7 @@ func TestSidecarIndex_Lookup_EmptyFilterDDSkipsDDCheck(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, _, ok := idx.Lookup(
+	snap, paths, _, _, ok := idx.Lookup(
 		groupFor(base, base.Add(5*time.Second)),
 		enrichment.LookupFilter{},
 	)
@@ -799,7 +799,7 @@ func TestSidecarIndex_Lookup_EmptySidecarDDSkipsDDCheck(t *testing.T) {
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, _, _, ok := idx.Lookup(
+	snap, _, _, _, ok := idx.Lookup(
 		groupFor(base, base.Add(5*time.Second)),
 		enrichment.LookupFilter{DerivedData: "/dd/whatever"},
 	)
@@ -859,7 +859,7 @@ func TestSidecarIndex_Lookup_SumsOverlappingSidecarsUnderSameInvocationID(t *tes
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
+	snap, paths, invocationID, _, ok := idx.Lookup(groupFor(base, base.Add(6*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.ElementsMatch(t, []string{firstPath, secondPath}, paths,
 		"both sidecars under the same InvocationID must be unlinked")
@@ -908,7 +908,7 @@ func TestSidecarIndex_Lookup_PicksLargestAggregateAcrossInvocations(t *testing.T
 	})
 
 	idx := enrichment.NewSidecarIndex(dir, nil)
-	snap, paths, invocationID, ok := idx.Lookup(groupFor(base, base.Add(7*time.Second)), enrichment.LookupFilter{})
+	snap, paths, invocationID, _, ok := idx.Lookup(groupFor(base, base.Add(7*time.Second)), enrichment.LookupFilter{})
 	require.True(t, ok)
 	assert.Len(t, paths, 3, "every overlapping sidecar is consumed regardless of which InvocationID wins")
 	require.NotNil(t, snap)

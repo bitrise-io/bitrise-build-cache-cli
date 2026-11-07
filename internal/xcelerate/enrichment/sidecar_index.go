@@ -49,7 +49,7 @@ type LookupFilter struct {
 // filter narrows the candidate set beyond ancestry + time overlap. Empty
 // LookupFilter (zero value) preserves pre-existing behavior.
 type SidecarReader interface {
-	Lookup(group ManifestEntryGroup, filter LookupFilter) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, found bool)
+	Lookup(group ManifestEntryGroup, filter LookupFilter) (snapshot *blobstats.Snapshot, consumed []string, invocationID string, pending bool, found bool)
 
 	// OrphanSidecarsGroupedByInvocation returns sidecars older than minAge whose
 	// WrapperSession.InvocationID is populated, grouped by that InvocationID.
@@ -105,20 +105,20 @@ func invocationIDOf(s sessions.Sidecar) string {
 	return s.WrapperSession.InvocationID
 }
 
-func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
+func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*blobstats.Snapshot, []string, string, bool, bool) {
 	logger := logOr(i.logger)
 
 	if i.dir == "" {
 		logger.Debugf("Sidecar index skipped: empty dir")
 
-		return nil, nil, "", false
+		return nil, nil, "", false, false
 	}
 
 	entries, err := os.ReadDir(i.dir)
 	if err != nil {
 		logger.Debugf("Sidecar index read %s: %s", i.dir, err)
 
-		return nil, nil, "", false
+		return nil, nil, "", false, false
 	}
 
 	groupStart := group.Start()
@@ -126,7 +126,10 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 
 	agg := newInvocationAggregator(logger)
 	anchorless := make([]sidecarMatch, 0, len(entries))
-	var versionSkipped bool
+	var (
+		versionSkipped bool
+		pending        bool
+	)
 
 	for _, de := range entries {
 		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
@@ -141,10 +144,12 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 		if !overlapsClosed(s.AcceptedAt, s.ClosedAt, groupStart, groupStop) {
 			continue
 		}
-		// DerivedData equality tightens disambiguation for parallel builds.
-		// Empty-means-skip rule — see LookupFilter docs.
 		if filter.DerivedData != "" && s.DerivedDataPath != "" && filter.DerivedData != s.DerivedDataPath {
 			continue
+		}
+
+		if !s.Terminal {
+			pending = true
 		}
 
 		if invocationIDOf(s) != "" {
@@ -156,12 +161,12 @@ func (i *sidecarIndex) Lookup(group ManifestEntryGroup, filter LookupFilter) (*b
 	}
 
 	if len(agg.groups) == 0 && len(anchorless) == 0 {
-		return nil, nil, "", false
+		return nil, nil, "", pending, false
 	}
 
 	snap, invocationID, consumed := pickLookupWinner(agg, anchorless)
 
-	return snap, consumed, invocationID, true
+	return snap, consumed, invocationID, pending, true
 }
 
 // sidecarMatch is the anchorless-path book-keeping: Lookup needs to remember

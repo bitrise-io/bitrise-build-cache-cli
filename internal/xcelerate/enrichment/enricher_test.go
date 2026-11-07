@@ -483,13 +483,14 @@ type fakeSidecarReader struct {
 	blob         *blobstats.Snapshot
 	paths        []string
 	invocationID string
+	pending      bool
 	found        bool
 	orphans      map[string]enrichment.SidecarGroup
 	ddPaths      []string
 }
 
-func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup, _ enrichment.LookupFilter) (*blobstats.Snapshot, []string, string, bool) {
-	return f.blob, f.paths, f.invocationID, f.found
+func (f *fakeSidecarReader) Lookup(_ enrichment.ManifestEntryGroup, _ enrichment.LookupFilter) (*blobstats.Snapshot, []string, string, bool, bool) {
+	return f.blob, f.paths, f.invocationID, f.pending, f.found
 }
 
 func (f *fakeSidecarReader) OrphanSidecarsGroupedByInvocation(_ time.Time, _ time.Duration) map[string]enrichment.SidecarGroup {
