@@ -112,30 +112,6 @@ func (c *connectionSession) invocationID() string {
 	return c.derivedInvocationID
 }
 
-// setInvocationID stores the derived InvocationID under the activity mutex.
-// Called at TagConn time (once) and by ResolveAndMaybeReseat on every ⌘B edge.
-func (c *connectionSession) setInvocationID(id string) {
-	c.activityMu.Lock()
-	defer c.activityMu.Unlock()
-
-	c.derivedInvocationID = id
-}
-
-// swapBuildRequestHex atomically compares-and-updates buildRequestHex,
-// returning true when the hex changed (fresh edge → caller reseats).
-func (c *connectionSession) swapBuildRequestHex(next string) bool {
-	c.activityMu.Lock()
-	defer c.activityMu.Unlock()
-
-	if c.buildRequestHex == next {
-		return false
-	}
-
-	c.buildRequestHex = next
-
-	return true
-}
-
 // buildRequestHexSnapshot returns the current buildRequestHex under the
 // activity mutex so a concurrent ResolveAndMaybeReseat cannot tear the read.
 func (c *connectionSession) buildRequestHexSnapshot() string {
@@ -432,26 +408,6 @@ func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry, bu
 	return buildidentity.Derive(anchor)
 }
 
-// isIDEAncestry reports whether the peer's ancestry roots in Xcode.app rather
-// than an xcodebuild CLI run. Xcode's own ancestry contains "Xcode" and/or
-// "SWBBuildService" but NOT "xcodebuild"; a CLI run contains "xcodebuild"
-// (optionally wrapped by shells/launchers). The per-⌘B reseat path only
-// applies to IDE peers — CLI peers have a stable InvocationID per process
-// and reseating them would split their rows apart for no gain.
-func isIDEAncestry(entries []AncestryEntry) bool {
-	hasIDE := false
-	for _, e := range entries {
-		if e.Name == "xcodebuild" {
-			return false
-		}
-		if e.Name == "Xcode" || e.Name == "SWBBuildService" {
-			hasIDE = true
-		}
-	}
-
-	return hasIDE
-}
-
 // identityFor builds the sidecarIdentity carrying the pre-swap or current
 // (InvocationID, hex, buildStartedAt) triple, resolving action/qos from the
 // cached build-request.json loader when wired.
@@ -470,62 +426,18 @@ func (h *sidecarStatsHandler) identityFor(cs *connectionSession, invocationID, h
 	}
 }
 
-// ResolveAndMaybeReseat is called by the per-conn flush timer (same cadence,
-// coalesced into one tick). For an IDE peer with a changed build-request hex
-// it re-derives the InvocationID so subsequent RPCs land on a fresh BE row;
-// CLI/wrapper peers and peers lacking the resolver pass through unchanged.
+// ResolveAndMaybeReseat is a no-op. The reseat path flushed accumulated conn
+// stats under whichever hex the resolver returned "newest-in-DD" at tick time;
+// on IDE builds, SwiftBuild's 12-conn pool serves 4 concurrent sub-builds and
+// the newest-hex race misattributed main-build CAS bytes to indexer rows. CLI
+// peers never needed it — one xcodebuild process == one build.
 //
-// Returns true when the ID was reseated. Exposed on the handler so a test can
-// drive one tick without spinning the timer.
+// Kept as a method so the per-conn flush timer and tests keep their call shape.
 func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool {
-	if h == nil || h.buildRequestResolver == nil || cs == nil {
-		return false
-	}
-	if h.wrapperSessionActive != nil && h.wrapperSessionActive() {
-		return false
-	}
-	if !isIDEAncestry(cs.ancestryEntries) {
-		return false
-	}
+	_ = h
+	_ = cs
 
-	hex, ok := h.buildRequestResolver(cs)
-	if !ok || hex == "" {
-		return false
-	}
-
-	// Snapshot the OLD identity so the flushed sidecar carries the hex that
-	// generated its blob stats — the enricher keys on it to bridge
-	// pseudo-group PUTs back to the manifest row.
-	oldID := cs.invocationID()
-	oldHex := cs.buildRequestHexSnapshot()
-	oldBuildStartedAt := cs.buildStartedAtSnapshot()
-
-	// No fresh edge → no reseat. Compare under the snapshot to avoid touching
-	// state when nothing changed.
-	if oldHex == hex {
-		return false
-	}
-
-	// Flush whatever stats accumulated under the old ID BEFORE the swap, so the
-	// pre-reseat ⌘B's blobs land on its own BE row rather than folding into the
-	// freshly-derived ID the next RPC will use.
-	if h.writer != nil {
-		old := cs.swapState()
-		if !old.getStats().blobStats.IsEmpty() {
-			sidecar := newSessionSidecar(cs, old, time.Now(), false, h.identityFor(cs, oldID, oldHex, oldBuildStartedAt))
-			h.writer.write(sidecar)
-		}
-	}
-
-	// Install the new identity BEFORE the hex swap. Any RPC that races the
-	// reseat and reads the new hex must also see the new InvocationID; the
-	// reverse order would attribute the first post-swap RPC's bytes to the
-	// stale ID when the per-tick flush runs.
-	newID := h.derivePeerInvocationID(cs.ancestryEntries, hex)
-	cs.setInvocationID(newID)
-	cs.setBuildStartedAt(time.Now())
-
-	return cs.swapBuildRequestHex(hex)
+	return false
 }
 
 // HandleConn flushes the per-conn sidecar on *grpcstats.ConnEnd. ConnBegin is
