@@ -70,11 +70,11 @@ func TestWatcher_scan_FiresImmediately_OnFreshEntry(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			if groupContainsUUID(g, uuid) {
 				handled = append(handled, uuid)
 			}
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -142,9 +142,9 @@ func TestWatcher_scan_MultipleGlobsBothObserved(t *testing.T) {
 			DefaultDerivedDataGlob,
 			".bitrise/cache/xcode-dd/*/Logs/*/LogStoreManifest.plist",
 		},
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handled = append(handled, g.UUIDs()...)
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -165,9 +165,9 @@ func TestWatcher_scan_EmptyGlobsFallsBackToDefault(t *testing.T) {
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
 		Globs:   nil,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handled = append(handled, g.UUIDs()...)
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -186,9 +186,9 @@ func TestWatcher_scan_MatchesPackageSubdirManifest(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handled = append(handled, g.UUIDs()...)
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -214,9 +214,9 @@ func TestWatcher_scan_HydratesSeenFromHandledStoreOnStartup(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handled = append(handled, g.UUIDs()...)
-			return false
+			return ""
 		},
 		HandledStore: store,
 		PollInterval: time.Hour, // never tick; only startup block runs
@@ -241,7 +241,7 @@ func TestWatcher_scan_AppendsHandledOnEmit(t *testing.T) {
 
 	w := &Watcher{
 		HomeDir:      home,
-		Handle:       func(string, ManifestEntryGroup) bool { return false },
+		Handle:       func(string, ManifestEntryGroup) string { return "" },
 		HandledStore: store,
 		Now:          func() time.Time { return fixtureNow },
 	}
@@ -308,9 +308,9 @@ func TestWatcher_scan_ThreeEntriesSameScheme_EmitsThreeGroups(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			groups = append(groups, g)
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -337,10 +337,10 @@ func TestWatcher_scan_AppendingLateEntry_EmitsOnlyTheNewOne(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handleCalls++
 			lastUUIDs = g.UUIDs()
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -423,10 +423,10 @@ func TestWatcher_scan_NewPrimaryTriggersReemit(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handleCalls++
 			lastPrimaryUUID = g.Primary().UUID
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -455,9 +455,9 @@ func TestWatcher_scan_SkipsEntriesOlderThanHandledMaxAge(t *testing.T) {
 
 	w := &Watcher{
 		HomeDir: home,
-		Handle: func(string, ManifestEntryGroup) bool {
+		Handle: func(string, ManifestEntryGroup) string {
 			handles++
-			return false
+			return ""
 		},
 		Now:     func() time.Time { return time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC) },
 	}
@@ -511,9 +511,9 @@ func TestWatcher_scan_SidecarDDPathIsGlobbed(t *testing.T) {
 		Now:           func() time.Time { return fixtureNow },
 		HomeDir:       home,
 		SidecarReader: reader,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handled = append(handled, g.UUIDs()...)
-			return false
+			return ""
 		},
 	}
 	w.seen = map[string]struct{}{}
@@ -555,7 +555,7 @@ func TestWatcher_scan_StalledDiagnostic_EmitsWhenZeroManifestsWithPendingSidecar
 		HomeDir:       home,
 		SidecarReader: &sidecarReaderStub{ddPaths: []string{"/project/DD"}, pendingCount: 3},
 		Logger:        logger,
-		Handle:        func(string, ManifestEntryGroup) bool { return false },
+		Handle:        func(string, ManifestEntryGroup) string { return "" },
 	}
 	w.seen = map[string]struct{}{}
 
@@ -580,7 +580,7 @@ func TestWatcher_scan_StalledDiagnostic_RateLimitedToOncePerMinute(t *testing.T)
 		HomeDir:       t.TempDir(),
 		SidecarReader: &sidecarReaderStub{ddPaths: []string{"/project/DD"}, pendingCount: 2},
 		Logger:        logger,
-		Handle:        func(string, ManifestEntryGroup) bool { return false },
+		Handle:        func(string, ManifestEntryGroup) string { return "" },
 	}
 	w.seen = map[string]struct{}{}
 
@@ -614,7 +614,7 @@ func TestWatcher_scan_StalledDiagnostic_SilentWhenNoSidecars(t *testing.T) {
 		HomeDir:       t.TempDir(),
 		SidecarReader: &sidecarReaderStub{}, // zero sidecars
 		Logger:        logger,
-		Handle:        func(string, ManifestEntryGroup) bool { return false },
+		Handle:        func(string, ManifestEntryGroup) string { return "" },
 	}
 	w.seen = map[string]struct{}{}
 
@@ -634,7 +634,7 @@ func TestWatcher_scan_SidecarAbsentOrEmpty_NoExtraGlobs(t *testing.T) {
 		Now:           func() time.Time { return fixtureNow },
 		HomeDir:       home,
 		SidecarReader: &sidecarReaderStub{ddPaths: nil}, // no hints
-		Handle:        func(string, ManifestEntryGroup) bool { return false },
+		Handle:        func(string, ManifestEntryGroup) string { return "" },
 	}
 	w.seen = map[string]struct{}{}
 
@@ -650,9 +650,9 @@ func TestWatcher_ScanOnce_InitialisesMapsAndEmits(t *testing.T) {
 	w := &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			handled = append(handled, g.UUIDs()...)
-			return false
+			return ""
 		},
 	}
 
@@ -674,9 +674,9 @@ func TestWatcher_ScanOnceWithEmit_InvokesObserver(t *testing.T) {
 	w = &Watcher{
 		Now:     func() time.Time { return fixtureNow },
 		HomeDir: home,
-		Handle: func(_ string, g ManifestEntryGroup) bool {
+		Handle: func(_ string, g ManifestEntryGroup) string {
 			w.RecordEmittedInvocationID("inv-" + g.UUIDs()[0])
-			return false
+			return ""
 		},
 	}
 

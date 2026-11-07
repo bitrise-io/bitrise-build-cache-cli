@@ -96,22 +96,23 @@ func (e *Enricher) resolveSidecar(manifestPath string, group ManifestEntryGroup)
 // Enrich is the Watcher.Handle callback. manifestPath anchors the sibling
 // xcactivitylog read used to populate the wrapperless hit rate.
 //
-// Returns true when the group was deferred (a matching sidecar is still
-// non-terminal and more CAS traffic may land under the same InvocationID);
-// handleGroup leaves the UUID unmarked so the next tick re-enters this path
-// and emits once every sidecar is terminal.
-func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
+// Returns a non-empty InvocationID when the group was deferred (a matching
+// sidecar is still non-terminal and more CAS traffic may land under the same
+// InvocationID). handleGroup leaves the UUID unmarked so the next tick
+// re-enters this path, and feeds the ID into scanOrphanSidecars' per-tick
+// deferred set so the orphan sweep does not pre-emit with partial bytes.
+func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) string {
 	logger := logOr(e.Logger)
 
 	if len(group.Entries) == 0 {
-		return false
+		return ""
 	}
 
 	command := group.Command()
 	if command == "" {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: side-effect only (uuids=%v)", group.SchemeName(), group.UUIDs())
 
-		return false
+		return ""
 	}
 
 	hitRate, hitRateOutcome := aggregateHitRate(manifestPath, group, logger, e.metricsLookup)
@@ -126,9 +127,9 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	sidecarBlob, consumedPaths, sidecarInvocationID, sidecarPending, sidecarFound = e.resolveSidecar(manifestPath, group)
 
 	if sidecarPending {
-		logger.Debugf("Enrichment PUT deferred for scheme=%q cmd=%q: sidecar still non-terminal (uuids=%v)", group.SchemeName(), command, group.UUIDs())
+		logger.Debugf("Enrichment PUT deferred for scheme=%q cmd=%q id=%s: sidecar still non-terminal (uuids=%v)", group.SchemeName(), command, sidecarInvocationID, group.UUIDs())
 
-		return true
+		return sidecarInvocationID
 	}
 
 	invocationID := sidecarInvocationID
@@ -138,7 +139,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	if invocationID == "" {
 		logger.Warnf("Enrichment PUT skipped for scheme=%q cmd=%q: no InvocationID source (sidecar / manifest both empty)", group.SchemeName(), command)
 
-		return false
+		return ""
 	}
 
 	// Sidecar-sourced groups carry their own data path — the xcactivitylog is
@@ -146,7 +147,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 	if hitRateOutcome != xcactivitylog.OutcomeOK && !sidecarFound {
 		logger.Debugf("Enrichment PUT skipped for group scheme=%q: xcactivitylog outcome=%v and no sidecar (uuids=%v)", group.SchemeName(), hitRateOutcome, group.UUIDs())
 
-		return false
+		return ""
 	}
 
 	if sidecarFound && hitRateOutcome != xcactivitylog.OutcomeOK && sidecarBlob != nil {
@@ -189,7 +190,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 			unlinkSidecars(consumedPaths, logger)
 		}
 
-		return false
+		return ""
 	}
 
 	e.upsertPayloadStore(invocationID, group, runStats, hitRateOutcome, sidecarBlob, PayloadStatusEmitted)
@@ -206,7 +207,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) bool {
 
 	e.appendLocalLog(invocationID, command, group, runStats, inv)
 
-	return false
+	return ""
 }
 
 // VisitURL is the invocation-detail URL rendered in the Visit line + the

@@ -24,10 +24,12 @@ type Watcher struct {
 	// xcactivitylog. Each manifest entry is its own group; sub-build
 	// attribution lives in scanOrphanSidecars via GroupSidecarsByProxyID.
 	// handleGroup marks the group seen unconditionally after Handle.
-	// Handle returns true when emission was deferred for a non-terminal
-	// sidecar. In that case handleGroup leaves the UUID unmarked so the next
-	// scan tick re-enters and re-tries once every sidecar has flushed terminal.
-	Handle func(manifestPath string, group ManifestEntryGroup) (deferred bool)
+	// Handle returns a non-empty deferredInvocationID when emission was
+	// postponed because the matching sidecar is still non-terminal; handleGroup
+	// leaves the UUID unmarked so the next scan tick re-enters, and
+	// scanOrphanSidecars uses the returned ID to suppress orphan-emit on the
+	// same InvocationID within this tick.
+	Handle func(manifestPath string, group ManifestEntryGroup) (deferredInvocationID string)
 	Logger log.Logger
 
 	// HandledStore persists the seen-UUID set across restarts. nil disables
@@ -88,6 +90,12 @@ type Watcher struct {
 	// cannot overwrite a clean manifest PUT with an unclassified pseudo-group.
 	// Scoped per-Watcher, not per-tick.
 	manifestEmittedIDs map[string]struct{}
+
+	// tickDeferredIDs collects InvocationIDs whose manifest-driven PUT was
+	// deferred this tick because the matching sidecar is still non-terminal.
+	// scanOrphanSidecars skips these so the next tick's manifest re-try can
+	// emit with the full merged payload.
+	tickDeferredIDs map[string]struct{}
 
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
@@ -249,8 +257,10 @@ func (w *Watcher) scan(seedOnly bool) {
 	logger := logOr(w.Logger)
 
 	w.tickEmittedIDs = make(map[string]struct{})
+	w.tickDeferredIDs = make(map[string]struct{})
 	defer func() {
 		w.tickEmittedIDs = nil
+		w.tickDeferredIDs = nil
 	}()
 
 	w.drainCrashFallbackChannel(logger)
@@ -383,6 +393,12 @@ func (w *Watcher) scanOrphanSidecars() {
 			continue
 		}
 
+		if _, deferred := w.tickDeferredIDs[invocationID]; deferred {
+			logger.Debugf("Watcher: skip orphan for InvocationID %s (manifest deferred this tick, retry pending)", invocationID)
+
+			continue
+		}
+
 		if group == nil || len(group.SidecarPaths) == 0 {
 			continue
 		}
@@ -479,13 +495,16 @@ func (w *Watcher) handleGroup(manifestPath string, group ManifestEntryGroup, see
 		return
 	}
 
-	deferred := false
+	var deferredID string
 	if w.Handle != nil {
 		logger.Debugf("Watcher: handle-and-mark scheme=%s uuids=%v synthetic=%t", group.SchemeName(), group.UUIDs(), synthetic)
-		deferred = w.Handle(manifestPath, group)
+		deferredID = w.Handle(manifestPath, group)
 	}
-	if deferred {
-		logger.Debugf("Watcher: defer manifest scheme=%s uuids=%v (sidecar still accumulating)", group.SchemeName(), group.UUIDs())
+	if deferredID != "" {
+		logger.Debugf("Watcher: defer manifest scheme=%s uuids=%v (sidecar still accumulating, suppress orphan for %s)", group.SchemeName(), group.UUIDs(), deferredID)
+		if w.tickDeferredIDs != nil {
+			w.tickDeferredIDs[deferredID] = struct{}{}
+		}
 
 		return
 	}
