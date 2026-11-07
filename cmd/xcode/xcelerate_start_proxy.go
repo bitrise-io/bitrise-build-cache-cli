@@ -203,6 +203,7 @@ func StartXcodeCacheProxy(
 		listener = peerListener
 	}
 
+	//nolint:contextcheck // installSidecar owns its own lifecycle via GracefulStop → Close
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
 	p.FlushHook = func(hookCtx context.Context) []string {

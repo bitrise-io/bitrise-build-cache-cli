@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,11 +17,23 @@ import (
 // build-request.json and caches by (ddPath, hex). A central-scheduled flush
 // often touches dozens of connections sharing the same build-request; a
 // per-conn disk read each time would stall the tick.
+//
+// The same map is also populated by the proactive fsnotify watcher (see
+// xcbuilddata_watcher.go) under the blank-ddPath key so sidecar flushes that
+// land after Xcode writes the dir but before the first on-demand load never
+// touch disk. Writes from the watcher and reads from the loader share c.mu.
 type buildRequestInfoCache struct {
 	logger log.Logger
 
 	mu    sync.Mutex
 	cache map[string]buildrequest.Info
+
+	// watcher / watcherCancel / watcherDone are set by Start when fsnotify
+	// init succeeds. Nil-safe: Close is idempotent and a nil watcher means
+	// init failed and the loader falls back to the on-demand path.
+	watcher       dirEventSource
+	watcherCancel context.CancelFunc
+	watcherDone   chan struct{}
 }
 
 // NewBuildRequestInfoLoader returns a cached loader that reads action/qos
@@ -29,12 +42,17 @@ type buildRequestInfoCache struct {
 // after the first sidecar flush, and a poisoned cache would strand that hex
 // as unclassified for the rest of the build.
 func NewBuildRequestInfoLoader(logger log.Logger) func(ddPath, hex string) (string, string) {
-	c := &buildRequestInfoCache{
+	return newBuildRequestInfoCache(logger).load
+}
+
+// newBuildRequestInfoCache constructs the concrete cache so the proxy can
+// wire Start/Close alongside the func-shaped loader returned by
+// NewBuildRequestInfoLoader.
+func newBuildRequestInfoCache(logger log.Logger) *buildRequestInfoCache {
+	return &buildRequestInfoCache{
 		logger: logger,
 		cache:  make(map[string]buildrequest.Info),
 	}
-
-	return c.load
 }
 
 func (c *buildRequestInfoCache) load(ddPath, hex string) (string, string) {

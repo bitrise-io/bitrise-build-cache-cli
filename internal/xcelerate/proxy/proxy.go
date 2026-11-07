@@ -92,6 +92,12 @@ type Proxy struct {
 	// FlushHook is invoked by the FlushSession RPC. Returns the invocation IDs
 	// emitted during the sweep. nil → FlushSession returns an empty list.
 	FlushHook func(ctx context.Context) []string
+
+	// buildRequestCache is the concrete cache backing sidecarStats.buildRequestInfo.
+	// Held separately so GracefulStop can Close it and NewProxyWithOptions can
+	// Start the fsnotify watcher once the proxy is wired. nil when sidecar
+	// writes are disabled.
+	buildRequestCache *buildRequestInfoCache
 }
 
 // SidecarOptions enables per-connection sidecar writes. Zero / empty disables.
@@ -198,6 +204,7 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	p.sessionRegistry = newSessionRegistry()
 	ancestry := buildidentity.NewAncestryCache()
 	p.BuildRequestResolver = opts.BuildRequestResolver
+	p.buildRequestCache = newBuildRequestInfoCache(p.logger)
 	p.sidecarStats = &sidecarStatsHandler{
 		listener:                   opts.Listener,
 		registry:                   p.sessionRegistry,
@@ -206,7 +213,15 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
 		buildRequestResolver:       opts.BuildRequestResolver,
-		buildRequestInfo:           NewBuildRequestInfoLoader(p.logger),
+		buildRequestInfo:           p.buildRequestCache.load,
+	}
+
+	// Kick off the proactive fsnotify watcher. The watcher's lifetime is
+	// bounded by GracefulStop → Close, not by any RPC ctx, so we hand it a
+	// fresh Background — contextcheck is happy because Close tears it down.
+	//nolint:contextcheck // watcher lifecycle is bounded by GracefulStop
+	if err := p.buildRequestCache.Start(context.Background()); err != nil {
+		p.logger.Warnf("xcbuilddata watcher start returned error: %s", err)
 	}
 
 	p.perConnFlushTimer = time.AfterFunc(perConnIdleThreshold, p.firePerConnFlush)
@@ -306,6 +321,9 @@ func (p *Proxy) GracefulStop() {
 	}
 	p.grpcServer.GracefulStop()
 	p.flushOutstandingSidecars()
+	if p.buildRequestCache != nil {
+		p.buildRequestCache.Close()
+	}
 }
 
 func (p *Proxy) flushOutstandingSidecars() {
