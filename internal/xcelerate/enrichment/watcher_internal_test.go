@@ -702,6 +702,7 @@ func TestWatcher_scanOrphanSidecars_FiresEmitterPerAggregatedGroup(t *testing.T)
 		PeerAncestry:       []string{"xcodebuild"},
 		AcceptedAt:         base,
 		ClosedAt:           base.Add(5 * time.Second),
+		Terminal:           true,
 		BlobStats:          nonEmptySidecarBlob(),
 		WrapperSession:     &sessions.WrapperLink{InvocationID: "inv-dark"},
 		DerivedDataPath:    "/x/DD",
@@ -726,6 +727,45 @@ func TestWatcher_scanOrphanSidecars_FiresEmitterPerAggregatedGroup(t *testing.T)
 	require.Len(t, captured, 1, "orphan emitter must fire once for the DarkBuild group")
 	assert.Equal(t, "inv-dark", captured[0].InvocationID)
 	assert.Equal(t, RowDarkBuild, captured[0].Primary)
+}
+
+// TestWatcher_scanOrphanSidecars_DefersNonTerminal pins the terminal gate:
+// a sidecar whose build is still running (no Terminal flag) must NOT be
+// orphan-emitted, so the manifest sweep can still claim it and emit under the
+// proxy-derived InvocationID.
+func TestWatcher_scanOrphanSidecars_DefersNonTerminal(t *testing.T) {
+	sessionsDir := t.TempDir()
+	base := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
+
+	writeOrphanSidecar(t, sessionsDir, "running.json", sessions.Sidecar{
+		SchemaVersion:      3,
+		SidecarUUID:        "sc-running",
+		PeerPID:            13,
+		PeerAncestry:       []string{"xcodebuild"},
+		AcceptedAt:         base,
+		ClosedAt:           base.Add(5 * time.Second),
+		BlobStats:          nonEmptySidecarBlob(),
+		WrapperSession:     &sessions.WrapperLink{InvocationID: "inv-running"},
+		DerivedDataPath:    "/x/DD",
+		BuildRequestAction: "build",
+	})
+
+	var fired int
+	w := &Watcher{
+		Now:           func() time.Time { return base.Add(time.Minute) },
+		HomeDir:       t.TempDir(),
+		SessionsDir:   sessionsDir,
+		OrphanEmitter: func(*ProxyIDGroup) { fired++ },
+	}
+	w.seen = map[string]struct{}{}
+	w.tickEmittedIDs = map[string]struct{}{}
+
+	w.scanOrphanSidecars()
+
+	assert.Zero(t, fired, "non-terminal orphan must defer to let manifest sweep claim it")
+	entries, err := os.ReadDir(sessionsDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "non-terminal orphan sidecar must remain on disk")
 }
 
 // TestWatcher_scanOrphanSidecars_SkipsTickEmitted pins the dedup contract:
@@ -776,6 +816,7 @@ func TestWatcher_scanOrphanSidecars_SuppressesZeroBlob(t *testing.T) {
 		PeerAncestry:       []string{"xcodebuild"},
 		AcceptedAt:         base,
 		ClosedAt:           base.Add(5 * time.Second),
+		Terminal:           true,
 		WrapperSession:     &sessions.WrapperLink{InvocationID: "inv-zero"},
 		DerivedDataPath:    "/x/DD",
 		BuildRequestAction: "build",

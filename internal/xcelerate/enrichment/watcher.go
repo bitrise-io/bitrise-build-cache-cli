@@ -366,6 +366,13 @@ func (w *Watcher) scanOrphanSidecars() {
 			continue
 		}
 
+		if !group.Terminal {
+			logger.Debugf("Watcher: defer non-terminal orphan for InvocationID %s (build still running, %d sidecar(s))",
+				invocationID, len(group.SidecarPaths))
+
+			continue
+		}
+
 		if group.Blob == nil || group.Blob.IsEmpty() {
 			logger.Debugf("Watcher: suppress zero-blob orphan for InvocationID %s (no CAS transfer, %d sidecar(s))",
 				invocationID, len(group.SidecarPaths))
