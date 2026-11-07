@@ -80,6 +80,12 @@ type Watcher struct {
 	// dedup. Scoped per tick: reset at scan start, cleared at scan tail.
 	tickEmittedIDs map[string]struct{}
 
+	// manifestEmittedIDs persists InvocationIDs the Enricher emitted via the
+	// manifest path across the watcher's lifetime so a later orphan sweep
+	// cannot overwrite a clean manifest PUT with an unclassified pseudo-group.
+	// Scoped per-Watcher, not per-tick.
+	manifestEmittedIDs map[string]struct{}
+
 	// lastStalledLogAt rate-limits the "0 manifests + pending sidecars" debug
 	// line to one entry per minute.
 	lastStalledLogAt time.Time
@@ -109,6 +115,11 @@ func (w *Watcher) RecordEmittedInvocationID(invocationID string) {
 	if w.tickEmittedIDs != nil {
 		w.tickEmittedIDs[invocationID] = struct{}{}
 	}
+
+	if w.manifestEmittedIDs == nil {
+		w.manifestEmittedIDs = make(map[string]struct{})
+	}
+	w.manifestEmittedIDs[invocationID] = struct{}{}
 
 	if cb := w.emitObserver.Load(); cb != nil {
 		(*cb)(invocationID)
@@ -358,6 +369,13 @@ func (w *Watcher) scanOrphanSidecars() {
 	for invocationID, group := range groups {
 		if _, emitted := w.tickEmittedIDs[invocationID]; emitted {
 			logger.Debugf("Watcher: skip orphan for InvocationID %s (manifest path emitted this tick)", invocationID)
+
+			continue
+		}
+
+		if _, emitted := w.manifestEmittedIDs[invocationID]; emitted {
+			logger.Debugf("Watcher: skip orphan for InvocationID %s (manifest path emitted previously)", invocationID)
+			unlinkSidecars(group.SidecarPaths, logger)
 
 			continue
 		}
