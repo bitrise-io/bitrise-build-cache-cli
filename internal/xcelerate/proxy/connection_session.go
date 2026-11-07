@@ -457,7 +457,7 @@ func isIDEAncestry(entries []AncestryEntry) bool {
 // cached build-request.json loader when wired.
 func (h *sidecarStatsHandler) identityFor(cs *connectionSession, invocationID, hex string, buildStartedAt time.Time) sidecarIdentity {
 	action, qos := "", ""
-	if h != nil && h.buildRequestInfo != nil && cs != nil && hex != "" && cs.derivedDataPath != "" {
+	if h != nil && h.buildRequestInfo != nil && cs != nil && hex != "" {
 		action, qos = h.buildRequestInfo(cs.derivedDataPath, hex)
 	}
 
