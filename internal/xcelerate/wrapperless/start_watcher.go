@@ -140,10 +140,11 @@ type StartWatcher struct {
 	NewSource func() (DirEventSource, error)
 	Now       func() time.Time
 
-	mu     sync.Mutex
-	src    DirEventSource
-	cancel context.CancelFunc
-	done   chan struct{}
+	mu        sync.Mutex
+	src       DirEventSource
+	cancel    context.CancelFunc
+	done      chan struct{}
+	startedAt time.Time
 
 	seenMu      sync.Mutex
 	seenHexDirs map[string]struct{}
@@ -179,6 +180,7 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 	w.src = src
 	w.cancel = cancel
 	w.done = done
+	w.startedAt = w.now()
 	w.mu.Unlock()
 
 	// Seed-walk the DD tree for any xcbuilddata that already exists when
@@ -263,7 +265,9 @@ func recursivePath(dir string) string {
 
 // seedWalk scans the DD subtree for pre-existing xcbuilddata dirs so a proxy
 // that started after Xcode still catches in-flight builds. Idempotent with
-// the notify stream via the seen-set.
+// the notify stream via the seen-set. Skips xcbuilddata whose sibling
+// LogStoreManifest.plist is already sealed and predates startedAt, so a
+// previous Xcode session's leftovers don't fire a phantom START.
 func (w *StartWatcher) seedWalk(ddRoot string) int {
 	count := 0
 	_ = filepath.WalkDir(ddRoot, func(path string, d os.DirEntry, err error) error {
@@ -276,6 +280,11 @@ func (w *StartWatcher) seedWalk(ddRoot string) int {
 		}
 
 		if strings.HasSuffix(d.Name(), xcbuilddataSuffix) {
+			if w.isStaleCompletedBuild(path) {
+				w.infof("StartWatcher: skip seed %s reason=stale-sibling-manifest", path)
+
+				return filepath.SkipDir
+			}
 			count++
 			w.emitStartOnce(path)
 
@@ -286,6 +295,26 @@ func (w *StartWatcher) seedWalk(ddRoot string) int {
 	})
 
 	return count
+}
+
+// isStaleCompletedBuild reports whether xcbuildDataDir belongs to a build whose
+// Logs/Build/LogStoreManifest.plist predates the proxy by more than
+// seedStaleGrace — i.e. a prior Xcode session's leftover that will never see
+// new CAS traffic.
+func (w *StartWatcher) isStaleCompletedBuild(xcbuildDataDir string) bool {
+	if w.startedAt.IsZero() {
+		return false
+	}
+
+	root := rootForXCBuildDataPath(xcbuildDataDir)
+	manifest := filepath.Join(root, "Logs", buildDirName, "LogStoreManifest.plist")
+
+	info, err := os.Stat(manifest)
+	if err != nil {
+		return false
+	}
+
+	return info.ModTime().Before(w.startedAt.Add(-seedStaleGrace))
 }
 
 func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {

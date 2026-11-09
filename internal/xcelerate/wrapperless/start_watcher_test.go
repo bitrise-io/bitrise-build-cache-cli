@@ -273,6 +273,46 @@ func TestStartWatcher_DeepTreeCreatedAtomically(t *testing.T) {
 // TestStartWatcher_PreExistingHexDirsSeedOnStart verifies the seed walk
 // catches an xcbuilddata dir that exists before Start is called. Without a
 // seed walk the proxy would miss any build already running when it started.
+// TestStartWatcher_SeedSkipsStaleCompletedBuild guards the phantom-row path:
+// a prior Xcode session's xcbuilddata lingers on disk alongside a sealed
+// LogStoreManifest.plist older than startedAt — seed must skip it.
+func TestStartWatcher_SeedSkipsStaleCompletedBuild(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-stale-start")
+	hex := "abcabcabcabcabcabcabcabcabcabc00"
+	_ = writeBuildRequest(t, root, hex, "build", "")
+
+	manifestPath := filepath.Join(root, "Logs", "Build", "LogStoreManifest.plist")
+	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
+	require.NoError(t, os.WriteFile(manifestPath, []byte("<plist/>"), 0o644))
+
+	info, err := os.Stat(manifestPath)
+	require.NoError(t, err)
+	afterManifest := info.ModTime().Add(10 * time.Second)
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+		Now:       func() time.Time { return afterManifest },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	select {
+	case got := <-starts:
+		t.Fatalf("Start emitted for stale xcbuilddata: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
 func TestStartWatcher_PreExistingHexDirsSeedOnStart(t *testing.T) {
 	fakeHome := t.TempDir()
 

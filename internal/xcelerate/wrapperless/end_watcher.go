@@ -20,11 +20,12 @@ type EndWatcher struct {
 	NewSource func() (DirEventSource, error)
 	Now       func() time.Time
 
-	mu     sync.Mutex
-	seen   map[string]struct{}
-	src    DirEventSource
-	cancel context.CancelFunc
-	done   chan struct{}
+	mu        sync.Mutex
+	seen      map[string]struct{}
+	src       DirEventSource
+	cancel    context.CancelFunc
+	done      chan struct{}
+	startedAt time.Time
 }
 
 func (w *EndWatcher) Start(ctx context.Context) error {
@@ -63,6 +64,7 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 	w.src = src
 	w.cancel = cancel
 	w.done = done
+	w.startedAt = w.now()
 	w.mu.Unlock()
 
 	// Seed-walk the DD tree for any already-sealed LogStoreManifest entries
@@ -172,10 +174,17 @@ func (w *EndWatcher) seedWalk(ddRoot string) int {
 		}
 
 		path := filepath.Join(ddRoot, e.Name(), "Logs", buildDirName, "LogStoreManifest.plist")
-		if _, statErr := os.Stat(path); statErr == nil {
-			count++
-			w.scanManifest(path)
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			continue
 		}
+		if w.isStaleManifest(info) {
+			w.infof("EndWatcher: skip %s reason=stale mtime=%s started=%s", path, info.ModTime().Format(time.RFC3339Nano), w.startedAt.Format(time.RFC3339Nano))
+
+			continue
+		}
+		count++
+		w.scanManifest(path)
 	}
 
 	return count
@@ -286,6 +295,19 @@ func (w *EndWatcher) scanManifest(path string) {
 			Duration:         cfAbsDuration(e.TimeStarted, e.TimeStopped),
 		})
 	}
+}
+
+// seedStaleGrace is the window around startedAt within which seedWalk still
+// emits for a pre-existing sealed artifact. Catches builds that seal
+// milliseconds before proxy start; drops ones from older sessions.
+const seedStaleGrace = 5 * time.Second
+
+func (w *EndWatcher) isStaleManifest(info os.FileInfo) bool {
+	if w.startedAt.IsZero() {
+		return false
+	}
+
+	return info.ModTime().Before(w.startedAt.Add(-seedStaleGrace))
 }
 
 // isSealedTerminal reports whether the highLevelStatus marks a completed log
