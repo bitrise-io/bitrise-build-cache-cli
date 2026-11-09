@@ -199,7 +199,10 @@ func StartXcodeCacheProxy(
 		initialLogger.Debugf("Enrichment prune skipped, cannot resolve paths: %v", err)
 	}
 
-	emitter := bundle.emitter()
+	var emitter proxy.InvocationEmitter
+	if !wrapperlessPipelineEnabled {
+		emitter = bundle.emitter()
+	}
 
 	sidecarOpts, peerListener := buildSidecarOptions(listener, initialLogger)
 	if peerListener != nil {
@@ -208,15 +211,17 @@ func StartXcodeCacheProxy(
 
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
-	p.FlushHook = func(hookCtx context.Context) []string {
-		return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
+	if !wrapperlessPipelineEnabled {
+		p.FlushHook = func(hookCtx context.Context) []string {
+			return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
+		}
 	}
 
 	// Cancelled only after the final sweep so sidecars written during GracefulStop still get drained.
 	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelEnrich()
 
-	if bundle.enrichmentEnabled() {
+	if bundle.enrichmentEnabled() && !wrapperlessPipelineEnabled {
 		go bundle.ensureWatcher(enrichCtx, initialLogger).Run(enrichCtx)
 		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
@@ -228,7 +233,9 @@ func StartXcodeCacheProxy(
 	go func() {
 		<-ctx.Done()
 		p.GracefulStop()
-		bundle.finalEnrichmentSweep(bgCtx, initialLogger)
+		if !wrapperlessPipelineEnabled {
+			bundle.finalEnrichmentSweep(bgCtx, initialLogger)
+		}
 		if pipeline != nil {
 			pipeline.Close()
 		}
