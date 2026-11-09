@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
+
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 )
@@ -32,6 +34,7 @@ type Allocator struct {
 	OnOpenInvoc     func(invocationID string)
 	Now             func() time.Time
 	IDEBackgroundTO time.Duration
+	Logger          log.Logger
 
 	mu         sync.Mutex
 	open       *Bucket
@@ -112,6 +115,8 @@ func (a *Allocator) onStart(s Start) {
 	fresh := a.newBucket(s.At, s)
 	a.open = fresh
 
+	a.debugf("Allocator: bucket opened id=%s action=%s", fresh.InvocationID, fresh.Action)
+
 	if a.OnOpenInvoc != nil && fresh.InvocationID != "" {
 		a.OnOpenInvoc(fresh.InvocationID)
 	}
@@ -137,6 +142,8 @@ func (a *Allocator) onEnd(e End) {
 	bucket.Duration = e.Duration
 	bucket.Reason = BucketReasonEndMatched
 	bucket.BlobStats = a.snapshotBlobs()
+
+	a.debugf("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
 
 	a.emit(bucket)
 }
@@ -335,4 +342,20 @@ func hasActivity(snap *blobstats.Snapshot) bool {
 	}
 
 	return !snap.IsEmpty()
+}
+
+func snapshotBytes(snap *blobstats.Snapshot) int64 {
+	if snap == nil {
+		return 0
+	}
+
+	return snap.Upload.BytesTotal + snap.Download.BytesTotal
+}
+
+func (a *Allocator) debugf(format string, args ...any) {
+	if a.Logger == nil {
+		return
+	}
+
+	a.Logger.Debugf(format, args...)
 }

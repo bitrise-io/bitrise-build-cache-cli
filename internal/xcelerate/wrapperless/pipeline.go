@@ -63,6 +63,9 @@ func (p *Pipeline) Start(ctx context.Context) error {
 
 	p.Allocator.OnReady = p.onBucketReady
 	p.Allocator.OnOpenInvoc = p.onBucketOpen
+	if p.Allocator.Logger == nil {
+		p.Allocator.Logger = p.Logger
+	}
 	if p.BlobStats != nil && p.Allocator.BlobStats == nil {
 		p.Allocator.BlobStats = p.BlobStats
 	}

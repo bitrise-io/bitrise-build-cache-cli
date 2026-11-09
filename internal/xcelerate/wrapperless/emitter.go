@@ -79,7 +79,11 @@ func (e *Emitter) EmitSlim(bucket Bucket) {
 		if persisted := e.persistSlim(Payload{Phase: PhaseSlim, Bucket: bucket}); !persisted {
 			e.logWarn("wrapperless slim pending persist %s dropped", inv.InvocationID)
 		}
+
+		return
 	}
+
+	e.logDebug("Emitter: slim PUT id=%s scheme=%s", inv.InvocationID, bucket.Scheme)
 }
 
 func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
@@ -90,7 +94,12 @@ func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
 	inv := e.buildInvocation(bucket, PhaseEnriched, hitRate)
 	if err := e.Client.PutInvocation(inv); err != nil {
 		e.logWarn("wrapperless enriched PUT %s failed: %s", inv.InvocationID, err)
+
+		return
 	}
+
+	e.logDebug("Emitter: enriched PUT id=%s scheme=%s bytes=%d hitRate=%.2f",
+		inv.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats), hitRate)
 }
 
 func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) analytics.Invocation {
@@ -227,4 +236,12 @@ func (e *Emitter) logWarn(format string, args ...any) {
 	}
 
 	e.Logger.Warnf(format, args...)
+}
+
+func (e *Emitter) logDebug(format string, args ...any) {
+	if e.Logger == nil {
+		return
+	}
+
+	e.Logger.Debugf(format, args...)
 }

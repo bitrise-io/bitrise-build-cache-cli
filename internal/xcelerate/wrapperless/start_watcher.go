@@ -287,12 +287,16 @@ func (w *StartWatcher) emitStart(xcbuildDataDir string) {
 
 	action, ok := classifyPrimary(info)
 	if !ok {
+		w.debugf("StartWatcher: reject hex=%s action=%s qos=%s (not primary)", hex, info.Action, info.QoS)
+
 		return
 	}
 
 	if w.OnStart == nil {
 		return
 	}
+
+	w.debugf("StartWatcher: emit hex=%s action=%s qos=%s", hex, info.Action, info.QoS)
 
 	w.OnStart(Start{
 		At:              w.now(),
@@ -348,4 +352,12 @@ func (w *StartWatcher) warn(format string, args ...any) {
 	}
 
 	w.Logger.Warnf(format, args...)
+}
+
+func (w *StartWatcher) debugf(format string, args ...any) {
+	if w.Logger == nil {
+		return
+	}
+
+	w.Logger.Debugf(format, args...)
 }
