@@ -327,12 +327,22 @@ func cfAbsDuration(start, stop float64) time.Duration {
 	return time.Duration((stop - start) * float64(time.Second))
 }
 
+// manifestLogEntry carries the fields scanManifest needs. Newer Xcode nests
+// highLevelStatus (and sometimes timeStoppedRecording) under primaryObservable;
+// older Xcode writes them at the top level. See enrichment.LoadManifest for the
+// same fallback pattern.
 type manifestLogEntry struct {
-	UniqueIdentifier string  `plist:"uniqueIdentifier"`
-	Signature        string  `plist:"signature"`
-	HighLevelStatus  string  `plist:"highLevelStatus"`
-	TimeStarted      float64 `plist:"timeStartedRecording"`
-	TimeStopped      float64 `plist:"timeStoppedRecording"`
+	UniqueIdentifier  string                     `plist:"uniqueIdentifier"`
+	Signature         string                     `plist:"signature"`
+	HighLevelStatus   string                     `plist:"highLevelStatus"`
+	TimeStarted       float64                    `plist:"timeStartedRecording"`
+	TimeStopped       float64                    `plist:"timeStoppedRecording"`
+	PrimaryObservable manifestLogPrimaryObserver `plist:"primaryObservable"`
+}
+
+type manifestLogPrimaryObserver struct {
+	HighLevelStatus string  `plist:"highLevelStatus"`
+	TimeStopped     float64 `plist:"timeStoppedRecording"`
 }
 
 type manifestFile struct {
@@ -356,6 +366,15 @@ func loadManifestEntries(path string) ([]manifestLogEntry, error) {
 		if entry.UniqueIdentifier == "" {
 			entry.UniqueIdentifier = id
 		}
+
+		if entry.HighLevelStatus == "" {
+			entry.HighLevelStatus = entry.PrimaryObservable.HighLevelStatus
+		}
+
+		if entry.TimeStopped == 0 {
+			entry.TimeStopped = entry.PrimaryObservable.TimeStopped
+		}
+
 		out = append(out, entry)
 	}
 
