@@ -196,14 +196,61 @@ func TestShared_ReusesOneClientPerPair(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestOnBuildHub_MatchesFromEnv(t *testing.T) {
+func TestCanBrokerVMToken_MatchesFromEnv(t *testing.T) {
 	for _, envs := range []map[string]string{
 		{},
 		{auth.EnvBuildHubVMToken: "vm-token"},
 		{auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"},
 		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"},
+		{auth.EnvVMToken: "vm-token"},
+		{auth.EnvVMTokenURL: "https://api.bitrise.io"},
+		{auth.EnvVMToken: "vm-token", auth.EnvVMTokenURL: "https://api.bitrise.io"},
+		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvVMTokenURL: "https://api.bitrise.io"},
 	} {
 		_, ok := FromEnv(envs)
-		assert.Equal(t, ok, auth.OnBuildHub(envs))
+		assert.Equal(t, ok, auth.CanBrokerVMToken(envs), "envs: %v", envs)
 	}
+}
+
+// Remote Dev Envs carry the product-neutral pair, and must not count as Build Hub,
+// which would switch on CI behaviour on a developer's machine.
+func TestFromEnv_AcceptsTheNeutralPair(t *testing.T) {
+	envs := map[string]string{auth.EnvVMToken: "rde-token", auth.EnvVMTokenURL: "https://im.bitrise.io/build_hub/vm_tokens"}
+
+	c, ok := FromEnv(envs)
+
+	require.True(t, ok)
+	assert.Equal(t, "rde-token", c.vmToken)
+	assert.Equal(t, "https://im.bitrise.io/build_hub/vm_tokens", c.tokenURL)
+	assert.False(t, auth.OnBuildHub(envs))
+}
+
+func TestFromEnv_PrefersTheBuildHubPair(t *testing.T) {
+	c, ok := FromEnv(map[string]string{
+		auth.EnvBuildHubVMToken:    "bh-token",
+		auth.EnvBuildHubVMTokenURL: "https://bh.bitrise.io/build-hub/vm/tokens",
+		auth.EnvVMToken:            "rde-token",
+		auth.EnvVMTokenURL:         "https://im.bitrise.io/build_hub/vm_tokens",
+	})
+
+	require.True(t, ok)
+	assert.Equal(t, "bh-token", c.vmToken)
+	assert.Equal(t, "https://bh.bitrise.io/build-hub/vm/tokens", c.tokenURL)
+}
+
+// A half-set Build Hub pair counts as unset, so it must not hide a complete neutral one.
+func TestFromEnv_HalfSetBuildHubPairFallsBackToTheNeutralPair(t *testing.T) {
+	c, ok := FromEnv(map[string]string{
+		auth.EnvBuildHubVMToken: "bh-token",
+		auth.EnvVMToken:         "rde-token",
+		auth.EnvVMTokenURL:      "https://im.bitrise.io/build_hub/vm_tokens",
+	})
+
+	require.True(t, ok)
+	assert.Equal(t, "rde-token", c.vmToken)
+}
+
+func TestFromEnv_RejectsAnUntrustedNeutralURL(t *testing.T) {
+	_, ok := FromEnv(map[string]string{auth.EnvVMToken: "rde-token", auth.EnvVMTokenURL: "https://example.com/vm_tokens"})
+	assert.False(t, ok)
 }

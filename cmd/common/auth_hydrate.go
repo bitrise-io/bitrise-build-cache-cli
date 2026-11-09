@@ -15,7 +15,7 @@ import (
 // every command, including ones that never authenticate.
 func hydrateStoredAuth(ctx context.Context) {
 	envs := utils.AllEnvs()
-	if envs[auth.EnvJWT] != "" || auth.OnBuildHub(envs) || auth.OnGitHubActionsOIDC(envs) {
+	if envs[auth.EnvJWT] != "" || auth.CanBrokerVMToken(envs) || auth.OnGitHubActionsOIDC(envs) {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))

@@ -20,6 +20,11 @@ const (
 	EnvBuildHubVMToken    = "BITRISEIO_BUILD_HUB_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
 	EnvBuildHubVMTokenURL = "BITRISEIO_BUILD_HUB_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
 
+	// EnvVMToken and EnvVMTokenURL are the product-neutral pair instance-manager
+	// exports on the VMs it starts outside Build Hub, such as Remote Dev Envs.
+	EnvVMToken    = "BITRISEIO_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
+	EnvVMTokenURL = "BITRISEIO_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
+
 	// Not a secret: the trust comes from the GitHub-signed token matching the policy.
 	EnvOIDCPolicyID = "BITRISE_BUILD_CACHE_OIDC_POLICY_ID"
 	// GitHub Actions sets these only when the job has `permissions: id-token: write`.
@@ -35,6 +40,27 @@ const DefaultOIDCTokenEndpoint = "https://app.bitrise.io/oidc/token" //nolint:go
 // OnBuildHub reports whether both halves of the Build Hub pair are set.
 func OnBuildHub(envs map[string]string) bool {
 	return envs[EnvBuildHubVMToken] != "" && envs[EnvBuildHubVMTokenURL] != ""
+}
+
+// VMTokenPair returns the VM token and its exchange URL from the first pair with
+// both halves set, the Build Hub pair first. A half-set pair counts as unset.
+func VMTokenPair(envs map[string]string) (string, string, bool) {
+	if OnBuildHub(envs) {
+		return envs[EnvBuildHubVMToken], envs[EnvBuildHubVMTokenURL], true
+	}
+	if envs[EnvVMToken] != "" && envs[EnvVMTokenURL] != "" {
+		return envs[EnvVMToken], envs[EnvVMTokenURL], true
+	}
+
+	return "", "", false
+}
+
+// CanBrokerVMToken reports whether the environment offers a VM token to exchange.
+// Unlike OnBuildHub it is also true on a Remote Dev Env, which is not CI.
+func CanBrokerVMToken(envs map[string]string) bool {
+	_, _, ok := VMTokenPair(envs)
+
+	return ok
 }
 
 // OIDCPolicyConfigured reports whether the user asked for the GitHub Actions OIDC

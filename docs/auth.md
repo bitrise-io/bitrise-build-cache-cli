@@ -21,7 +21,7 @@ L4  internal/auth/live                  the resolver
          │  imports: auth, store, oauth, buildhub, githuboidc
          ▼
 L3  internal/auth/oauth                 sign-in · refresh · token exchange
-    internal/auth/buildhub              Build Hub VM token → Build Cache token
+    internal/auth/buildhub              VM token (Build Hub, RDE) → Build Cache token
     internal/auth/githuboidc            GitHub Actions OIDC token → Workspace API token
          │  imports: auth, store
          ▼
@@ -146,7 +146,9 @@ The shared vocabulary. Imports nothing internal.
 | `GradleToken(Credential, Origin) string` | JWT is sent as-is; a PAT is `workspaceID:token`. Needs both, hence a free function. |
 | `ParseJWTWorkspaceID(string) (string, error)` | Extracts `org_id` from the Bitrise UMA JWT. Signature unverified — Bitrise mints these per build. |
 | `EnvAuthToken`, `EnvWorkspaceID`, `EnvJWT`, `EnvUsername` | The four environment keys. |
-| `EnvBuildHubVMToken`, `EnvBuildHubVMTokenURL` | The Build Hub pair. Both present is what makes a runner brokerable; a half-set pair is treated as neither. |
+| `EnvBuildHubVMToken`, `EnvBuildHubVMTokenURL` | The Build Hub pair. Both present is what makes a runner brokerable; a half-set pair is treated as neither. `OnBuildHub` checks it, and `IsCI` builds on that. |
+| `EnvVMToken`, `EnvVMTokenURL` | The product-neutral pair instance-manager exports on other VMs, such as Remote Dev Envs. Brokerable like the Build Hub pair, but does not make the machine count as CI. |
+| `VMTokenPair`, `CanBrokerVMToken` | The first complete pair, the Build Hub one first. |
 | `ErrTokenNotProvided`, `ErrWorkspaceIDNotProvided` | Distinguish "nothing configured" from a genuine failure. |
 | `ErrWorkspaceNotSelected` | A stored token with no workspace — what `auth login --no-workspace` leaves behind. Distinct from "nothing configured", which would send the user off to make a token they already have. |
 
@@ -247,7 +249,7 @@ The resolver. The only package a consumer needs.
 env vars (AUTH_TOKEN + WORKSPACE_ID)
   → CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)
   → GitHub Actions OIDC exchange (OIDC_POLICY_ID + WORKSPACE_ID + GitHub's ACTIONS_ID_TOKEN_REQUEST_*)
-  → brokered Build Hub token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL)
+  → brokered VM token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL, else BITRISEIO_VM_TOKEN + _URL)
   → OS keychain
   → config file, `credentials` key
   → config file, `authConfig` (analytics) block

@@ -1,5 +1,5 @@
-// Package buildhub exchanges the per-VM token a Bitrise Build Hub runner carries
-// for a short-lived, workspace-scoped Build Cache token. It sits at L3 beside
+// Package buildhub exchanges the per-VM token a Bitrise Build Hub runner or Remote
+// Dev Env carries for a short-lived, workspace-scoped Build Cache token. It sits at L3 beside
 // oauth: both turn something long-lived into a credential, and neither knows about
 // precedence. See docs/auth.md.
 package buildhub
@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,12 +54,13 @@ type Client struct {
 // Both or neither: a half-set pair means the runner is not offering to broker, and
 // guessing at the other half would produce a confusing failure later.
 func FromEnv(envs map[string]string) (*Client, bool) {
-	if !auth.OnBuildHub(envs) {
+	vmToken, tokenURL, ok := auth.VMTokenPair(envs)
+	if !ok {
 		return nil, false
 	}
 	// The VM token is sent to this URL, so one outside Bitrise's domains is not a broker.
-	tokenURL, vmToken := trustedurl.FromEnv(envs, auth.EnvBuildHubVMTokenURL, "https"), envs[auth.EnvBuildHubVMToken]
-	if tokenURL == "" {
+	tokenURL = strings.TrimSpace(tokenURL)
+	if !trustedurl.Allowed(tokenURL, "https") {
 		return nil, false
 	}
 
@@ -77,7 +79,8 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 var shared sync.Map //nolint:gochecknoglobals
 
 func Shared(envs map[string]string) (*Client, bool) {
-	key := envs[auth.EnvBuildHubVMTokenURL] + "\x00" + envs[auth.EnvBuildHubVMToken]
+	vmToken, tokenURL, _ := auth.VMTokenPair(envs)
+	key := tokenURL + "\x00" + vmToken
 	if c, ok := shared.Load(key); ok {
 		return c.(*Client), true //nolint:forcetypeassert // only *Client is stored
 	}
