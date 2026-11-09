@@ -330,6 +330,11 @@ type sidecarStatsHandler struct {
 	// Injectable so the tick cadence and plist/glob I/O can be tested
 	// synchronously without a filesystem.
 	buildRequestResolver BuildRequestResolver
+
+	// wrapperlessPipeline, when non-nil, learns the peer's anchorable ancestor
+	// on each TagConn so its QuitWatcher can mint a Quit event when the
+	// ancestor exits. Nil disables the hook — pipeline is opt-in.
+	wrapperlessPipeline WrapperlessPipeline
 }
 
 // BuildRequestResolver returns the newest <32-hex>.xcbuilddata stem scoped to
@@ -372,6 +377,7 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 		cs.setBuildStartedAt(time.Now())
 	}
 	h.registry.put(cs)
+	h.registerWrapperlessPeer(cs.ancestryEntries)
 
 	return contextWithSession(ctx, cs)
 }
