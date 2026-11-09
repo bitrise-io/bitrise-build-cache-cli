@@ -349,6 +349,20 @@ func (c *ProtocolCollector) Snapshot() Snapshot {
 	}
 }
 
+// Reset zeroes both CAS and KV collectors. Used by callers that window the
+// stats per bucket (e.g. the wrapperless pipeline's allocator): Snapshot + Reset
+// yields the delta since the previous Reset. Safe on a nil receiver.
+func (c *ProtocolCollector) Reset() {
+	if c == nil {
+		return
+	}
+
+	c.CAS.Upload.reset()
+	c.CAS.Download.reset()
+	c.KV.Upload.reset()
+	c.KV.Download.reset()
+}
+
 // One lock keeps a snapshot from catching the counters and the histograms disagreeing.
 type Recorder struct {
 	mu         sync.Mutex

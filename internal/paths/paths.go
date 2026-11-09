@@ -76,9 +76,23 @@ const (
 	// proxy writes on close, consumed by the enrichment side.
 	xcelerateSessionsSubdir = "sessions"
 
+	// xcelerateWrapperlessSubdir holds the wrapperless pipeline's on-disk
+	// fallbacks (slim-PUT retry queue, etc).
+	xcelerateWrapperlessSubdir = "wrapperless"
+
+	// wrapperlessPendingSlimFilename is the NDJSON ledger the slim emitter
+	// appends to after an inline-retry budget is exhausted.
+	wrapperlessPendingSlimFilename = "pending-slim.ndjson"
+
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
+
+	// payloadStoreFilename is the NDJSON ledger keyed by proxy-derived
+	// InvocationID that merges every signal (sidecar update, plist arrival,
+	// xcactivitylog metrics, xcresult parse) into one record per BE row before
+	// the enricher PUTs.
+	payloadStoreFilename = "payload-store.ndjson"
 
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
@@ -341,10 +355,28 @@ func (p Paths) XcelerateSessionsDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateSessionsSubdir)
 }
 
+// XcelerateWrapperlessDir returns ~/.local/state/xcelerate/wrapperless.
+func (p Paths) XcelerateWrapperlessDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateWrapperlessSubdir)
+}
+
+// WrapperlessPendingSlimPath returns the NDJSON retry file the slim emitter
+// appends to after an inline-retry budget is exhausted.
+func (p Paths) WrapperlessPendingSlimPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingSlimFilename)
+}
+
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to
 // persist which xcactivitylog UUIDs have already been emitted across restarts.
 func (p Paths) HandledManifestsFile() string {
 	return filepath.Join(p.XcelerateEnrichmentDir(), handledManifestsFilename)
+}
+
+// PayloadStoreFile returns the NDJSON ledger keyed by proxy-derived
+// InvocationID that merges every enrichment signal into one record per BE row
+// before the final PUT.
+func (p Paths) PayloadStoreFile() string {
+	return filepath.Join(p.XcelerateEnrichmentDir(), payloadStoreFilename)
 }
 
 // CcacheLogDir returns ~/.local/state/ccache/logs.
