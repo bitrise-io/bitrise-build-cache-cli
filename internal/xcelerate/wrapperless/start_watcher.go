@@ -49,14 +49,15 @@ type DirEventSource interface {
 type notifyAdapter struct {
 	events  chan Event
 	raw     chan notify.EventInfo
+	logger  log.Logger
 	stopMu  sync.Mutex
 	stopped bool
 }
 
-func newNotifyAdapter() *notifyAdapter {
+func newNotifyAdapter(logger log.Logger) *notifyAdapter {
 	raw := make(chan notify.EventInfo, eventChanBuffer)
 	out := make(chan Event, eventChanBuffer)
-	a := &notifyAdapter{events: out, raw: raw}
+	a := &notifyAdapter{events: out, raw: raw, logger: logger}
 
 	go a.pump()
 
@@ -65,6 +66,10 @@ func newNotifyAdapter() *notifyAdapter {
 
 func (a *notifyAdapter) pump() {
 	for ev := range a.raw {
+		if a.logger != nil {
+			a.logger.Infof("notifyAdapter: raw event %v %s", ev.Event(), ev.Path())
+		}
+
 		op := EventOp(0)
 		if ev.Event()&notify.Create != 0 {
 			op |= EventCreate
@@ -82,6 +87,9 @@ func (a *notifyAdapter) pump() {
 			// Buffer full — drop rather than block the notify dispatcher.
 			// The seed walk at Start time guarantees we still pick up
 			// anything dropped here on the next relevant trigger.
+			if a.logger != nil {
+				a.logger.Warnf("notifyAdapter: event chan full, dropping %s", ev.Path())
+			}
 		}
 	}
 
@@ -144,7 +152,8 @@ type StartWatcher struct {
 func (w *StartWatcher) Start(ctx context.Context) error {
 	newSource := w.NewSource
 	if newSource == nil {
-		newSource = func() (DirEventSource, error) { return newNotifyAdapter(), nil }
+		logger := w.Logger
+		newSource = func() (DirEventSource, error) { return newNotifyAdapter(logger), nil }
 	}
 
 	src, err := newSource()
@@ -154,13 +163,13 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 		return nil
 	}
 
+	w.infof("StartWatcher: source init ok")
+
 	ddRoot := w.derivedDataDir()
+	w.infof("StartWatcher: dd root = %q", ddRoot)
+
 	if ddRoot != "" {
-		if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
-			w.warn("start watcher mkdir %s: %s", ddRoot, mkErr)
-		} else if addErr := src.Watch(recursivePath(ddRoot), EventCreate); addErr != nil {
-			w.warn("start watcher watch %s: %s", ddRoot, addErr)
-		}
+		w.installWatch(src, ddRoot)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -175,11 +184,14 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 	// Seed-walk the DD tree for any xcbuilddata that already exists when
 	// the watcher starts. Closes the window where Xcode created dirs
 	// before the recursive watch was installed.
+	seeded := 0
 	if ddRoot != "" {
-		w.seedWalk(ddRoot)
+		seeded = w.seedWalk(ddRoot)
 	}
+	w.infof("StartWatcher: seed walk done (%d hex found)", seeded)
 
 	go w.loop(ctx, src, done)
+	w.infof("StartWatcher: loop goroutine started")
 
 	return nil
 }
@@ -209,6 +221,24 @@ func (w *StartWatcher) Close() {
 	}
 }
 
+func (w *StartWatcher) installWatch(src DirEventSource, ddRoot string) {
+	if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
+		w.warn("start watcher mkdir %s: %s", ddRoot, mkErr)
+
+		return
+	}
+
+	w.infof("StartWatcher: mkdir ok")
+
+	if addErr := src.Watch(recursivePath(ddRoot), EventCreate); addErr != nil {
+		w.warn("start watcher watch %s: %s", ddRoot, addErr)
+
+		return
+	}
+
+	w.infof("StartWatcher: watching %s recursively", recursivePath(ddRoot))
+}
+
 // derivedDataDir returns the parent DerivedData dir so we can install a
 // single recursive FSEvents watch that captures every xcbuilddata CREATE
 // below it — including dirs that appear after a wipe or a fresh Xcode
@@ -234,7 +264,8 @@ func recursivePath(dir string) string {
 // seedWalk scans the DD subtree for pre-existing xcbuilddata dirs so a proxy
 // that started after Xcode still catches in-flight builds. Idempotent with
 // the notify stream via the seen-set.
-func (w *StartWatcher) seedWalk(ddRoot string) {
+func (w *StartWatcher) seedWalk(ddRoot string) int {
+	count := 0
 	_ = filepath.WalkDir(ddRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			//nolint:nilerr // skip the un-readable subtree, keep walking siblings
@@ -245,6 +276,7 @@ func (w *StartWatcher) seedWalk(ddRoot string) {
 		}
 
 		if strings.HasSuffix(d.Name(), xcbuilddataSuffix) {
+			count++
 			w.emitStartOnce(path)
 
 			return filepath.SkipDir
@@ -252,6 +284,8 @@ func (w *StartWatcher) seedWalk(ddRoot string) {
 
 		return nil
 	})
+
+	return count
 }
 
 func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {
@@ -263,23 +297,34 @@ func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan s
 		close(done)
 	}()
 
+	w.infof("StartWatcher: loop entered")
+
 	events := src.Events()
+	eventCount := 0
 
 	for {
 		select {
 		case <-ctx.Done():
+			w.infof("StartWatcher: ctx done, exiting")
+
 			return
 		case ev, ok := <-events:
 			if !ok {
+				w.infof("StartWatcher: event chan closed, exiting")
+
 				return
 			}
 
+			eventCount++
+			w.infof("StartWatcher: event #%d op=%d %s", eventCount, ev.Op, ev.Path)
 			w.handleEvent(ev)
 		}
 	}
 }
 
 func (w *StartWatcher) handleEvent(ev Event) {
+	w.infof("StartWatcher: handleEvent %s", ev.Path)
+
 	if ev.Op&EventCreate == 0 {
 		return
 	}
@@ -405,6 +450,14 @@ func (w *StartWatcher) warn(format string, args ...any) {
 	}
 
 	w.Logger.Warnf(format, args...)
+}
+
+func (w *StartWatcher) infof(format string, args ...any) {
+	if w.Logger == nil {
+		return
+	}
+
+	w.Logger.Infof(format, args...)
 }
 
 func (w *StartWatcher) debugf(format string, args ...any) {

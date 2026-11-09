@@ -36,7 +36,8 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 
 	newSource := w.NewSource
 	if newSource == nil {
-		newSource = func() (DirEventSource, error) { return newNotifyAdapter(), nil }
+		logger := w.Logger
+		newSource = func() (DirEventSource, error) { return newNotifyAdapter(logger), nil }
 	}
 
 	src, err := newSource()
