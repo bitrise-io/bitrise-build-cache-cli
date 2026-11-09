@@ -244,3 +244,60 @@ func TestStartWatcher_CloseIdempotent(t *testing.T) {
 	w.Close()
 	w.Close()
 }
+
+// TestStartWatcher_FiresAfterDerivedDataWipe reproduces the production bug
+// where Start fires before any DD app subdir exists (fresh host or a
+// wipe between proxy start and the first Xcode build). The top-level DD
+// watch must install, observe the new app subdir CREATE, dive in, and
+// still emit Start on the subsequent xcbuilddata CREATE.
+func TestStartWatcher_FiresAfterDerivedDataWipe(t *testing.T) {
+	fakeHome := t.TempDir()
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	// DD root must be mkdir'd and added to the watch set at Start time, so
+	// the subsequent CREATE for a brand-new app subdir is observable.
+	ddRoot := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData")
+	_, err := os.Stat(ddRoot)
+	require.NoError(t, err, "DD root should be created at Start")
+
+	src.mu.Lock()
+	hasDDRoot := false
+	for _, p := range src.added {
+		if p == ddRoot {
+			hasDDRoot = true
+
+			break
+		}
+	}
+	src.mu.Unlock()
+	assert.True(t, hasDDRoot, "DD root should be watched: added=%v", src.added)
+
+	root := filepath.Join(ddRoot, "MyApp-abcdefghijklmnopqrstuvwxyz0")
+	hex := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	dir := writeBuildRequest(t, root, hex, "build", "")
+
+	// Simulate the fsnotify CREATE sequence: DD-child CREATE (new app
+	// subdir) → ancestor-dir CREATEs on the way down → final xcbuilddata.
+	src.events <- fsnotify.Event{Name: root, Op: fsnotify.Create}
+	// Give the handler a tick to recurse before the terminal event.
+	time.Sleep(20 * time.Millisecond)
+	src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
+
+	got := waitForStart(t, starts)
+	assert.Equal(t, hex, got.BuildRequestHex)
+	assert.Equal(t, PrimaryActionBuild, got.Action)
+
+	w.Close()
+}
