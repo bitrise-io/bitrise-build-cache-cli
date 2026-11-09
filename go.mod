@@ -21,6 +21,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/klauspost/compress v1.18.7
 	github.com/pkg/xattr v0.4.12
+	github.com/rjeczalik/notify v0.9.3
 	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10

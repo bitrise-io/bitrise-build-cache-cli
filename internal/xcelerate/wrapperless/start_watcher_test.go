@@ -10,44 +10,34 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type fakeEventSource struct {
-	events chan fsnotify.Event
-	errs   chan error
+	events chan Event
 
 	mu        sync.Mutex
-	added     []string
-	closeOnce sync.Once
+	watched   []string
+	stopOnce  sync.Once
 }
 
 func newFakeEventSource() *fakeEventSource {
-	return &fakeEventSource{
-		events: make(chan fsnotify.Event, 16),
-		errs:   make(chan error, 4),
-	}
+	return &fakeEventSource{events: make(chan Event, 16)}
 }
 
-func (f *fakeEventSource) Events() <-chan fsnotify.Event { return f.events }
-func (f *fakeEventSource) Errors() <-chan error          { return f.errs }
-func (f *fakeEventSource) Add(path string) error {
+func (f *fakeEventSource) Events() <-chan Event { return f.events }
+
+func (f *fakeEventSource) Watch(root string, _ ...EventOp) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.added = append(f.added, path)
+	f.watched = append(f.watched, root)
 
 	return nil
 }
 
-func (f *fakeEventSource) Close() error {
-	f.closeOnce.Do(func() {
-		close(f.events)
-		close(f.errs)
-	})
-
-	return nil
+func (f *fakeEventSource) Stop() {
+	f.stopOnce.Do(func() { close(f.events) })
 }
 
 func writeBuildRequest(t *testing.T, root, hex, action, qos string) string {
@@ -79,7 +69,8 @@ func TestStartWatcher_FiresOnPrimaryBuildCreate(t *testing.T) {
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
 	hex := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	dir := writeBuildRequest(t, root, hex, "build", "")
+	// Build-request written AFTER Start so the seed walk doesn't pre-fire.
+	dir := filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
 
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
@@ -94,7 +85,11 @@ func TestStartWatcher_FiresOnPrimaryBuildCreate(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "build-request.json"),
+		[]byte(`{"parameters":{"action":"build","qos":""}}`), 0o644))
+
+	src.events <- Event{Path: dir, Op: EventCreate}
 
 	got := waitForStart(t, starts)
 	assert.Equal(t, hex, got.BuildRequestHex)
@@ -104,84 +99,21 @@ func TestStartWatcher_FiresOnPrimaryBuildCreate(t *testing.T) {
 	w.Close()
 }
 
-func TestStartWatcher_IgnoresDarkBuildQoSDefault(t *testing.T) {
-	fakeHome := t.TempDir()
-
-	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
-	hex := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	dir := writeBuildRequest(t, root, hex, "build", "default")
-
-	src := newFakeEventSource()
-	starts := make(chan Start, 4)
-
-	w := &StartWatcher{
-		HomeDir:   fakeHome,
-		OnStart:   func(s Start) { starts <- s },
-		NewSource: func() (DirEventSource, error) { return src, nil },
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	require.NoError(t, w.Start(ctx))
-
-	src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
-
-	select {
-	case got := <-starts:
-		t.Fatalf("unexpected Start for dark build: %+v", got)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	w.Close()
-}
-
-func TestStartWatcher_IgnoresIndexBuild(t *testing.T) {
-	fakeHome := t.TempDir()
-
-	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
-	hex := "cccccccccccccccccccccccccccccccc"
-	dir := writeBuildRequest(t, root, hex, "indexbuild", "prepareForIndexing")
-
-	src := newFakeEventSource()
-	starts := make(chan Start, 4)
-
-	w := &StartWatcher{
-		HomeDir:   fakeHome,
-		OnStart:   func(s Start) { starts <- s },
-		NewSource: func() (DirEventSource, error) { return src, nil },
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	require.NoError(t, w.Start(ctx))
-
-	src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
-
-	select {
-	case got := <-starts:
-		t.Fatalf("unexpected Start for indexer: %+v", got)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	w.Close()
-}
-
-func TestStartWatcher_FiresOnArchiveAndTest(t *testing.T) {
-	fakeHome := t.TempDir()
-
+// TestStartWatcher_RejectsSubBuilds verifies the primary-action filter: dark
+// build (qos=default) and indexer runs must never emit a Start.
+func TestStartWatcher_RejectsSubBuilds(t *testing.T) {
 	for _, c := range []struct {
-		name, action string
-		want         PrimaryAction
+		name, action, qos string
 	}{
-		{"archive", "archive", PrimaryActionArchive},
-		{"test", "test", PrimaryActionTest},
-		{"analyze", "analyze", PrimaryActionAnalyze},
+		{"dark", "build", "default"},
+		{"indexer", "indexbuild", "prepareForIndexing"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			fakeHome := t.TempDir()
+
 			root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-"+c.name)
-			hex := "deadbeef" + c.name + "0000000000000000000000"
-			hex = hex[:32]
-			dir := writeBuildRequest(t, root, hex, c.action, "")
+			hex := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+			dir := filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
 
 			src := newFakeEventSource()
 			starts := make(chan Start, 4)
@@ -196,7 +128,57 @@ func TestStartWatcher_FiresOnArchiveAndTest(t *testing.T) {
 			defer cancel()
 			require.NoError(t, w.Start(ctx))
 
-			src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "build-request.json"),
+				[]byte(`{"parameters":{"action":"`+c.action+`","qos":"`+c.qos+`"}}`), 0o644))
+
+			src.events <- Event{Path: dir, Op: EventCreate}
+
+			select {
+			case got := <-starts:
+				t.Fatalf("unexpected Start for %s: %+v", c.name, got)
+			case <-time.After(50 * time.Millisecond):
+			}
+
+			w.Close()
+		})
+	}
+}
+
+func TestStartWatcher_FiresOnArchiveAndTest(t *testing.T) {
+	for _, c := range []struct {
+		name, action string
+		want         PrimaryAction
+	}{
+		{"archive", "archive", PrimaryActionArchive},
+		{"test", "test", PrimaryActionTest},
+		{"analyze", "analyze", PrimaryActionAnalyze},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fakeHome := t.TempDir()
+			root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-"+c.name)
+			hex := "deadbeef" + c.name + "0000000000000000000000"
+			hex = hex[:32]
+			dir := filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
+
+			src := newFakeEventSource()
+			starts := make(chan Start, 4)
+
+			w := &StartWatcher{
+				HomeDir:   fakeHome,
+				OnStart:   func(s Start) { starts <- s },
+				NewSource: func() (DirEventSource, error) { return src, nil },
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			require.NoError(t, w.Start(ctx))
+
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "build-request.json"),
+				[]byte(`{"parameters":{"action":"`+c.action+`","qos":""}}`), 0o644))
+
+			src.events <- Event{Path: dir, Op: EventCreate}
 
 			got := waitForStart(t, starts)
 			assert.Equal(t, c.want, got.Action)
@@ -212,7 +194,6 @@ func TestStartWatcher_IgnoresMissingBuildRequest(t *testing.T) {
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
 	hex := "dddddddddddddddddddddddddddddddd"
 	dir := filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
-	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
@@ -227,7 +208,10 @@ func TestStartWatcher_IgnoresMissingBuildRequest(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
+	// Dir exists but build-request.json is missing — must not emit.
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	src.events <- Event{Path: dir, Op: EventCreate}
 
 	select {
 	case got := <-starts:
@@ -245,13 +229,12 @@ func TestStartWatcher_CloseIdempotent(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_FiresAfterDerivedDataWipe models the real stair-step
-// sequence Xcode performs after a DerivedData wipe (or on a fresh host):
-// each ancestor directory is mkdir'd one at a time, so the watcher must
-// install a fsnotify watch on every new dir as its CREATE event arrives.
-// If any step relies on a stat-first strategy, the whole chain breaks
-// because fsnotify (kqueue) is non-recursive.
-func TestStartWatcher_FiresAfterDerivedDataWipe(t *testing.T) {
+// TestStartWatcher_DeepTreeCreatedAtomically simulates FSEvents delivering a
+// single terminal CREATE for an xcbuilddata dir that appeared alongside its
+// entire ancestor chain in one mkdir-all. With rjeczalik/notify's recursive
+// FSEvents watch there are no intermediate adds to race — the terminal
+// CREATE is delivered directly.
+func TestStartWatcher_DeepTreeCreatedAtomically(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	src := newFakeEventSource()
@@ -267,54 +250,17 @@ func TestStartWatcher_FiresAfterDerivedDataWipe(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	// DD root must be mkdir'd and added to the watch set at Start time, so
-	// the subsequent CREATE for a brand-new app subdir is observable.
 	ddRoot := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData")
-	_, err := os.Stat(ddRoot)
-	require.NoError(t, err, "DD root should be created at Start")
-
-	src.mu.Lock()
-	hasDDRoot := false
-	for _, p := range src.added {
-		if p == ddRoot {
-			hasDDRoot = true
-
-			break
-		}
-	}
-	src.mu.Unlock()
-	assert.True(t, hasDDRoot, "DD root should be watched: added=%v", src.added)
-
-	// mkdir + CREATE event one level at a time. Nothing beyond the current
-	// level exists when each event fires — mirrors kqueue reality.
 	root := filepath.Join(ddRoot, "MyApp-abcdefghijklmnopqrstuvwxyz0")
-	require.NoError(t, os.Mkdir(root, 0o755))
-	src.events <- fsnotify.Event{Name: root, Op: fsnotify.Create}
-	time.Sleep(20 * time.Millisecond)
-
-	buildDir := filepath.Join(root, "Build")
-	require.NoError(t, os.Mkdir(buildDir, 0o755))
-	src.events <- fsnotify.Event{Name: buildDir, Op: fsnotify.Create}
-	time.Sleep(20 * time.Millisecond)
-
-	intermediates := filepath.Join(buildDir, "Intermediates.noindex")
-	require.NoError(t, os.Mkdir(intermediates, 0o755))
-	src.events <- fsnotify.Event{Name: intermediates, Op: fsnotify.Create}
-	time.Sleep(20 * time.Millisecond)
-
-	xcbuildData := filepath.Join(intermediates, "XCBuildData")
-	require.NoError(t, os.Mkdir(xcbuildData, 0o755))
-	src.events <- fsnotify.Event{Name: xcbuildData, Op: fsnotify.Create}
-	time.Sleep(20 * time.Millisecond)
-
-	hex := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-	xcbuilddataDir := filepath.Join(xcbuildData, hex+".xcbuilddata")
-	require.NoError(t, os.Mkdir(xcbuilddataDir, 0o755))
-	// build-request.json must be present before the terminal CREATE so
-	// emitStart's Load succeeds.
+	hex := "ffffffffffffffffffffffffffffffff"
+	xcbuilddataDir := filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
+	require.NoError(t, os.MkdirAll(xcbuilddataDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(xcbuilddataDir, "build-request.json"),
 		[]byte(`{"parameters":{"action":"build","qos":""}}`), 0o644))
-	src.events <- fsnotify.Event{Name: xcbuilddataDir, Op: fsnotify.Create}
+
+	// FSEvents delivers the terminal CREATE directly. No intermediate
+	// events are needed because the watchpoint is recursive.
+	src.events <- Event{Path: xcbuilddataDir, Op: EventCreate}
 
 	got := waitForStart(t, starts)
 	assert.Equal(t, hex, got.BuildRequestHex)
@@ -322,4 +268,100 @@ func TestStartWatcher_FiresAfterDerivedDataWipe(t *testing.T) {
 	assert.Equal(t, root, got.DerivedDataPath)
 
 	w.Close()
+}
+
+// TestStartWatcher_PreExistingHexDirsSeedOnStart verifies the seed walk
+// catches an xcbuilddata dir that exists before Start is called. Without a
+// seed walk the proxy would miss any build already running when it started.
+func TestStartWatcher_PreExistingHexDirsSeedOnStart(t *testing.T) {
+	fakeHome := t.TempDir()
+
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-preexisting")
+	hex := "77777777777777777777777777777777"
+	// Pre-populate BEFORE calling Start.
+	_ = writeBuildRequest(t, root, hex, "build", "")
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	got := waitForStart(t, starts)
+	assert.Equal(t, hex, got.BuildRequestHex)
+	assert.Equal(t, PrimaryActionBuild, got.Action)
+	assert.Equal(t, root, got.DerivedDataPath)
+
+	w.Close()
+}
+
+// TestStartWatcher_SeedAndStreamDedup verifies the seen-set gates emission
+// across both paths: the seed walk fires once, and a later notify CREATE
+// for the same dir must be swallowed.
+func TestStartWatcher_SeedAndStreamDedup(t *testing.T) {
+	fakeHome := t.TempDir()
+
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-dedup")
+	hex := "9999999999999999999999999999aaaa"
+	dir := writeBuildRequest(t, root, hex, "build", "")
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	// Seed walk fires on Start.
+	_ = waitForStart(t, starts)
+
+	// A subsequent CREATE for the same dir must be swallowed by the seen-set.
+	src.events <- Event{Path: dir, Op: EventCreate}
+
+	select {
+	case got := <-starts:
+		t.Fatalf("unexpected duplicate Start: %+v", got)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
+// TestStartWatcher_InstallsRecursiveWatch asserts the watchpoint is installed
+// at the DD root with the .../... recursive suffix — the single piece of
+// FSEvents plumbing we rely on instead of the old stair-step add chain.
+func TestStartWatcher_InstallsRecursiveWatch(t *testing.T) {
+	fakeHome := t.TempDir()
+
+	src := newFakeEventSource()
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+	defer w.Close()
+
+	ddRoot := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData")
+	want := filepath.Join(ddRoot, "...")
+
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	assert.Contains(t, src.watched, want,
+		"expected recursive watch on %s, got %v", want, src.watched)
 }

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/fsnotify/fsnotify"
 	"howett.net/plist"
 )
 
@@ -37,7 +36,7 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 
 	newSource := w.NewSource
 	if newSource == nil {
-		newSource = func() (DirEventSource, error) { return newFsnotifyAdapter() }
+		newSource = func() (DirEventSource, error) { return newNotifyAdapter(), nil }
 	}
 
 	src, err := newSource()
@@ -47,8 +46,13 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 		return nil
 	}
 
-	for _, root := range w.derivedDataRoots() {
-		w.addWatchesForRoot(src, root)
+	ddRoot := w.derivedDataDir()
+	if ddRoot != "" {
+		if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
+			w.warn("end watcher mkdir %s: %s", ddRoot, mkErr)
+		} else if addErr := src.Watch(recursivePath(ddRoot), EventCreate, EventWrite); addErr != nil {
+			w.warn("end watcher watch %s: %s", ddRoot, addErr)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -60,13 +64,19 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 	w.done = done
 	w.mu.Unlock()
 
+	// Seed-walk the DD tree for any already-sealed LogStoreManifest entries
+	// so a proxy that started after a build finished still picks them up.
+	if ddRoot != "" {
+		w.seedWalk(ddRoot)
+	}
+
 	go w.loop(ctx, src, done)
 
 	return nil
 }
 
 // MarkSeen records a uniqueIdentifier as already-emitted so a subsequent
-// fsnotify tick does not re-fire for it. Used by restart-recovery when it
+// event tick does not re-fire for it. Used by restart-recovery when it
 // synthesizes an End from the on-disk manifest before the watcher attaches.
 func (w *EndWatcher) MarkSeen(uniqueID string) {
 	if uniqueID == "" {
@@ -98,7 +108,7 @@ func (w *EndWatcher) Close() {
 	cancel()
 
 	if src != nil {
-		_ = src.Close() //nolint:errcheck
+		src.Stop()
 	}
 
 	if done != nil {
@@ -106,41 +116,39 @@ func (w *EndWatcher) Close() {
 	}
 }
 
-func (w *EndWatcher) derivedDataRoots() []string {
+// derivedDataDir mirrors StartWatcher.derivedDataDir: the recursive FSEvents
+// watch is installed on the DD root so manifest writes under any app subdir
+// (including those created after the watcher starts) are observed.
+func (w *EndWatcher) derivedDataDir() string {
 	home := w.HomeDir
 	if home == "" {
 		h, err := os.UserHomeDir()
 		if err != nil || h == "" {
-			return nil
+			return ""
 		}
 		home = h
 	}
 
-	matches, err := filepath.Glob(filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData", "*"))
-	if err != nil {
-		return nil
-	}
-
-	return matches
+	return filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
 }
 
-func (w *EndWatcher) addWatchesForRoot(src DirEventSource, root string) {
-	logsDir := filepath.Join(root, "Logs", buildDirName)
-	if _, err := os.Stat(logsDir); err == nil {
-		if addErr := src.Add(logsDir); addErr != nil {
-			w.warn("end watcher add %s: %s", logsDir, addErr)
+// seedWalk scans every existing LogStoreManifest.plist at Start, in case the
+// proxy started after Xcode already sealed an entry.
+func (w *EndWatcher) seedWalk(ddRoot string) {
+	entries, err := os.ReadDir(ddRoot)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
 		}
 
-		return
-	}
-
-	parent := filepath.Dir(logsDir)
-	if _, err := os.Stat(parent); err != nil {
-		return
-	}
-
-	if addErr := src.Add(parent); addErr != nil {
-		w.warn("end watcher add %s: %s", parent, addErr)
+		path := filepath.Join(ddRoot, e.Name(), "Logs", buildDirName, "LogStoreManifest.plist")
+		if _, statErr := os.Stat(path); statErr == nil {
+			w.scanManifest(path)
+		}
 	}
 }
 
@@ -154,7 +162,6 @@ func (w *EndWatcher) loop(ctx context.Context, src DirEventSource, done chan str
 	}()
 
 	events := src.Events()
-	errs := src.Errors()
 
 	for {
 		select {
@@ -165,37 +172,21 @@ func (w *EndWatcher) loop(ctx context.Context, src DirEventSource, done chan str
 				return
 			}
 
-			w.handleEvent(src, ev)
-		case err, ok := <-errs:
-			if !ok {
-				return
-			}
-
-			if err != nil {
-				w.warn("end watcher source error: %s", err)
-			}
+			w.handleEvent(ev)
 		}
 	}
 }
 
-func (w *EndWatcher) handleEvent(src DirEventSource, ev fsnotify.Event) {
-	if ev.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+func (w *EndWatcher) handleEvent(ev Event) {
+	if ev.Op&(EventWrite|EventCreate) == 0 {
 		return
 	}
 
-	base := filepath.Base(ev.Name)
-	if base == "LogStoreManifest.plist" {
-		w.scanManifest(ev.Name)
-
+	if filepath.Base(ev.Path) != "LogStoreManifest.plist" {
 		return
 	}
 
-	switch base {
-	case "Logs", buildDirName:
-		if addErr := src.Add(ev.Name); addErr != nil {
-			w.warn("end watcher add %s: %s", ev.Name, addErr)
-		}
-	}
+	w.scanManifest(ev.Path)
 }
 
 func (w *EndWatcher) scanManifest(path string) {

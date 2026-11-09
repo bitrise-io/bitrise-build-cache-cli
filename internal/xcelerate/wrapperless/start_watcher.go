@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/fsnotify/fsnotify"
+	"github.com/rjeczalik/notify"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildrequest"
 )
@@ -19,38 +19,110 @@ import (
 const (
 	xcbuilddataSuffix = ".xcbuilddata"
 	buildDirName      = "Build"
+	eventChanBuffer   = 64
 )
 
+// EventOp is the subset of notify events this package cares about.
+type EventOp uint32
+
+const (
+	EventCreate EventOp = 1 << iota
+	EventWrite
+)
+
+// Event is the package-local representation of a filesystem event, decoupled
+// from notify.EventInfo so tests can drive the watchers synchronously.
+type Event struct {
+	Path string
+	Op   EventOp
+}
+
+// DirEventSource is a thin seam over the notify API. Production uses the
+// notify-backed implementation; tests supply a fake source that pushes
+// Events directly into the channel.
 type DirEventSource interface {
-	Events() <-chan fsnotify.Event
-	Errors() <-chan error
-	Add(path string) error
-	Close() error
+	Events() <-chan Event
+	Watch(root string, ops ...EventOp) error
+	Stop()
 }
 
-type fsnotifyAdapter struct {
-	w *fsnotify.Watcher
+type notifyAdapter struct {
+	events  chan Event
+	raw     chan notify.EventInfo
+	stopMu  sync.Mutex
+	stopped bool
 }
 
-func newFsnotifyAdapter() (*fsnotifyAdapter, error) {
-	w, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, fmt.Errorf("new fsnotify watcher: %w", err)
+func newNotifyAdapter() *notifyAdapter {
+	raw := make(chan notify.EventInfo, eventChanBuffer)
+	out := make(chan Event, eventChanBuffer)
+	a := &notifyAdapter{events: out, raw: raw}
+
+	go a.pump()
+
+	return a
+}
+
+func (a *notifyAdapter) pump() {
+	for ev := range a.raw {
+		op := EventOp(0)
+		if ev.Event()&notify.Create != 0 {
+			op |= EventCreate
+		}
+		if ev.Event()&notify.Write != 0 {
+			op |= EventWrite
+		}
+		if op == 0 {
+			continue
+		}
+
+		select {
+		case a.events <- Event{Path: ev.Path(), Op: op}:
+		default:
+			// Buffer full — drop rather than block the notify dispatcher.
+			// The seed walk at Start time guarantees we still pick up
+			// anything dropped here on the next relevant trigger.
+		}
 	}
 
-	return &fsnotifyAdapter{w: w}, nil
+	close(a.events)
 }
 
-func (a *fsnotifyAdapter) Events() <-chan fsnotify.Event { return a.w.Events }
-func (a *fsnotifyAdapter) Errors() <-chan error          { return a.w.Errors }
-func (a *fsnotifyAdapter) Add(path string) error {
-	//nolint:wrapcheck
-	return a.w.Add(path)
+func (a *notifyAdapter) Events() <-chan Event { return a.events }
+
+func (a *notifyAdapter) Watch(root string, ops ...EventOp) error {
+	ev := notify.Event(0)
+	for _, op := range ops {
+		if op&EventCreate != 0 {
+			ev |= notify.Create
+		}
+		if op&EventWrite != 0 {
+			ev |= notify.Write
+		}
+	}
+	if ev == 0 {
+		return fmt.Errorf("notify watch %s: no event ops", root)
+	}
+
+	if err := notify.Watch(root, a.raw, ev); err != nil {
+		return fmt.Errorf("notify watch %s: %w", root, err)
+	}
+
+	return nil
 }
 
-func (a *fsnotifyAdapter) Close() error {
-	//nolint:wrapcheck
-	return a.w.Close()
+func (a *notifyAdapter) Stop() {
+	a.stopMu.Lock()
+	if a.stopped {
+		a.stopMu.Unlock()
+
+		return
+	}
+	a.stopped = true
+	a.stopMu.Unlock()
+
+	notify.Stop(a.raw)
+	close(a.raw)
 }
 
 type StartWatcher struct {
@@ -64,12 +136,15 @@ type StartWatcher struct {
 	src    DirEventSource
 	cancel context.CancelFunc
 	done   chan struct{}
+
+	seenMu      sync.Mutex
+	seenHexDirs map[string]struct{}
 }
 
 func (w *StartWatcher) Start(ctx context.Context) error {
 	newSource := w.NewSource
 	if newSource == nil {
-		newSource = func() (DirEventSource, error) { return newFsnotifyAdapter() }
+		newSource = func() (DirEventSource, error) { return newNotifyAdapter(), nil }
 	}
 
 	src, err := newSource()
@@ -79,17 +154,13 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 		return nil
 	}
 
-	if ddRoot := w.derivedDataDir(); ddRoot != "" {
+	ddRoot := w.derivedDataDir()
+	if ddRoot != "" {
 		if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
 			w.warn("start watcher mkdir %s: %s", ddRoot, mkErr)
-		} else if addErr := src.Add(ddRoot); addErr != nil {
-			w.warn("start watcher add %s: %s", ddRoot, addErr)
+		} else if addErr := src.Watch(recursivePath(ddRoot), EventCreate); addErr != nil {
+			w.warn("start watcher watch %s: %s", ddRoot, addErr)
 		}
-	}
-
-	roots := w.derivedDataRoots()
-	for _, root := range roots {
-		w.addWatchesForRoot(src, root)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -100,6 +171,13 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 	w.cancel = cancel
 	w.done = done
 	w.mu.Unlock()
+
+	// Seed-walk the DD tree for any xcbuilddata that already exists when
+	// the watcher starts. Closes the window where Xcode created dirs
+	// before the recursive watch was installed.
+	if ddRoot != "" {
+		w.seedWalk(ddRoot)
+	}
 
 	go w.loop(ctx, src, done)
 
@@ -123,7 +201,7 @@ func (w *StartWatcher) Close() {
 	cancel()
 
 	if src != nil {
-		_ = src.Close() //nolint:errcheck
+		src.Stop()
 	}
 
 	if done != nil {
@@ -131,23 +209,10 @@ func (w *StartWatcher) Close() {
 	}
 }
 
-func (w *StartWatcher) derivedDataRoots() []string {
-	ddRoot := w.derivedDataDir()
-	if ddRoot == "" {
-		return nil
-	}
-
-	matches, err := filepath.Glob(filepath.Join(ddRoot, "*"))
-	if err != nil {
-		return nil
-	}
-
-	return matches
-}
-
 // derivedDataDir returns the parent DerivedData dir so we can install a
-// top-level fsnotify watch and observe new app-subdir CREATEs after a
-// wipe or a fresh Xcode session.
+// single recursive FSEvents watch that captures every xcbuilddata CREATE
+// below it — including dirs that appear after a wipe or a fresh Xcode
+// session, without any per-ancestor stair-step add.
 func (w *StartWatcher) derivedDataDir() string {
 	home := w.HomeDir
 	if home == "" {
@@ -161,41 +226,32 @@ func (w *StartWatcher) derivedDataDir() string {
 	return filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
 }
 
-func (w *StartWatcher) addWatchesForRoot(src DirEventSource, root string) {
-	for _, dir := range xcbuildDataDirsFor(root) {
-		if _, err := os.Stat(dir); err == nil {
-			if addErr := src.Add(dir); addErr != nil {
-				w.warn("start watcher add %s: %s", dir, addErr)
-			}
-
-			continue
-		}
-
-		grandparent := filepath.Dir(filepath.Dir(dir))
-		if _, err := os.Stat(grandparent); err != nil {
-			continue
-		}
-
-		if addErr := src.Add(grandparent); addErr != nil {
-			w.warn("start watcher add %s: %s", grandparent, addErr)
-		}
-	}
+// recursivePath is rjeczalik/notify's convention for a recursive watchpoint.
+func recursivePath(dir string) string {
+	return filepath.Join(dir, "...")
 }
 
-func xcbuildDataDirsFor(root string) []string {
-	return []string{
-		filepath.Join(root, buildDirName, "Intermediates.noindex", "XCBuildData"),
-		filepath.Join(root, "Index.noindex", buildDirName, "Intermediates.noindex", "XCBuildData"),
-	}
-}
+// seedWalk scans the DD subtree for pre-existing xcbuilddata dirs so a proxy
+// that started after Xcode still catches in-flight builds. Idempotent with
+// the notify stream via the seen-set.
+func (w *StartWatcher) seedWalk(ddRoot string) {
+	_ = filepath.WalkDir(ddRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			//nolint:nilerr // skip the un-readable subtree, keep walking siblings
+			return filepath.SkipDir
+		}
+		if !d.IsDir() {
+			return nil
+		}
 
-func isXcbuildDataAncestorDir(base string) bool {
-	switch base {
-	case buildDirName, "Index.noindex", "Intermediates.noindex", "XCBuildData":
-		return true
-	}
+		if strings.HasSuffix(d.Name(), xcbuilddataSuffix) {
+			w.emitStartOnce(path)
 
-	return false
+			return filepath.SkipDir
+		}
+
+		return nil
+	})
 }
 
 func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {
@@ -208,7 +264,6 @@ func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan s
 	}()
 
 	events := src.Events()
-	errs := src.Errors()
 
 	for {
 		select {
@@ -219,64 +274,50 @@ func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan s
 				return
 			}
 
-			w.handleEvent(src, ev)
-		case err, ok := <-errs:
-			if !ok {
-				return
-			}
-
-			if err != nil {
-				w.warn("start watcher source error: %s", err)
-			}
+			w.handleEvent(ev)
 		}
 	}
 }
 
-func (w *StartWatcher) handleEvent(src DirEventSource, ev fsnotify.Event) {
-	if ev.Op&fsnotify.Create == 0 {
+func (w *StartWatcher) handleEvent(ev Event) {
+	if ev.Op&EventCreate == 0 {
 		return
 	}
 
-	base := filepath.Base(ev.Name)
-	if strings.HasSuffix(base, xcbuilddataSuffix) {
-		w.emitStart(ev.Name)
-
+	// Only act on the terminal xcbuilddata dir — the recursive FSEvents
+	// watch delivers it directly, no need to chase intermediate dirs.
+	base := filepath.Base(ev.Path)
+	if !strings.HasSuffix(base, xcbuilddataSuffix) {
 		return
 	}
 
-	if isXcbuildDataAncestorDir(base) {
-		if addErr := src.Add(ev.Name); addErr != nil {
-			w.warn("start watcher add %s: %s", ev.Name, addErr)
-		}
-
-		return
-	}
-
-	if w.isDerivedDataChild(ev.Name) {
-		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
-			// Watch the new app subdir itself so its own child CREATEs (Build/)
-			// surface — fsnotify is non-recursive and addWatchesForRoot's
-			// stat-gated walk skips the whole subtree on a fresh wipe where
-			// Build/ and its descendants do not exist yet.
-			if addErr := src.Add(ev.Name); addErr != nil {
-				w.debugf("start watcher add %s: %s", ev.Name, addErr)
-			}
-
-			w.addWatchesForRoot(src, ev.Name)
-		}
-	}
+	w.emitStartOnce(ev.Path)
 }
 
-func (w *StartWatcher) isDerivedDataChild(path string) bool {
-	ddRoot := w.derivedDataDir()
-	if ddRoot == "" {
+// markHexSeen returns true the first time xcbuildDataDir is seen. De-duplicates
+// across the seed walk and the notify stream (both can surface the same path).
+func (w *StartWatcher) markHexSeen(xcbuildDataDir string) bool {
+	w.seenMu.Lock()
+	defer w.seenMu.Unlock()
+
+	if w.seenHexDirs == nil {
+		w.seenHexDirs = make(map[string]struct{})
+	}
+
+	if _, ok := w.seenHexDirs[xcbuildDataDir]; ok {
 		return false
 	}
 
-	return filepath.Dir(path) == ddRoot
+	w.seenHexDirs[xcbuildDataDir] = struct{}{}
+
+	return true
 }
 
-func (w *StartWatcher) emitStart(xcbuildDataDir string) {
+// emitStartOnce loads the build-request and emits a Start, guaranteeing a
+// single OnStart per xcbuilddata dir path. The seen-set is marked only after
+// a successful classify, so a premature call (Load returns ErrNotFound before
+// build-request.json lands) does not poison a later retry.
+func (w *StartWatcher) emitStartOnce(xcbuildDataDir string) {
 	hex := strings.TrimSuffix(filepath.Base(xcbuildDataDir), xcbuilddataSuffix)
 	if hex == "" {
 		return
@@ -297,6 +338,10 @@ func (w *StartWatcher) emitStart(xcbuildDataDir string) {
 	if !ok {
 		w.debugf("StartWatcher: reject hex=%s action=%s qos=%s (not primary)", hex, info.Action, info.QoS)
 
+		return
+	}
+
+	if !w.markHexSeen(xcbuildDataDir) {
 		return
 	}
 

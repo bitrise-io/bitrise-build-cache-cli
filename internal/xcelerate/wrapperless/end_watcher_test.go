@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,12 +38,17 @@ const sealedManifestFixture = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-func writeManifest(t *testing.T, root, body string) string {
+func manifestPath(t *testing.T, root string) string {
 	t.Helper()
-
 	dir := filepath.Join(root, "Logs", "Build")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	path := filepath.Join(dir, "LogStoreManifest.plist")
+
+	return filepath.Join(dir, "LogStoreManifest.plist")
+}
+
+func writeManifest(t *testing.T, root, body string) string {
+	t.Helper()
+	path := manifestPath(t, root)
 	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
 
 	return path
@@ -64,7 +68,6 @@ func waitForEnd(t *testing.T, ch chan End) End {
 func TestEndWatcher_EmitsForSealedEntry(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
-	path := writeManifest(t, root, sealedManifestFixture)
 
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
@@ -79,7 +82,9 @@ func TestEndWatcher_EmitsForSealedEntry(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	src.events <- fsnotify.Event{Name: path, Op: fsnotify.Write}
+	// Write manifest AFTER Start so the seed walk doesn't pre-fire.
+	path := writeManifest(t, root, sealedManifestFixture)
+	src.events <- Event{Path: path, Op: EventWrite}
 
 	got := waitForEnd(t, ends)
 	assert.Equal(t, "AAAA-BBBB", got.UniqueIdentifier)
@@ -93,7 +98,6 @@ func TestEndWatcher_EmitsForSealedEntry(t *testing.T) {
 func TestEndWatcher_DedupesAcrossWriteEvents(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
-	path := writeManifest(t, root, sealedManifestFixture)
 
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
@@ -108,10 +112,11 @@ func TestEndWatcher_DedupesAcrossWriteEvents(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	src.events <- fsnotify.Event{Name: path, Op: fsnotify.Write}
+	path := writeManifest(t, root, sealedManifestFixture)
+	src.events <- Event{Path: path, Op: EventWrite}
 	_ = waitForEnd(t, ends)
 
-	src.events <- fsnotify.Event{Name: path, Op: fsnotify.Write}
+	src.events <- Event{Path: path, Op: EventWrite}
 
 	select {
 	case e := <-ends:
@@ -135,7 +140,6 @@ func TestEndWatcher_IgnoresUnsealedEntries(t *testing.T) {
 
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
-	path := writeManifest(t, root, onlyOpen)
 
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
@@ -150,7 +154,8 @@ func TestEndWatcher_IgnoresUnsealedEntries(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	src.events <- fsnotify.Event{Name: path, Op: fsnotify.Write}
+	path := writeManifest(t, root, onlyOpen)
+	src.events <- Event{Path: path, Op: EventWrite}
 
 	select {
 	case e := <-ends:
@@ -176,7 +181,6 @@ func TestEndWatcher_FailureStatus(t *testing.T) {
 
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
-	path := writeManifest(t, root, failedBody)
 
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
@@ -191,11 +195,41 @@ func TestEndWatcher_FailureStatus(t *testing.T) {
 	defer cancel()
 	require.NoError(t, w.Start(ctx))
 
-	src.events <- fsnotify.Event{Name: path, Op: fsnotify.Write}
+	path := writeManifest(t, root, failedBody)
+	src.events <- Event{Path: path, Op: EventWrite}
 
 	got := waitForEnd(t, ends)
 	assert.False(t, got.Success)
 	assert.Equal(t, "Failing", got.Scheme)
+
+	w.Close()
+}
+
+// TestEndWatcher_SeedPicksUpPreExistingSealedManifest covers the window where
+// Xcode sealed a manifest before the proxy's EndWatcher started. The seed
+// walk must surface the sealed entry on Start.
+func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-preexisting")
+	// Write manifest BEFORE Start so the seed walk is the only path that
+	// can surface it.
+	_ = writeManifest(t, root, sealedManifestFixture)
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	got := waitForEnd(t, ends)
+	assert.Equal(t, "AAAA-BBBB", got.UniqueIdentifier)
 
 	w.Close()
 }
