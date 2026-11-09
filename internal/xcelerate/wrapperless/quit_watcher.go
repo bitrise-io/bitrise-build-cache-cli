@@ -27,23 +27,28 @@ type QuitWatcher struct {
 	IsAlive      func(pid int) bool
 
 	mu      sync.Mutex
-	watched map[int]Ancestry
+	watched map[int]watchedPeer
 	cancel  context.CancelFunc
 	done    chan struct{}
 	ticker  *time.Ticker
 	started bool
 }
 
-func (w *QuitWatcher) Register(pid int, ancestry Ancestry) {
+type watchedPeer struct {
+	Ancestry    Ancestry
+	StartTimeMS int64
+}
+
+func (w *QuitWatcher) Register(pid int, ancestry Ancestry, startTimeMS int64) {
 	if pid <= 0 || ancestry == AncestryUnknown {
 		return
 	}
 
 	w.mu.Lock()
 	if w.watched == nil {
-		w.watched = make(map[int]Ancestry)
+		w.watched = make(map[int]watchedPeer)
 	}
-	w.watched[pid] = ancestry
+	w.watched[pid] = watchedPeer{Ancestry: ancestry, StartTimeMS: startTimeMS}
 	w.mu.Unlock()
 }
 
@@ -57,7 +62,7 @@ func (w *QuitWatcher) Start(ctx context.Context) {
 	w.started = true
 
 	if w.watched == nil {
-		w.watched = make(map[int]Ancestry)
+		w.watched = make(map[int]watchedPeer)
 	}
 
 	interval := w.PollInterval
@@ -149,9 +154,9 @@ func defaultIsAlive(pid int) bool {
 
 func (w *QuitWatcher) scan() {
 	w.mu.Lock()
-	snapshot := make(map[int]Ancestry, len(w.watched))
-	for pid, anc := range w.watched {
-		snapshot[pid] = anc
+	snapshot := make(map[int]watchedPeer, len(w.watched))
+	for pid, peer := range w.watched {
+		snapshot[pid] = peer
 	}
 	w.mu.Unlock()
 
@@ -178,10 +183,12 @@ func (w *QuitWatcher) scan() {
 
 	now := w.now()
 	for _, pid := range dead {
+		peer := snapshot[pid]
 		w.OnQuit(Quit{
 			At:          now,
 			PID:         pid,
-			AncestryIDE: snapshot[pid] == AncestryIDE,
+			StartTimeMS: peer.StartTimeMS,
+			AncestryIDE: peer.Ancestry == AncestryIDE,
 		})
 	}
 }

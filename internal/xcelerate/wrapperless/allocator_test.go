@@ -244,6 +244,32 @@ func TestAllocator_IDEBackground_UsesFixedCommand(t *testing.T) {
 	assert.Equal(t, BuildRequestHexIDEBackground, "ide-background")
 }
 
+func TestAllocator_CLI_NoOpenBucketSynthesizesImplicitEND(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, blobs := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	blobs.set(2)
+
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+		At:          time.Unix(10, 0),
+		PID:         7777,
+		StartTimeMS: 123456,
+	}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1)
+	assert.Equal(t, BucketReasonCLIImplicit, buckets[0].Reason)
+	assert.Equal(t, 7777, buckets[0].PeerPID)
+	assert.Equal(t, int64(123456), buckets[0].PeerStartMS)
+	assert.NotEmpty(t, buckets[0].InvocationID)
+}
+
 func TestAllocator_IDEBackground_SkipsWhenNoActivity(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex

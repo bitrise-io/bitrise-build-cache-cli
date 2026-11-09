@@ -29,5 +29,6 @@ type End struct {
 type Quit struct {
 	At          time.Time
 	PID         int
+	StartTimeMS int64
 	AncestryIDE bool
 }

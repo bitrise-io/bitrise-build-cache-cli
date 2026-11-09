@@ -287,10 +287,15 @@ func (a *Allocator) cliImplicitBucket(q Quit, snap *blobstats.Snapshot) Bucket {
 		peerPID = a.ProxyPID
 	}
 
+	peerStartMS := q.StartTimeMS
+	if peerStartMS == 0 {
+		peerStartMS = a.ProxyStartMS
+	}
+
 	anchor := buildidentity.Anchor{
 		Hostname:        a.Hostname,
 		PID:             peerPID,
-		StartTimeMS:     a.ProxyStartMS,
+		StartTimeMS:     peerStartMS,
 		BuildRequestHex: BuildRequestHexCLIRun,
 	}
 
@@ -300,7 +305,7 @@ func (a *Allocator) cliImplicitBucket(q Quit, snap *blobstats.Snapshot) Bucket {
 		EndAt:        q.At,
 		Reason:       BucketReasonCLIImplicit,
 		PeerPID:      peerPID,
-		PeerStartMS:  a.ProxyStartMS,
+		PeerStartMS:  peerStartMS,
 		BlobStats:    snap,
 	}
 }

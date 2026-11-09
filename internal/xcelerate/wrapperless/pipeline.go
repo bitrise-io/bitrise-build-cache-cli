@@ -130,12 +130,12 @@ func (p *Pipeline) Close() {
 
 // RegisterPeer feeds a peer PID into the QuitWatcher. Callers (the proxy)
 // invoke this on each TagConn so the pipeline learns whom to watch.
-func (p *Pipeline) RegisterPeer(pid int, ancestry Ancestry) {
+func (p *Pipeline) RegisterPeer(pid int, ancestry Ancestry, startTimeMS int64) {
 	if p.QuitWatcher == nil {
 		return
 	}
 
-	p.QuitWatcher.Register(pid, ancestry)
+	p.QuitWatcher.Register(pid, ancestry, startTimeMS)
 }
 
 func (p *Pipeline) onBucketOpen(invocationID string) {

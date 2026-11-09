@@ -27,8 +27,8 @@ func TestQuitWatcher_FiresOnDeadPID(t *testing.T) {
 			return alive[pid]
 		},
 	}
-	w.Register(100, AncestryIDE)
-	w.Register(200, AncestryCLI)
+	w.Register(100, AncestryIDE, 0)
+	w.Register(200, AncestryCLI, 0)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -64,9 +64,9 @@ func TestQuitWatcher_FiresOnDeadPID(t *testing.T) {
 func TestQuitWatcher_RegisterRejectsZero(t *testing.T) {
 	w := &QuitWatcher{}
 
-	w.Register(0, AncestryIDE)
-	w.Register(-1, AncestryIDE)
-	w.Register(5, AncestryUnknown)
+	w.Register(0, AncestryIDE, 0)
+	w.Register(-1, AncestryIDE, 0)
+	w.Register(5, AncestryUnknown, 0)
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -85,7 +85,7 @@ func TestQuitWatcher_FiresOncePerPID(t *testing.T) {
 		},
 		IsAlive: func(_ int) bool { return false },
 	}
-	w.Register(42, AncestryCLI)
+	w.Register(42, AncestryCLI, 999)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
