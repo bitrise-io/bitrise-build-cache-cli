@@ -3,10 +3,14 @@ package wrapperless
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildrequest"
 )
 
 type ProxyControl interface {
@@ -88,6 +92,8 @@ func (p *Pipeline) Start(ctx context.Context) error {
 		p.Allocator.Run(ctx, p.Timeline)
 	}()
 
+	p.recoverFromDerivedData()
+
 	return nil
 }
 
@@ -158,4 +164,105 @@ func hostAndSelf() (string, int, int64) {
 	startMs := time.Now().UnixMilli()
 
 	return host, pid, startMs
+}
+
+// recoverFromDerivedData walks every DD root's XCBuildData dirs on Start,
+// synthesizing a Start event per primary xcbuilddata and a matching End
+// event when the sibling LogStoreManifest.plist carries a sealed entry.
+// Unsealed primaries inject only Start so a later fsnotify End can close the
+// bucket; the EndWatcher's seen set is pre-marked so the live fsnotify tick
+// does not double-fire on the already-synthesized End.
+func (p *Pipeline) recoverFromDerivedData() {
+	for _, root := range p.derivedDataRoots() {
+		for _, xcbuildDataDir := range xcbuildDataDirsFor(root) {
+			p.recoverXcbuildData(root, xcbuildDataDir)
+		}
+		p.markRecoveredManifest(root)
+	}
+}
+
+func (p *Pipeline) recoverXcbuildData(root, dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, xcbuilddataSuffix) {
+			continue
+		}
+
+		hex := strings.TrimSuffix(name, xcbuilddataSuffix)
+		info, err := buildrequest.Load(root, hex)
+		if err != nil {
+			continue
+		}
+
+		action, ok := classifyPrimary(info)
+		if !ok {
+			continue
+		}
+
+		start := Start{
+			At:              time.Now(),
+			DerivedDataPath: root,
+			BuildRequestHex: hex,
+			Action:          action,
+		}
+		p.Timeline.PushStart(start)
+	}
+}
+
+// markRecoveredManifest walks the manifest at DD/Logs/Build/... and, for
+// each sealed entry, injects a synthetic End + pre-marks the EndWatcher so
+// the live tick doesn't re-emit the same entry.
+func (p *Pipeline) markRecoveredManifest(root string) {
+	manifestPath := filepath.Join(root, "Logs", buildDirName, "LogStoreManifest.plist")
+	entries, err := loadManifestEntries(manifestPath)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if !isSealedTerminal(e.HighLevelStatus) {
+			continue
+		}
+		if e.UniqueIdentifier == "" || e.TimeStopped == 0 {
+			continue
+		}
+
+		if p.EndWatcher != nil {
+			p.EndWatcher.MarkSeen(e.UniqueIdentifier)
+		}
+
+		p.Timeline.PushEnd(End{
+			At:               time.Now(),
+			Scheme:           schemeFromSignature(e.Signature),
+			Success:          e.HighLevelStatus == "S",
+			UniqueIdentifier: e.UniqueIdentifier,
+			Duration:         cfAbsDuration(e.TimeStarted, e.TimeStopped),
+		})
+	}
+}
+
+func (p *Pipeline) derivedDataRoots() []string {
+	home := p.HomeDir
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return nil
+		}
+		home = h
+	}
+
+	matches, err := filepath.Glob(filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData", "*"))
+	if err != nil {
+		return nil
+	}
+
+	return matches
 }

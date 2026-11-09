@@ -65,6 +65,22 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 	return nil
 }
 
+// MarkSeen records a uniqueIdentifier as already-emitted so a subsequent
+// fsnotify tick does not re-fire for it. Used by restart-recovery when it
+// synthesizes an End from the on-disk manifest before the watcher attaches.
+func (w *EndWatcher) MarkSeen(uniqueID string) {
+	if uniqueID == "" {
+		return
+	}
+
+	w.mu.Lock()
+	if w.seen == nil {
+		w.seen = make(map[string]struct{})
+	}
+	w.seen[uniqueID] = struct{}{}
+	w.mu.Unlock()
+}
+
 func (w *EndWatcher) Close() {
 	w.mu.Lock()
 	cancel := w.cancel
