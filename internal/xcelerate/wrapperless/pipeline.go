@@ -27,6 +27,10 @@ type Pipeline struct {
 	EndWatcher   *EndWatcher
 	QuitWatcher  *QuitWatcher
 	Proxy        ProxyControl
+	// BlobStats, when non-nil, is attached to the Allocator at Start so each
+	// emitted Bucket carries the windowed blob-transfer stats for the period
+	// since the previous bucket.
+	BlobStats BlobStatsSource
 
 	mu      sync.Mutex
 	started bool
@@ -59,6 +63,9 @@ func (p *Pipeline) Start(ctx context.Context) error {
 
 	p.Allocator.OnReady = p.onBucketReady
 	p.Allocator.OnOpenInvoc = p.onBucketOpen
+	if p.BlobStats != nil && p.Allocator.BlobStats == nil {
+		p.Allocator.BlobStats = p.BlobStats
+	}
 
 	if p.StartWatcher == nil {
 		p.StartWatcher = &StartWatcher{HomeDir: p.HomeDir, Logger: p.Logger}

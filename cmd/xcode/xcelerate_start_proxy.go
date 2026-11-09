@@ -579,10 +579,11 @@ func maybeStartWrapperlessPipeline(
 	}
 
 	pipeline := &wrapperless.Pipeline{
-		HomeDir: bundle.homeDir,
-		Logger:  logger,
-		Emitter: emitter,
-		Proxy:   p,
+		HomeDir:   bundle.homeDir,
+		Logger:    logger,
+		Emitter:   emitter,
+		Proxy:     p,
+		BlobStats: p.BlobStatsSource(),
 	}
 
 	if err := pipeline.Start(ctx); err != nil {
