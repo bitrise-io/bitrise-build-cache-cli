@@ -76,6 +76,14 @@ const (
 	// proxy writes on close, consumed by the enrichment side.
 	xcelerateSessionsSubdir = "sessions"
 
+	// xcelerateWrapperlessSubdir holds the wrapperless pipeline's on-disk
+	// fallbacks (slim-PUT retry queue, etc).
+	xcelerateWrapperlessSubdir = "wrapperless"
+
+	// wrapperlessPendingSlimFilename is the NDJSON ledger the slim emitter
+	// appends to after an inline-retry budget is exhausted.
+	wrapperlessPendingSlimFilename = "pending-slim.ndjson"
+
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
@@ -345,6 +353,17 @@ func (p Paths) XcelerateEnrichmentDir() string {
 // proxy drops per-connection sidecar JSON files on close.
 func (p Paths) XcelerateSessionsDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateSessionsSubdir)
+}
+
+// XcelerateWrapperlessDir returns ~/.local/state/xcelerate/wrapperless.
+func (p Paths) XcelerateWrapperlessDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateWrapperlessSubdir)
+}
+
+// WrapperlessPendingSlimPath returns the NDJSON retry file the slim emitter
+// appends to after an inline-retry budget is exhausted.
+func (p Paths) WrapperlessPendingSlimPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingSlimFilename)
 }
 
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to

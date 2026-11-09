@@ -17,17 +17,17 @@ const (
 )
 
 type Bucket struct {
-	InvocationID    string
-	StartAt         time.Time
-	EndAt           time.Time
-	Scheme          string
-	Action          PrimaryAction
-	Success         bool
-	SuccessKnown    bool
-	Duration        time.Duration
-	Reason          BucketReason
-	BuildRequestHex string
-	PeerPID         int
-	PeerStartMS     int64
-	BlobStats       *blobstats.Snapshot
+	InvocationID    string              `json:"invocationId"`
+	StartAt         time.Time           `json:"startAt"`
+	EndAt           time.Time           `json:"endAt"`
+	Scheme          string              `json:"scheme,omitempty"`
+	Action          PrimaryAction       `json:"action,omitempty"`
+	Success         bool                `json:"success"`
+	SuccessKnown    bool                `json:"successKnown"`
+	Duration        time.Duration       `json:"durationNs,omitempty"`
+	Reason          BucketReason        `json:"reason"`
+	BuildRequestHex string              `json:"buildRequestHex,omitempty"`
+	PeerPID         int                 `json:"peerPid,omitempty"`
+	PeerStartMS     int64               `json:"peerStartMs,omitempty"`
+	BlobStats       *blobstats.Snapshot `json:"blobStats,omitempty"`
 }
