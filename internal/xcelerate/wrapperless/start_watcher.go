@@ -79,6 +79,14 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 		return nil
 	}
 
+	if ddRoot := w.derivedDataDir(); ddRoot != "" {
+		if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
+			w.warn("start watcher mkdir %s: %s", ddRoot, mkErr)
+		} else if addErr := src.Add(ddRoot); addErr != nil {
+			w.warn("start watcher add %s: %s", ddRoot, addErr)
+		}
+	}
+
 	roots := w.derivedDataRoots()
 	for _, root := range roots {
 		w.addWatchesForRoot(src, root)
@@ -124,21 +132,33 @@ func (w *StartWatcher) Close() {
 }
 
 func (w *StartWatcher) derivedDataRoots() []string {
-	home := w.HomeDir
-	if home == "" {
-		h, err := os.UserHomeDir()
-		if err != nil || h == "" {
-			return nil
-		}
-		home = h
+	ddRoot := w.derivedDataDir()
+	if ddRoot == "" {
+		return nil
 	}
 
-	matches, err := filepath.Glob(filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData", "*"))
+	matches, err := filepath.Glob(filepath.Join(ddRoot, "*"))
 	if err != nil {
 		return nil
 	}
 
 	return matches
+}
+
+// derivedDataDir returns the parent DerivedData dir so we can install a
+// top-level fsnotify watch and observe new app-subdir CREATEs after a
+// wipe or a fresh Xcode session.
+func (w *StartWatcher) derivedDataDir() string {
+	home := w.HomeDir
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil || h == "" {
+			return ""
+		}
+		home = h
+	}
+
+	return filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
 }
 
 func (w *StartWatcher) addWatchesForRoot(src DirEventSource, root string) {
@@ -228,7 +248,24 @@ func (w *StartWatcher) handleEvent(src DirEventSource, ev fsnotify.Event) {
 		if addErr := src.Add(ev.Name); addErr != nil {
 			w.warn("start watcher add %s: %s", ev.Name, addErr)
 		}
+
+		return
 	}
+
+	if w.isDerivedDataChild(ev.Name) {
+		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			w.addWatchesForRoot(src, ev.Name)
+		}
+	}
+}
+
+func (w *StartWatcher) isDerivedDataChild(path string) bool {
+	ddRoot := w.derivedDataDir()
+	if ddRoot == "" {
+		return false
+	}
+
+	return filepath.Dir(path) == ddRoot
 }
 
 func (w *StartWatcher) emitStart(xcbuildDataDir string) {
