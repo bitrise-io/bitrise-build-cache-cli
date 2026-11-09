@@ -16,7 +16,10 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildrequest"
 )
 
-const xcbuilddataSuffix = ".xcbuilddata"
+const (
+	xcbuilddataSuffix = ".xcbuilddata"
+	buildDirName      = "Build"
+)
 
 type DirEventSource interface {
 	Events() <-chan fsnotify.Event
@@ -161,9 +164,18 @@ func (w *StartWatcher) addWatchesForRoot(src DirEventSource, root string) {
 
 func xcbuildDataDirsFor(root string) []string {
 	return []string{
-		filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData"),
-		filepath.Join(root, "Index.noindex", "Build", "Intermediates.noindex", "XCBuildData"),
+		filepath.Join(root, buildDirName, "Intermediates.noindex", "XCBuildData"),
+		filepath.Join(root, "Index.noindex", buildDirName, "Intermediates.noindex", "XCBuildData"),
 	}
+}
+
+func isXcbuildDataAncestorDir(base string) bool {
+	switch base {
+	case buildDirName, "Index.noindex", "Intermediates.noindex", "XCBuildData":
+		return true
+	}
+
+	return false
 }
 
 func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {
@@ -212,8 +224,7 @@ func (w *StartWatcher) handleEvent(src DirEventSource, ev fsnotify.Event) {
 		return
 	}
 
-	switch base {
-	case "Build", "Index.noindex", "Intermediates.noindex", "XCBuildData":
+	if isXcbuildDataAncestorDir(base) {
 		if addErr := src.Add(ev.Name); addErr != nil {
 			w.warn("start watcher add %s: %s", ev.Name, addErr)
 		}
@@ -279,7 +290,7 @@ func rootForXCBuildDataPath(xcbuildDataDir string) string {
 	dir = filepath.Dir(dir)
 	buildOrIndex := filepath.Base(dir)
 	parent := filepath.Dir(dir)
-	if buildOrIndex == "Build" && filepath.Base(parent) == "Index.noindex" {
+	if buildOrIndex == buildDirName && filepath.Base(parent) == "Index.noindex" {
 		return filepath.Dir(parent)
 	}
 

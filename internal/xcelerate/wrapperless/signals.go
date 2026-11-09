@@ -19,9 +19,11 @@ type Start struct {
 }
 
 type End struct {
-	At      time.Time
-	Scheme  string
-	Success bool
+	At               time.Time
+	Scheme           string
+	Success          bool
+	UniqueIdentifier string
+	Duration         time.Duration
 }
 
 type Quit struct {
