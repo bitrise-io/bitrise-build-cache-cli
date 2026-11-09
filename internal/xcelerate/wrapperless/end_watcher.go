@@ -47,13 +47,13 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 		return nil
 	}
 
+	w.infof("EndWatcher: source init ok")
+
 	ddRoot := w.derivedDataDir()
+	w.infof("EndWatcher: dd root = %q", ddRoot)
+
 	if ddRoot != "" {
-		if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
-			w.warn("end watcher mkdir %s: %s", ddRoot, mkErr)
-		} else if addErr := src.Watch(recursivePath(ddRoot), EventCreate, EventWrite); addErr != nil {
-			w.warn("end watcher watch %s: %s", ddRoot, addErr)
-		}
+		w.installWatch(src, ddRoot)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -67,13 +67,35 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 
 	// Seed-walk the DD tree for any already-sealed LogStoreManifest entries
 	// so a proxy that started after a build finished still picks them up.
+	seeded := 0
 	if ddRoot != "" {
-		w.seedWalk(ddRoot)
+		seeded = w.seedWalk(ddRoot)
 	}
+	w.infof("EndWatcher: seed walk done (%d sealed found)", seeded)
 
 	go w.loop(ctx, src, done)
+	w.infof("EndWatcher: loop goroutine started")
 
 	return nil
+}
+
+func (w *EndWatcher) installWatch(src DirEventSource, ddRoot string) {
+	if mkErr := os.MkdirAll(ddRoot, 0o755); mkErr != nil {
+		w.warn("end watcher mkdir %s: %s", ddRoot, mkErr)
+
+		return
+	}
+
+	w.infof("EndWatcher: mkdir ok")
+
+	path := recursivePath(ddRoot)
+	if addErr := src.Watch(path, EventCreate, EventWrite); addErr != nil {
+		w.warn("end watcher watch %s: %s", ddRoot, addErr)
+
+		return
+	}
+
+	w.infof("EndWatcher: watching %s recursively", path)
 }
 
 // MarkSeen records a uniqueIdentifier as already-emitted so a subsequent
@@ -134,13 +156,16 @@ func (w *EndWatcher) derivedDataDir() string {
 }
 
 // seedWalk scans every existing LogStoreManifest.plist at Start, in case the
-// proxy started after Xcode already sealed an entry.
-func (w *EndWatcher) seedWalk(ddRoot string) {
+// proxy started after Xcode already sealed an entry. Returns the number of
+// manifests found on disk (not the number of sealed entries emitted — those go
+// through scanManifest's own dedup / seal gate).
+func (w *EndWatcher) seedWalk(ddRoot string) int {
 	entries, err := os.ReadDir(ddRoot)
 	if err != nil {
-		return
+		return 0
 	}
 
+	count := 0
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -148,9 +173,12 @@ func (w *EndWatcher) seedWalk(ddRoot string) {
 
 		path := filepath.Join(ddRoot, e.Name(), "Logs", buildDirName, "LogStoreManifest.plist")
 		if _, statErr := os.Stat(path); statErr == nil {
+			count++
 			w.scanManifest(path)
 		}
 	}
+
+	return count
 }
 
 func (w *EndWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {
@@ -162,28 +190,48 @@ func (w *EndWatcher) loop(ctx context.Context, src DirEventSource, done chan str
 		close(done)
 	}()
 
+	w.infof("EndWatcher: loop entered")
+
 	events := src.Events()
+	eventCount := 0
 
 	for {
 		select {
 		case <-ctx.Done():
+			w.infof("EndWatcher: ctx done, exiting")
+
 			return
 		case ev, ok := <-events:
 			if !ok {
+				w.infof("EndWatcher: event chan closed, exiting")
+
 				return
 			}
 
+			eventCount++
+			w.infof("EndWatcher: event #%d op=%d %s", eventCount, ev.Op, ev.Path)
 			w.handleEvent(ev)
 		}
 	}
 }
 
 func (w *EndWatcher) handleEvent(ev Event) {
+	w.infof("EndWatcher: handleEvent %s", ev.Path)
+
 	if ev.Op&(EventWrite|EventCreate) == 0 {
+		w.infof("EndWatcher: skip %s reason=op (op=%d)", ev.Path, ev.Op)
+
 		return
 	}
 
+	// Xcode atomic-replaces LogStoreManifest.plist: a temp sibling
+	// (LogStoreManifest.plist.sb-<hex>) is renamed into place. The rename
+	// surfaces as a Write/Create on the final name — we filter to that name
+	// only so the sb- temp variants (which also pass the op filter) are
+	// dropped here with a reason.
 	if filepath.Base(ev.Path) != "LogStoreManifest.plist" {
+		w.infof("EndWatcher: skip %s reason=name", ev.Path)
+
 		return
 	}
 
@@ -194,21 +242,27 @@ func (w *EndWatcher) scanManifest(path string) {
 	entries, err := loadManifestEntries(path)
 	if err != nil {
 		w.warn("end watcher load %s: %s", path, err)
+		w.infof("EndWatcher: skip %s reason=load-failed", path)
 
 		return
 	}
 
 	for _, e := range entries {
 		if !isSealedTerminal(e.HighLevelStatus) {
+			w.infof("EndWatcher: skip %s reason=not-sealed uuid=%s status=%q", path, e.UniqueIdentifier, e.HighLevelStatus)
+
 			continue
 		}
 		if e.TimeStopped == 0 || e.UniqueIdentifier == "" {
+			w.infof("EndWatcher: skip %s reason=missing-fields uuid=%s timeStopped=%v", path, e.UniqueIdentifier, e.TimeStopped)
+
 			continue
 		}
 
 		w.mu.Lock()
 		if _, ok := w.seen[e.UniqueIdentifier]; ok {
 			w.mu.Unlock()
+			w.infof("EndWatcher: skip %s reason=already-seen uuid=%s", path, e.UniqueIdentifier)
 
 			continue
 		}
@@ -216,11 +270,14 @@ func (w *EndWatcher) scanManifest(path string) {
 		w.mu.Unlock()
 
 		if w.OnEnd == nil {
+			w.infof("EndWatcher: skip %s reason=no-OnEnd uuid=%s", path, e.UniqueIdentifier)
+
 			continue
 		}
 
 		scheme := schemeFromSignature(e.Signature)
 		success := e.HighLevelStatus != "E" && e.HighLevelStatus != "F"
+		w.infof("EndWatcher: emit uuid=%s scheme=%s status=%s", e.UniqueIdentifier, scheme, e.HighLevelStatus)
 		w.OnEnd(End{
 			At:               w.now(),
 			Scheme:           scheme,
@@ -319,4 +376,12 @@ func (w *EndWatcher) warn(format string, args ...any) {
 	}
 
 	w.Logger.Warnf(format, args...)
+}
+
+func (w *EndWatcher) infof(format string, args ...any) {
+	if w.Logger == nil {
+		return
+	}
+
+	w.Logger.Infof(format, args...)
 }
