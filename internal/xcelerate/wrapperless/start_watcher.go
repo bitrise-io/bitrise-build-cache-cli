@@ -329,14 +329,18 @@ func (w *StartWatcher) handleEvent(ev Event) {
 		return
 	}
 
-	// Only act on the terminal xcbuilddata dir — the recursive FSEvents
-	// watch delivers it directly, no need to chase intermediate dirs.
+	// Act on the terminal xcbuilddata dir — the recursive FSEvents watch
+	// delivers it directly. Also retry when build-request.json itself
+	// shows up: when Xcode writes the file after the dir CREATE, the
+	// initial emitStartOnce call hits ErrNotFound and the seen-set stays
+	// unmarked, so this second pass against the parent dir succeeds.
 	base := filepath.Base(ev.Path)
-	if !strings.HasSuffix(base, xcbuilddataSuffix) {
-		return
+	switch {
+	case strings.HasSuffix(base, xcbuilddataSuffix):
+		w.emitStartOnce(ev.Path)
+	case base == "build-request.json":
+		w.emitStartOnce(filepath.Dir(ev.Path))
 	}
-
-	w.emitStartOnce(ev.Path)
 }
 
 // markHexSeen returns true the first time xcbuildDataDir is seen. De-duplicates

@@ -340,6 +340,65 @@ func TestStartWatcher_SeedAndStreamDedup(t *testing.T) {
 	w.Close()
 }
 
+// TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate covers the case
+// where the xcbuilddata dir CREATE fires before build-request.json lands. The
+// initial emitStartOnce hits ErrNotFound and must not mark the seen-set; the
+// later CREATE for build-request.json retries against the parent dir and
+// emits exactly one Start.
+func TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate(t *testing.T) {
+	fakeHome := t.TempDir()
+
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-late")
+	hex := "deadbeefdeadbeefdeadbeefdeadbeef"
+	dir := filepath.Join(root, "Build", "Intermediates.noindex", "XCBuildData", hex+".xcbuilddata")
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	// Dir exists but build-request.json does not yet — the CREATE for the
+	// xcbuilddata dir must not emit.
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	src.events <- Event{Path: dir, Op: EventCreate}
+
+	select {
+	case got := <-starts:
+		t.Fatalf("unexpected Start before build-request.json write: %+v", got)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// build-request.json lands, followed by a CREATE event for the file
+	// path itself. The handler retries against the parent dir and emits.
+	buildReqPath := filepath.Join(dir, "build-request.json")
+	require.NoError(t, os.WriteFile(buildReqPath,
+		[]byte(`{"parameters":{"action":"build","qos":""}}`), 0o644))
+
+	src.events <- Event{Path: buildReqPath, Op: EventCreate}
+
+	got := waitForStart(t, starts)
+	assert.Equal(t, hex, got.BuildRequestHex)
+	assert.Equal(t, PrimaryActionBuild, got.Action)
+	assert.Equal(t, root, got.DerivedDataPath)
+
+	// No duplicate emission from any follow-up event.
+	select {
+	case got := <-starts:
+		t.Fatalf("unexpected duplicate Start: %+v", got)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
 // TestStartWatcher_InstallsRecursiveWatch asserts the watchpoint is installed
 // at the DD root with the .../... recursive suffix — the single piece of
 // FSEvents plumbing we rely on instead of the old stair-step add chain.
