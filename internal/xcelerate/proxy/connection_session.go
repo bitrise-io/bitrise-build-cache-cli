@@ -313,6 +313,12 @@ type sidecarStatsHandler struct {
 	// tests run without touching disk. nil leaves the sidecar's action/qos
 	// fields empty.
 	buildRequestInfo func(ddPath, hex string) (action, qos string)
+
+	// wrapperlessPipeline, when non-nil, learns the peer's anchorable ancestor
+	// (xcodebuild / Xcode / SWBBuildService) on each TagConn so its QuitWatcher
+	// can mint a Quit event when the ancestor exits. Nil disables the hook —
+	// wrapperless pipeline is opt-in via --wrapperless-pipeline-enabled.
+	wrapperlessPipeline WrapperlessPipeline
 }
 
 // BuildRequestResolver returns the newest <32-hex>.xcbuilddata stem scoped to
@@ -355,8 +361,27 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 		cs.setBuildStartedAt(time.Now())
 	}
 	h.registry.put(cs)
+	h.registerWrapperlessPeer(cs.ancestryEntries)
 
 	return contextWithSession(ctx, cs)
+}
+
+// registerWrapperlessPeer feeds the peer's anchorable ancestor into the
+// opt-in wrapperless pipeline's QuitWatcher. The anchorable ancestor (not the
+// per-RPC peer PID) is what defines the build lifetime: Xcode/SWBBuildService
+// for IDE, xcodebuild for CLI. No-op when the pipeline is not wired, the
+// ancestry is empty, or no anchorable kind is found.
+func (h *sidecarStatsHandler) registerWrapperlessPeer(entries []AncestryEntry) {
+	if h.wrapperlessPipeline == nil || len(entries) == 0 {
+		return
+	}
+
+	kind, pid, startMS := classifyAncestryKind(entries)
+	if pid <= 0 {
+		return
+	}
+
+	h.wrapperlessPipeline.RegisterPeer(pid, kind, startMS)
 }
 
 // resolveEntries returns the cached ancestry entries for peerPID, or nil when

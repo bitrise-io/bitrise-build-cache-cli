@@ -592,6 +592,8 @@ func maybeStartWrapperlessPipeline(
 		return nil
 	}
 
+	p.SetWrapperlessPipeline(pipeline)
+
 	logger.Infof("Wrapperless pipeline running alongside enricher (opt-in).")
 
 	return pipeline
