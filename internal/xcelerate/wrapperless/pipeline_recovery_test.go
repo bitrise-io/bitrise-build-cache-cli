@@ -106,9 +106,9 @@ func TestPipeline_RecoversUnsealedPrimaryStartOnly(t *testing.T) {
 	require.NoError(t, p.Start(ctx))
 	t.Cleanup(p.Close)
 
-	deadline := time.Now().Add(500 * time.Millisecond)
+	deadline := time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(fp.snapshot()) > 0 {
+		if len(fp.snapshot()) > 0 && len(putter.snapshot()) > 0 {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)

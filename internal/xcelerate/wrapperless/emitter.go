@@ -126,9 +126,18 @@ func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) a
 	return *inv
 }
 
-// shortCommand renders "<action> [<scheme>]" when a scheme is known,
-// otherwise just the action verb.
+// shortCommand renders the BE row's command string. Dedicated reasons
+// (IDE-background, CLI-implicit) carry a fixed label so the BE row never
+// masquerades as a user build; otherwise it's "<action> [<scheme>]".
 func shortCommand(bucket Bucket) string {
+	switch bucket.Reason {
+	case BucketReasonIDEBackground:
+		return "ide background"
+	case BucketReasonCLIImplicit:
+		return "cli run"
+	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
+	}
+
 	action := string(bucket.Action)
 	if action == "" {
 		action = "build"

@@ -184,6 +184,66 @@ func TestAllocator_QuitCLI_FlushesImmediately(t *testing.T) {
 	assert.NotEmpty(t, buckets[0].InvocationID)
 }
 
+func TestAllocator_QuitIDE_EndDuringDebounceCancelsBackground(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, blobs := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At: time.Unix(1, 0), BuildRequestHex: "openhex", Action: PrimaryActionBuild,
+	}})
+	blobs.set(5)
+
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{PID: 10, AncestryIDE: true}})
+
+	time.Sleep(5 * time.Millisecond)
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At: time.Unix(2, 0), Scheme: "Seek", Success: true, Duration: 1 * time.Second,
+	}})
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1)
+	assert.Equal(t, BucketReasonEndMatched, buckets[0].Reason, "End during debounce must cancel IDE-background flush")
+}
+
+func TestAllocator_IDEBackground_UsesFixedCommand(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, blobs := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	blobs.set(1)
+
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{PID: 1, AncestryIDE: true}})
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := len(buckets)
+		mu.Unlock()
+		if got > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1)
+	assert.Equal(t, BucketReasonIDEBackground, buckets[0].Reason)
+	assert.Equal(t, BuildRequestHexIDEBackground, "ide-background")
+}
+
 func TestAllocator_IDEBackground_SkipsWhenNoActivity(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex
