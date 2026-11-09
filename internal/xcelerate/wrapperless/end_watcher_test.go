@@ -348,17 +348,20 @@ func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-preexisting")
-	// Write manifest BEFORE Start so the seed walk is the only path that
-	// can surface it.
-	_ = writeManifest(t, root, sealedManifestFixture)
+	manifestPath := writeManifest(t, root, sealedManifestFixture)
 
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
+
+	info, err := os.Stat(manifestPath)
+	require.NoError(t, err)
+	beforeManifest := info.ModTime().Add(-time.Second)
 
 	w := &EndWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
+		Now:       func() time.Time { return beforeManifest },
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -367,6 +370,41 @@ func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 
 	got := waitForEnd(t, ends)
 	assert.Equal(t, "AAAA-BBBB", got.UniqueIdentifier)
+
+	w.Close()
+}
+
+// TestEndWatcher_SeedSkipsManifestOlderThanStart guards the phantom-row path
+// where a previous Xcode session's sealed manifest would otherwise fire a
+// ghost End against a freshly-restarted proxy.
+func TestEndWatcher_SeedSkipsManifestOlderThanStart(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-stale")
+	manifestPath := writeManifest(t, root, sealedManifestFixture)
+
+	info, err := os.Stat(manifestPath)
+	require.NoError(t, err)
+	afterManifest := info.ModTime().Add(10 * time.Second)
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+		Now:       func() time.Time { return afterManifest },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	select {
+	case got := <-ends:
+		t.Fatalf("End emitted for stale manifest: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
 
 	w.Close()
 }
