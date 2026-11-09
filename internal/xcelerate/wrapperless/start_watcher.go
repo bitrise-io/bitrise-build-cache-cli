@@ -254,6 +254,14 @@ func (w *StartWatcher) handleEvent(src DirEventSource, ev fsnotify.Event) {
 
 	if w.isDerivedDataChild(ev.Name) {
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			// Watch the new app subdir itself so its own child CREATEs (Build/)
+			// surface — fsnotify is non-recursive and addWatchesForRoot's
+			// stat-gated walk skips the whole subtree on a fresh wipe where
+			// Build/ and its descendants do not exist yet.
+			if addErr := src.Add(ev.Name); addErr != nil {
+				w.debugf("start watcher add %s: %s", ev.Name, addErr)
+			}
+
 			w.addWatchesForRoot(src, ev.Name)
 		}
 	}

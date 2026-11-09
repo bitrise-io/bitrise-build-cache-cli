@@ -245,11 +245,12 @@ func TestStartWatcher_CloseIdempotent(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_FiresAfterDerivedDataWipe reproduces the production bug
-// where Start fires before any DD app subdir exists (fresh host or a
-// wipe between proxy start and the first Xcode build). The top-level DD
-// watch must install, observe the new app subdir CREATE, dive in, and
-// still emit Start on the subsequent xcbuilddata CREATE.
+// TestStartWatcher_FiresAfterDerivedDataWipe models the real stair-step
+// sequence Xcode performs after a DerivedData wipe (or on a fresh host):
+// each ancestor directory is mkdir'd one at a time, so the watcher must
+// install a fsnotify watch on every new dir as its CREATE event arrives.
+// If any step relies on a stat-first strategy, the whole chain breaks
+// because fsnotify (kqueue) is non-recursive.
 func TestStartWatcher_FiresAfterDerivedDataWipe(t *testing.T) {
 	fakeHome := t.TempDir()
 
@@ -284,20 +285,41 @@ func TestStartWatcher_FiresAfterDerivedDataWipe(t *testing.T) {
 	src.mu.Unlock()
 	assert.True(t, hasDDRoot, "DD root should be watched: added=%v", src.added)
 
+	// mkdir + CREATE event one level at a time. Nothing beyond the current
+	// level exists when each event fires — mirrors kqueue reality.
 	root := filepath.Join(ddRoot, "MyApp-abcdefghijklmnopqrstuvwxyz0")
-	hex := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-	dir := writeBuildRequest(t, root, hex, "build", "")
-
-	// Simulate the fsnotify CREATE sequence: DD-child CREATE (new app
-	// subdir) → ancestor-dir CREATEs on the way down → final xcbuilddata.
+	require.NoError(t, os.Mkdir(root, 0o755))
 	src.events <- fsnotify.Event{Name: root, Op: fsnotify.Create}
-	// Give the handler a tick to recurse before the terminal event.
 	time.Sleep(20 * time.Millisecond)
-	src.events <- fsnotify.Event{Name: dir, Op: fsnotify.Create}
+
+	buildDir := filepath.Join(root, "Build")
+	require.NoError(t, os.Mkdir(buildDir, 0o755))
+	src.events <- fsnotify.Event{Name: buildDir, Op: fsnotify.Create}
+	time.Sleep(20 * time.Millisecond)
+
+	intermediates := filepath.Join(buildDir, "Intermediates.noindex")
+	require.NoError(t, os.Mkdir(intermediates, 0o755))
+	src.events <- fsnotify.Event{Name: intermediates, Op: fsnotify.Create}
+	time.Sleep(20 * time.Millisecond)
+
+	xcbuildData := filepath.Join(intermediates, "XCBuildData")
+	require.NoError(t, os.Mkdir(xcbuildData, 0o755))
+	src.events <- fsnotify.Event{Name: xcbuildData, Op: fsnotify.Create}
+	time.Sleep(20 * time.Millisecond)
+
+	hex := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	xcbuilddataDir := filepath.Join(xcbuildData, hex+".xcbuilddata")
+	require.NoError(t, os.Mkdir(xcbuilddataDir, 0o755))
+	// build-request.json must be present before the terminal CREATE so
+	// emitStart's Load succeeds.
+	require.NoError(t, os.WriteFile(filepath.Join(xcbuilddataDir, "build-request.json"),
+		[]byte(`{"parameters":{"action":"build","qos":""}}`), 0o644))
+	src.events <- fsnotify.Event{Name: xcbuilddataDir, Op: fsnotify.Create}
 
 	got := waitForStart(t, starts)
 	assert.Equal(t, hex, got.BuildRequestHex)
 	assert.Equal(t, PrimaryActionBuild, got.Action)
+	assert.Equal(t, root, got.DerivedDataPath)
 
 	w.Close()
 }
