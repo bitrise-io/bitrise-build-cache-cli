@@ -1,12 +1,11 @@
 package wrapperless
 
 import (
-	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/deriveddata"
 )
 
 // EnvDerivedDataDirs is the opt-in colon-separated list of extra DerivedData
@@ -16,9 +15,12 @@ const EnvDerivedDataDirs = "BITRISE_XCELERATE_DERIVED_DATA_DIRS"
 
 // derivedDataRoots returns every DerivedData root the watcher must observe:
 // the stock ~/Library location, Xcode's globally configured custom location
-// (via `defaults read`), and any extra paths the user pins through
-// EnvDerivedDataDirs. Deduplicated and filtered to absolute paths.
-func derivedDataRoots(ctx context.Context, home string) []string {
+// (parsed in-process from com.apple.dt.Xcode.plist), and any extra paths the
+// user pins through EnvDerivedDataDirs. Deduplicated and filtered to absolute
+// paths. A colon-separated EnvDerivedDataDirs is split with strings.Split,
+// which does not understand escaping — paths containing a literal colon must
+// be aliased (e.g. via a symlink) before being pinned.
+func derivedDataRoots(home string) []string {
 	if home == "" {
 		if h, err := os.UserHomeDir(); err == nil && h != "" {
 			home = h
@@ -44,8 +46,15 @@ func derivedDataRoots(ctx context.Context, home string) []string {
 		add(filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData"))
 	}
 
-	if custom := xcodeCustomDerivedDataLocation(ctx); custom != "" {
-		add(custom)
+	// Parse the user's global Xcode preference IDECustomDerivedDataLocation
+	// in-process via howett.net/plist (through deriveddata.Finder.CustomRoot)
+	// rather than shelling out to `defaults read`. Avoids a 2s subprocess
+	// fork and keeps every DD-root resolution path on one code path.
+	if home != "" {
+		finder := &deriveddata.Finder{} //nolint:exhaustruct // only CustomRoot is used
+		if custom, ok := finder.CustomRoot(home); ok {
+			add(custom)
+		}
 	}
 
 	for _, p := range strings.Split(os.Getenv(EnvDerivedDataDirs), ":") {
@@ -53,20 +62,4 @@ func derivedDataRoots(ctx context.Context, home string) []string {
 	}
 
 	return roots
-}
-
-// xcodeCustomDerivedDataLocation returns the user's global Xcode preference
-// IDECustomDerivedDataLocation, or "" when unset, relative, or unreadable.
-// A relative value means per-project DerivedData which this watcher does
-// not handle — skipped intentionally.
-func xcodeCustomDerivedDataLocation(ctx context.Context) string {
-	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	out, err := exec.CommandContext(cmdCtx, "defaults", "read", "com.apple.dt.Xcode", "IDECustomDerivedDataLocation").Output()
-	if err != nil {
-		return ""
-	}
-
-	return strings.TrimSpace(string(out))
 }

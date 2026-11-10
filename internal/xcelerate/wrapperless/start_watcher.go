@@ -166,7 +166,7 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 
 	w.infof("StartWatcher: source init ok")
 
-	ddRoots := derivedDataRoots(ctx, w.HomeDir)
+	ddRoots := derivedDataRoots(w.HomeDir)
 	w.infof("StartWatcher: dd roots = %v", ddRoots)
 
 	for _, root := range ddRoots {
