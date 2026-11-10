@@ -84,6 +84,13 @@ const (
 	// appends to after an inline-retry budget is exhausted.
 	wrapperlessPendingSlimFilename = "pending-slim.ndjson"
 
+	// wrapperlessHandledManifestsFilename is the NDJSON ledger of
+	// LogStoreManifest uniqueIdentifiers the EndWatcher has already
+	// emitted. Mirrors enrichment's handled-manifests file in shape but
+	// is scoped to the wrapperless flow's own set so the two cannot
+	// collide across restarts.
+	wrapperlessHandledManifestsFilename = "handled-manifests.ndjson"
+
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
@@ -364,6 +371,14 @@ func (p Paths) XcelerateWrapperlessDir() string {
 // appends to after an inline-retry budget is exhausted.
 func (p Paths) WrapperlessPendingSlimPath() string {
 	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingSlimFilename)
+}
+
+// WrapperlessHandledManifestsPath returns the NDJSON ledger of
+// LogStoreManifest uniqueIdentifiers the EndWatcher has already emitted.
+// Persisted so a proxy restart within seedStaleGrace of a sealed build does
+// not emit a duplicate row for the same user action.
+func (p Paths) WrapperlessHandledManifestsPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessHandledManifestsFilename)
 }
 
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to
