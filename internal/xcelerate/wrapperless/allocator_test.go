@@ -125,7 +125,7 @@ func TestAllocator_EndWithoutStart_PrimaryAction_MintsBucket(t *testing.T) {
 	blobs.set(42)
 
 	ids := make(chan string, 1)
-	a.OnOpenInvoc = func(id string) { ids <- id }
+	a.OnOpenInvoc = func(b Bucket) { ids <- b.InvocationID }
 
 	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
 		At:               time.Unix(100, 0),

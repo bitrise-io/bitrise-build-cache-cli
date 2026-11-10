@@ -142,17 +142,31 @@ func (p *Pipeline) RegisterPeer(pid int, ancestry Ancestry, startTimeMS int64) {
 	p.QuitWatcher.Register(pid, ancestry, startTimeMS)
 }
 
-func (p *Pipeline) onBucketOpen(invocationID string) {
-	if invocationID == "" {
+func (p *Pipeline) onBucketOpen(bucket Bucket) {
+	if bucket.InvocationID == "" {
 		return
 	}
 
 	if p.Proxy != nil {
-		p.Proxy.SetCurrentBucketID(invocationID)
+		p.Proxy.SetCurrentBucketID(bucket.InvocationID)
 	}
 
 	if p.Emitter != nil {
-		p.Emitter.EmitSlim(Bucket{InvocationID: invocationID, StartAt: time.Now()})
+		// Carry the Start's action / scheme / configuration into the slim PUT
+		// so the BE row renders e.g. "archive [Seek]" rather than a bare
+		// default "build" verb during the slim phase. Blob stats + duration
+		// are the enriched-phase payload; leave them zero.
+		slim := Bucket{ //nolint:exhaustruct // slim-phase payload
+			InvocationID:  bucket.InvocationID,
+			StartAt:       time.Now(),
+			Scheme:        bucket.Scheme,
+			Project:       bucket.Project,
+			Workspace:     bucket.Workspace,
+			Configuration: bucket.Configuration,
+			Action:        bucket.Action,
+			Reason:        bucket.Reason,
+		}
+		p.Emitter.EmitSlim(slim)
 	}
 }
 

@@ -33,7 +33,7 @@ type Allocator struct {
 	ProxyStartMS    int64
 	BlobStats       BlobStatsSource
 	OnReady         func(Bucket)
-	OnOpenInvoc     func(invocationID string)
+	OnOpenInvoc     func(Bucket)
 	Now             func() time.Time
 	IDEBackgroundTO time.Duration
 	Logger          log.Logger
@@ -128,7 +128,7 @@ func (a *Allocator) onStart(s Start) {
 	a.debugf("Allocator: bucket opened id=%s action=%s", fresh.InvocationID, fresh.Action)
 
 	if a.OnOpenInvoc != nil && fresh.InvocationID != "" {
-		a.OnOpenInvoc(fresh.InvocationID)
+		a.OnOpenInvoc(*fresh)
 	}
 }
 
@@ -210,7 +210,7 @@ func (a *Allocator) mintEndOnlyBucket(e End) {
 	a.debugf("Allocator: sole-End mint id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
 
 	if a.OnOpenInvoc != nil {
-		a.OnOpenInvoc(bucket.InvocationID)
+		a.OnOpenInvoc(*bucket)
 	}
 
 	a.emit(bucket)
