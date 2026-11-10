@@ -150,6 +150,9 @@ func (a *Allocator) onEnd(e End) {
 	bucket.Project = e.Project
 	bucket.Workspace = e.Workspace
 	bucket.Configuration = e.Configuration
+	if e.Action != "" {
+		bucket.Action = e.Action
+	}
 	bucket.Success = e.Success
 	bucket.SuccessKnown = true
 	bucket.Duration = e.Duration

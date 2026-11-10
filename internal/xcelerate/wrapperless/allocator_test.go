@@ -159,6 +159,46 @@ func TestAllocator_EndWithoutStart_PrimaryAction_MintsBucket(t *testing.T) {
 	}
 }
 
+func TestAllocator_StartThenEnd_EndActionOverridesStartAction(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(10, 0),
+		BuildRequestHex: "0123456789abcdef0123456789abcdef",
+		Action:          PrimaryActionBuild,
+	}})
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               time.Unix(20, 0),
+		Scheme:           "IceCubesApp",
+		Action:           PrimaryActionAnalyze,
+		UniqueIdentifier: "UID-ANALYZE",
+		Success:          true,
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.Equal(t, PrimaryActionAnalyze, buckets[0].Action)
+}
+
+func TestAllocator_StartThenEnd_EmptyEndActionKeepsStartAction(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(10, 0),
+		BuildRequestHex: "0123456789abcdef0123456789abcdef",
+		Action:          PrimaryActionBuild,
+	}})
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               time.Unix(20, 0),
+		Scheme:           "MinimalApp",
+		UniqueIdentifier: "UID-NO-ACTION",
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.Equal(t, PrimaryActionBuild, buckets[0].Action)
+}
+
 func TestAllocator_EndWithoutStart_EmptyUID_Drops(t *testing.T) {
 	var buckets []Bucket
 	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
