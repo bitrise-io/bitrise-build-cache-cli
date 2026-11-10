@@ -23,6 +23,8 @@ const perConnIdleThreshold = 15 * time.Second
 // derivedIDFlushMultiplier scales perConnIdleThreshold for the empty-stat flush path so quiet derived-ID connections surface on disk.
 const derivedIDFlushMultiplier = 3
 
+const xcodebuildAncestorName = "xcodebuild"
+
 // connSessionCtxKey tags the per-connection session on the gRPC-scoped ctx.
 // Per-conn accounting runs additively alongside the global p.sessionState,
 // which remains the source of truth for the SetSession / GetSessionStats
@@ -440,7 +442,7 @@ func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry, bu
 func isIDEAncestry(entries []AncestryEntry) bool {
 	hasIDE := false
 	for _, e := range entries {
-		if e.Name == "xcodebuild" {
+		if e.Name == xcodebuildAncestorName {
 			return false
 		}
 		if e.Name == "Xcode" || e.Name == "SWBBuildService" {

@@ -33,7 +33,7 @@ func classifyAncestryKind(entries []AncestryEntry) (wrapperless.Ancestry, int, i
 		switch e.Name {
 		case "Xcode", "SWBBuildService":
 			return wrapperless.AncestryIDE, e.PID, e.StartTimeMS
-		case "xcodebuild":
+		case xcodebuildAncestorName:
 			return wrapperless.AncestryCLI, e.PID, e.StartTimeMS
 		}
 	}
