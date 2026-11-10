@@ -26,17 +26,15 @@ func (f *fakeBlobSource) set(opCount int64) {
 	}
 }
 
-func (f *fakeBlobSource) Snapshot() *blobstats.Snapshot {
+// TakeSnapshot returns the currently-set snapshot and clears it in one
+// locked region, matching the real BlobStatsSource contract.
+func (f *fakeBlobSource) TakeSnapshot() *blobstats.Snapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-
-	return f.snap
-}
-
-func (f *fakeBlobSource) Reset() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	snap := f.snap
 	f.snap = nil
+
+	return snap
 }
 
 func newTestAllocator(t *testing.T, onReady func(Bucket)) (*Allocator, *fakeBlobSource) {

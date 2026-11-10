@@ -363,6 +363,50 @@ func (c *ProtocolCollector) Reset() {
 	c.KV.Download.reset()
 }
 
+// TakeSnapshot atomically snapshots and resets both CAS and KV recorders.
+// Mirrors Collector.TakeSnapshot for the two-protocol shape: an RPC that
+// slots in while the lock is held gets its bytes into the returned snapshot
+// OR into the post-reset window — never dropped between the two calls.
+//
+// All four recorder locks are held across the snapshot build and reset,
+// taken CAS-first / Upload-before-Download to match mergeDirections' order
+// so no peer function can deadlock against this one. Safe on a nil receiver.
+func (c *ProtocolCollector) TakeSnapshot() Snapshot {
+	if c == nil {
+		return Snapshot{SchemaVersion: SchemaVersion} //nolint:exhaustruct // zeroed directions
+	}
+
+	c.CAS.Upload.mu.Lock()
+	defer c.CAS.Upload.mu.Unlock()
+	c.CAS.Download.mu.Lock()
+	defer c.CAS.Download.mu.Unlock()
+	c.KV.Upload.mu.Lock()
+	defer c.KV.Upload.mu.Unlock()
+	c.KV.Download.mu.Lock()
+	defer c.KV.Download.mu.Unlock()
+
+	casUp := c.CAS.Upload.snapshotLocked()
+	casDown := c.CAS.Download.snapshotLocked()
+	kvUp := c.KV.Upload.snapshotLocked()
+	kvDown := c.KV.Download.snapshotLocked()
+
+	snap := Snapshot{
+		SchemaVersion: SchemaVersion,
+		// From the retained samples, not the four snapshots: averaging would not be exact.
+		Upload:   mergeDirectionsLocked(c.CAS.Upload, c.KV.Upload),
+		Download: mergeDirectionsLocked(c.CAS.Download, c.KV.Download),
+		CAS:      &ProtocolSnapshot{Upload: casUp, Download: casDown},
+		KV:       &ProtocolSnapshot{Upload: kvUp, Download: kvDown},
+	}
+
+	c.CAS.Upload.resetLocked()
+	c.CAS.Download.resetLocked()
+	c.KV.Upload.resetLocked()
+	c.KV.Download.resetLocked()
+
+	return snap
+}
+
 // One lock keeps a snapshot from catching the counters and the histograms disagreeing.
 type Recorder struct {
 	mu         sync.Mutex
@@ -434,6 +478,13 @@ func (r *Recorder) Snapshot() DirectionSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	return r.snapshotLocked()
+}
+
+// snapshotLocked builds the direction snapshot assuming r.mu is already held.
+// Separated so ProtocolCollector.TakeSnapshot can snapshot + reset all four
+// recorders under one locked window without re-acquiring each mu.
+func (r *Recorder) snapshotLocked() DirectionSnapshot {
 	sorted := make([]int64, len(r.throughputSamples))
 	copy(sorted, r.throughputSamples)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
@@ -468,6 +519,14 @@ func mergeDirections(first, second *Recorder) DirectionSnapshot {
 	second.mu.Lock()
 	defer second.mu.Unlock()
 
+	return mergeDirectionsLocked(first, second)
+}
+
+// mergeDirectionsLocked assumes both recorder mutexes are already held and
+// reads directly from the private fields. Shared with TakeSnapshot so the
+// merged + per-protocol views in one atomic snapshot cost two locks per
+// recorder, not four.
+func mergeDirectionsLocked(first, second *Recorder) DirectionSnapshot {
 	samples := make([]int64, 0, len(first.throughputSamples)+len(second.throughputSamples))
 	samples = append(samples, first.throughputSamples...)
 	samples = append(samples, second.throughputSamples...)
@@ -556,6 +615,14 @@ func (r *Recorder) reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.resetLocked()
+}
+
+// resetLocked zeroes every counter + histogram under the caller-held lock.
+// Shared with TakeSnapshot so snapshot + reset happens inside a single
+// locked region, preventing a concurrent RecordTransfer between the two
+// from having its bytes snapshotted and then zeroed.
+func (r *Recorder) resetLocked() {
 	r.latency = histogram{}    //nolint:exhaustruct // zero value is the empty histogram
 	r.size = histogram{}       //nolint:exhaustruct // zero value is the empty histogram
 	r.throughput = histogram{} //nolint:exhaustruct // zero value is the empty histogram
