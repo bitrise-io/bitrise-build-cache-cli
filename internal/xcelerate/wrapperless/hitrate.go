@@ -16,19 +16,24 @@ import (
 //     (warm local cache). Overlays KV because Xcode counts cacheable tasks,
 //     not cache requests.
 //
-// Matches getHitRateFromSessionAndRunStats in cmd/xcode/xcodebuild.go — the
-// wrapper flow's precedence. Keep the two in lockstep.
+// Mirrors the wrapper's precedence; see cmd/xcode/xcodebuild.go:getHitRateFromSessionAndRunStats.
+// Keep in lockstep.
+//
+// DirectionSnapshot.OpCount counts successful transfers (hits), not total
+// attempts — RecordMiss() bumps MissCount only, leaving OpCount at zero. So
+// the denominator is OpCount + MissCount, matching the wrapper's
+// hits / (hits + misses) formula.
 func computeHitRate(bucket Bucket) float32 {
 	var hr float32
 
 	if bs := bucket.BlobStats; bs != nil {
-		if bs.Download.OpCount > 0 {
-			hits := bs.Download.OpCount - bs.Download.MissCount
-			hr = float32(hits) / float32(bs.Download.OpCount)
+		if total := bs.Download.OpCount + bs.Download.MissCount; total > 0 {
+			hr = float32(bs.Download.OpCount) / float32(total)
 		}
-		if bs.KV != nil && bs.KV.Download.OpCount > 0 {
-			kvHits := bs.KV.Download.OpCount - bs.KV.Download.MissCount
-			hr = float32(kvHits) / float32(bs.KV.Download.OpCount)
+		if bs.KV != nil {
+			if total := bs.KV.Download.OpCount + bs.KV.Download.MissCount; total > 0 {
+				hr = float32(bs.KV.Download.OpCount) / float32(total)
+			}
 		}
 	}
 

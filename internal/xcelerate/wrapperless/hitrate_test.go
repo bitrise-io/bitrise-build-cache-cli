@@ -32,17 +32,19 @@ func writeXCActivityLog(t *testing.T, dir, body string) string {
 	return path
 }
 
-func blobDownload(opCount, miss int64) *blobstats.Snapshot {
+// OpCount is the successful-transfer count (hits), MissCount is the miss
+// count. Total attempts = hits + misses.
+func blobDownload(hits, miss int64) *blobstats.Snapshot {
 	return &blobstats.Snapshot{
-		Download: blobstats.DirectionSnapshot{OpCount: opCount, MissCount: miss},
+		Download: blobstats.DirectionSnapshot{OpCount: hits, MissCount: miss},
 	}
 }
 
-func blobAndKVDownload(blobOp, blobMiss, kvOp, kvMiss int64) *blobstats.Snapshot {
+func blobAndKVDownload(blobHits, blobMiss, kvHits, kvMiss int64) *blobstats.Snapshot {
 	return &blobstats.Snapshot{
-		Download: blobstats.DirectionSnapshot{OpCount: blobOp, MissCount: blobMiss},
+		Download: blobstats.DirectionSnapshot{OpCount: blobHits, MissCount: blobMiss},
 		KV: &blobstats.ProtocolSnapshot{
-			Download: blobstats.DirectionSnapshot{OpCount: kvOp, MissCount: kvMiss},
+			Download: blobstats.DirectionSnapshot{OpCount: kvHits, MissCount: kvMiss},
 		},
 	}
 }
@@ -63,31 +65,36 @@ func TestComputeHitRate(t *testing.T) {
 			want:   0,
 		},
 		{
-			name:   "blob-only: 8 hits / 10 ops",
-			bucket: Bucket{BlobStats: blobDownload(10, 2)},
+			name:   "blob-only: 8 hits + 2 misses = 0.8",
+			bucket: Bucket{BlobStats: blobDownload(8, 2)},
 			want:   0.8,
 		},
 		{
-			name:   "blob zero ops stays zero",
+			name:   "blob zero total stays zero",
 			bucket: Bucket{BlobStats: blobDownload(0, 0)},
 			want:   0,
 		},
 		{
+			name:   "zero hits, many misses stays 0",
+			bucket: Bucket{BlobStats: blobDownload(0, 5)},
+			want:   0,
+		},
+		{
 			name: "blob+KV: KV overrides blob",
-			// Blob would be 0.8, KV is 0.5 and wins.
-			bucket: Bucket{BlobStats: blobAndKVDownload(10, 2, 4, 2)},
+			// Blob is 8 hits + 2 misses = 0.8; KV is 2 hits + 2 misses = 0.5, wins.
+			bucket: Bucket{BlobStats: blobAndKVDownload(8, 2, 2, 2)},
 			want:   0.5,
 		},
 		{
-			name: "blob+KV with KV zero ops: KV skipped, blob stays",
-			// KV OpCount == 0 so KV tier doesn't apply.
-			bucket: Bucket{BlobStats: blobAndKVDownload(10, 5, 0, 0)},
+			name: "blob+KV with KV zero total: KV skipped, blob stays",
+			// KV OpCount + MissCount == 0 so KV tier doesn't apply.
+			bucket: Bucket{BlobStats: blobAndKVDownload(5, 5, 0, 0)},
 			want:   0.5,
 		},
 		{
 			name: "blob+log: log overrides blob (0.75 vs 0.8)",
 			bucket: Bucket{
-				BlobStats:         blobDownload(10, 2),
+				BlobStats:         blobDownload(8, 2),
 				XCActivityLogPath: logPath,
 			},
 			want: 0.75,
@@ -95,7 +102,7 @@ func TestComputeHitRate(t *testing.T) {
 		{
 			name: "blob+KV+log: log overrides KV (0.75 vs 0.5)",
 			bucket: Bucket{
-				BlobStats:         blobAndKVDownload(10, 2, 4, 2),
+				BlobStats:         blobAndKVDownload(8, 2, 2, 2),
 				XCActivityLogPath: logPath,
 			},
 			want: 0.75,
@@ -103,7 +110,7 @@ func TestComputeHitRate(t *testing.T) {
 		{
 			name: "log path set but file missing: tier skipped",
 			bucket: Bucket{
-				BlobStats:         blobDownload(10, 2),
+				BlobStats:         blobDownload(8, 2),
 				XCActivityLogPath: filepath.Join(dir, "nope.xcactivitylog"),
 			},
 			want: 0.8,
