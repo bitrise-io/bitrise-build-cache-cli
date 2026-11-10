@@ -39,10 +39,6 @@ func NewTimeline() *Timeline {
 	}
 }
 
-func (t *Timeline) Events() <-chan TimelineEvent {
-	return t.ch
-}
-
 func (t *Timeline) PushStart(s Start) { t.push(TimelineEvent{Kind: EventKindStart, Start: s}) }
 func (t *Timeline) PushEnd(e End)     { t.push(TimelineEvent{Kind: EventKindEnd, End: e}) }
 func (t *Timeline) PushQuit(q Quit)   { t.push(TimelineEvent{Kind: EventKindQuit, Quit: q}) }

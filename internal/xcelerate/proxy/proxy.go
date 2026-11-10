@@ -509,14 +509,21 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 
 // FlushSession runs the registered flush hook synchronously and returns the
 // invocation IDs the hook reports as emitted. nil hook → empty list.
+// WrapperlessPipelineActive signals the wrapperless flow is live so the CLI
+// can suppress the "nothing to flush" message (pipeline emits live).
 func (p *Proxy) FlushSession(ctx context.Context, _ *emptypb.Empty) (*session.FlushSessionResponse, error) {
+	active := p.sidecarStats != nil && p.sidecarStats.wrapperlessPipeline != nil
+
 	if p.FlushHook == nil {
-		return &session.FlushSessionResponse{}, nil
+		return &session.FlushSessionResponse{WrapperlessPipelineActive: active}, nil
 	}
 
 	ids := p.FlushHook(ctx)
 
-	return &session.FlushSessionResponse{EmittedInvocationIds: ids}, nil
+	return &session.FlushSessionResponse{
+		EmittedInvocationIds:      ids,
+		WrapperlessPipelineActive: active,
+	}, nil
 }
 
 func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.GetSessionStatsResponse, error) {
