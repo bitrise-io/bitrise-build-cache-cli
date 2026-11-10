@@ -24,6 +24,7 @@ type End struct {
 	Project          string
 	Workspace        string
 	Configuration    string
+	Action           PrimaryAction
 	Success          bool
 	UniqueIdentifier string
 	Duration         time.Duration

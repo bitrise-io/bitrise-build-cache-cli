@@ -98,6 +98,24 @@ func TestFullCommand(t *testing.T) {
 	}
 }
 
+func TestActionFromSignature(t *testing.T) {
+	cases := map[string]PrimaryAction{
+		"Build IceCubesApp project":                                    PrimaryActionBuild,
+		"Archive project Seek with scheme Seek":                        PrimaryActionArchive,
+		"Analyze project IceCubesApp with scheme IceCubesApp":          PrimaryActionAnalyze,
+		"Testing project IceCubesApp with scheme IceCubesAppTests":     PrimaryActionTest,
+		"Test project IceCubesApp with scheme IceCubesAppTests":        PrimaryActionTest,
+		"Signing IceCubesApp":                                          "",
+		"Resolve Packages":                                             "",
+		"Localization":                                                 "",
+		"":                                                             "",
+	}
+
+	for sig, want := range cases {
+		assert.Equal(t, want, actionFromSignature(sig), sig)
+	}
+}
+
 func TestFirstSubmatch_SignatureRegexes(t *testing.T) {
 	sig := "Analyze project IceCubesApp with scheme IceCubesApp and Configuration Release"
 	assert.Equal(t, "IceCubesApp", firstSubmatch(projectFromSignature, sig))
