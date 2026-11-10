@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,13 +111,12 @@ func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) a
 		start = now
 	}
 
-	cmd := shortCommand(bucket)
 	run := analytics.InvocationRunStats{
 		InvocationDate:   start,
 		InvocationID:     bucket.InvocationID,
 		Duration:         bucket.Duration.Milliseconds(),
-		Command:          cmd,
-		FullCommand:      cmd,
+		Command:          shortCommand(bucket),
+		FullCommand:      fullCommand(bucket),
 		XcodeVersion:     e.XcodeVersion,
 		XcodeBuildNumber: e.XcodeBuildNumber,
 	}
@@ -137,7 +137,9 @@ func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) a
 
 // shortCommand renders the BE row's command string. Dedicated reasons
 // (IDE-background, CLI-implicit) carry a fixed label so the BE row never
-// masquerades as a user build; otherwise it's "<action> [<scheme>]".
+// masquerades as a user build; otherwise it's "<action> [<scheme> / <config>]"
+// matching the wrapper flow's convention. Configuration is appended only when
+// present; scheme-only renders as "<action> [<scheme>]".
 func shortCommand(bucket Bucket) string {
 	switch bucket.Reason {
 	case BucketReasonIDEBackground:
@@ -147,15 +149,59 @@ func shortCommand(bucket Bucket) string {
 	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
 	}
 
-	action := string(bucket.Action)
-	if action == "" {
-		action = "build"
-	}
+	action := actionVerb(bucket)
 	if bucket.Scheme == "" {
 		return action
 	}
 
-	return action + " [" + bucket.Scheme + "]"
+	target := bucket.Scheme
+	if bucket.Configuration != "" {
+		target += " / " + bucket.Configuration
+	}
+
+	return action + " [" + target + "]"
+}
+
+// fullCommand renders an argv-shaped xcodebuild invocation when enough
+// metadata was captured from the LogStoreManifest signature; falls back to
+// shortCommand when it would be a bare verb.
+func fullCommand(bucket Bucket) string {
+	switch bucket.Reason {
+	case BucketReasonIDEBackground, BucketReasonCLIImplicit:
+		return shortCommand(bucket)
+	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
+	}
+
+	if bucket.Scheme == "" && bucket.Workspace == "" && bucket.Project == "" {
+		return shortCommand(bucket)
+	}
+
+	parts := []string{"xcodebuild", actionVerb(bucket)}
+
+	switch {
+	case bucket.Workspace != "":
+		parts = append(parts, "-workspace", bucket.Workspace)
+	case bucket.Project != "":
+		parts = append(parts, "-project", bucket.Project)
+	}
+
+	if bucket.Scheme != "" {
+		parts = append(parts, "-scheme", bucket.Scheme)
+	}
+
+	if bucket.Configuration != "" {
+		parts = append(parts, "-configuration", bucket.Configuration)
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func actionVerb(bucket Bucket) string {
+	if a := string(bucket.Action); a != "" {
+		return a
+	}
+
+	return "build"
 }
 
 func (e *Emitter) putWithRetry(inv analytics.Invocation) error {

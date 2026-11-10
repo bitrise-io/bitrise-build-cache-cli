@@ -21,6 +21,9 @@ type Start struct {
 type End struct {
 	At               time.Time
 	Scheme           string
+	Project          string
+	Workspace        string
+	Configuration    string
 	Success          bool
 	UniqueIdentifier string
 	Duration         time.Duration

@@ -22,7 +22,8 @@ const sealedManifestFixture = `<?xml version="1.0" encoding="UTF-8"?>
     <key>AAAA-BBBB</key>
     <dict>
       <key>uniqueIdentifier</key><string>AAAA-BBBB</string>
-      <key>signature</key><string>Build MyScheme project</string>
+      <key>signature</key><string>Build MyScheme project MyProject with Configuration Debug</string>
+      <key>schemeIdentifier-schemeName</key><string>MyScheme</string>
       <key>highLevelStatus</key><string>S</string>
       <key>timeStartedRecording</key><real>762345678.5</real>
       <key>timeStoppedRecording</key><real>762345688.75</real>
@@ -31,6 +32,7 @@ const sealedManifestFixture = `<?xml version="1.0" encoding="UTF-8"?>
     <dict>
       <key>uniqueIdentifier</key><string>XXXX-OPEN</string>
       <key>signature</key><string>Build Running project</string>
+      <key>schemeIdentifier-schemeName</key><string>Running</string>
       <key>timeStartedRecording</key><real>762345690.0</real>
     </dict>
   </dict>
@@ -173,6 +175,7 @@ func TestEndWatcher_FailureStatus(t *testing.T) {
   <dict>
     <key>uniqueIdentifier</key><string>FAIL-01</string>
     <key>signature</key><string>Build Failing project</string>
+    <key>schemeIdentifier-schemeName</key><string>Failing</string>
     <key>highLevelStatus</key><string>E</string>
     <key>timeStartedRecording</key><real>762345678.0</real>
     <key>timeStoppedRecording</key><real>762345680.0</real>
@@ -216,6 +219,7 @@ func TestEndWatcher_EmitsForPrimaryObservableSealedEntry(t *testing.T) {
   <dict>
     <key>uniqueIdentifier</key><string>PO-01</string>
     <key>signature</key><string>Build Env</string>
+    <key>schemeIdentifier-schemeName</key><string>Env</string>
     <key>primaryObservable</key>
     <dict>
       <key>highLevelStatus</key><string>S</string>
@@ -263,6 +267,7 @@ func TestEndWatcher_PrimaryObservableTimeStoppedFallback(t *testing.T) {
   <dict>
     <key>uniqueIdentifier</key><string>PO-02</string>
     <key>signature</key><string>Build Env</string>
+    <key>schemeIdentifier-schemeName</key><string>Env</string>
     <key>primaryObservable</key>
     <dict>
       <key>highLevelStatus</key><string>S</string>

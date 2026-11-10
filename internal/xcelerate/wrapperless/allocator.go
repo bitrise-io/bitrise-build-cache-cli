@@ -137,6 +137,9 @@ func (a *Allocator) onEnd(e End) {
 
 	bucket.EndAt = e.At
 	bucket.Scheme = e.Scheme
+	bucket.Project = e.Project
+	bucket.Workspace = e.Workspace
+	bucket.Configuration = e.Configuration
 	bucket.Success = e.Success
 	bucket.SuccessKnown = true
 	bucket.Duration = e.Duration
