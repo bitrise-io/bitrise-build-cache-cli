@@ -347,6 +347,53 @@ func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 	w.Close()
 }
 
+// TestEndWatcher_EmitsParticipleVerbAction asserts the scanManifest path
+// classifies participle verbs (Building / Archiving / Testing / Analyzing)
+// the same way as the imperative forms. Xcode writes the gerund variants
+// for workspace-level signatures ("Building project … with scheme …"); the
+// imperative-only table would short-circuit as sub-build and never mint a
+// bucket.
+func TestEndWatcher_EmitsParticipleVerbAction(t *testing.T) {
+	const participleBody = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>PART-01</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>PART-01</string>
+    <key>signature</key><string>Building project MinimalApp with scheme MinimalApp</string>
+    <key>schemeIdentifier-schemeName</key><string>MinimalApp</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>timeStartedRecording</key><real>762345678.0</real>
+    <key>timeStoppedRecording</key><real>762345688.0</real>
+  </dict>
+</dict></dict></plist>`
+
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Minimal-abc")
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	path := writeManifest(t, root, participleBody)
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	got := waitForEnd(t, ends)
+	assert.Equal(t, "PART-01", got.UniqueIdentifier)
+	assert.Equal(t, PrimaryActionBuild, got.Action, "participle Building must map to PrimaryActionBuild")
+	assert.Equal(t, "MinimalApp", got.Project)
+
+	w.Close()
+}
+
 // TestEndWatcher_SeedPicksUpPreExistingSealedManifest covers the window where
 // Xcode sealed a manifest before the proxy's EndWatcher started. The seed
 // walk must surface the sealed entry on Start.
