@@ -262,6 +262,17 @@ func (a *Allocator) flushIDEBackground(q Quit) {
 	a.ideTimer = nil
 	a.ideTimerMu.Unlock()
 
+	// AfterFunc fires outside the lock; a fresh Start can land between the
+	// timer trigger and the lock acquisition, opening a new bucket that
+	// belongs to the next build, not to this Quit. If the open bucket's
+	// StartAt is after the Quit, skip the EndOfPrior eviction — the new
+	// build already supersedes any trailing IDE-background sweep.
+	if a.open != nil && a.open.StartAt.After(q.At) {
+		a.debugf("Allocator: IDE flush skipped, newer Start at %s > quit at %s", a.open.StartAt, q.At)
+
+		return
+	}
+
 	if a.open != nil {
 		bucket := a.open
 		a.open = nil
@@ -337,10 +348,19 @@ func (a *Allocator) ideBackgroundBucket(q Quit, snap *blobstats.Snapshot) Bucket
 		peerPID = a.ProxyPID
 	}
 
+	// Mirror cliImplicitBucket: prefer the peer's start-ms (bound at
+	// TagConn) so two IDE Quits with the same PID but different start-ms
+	// derive distinct InvocationIDs. A PID recycle otherwise collapses the
+	// two sessions onto one BE row.
+	peerStartMS := q.StartTimeMS
+	if peerStartMS == 0 {
+		peerStartMS = a.ProxyStartMS
+	}
+
 	anchor := buildidentity.Anchor{
 		Hostname:        a.Hostname,
 		PID:             peerPID,
-		StartTimeMS:     a.ProxyStartMS,
+		StartTimeMS:     peerStartMS,
 		BuildRequestHex: AnchorSaltIDEBackground,
 	}
 
@@ -354,7 +374,7 @@ func (a *Allocator) ideBackgroundBucket(q Quit, snap *blobstats.Snapshot) Bucket
 		Action:       PrimaryAction("idle"),
 		Reason:       BucketReasonIDEBackground,
 		PeerPID:      peerPID,
-		PeerStartMS:  a.ProxyStartMS,
+		PeerStartMS:  peerStartMS,
 		BlobStats:    snap,
 	}
 }

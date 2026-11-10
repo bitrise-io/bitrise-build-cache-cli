@@ -355,6 +355,106 @@ func TestAllocator_CLI_NoOpenBucketSynthesizesImplicitEND(t *testing.T) {
 	assert.NotEmpty(t, buckets[0].InvocationID)
 }
 
+// TestAllocator_QuitIDE_StartDuringDebounceDoesNotEvictNewBucket covers the
+// race where the IDE debounce timer's AfterFunc has already fired (and the
+// timer goroutine is blocked waiting on the allocator lock) before a Start
+// reseats the bucket. Without the StartAt-vs-q.At guard, the firing goroutine
+// evicts the freshly-opened bucket as EndOfPrior even though the new build
+// belongs to a different user action.
+//
+// Simulates the race deterministically by driving flushIDEBackground directly
+// (as if its AfterFunc had just fired) against an already-open bucket whose
+// StartAt is after the Quit's At.
+func TestAllocator_QuitIDE_StartDuringDebounceDoesNotEvictNewBucket(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, blobs := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	blobs.set(5)
+
+	quitAt := time.Unix(100, 0)
+
+	// Seat an open bucket whose StartAt is after the Quit — mirrors the
+	// state where onStart won the lock race while the AfterFunc was already
+	// scheduled and about to fire.
+	a.mu.Lock()
+	a.open = &Bucket{ //nolint:exhaustruct
+		InvocationID:    "fresh-after-quit",
+		StartAt:         quitAt.Add(5 * time.Millisecond),
+		BuildRequestHex: "freshhex",
+		Action:          PrimaryActionBuild,
+	}
+	a.mu.Unlock()
+
+	// Now drive flushIDEBackground directly — equivalent to the AfterFunc
+	// firing right now. With the guard, the open bucket survives; without
+	// it, flushIDEBackground emits an EndOfPrior.
+	a.flushIDEBackground(Quit{At: quitAt, PID: 10, AncestryIDE: true})
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, b := range buckets {
+		assert.NotEqual(t, BucketReasonEndOfPrior, b.Reason,
+			"IDE debounce firing after a newer Start must not evict the fresh bucket as EndOfPrior")
+	}
+}
+
+// TestAllocator_IDEBackground_PeerStartMSParticipatesInID covers PID-recycle
+// collision: two IDE Quits with the same PID but different StartTimeMS must
+// derive distinct InvocationIDs so the second session cannot accidentally
+// re-PUT under the first session's row.
+func TestAllocator_IDEBackground_PeerStartMSParticipatesInID(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+
+	driveIDEQuit := func(startMS int64) {
+		buckets = nil
+		a, blobs := newTestAllocator(t, func(b Bucket) {
+			mu.Lock()
+			buckets = append(buckets, b)
+			mu.Unlock()
+		})
+
+		blobs.set(1)
+		a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+			At:          time.Unix(100, 0),
+			PID:         777, // same PID both runs → recycle simulation
+			StartTimeMS: startMS,
+			AncestryIDE: true,
+		}})
+
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			mu.Lock()
+			n := len(buckets)
+			mu.Unlock()
+			if n > 0 {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
+	driveIDEQuit(1_000)
+	mu.Lock()
+	require.Len(t, buckets, 1)
+	firstID := buckets[0].InvocationID
+	mu.Unlock()
+
+	driveIDEQuit(2_000)
+	mu.Lock()
+	require.Len(t, buckets, 1)
+	secondID := buckets[0].InvocationID
+	mu.Unlock()
+
+	assert.NotEqual(t, firstID, secondID,
+		"IDE-background buckets with same PID but different StartTimeMS must derive distinct InvocationIDs")
+}
+
 func TestAllocator_IDEBackground_SkipsWhenNoActivity(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex
