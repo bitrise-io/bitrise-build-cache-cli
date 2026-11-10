@@ -275,17 +275,19 @@ func (w *EndWatcher) scanManifest(path string) {
 
 		scheme := e.SchemeName
 		success := e.HighLevelStatus != "E" && e.HighLevelStatus != "F"
+		logPath := filepath.Join(filepath.Dir(path), e.UniqueIdentifier+".xcactivitylog")
 		w.infof("EndWatcher: emit uuid=%s scheme=%s status=%s", e.UniqueIdentifier, scheme, e.HighLevelStatus)
 		w.OnEnd(End{
-			At:               w.now(),
-			Scheme:           scheme,
-			Project:          manifestsig.FirstSubmatch(manifestsig.Project, e.Signature),
-			Workspace:        manifestsig.FirstSubmatch(manifestsig.Workspace, e.Signature),
-			Configuration:    manifestsig.FirstSubmatch(manifestsig.Configuration, e.Signature),
-			Action:           actionFromSignature(e.Signature),
-			Success:          success,
-			UniqueIdentifier: e.UniqueIdentifier,
-			Duration:         cfAbsDuration(e.TimeStarted, e.TimeStopped),
+			At:                w.now(),
+			Scheme:            scheme,
+			Project:           manifestsig.FirstSubmatch(manifestsig.Project, e.Signature),
+			Workspace:         manifestsig.FirstSubmatch(manifestsig.Workspace, e.Signature),
+			Configuration:     manifestsig.FirstSubmatch(manifestsig.Configuration, e.Signature),
+			Action:            actionFromSignature(e.Signature),
+			Success:           success,
+			UniqueIdentifier:  e.UniqueIdentifier,
+			Duration:          cfAbsDuration(e.TimeStarted, e.TimeStopped),
+			XCActivityLogPath: logPath,
 		})
 	}
 }

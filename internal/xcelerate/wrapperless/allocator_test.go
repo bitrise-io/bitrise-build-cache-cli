@@ -206,6 +206,51 @@ func TestAllocator_EndWithoutStart_EmptyUID_Drops(t *testing.T) {
 	assert.Empty(t, buckets)
 }
 
+// TestAllocator_StartPairedEnd_CarriesXCActivityLogPath asserts the sibling
+// log path threads through the Start-paired bucket so the enriched-emit path
+// can read CompilationCacheMetrics.
+func TestAllocator_StartPairedEnd_CarriesXCActivityLogPath(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "aabbccddeeff00112233445566778899",
+		Action:          PrimaryActionBuild,
+	}})
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:                time.Unix(2, 0),
+		Scheme:            "Seek",
+		Action:            PrimaryActionBuild,
+		UniqueIdentifier:  "LOG-1",
+		Duration:          1 * time.Second,
+		XCActivityLogPath: "/dd/Logs/Build/LOG-1.xcactivitylog",
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.Equal(t, "/dd/Logs/Build/LOG-1.xcactivitylog", buckets[0].XCActivityLogPath)
+}
+
+// TestAllocator_SoleEndMint_CarriesXCActivityLogPath asserts the sibling log
+// path also threads through the warm ⌘B path (no Start seen).
+func TestAllocator_SoleEndMint_CarriesXCActivityLogPath(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:                time.Unix(100, 0),
+		Scheme:            "IceCubesApp",
+		Action:            PrimaryActionBuild,
+		UniqueIdentifier:  "ABCD-EFGH",
+		Duration:          5 * time.Second,
+		Success:           true,
+		XCActivityLogPath: "/dd/Logs/Build/ABCD-EFGH.xcactivitylog",
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.Equal(t, "/dd/Logs/Build/ABCD-EFGH.xcactivitylog", buckets[0].XCActivityLogPath)
+}
+
 func TestAllocator_QuitIDE_Debounces_ThenFlushesBackground(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex
