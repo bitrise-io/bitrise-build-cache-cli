@@ -141,12 +141,8 @@ func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) a
 // matching the wrapper flow's convention. Configuration is appended only when
 // present; scheme-only renders as "<action> [<scheme>]".
 func shortCommand(bucket Bucket) string {
-	switch bucket.Reason {
-	case BucketReasonIDEBackground:
-		return "ide background"
-	case BucketReasonCLIImplicit:
-		return "cli run"
-	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
+	if label, ok := fixedReasonLabel(bucket.Reason); ok {
+		return label
 	}
 
 	action := actionVerb(bucket)
@@ -162,14 +158,28 @@ func shortCommand(bucket Bucket) string {
 	return action + " [" + target + "]"
 }
 
+// fixedReasonLabel returns the dedicated label for BucketReasons whose row
+// must not render as a user build. The ok=false branch covers every
+// user-action reason (End-matched, EndOfPrior, Unknown) which falls through
+// to the default <action> [<scheme>] shape.
+func fixedReasonLabel(r BucketReason) (string, bool) {
+	switch r {
+	case BucketReasonIDEBackground:
+		return "ide background", true
+	case BucketReasonCLIImplicit:
+		return "cli run", true
+	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
+	}
+
+	return "", false
+}
+
 // fullCommand renders an argv-shaped xcodebuild invocation when enough
 // metadata was captured from the LogStoreManifest signature; falls back to
 // shortCommand when it would be a bare verb.
 func fullCommand(bucket Bucket) string {
-	switch bucket.Reason {
-	case BucketReasonIDEBackground, BucketReasonCLIImplicit:
+	if _, ok := fixedReasonLabel(bucket.Reason); ok {
 		return shortCommand(bucket)
-	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
 	}
 
 	if bucket.Scheme == "" && bucket.Workspace == "" && bucket.Project == "" {
