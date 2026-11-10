@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 	"howett.net/plist"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/manifestsig"
 )
 
 type EndWatcher struct {
@@ -294,9 +295,9 @@ func (w *EndWatcher) scanManifest(path string) {
 		w.OnEnd(End{
 			At:               w.now(),
 			Scheme:           scheme,
-			Project:          firstSubmatch(projectFromSignature, e.Signature),
-			Workspace:        firstSubmatch(workspaceFromSignature, e.Signature),
-			Configuration:    firstSubmatch(configurationFromSignature, e.Signature),
+			Project:          manifestsig.FirstSubmatch(manifestsig.Project, e.Signature),
+			Workspace:        manifestsig.FirstSubmatch(manifestsig.Workspace, e.Signature),
+			Configuration:    manifestsig.FirstSubmatch(manifestsig.Configuration, e.Signature),
 			Action:           actionFromSignature(e.Signature),
 			Success:          success,
 			UniqueIdentifier: e.UniqueIdentifier,
@@ -324,13 +325,6 @@ func isSealedTerminal(status string) bool {
 	return status == "S" || status == "F" || status == "E"
 }
 
-//nolint:gochecknoglobals
-var (
-	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
-	workspaceFromSignature     = regexp.MustCompile(`(?i)\bworkspace\s+(\S+)`)
-	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
-)
-
 // signatureVerbToAction maps the leading verb of a LogStoreManifest signature
 // to the PrimaryAction. Signatures Xcode writes: "Build X", "Archive X",
 // "Testing X", "Analyze X". Verbs outside this set (Signing, Packages,
@@ -347,14 +341,6 @@ var signatureVerbToAction = map[string]PrimaryAction{
 	"Testing":   PrimaryActionTest,
 	"Analyze":   PrimaryActionAnalyze,
 	"Analyzing": PrimaryActionAnalyze,
-}
-
-func firstSubmatch(re *regexp.Regexp, s string) string {
-	if m := re.FindStringSubmatch(s); len(m) == 2 {
-		return m[1]
-	}
-
-	return ""
 }
 
 // actionFromSignature returns the PrimaryAction encoded in the signature's
