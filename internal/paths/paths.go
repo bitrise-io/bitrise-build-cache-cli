@@ -95,12 +95,6 @@ const (
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
 
-	// payloadStoreFilename is the NDJSON ledger keyed by proxy-derived
-	// InvocationID that merges every signal (sidecar update, plist arrival,
-	// xcactivitylog metrics, xcresult parse) into one record per BE row before
-	// the enricher PUTs.
-	payloadStoreFilename = "payload-store.ndjson"
-
 	// ccacheLogsRelative is the per-user ccache log dir.
 	ccacheLogsRelative = ".local/state/ccache/logs"
 
@@ -385,13 +379,6 @@ func (p Paths) WrapperlessHandledManifestsPath() string {
 // persist which xcactivitylog UUIDs have already been emitted across restarts.
 func (p Paths) HandledManifestsFile() string {
 	return filepath.Join(p.XcelerateEnrichmentDir(), handledManifestsFilename)
-}
-
-// PayloadStoreFile returns the NDJSON ledger keyed by proxy-derived
-// InvocationID that merges every enrichment signal into one record per BE row
-// before the final PUT.
-func (p Paths) PayloadStoreFile() string {
-	return filepath.Join(p.XcelerateEnrichmentDir(), payloadStoreFilename)
 }
 
 // CcacheLogDir returns ~/.local/state/ccache/logs.
