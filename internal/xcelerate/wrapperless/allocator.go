@@ -103,8 +103,16 @@ func (a *Allocator) onStart(s Start) {
 
 	a.cancelIDETimer()
 
+	// Single-slot design: a second concurrent Start evicts the prior as
+	// EndOfPrior rather than opening a parallel bucket. Correct for serial
+	// IDE ⌘B and sequential CLI runs; parallel CLI builds from the same
+	// shell get interleaved attribution — proxy's global CurrentBucketID
+	// stamps every RPC with the latest, so the prior bucket closes with
+	// whatever bytes it saw before the swap. Per-peer-PID attribution is
+	// tracked as a follow-up.
 	if a.open != nil {
 		prior := a.open
+		a.warnf("Allocator: concurrent Start evicts bucket id=%s prior_hex=%s next_hex=%s", prior.InvocationID, prior.BuildRequestHex, s.BuildRequestHex)
 		prior.EndAt = s.At
 		prior.Reason = BucketReasonEndOfPrior
 		prior.BlobStats = a.snapshotBlobs()
@@ -361,4 +369,12 @@ func (a *Allocator) debugf(format string, args ...any) {
 	}
 
 	a.Logger.Debugf(format, args...)
+}
+
+func (a *Allocator) warnf(format string, args ...any) {
+	if a.Logger == nil {
+		return
+	}
+
+	a.Logger.Warnf(format, args...)
 }
