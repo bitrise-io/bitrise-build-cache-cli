@@ -20,9 +20,11 @@ const BuildRequestHexIDEBackground = "ide-background"
 // InvocationID so a Quit{CLI} with no End still flushes to a stable row.
 const BuildRequestHexCLIRun = "cli-run"
 
+// BlobStatsSource is the Allocator's windowed-stats seam. TakeSnapshot must
+// snapshot and reset atomically so an RPC interleaving between the two does
+// not land in both the current bucket and the next one.
 type BlobStatsSource interface {
-	Snapshot() *blobstats.Snapshot
-	Reset()
+	TakeSnapshot() *blobstats.Snapshot
 }
 
 type Allocator struct {
@@ -396,10 +398,7 @@ func (a *Allocator) snapshotBlobs() *blobstats.Snapshot {
 		return nil
 	}
 
-	snap := a.BlobStats.Snapshot()
-	a.BlobStats.Reset()
-
-	return snap
+	return a.BlobStats.TakeSnapshot()
 }
 
 func hasActivity(snap *blobstats.Snapshot) bool {
