@@ -33,4 +33,7 @@ type Bucket struct {
 	PeerPID         int                 `json:"peerPid,omitempty"`
 	PeerStartMS     int64               `json:"peerStartMs,omitempty"`
 	BlobStats       *blobstats.Snapshot `json:"blobStats,omitempty"`
+	// XCActivityLogPath copied from the matching End; empty for Start-only
+	// buckets (CLI-implicit / IDE-background) because those have no manifest.
+	XCActivityLogPath string `json:"xcActivityLogPath,omitempty"`
 }

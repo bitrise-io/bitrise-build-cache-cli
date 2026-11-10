@@ -163,6 +163,7 @@ func (a *Allocator) onEnd(e End) {
 	bucket.Duration = e.Duration
 	bucket.Reason = BucketReasonEndMatched
 	bucket.BlobStats = a.snapshotBlobs()
+	bucket.XCActivityLogPath = e.XCActivityLogPath
 
 	a.debugf("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
 
@@ -193,21 +194,22 @@ func (a *Allocator) mintEndOnlyBucket(e End) {
 	}
 
 	bucket := &Bucket{
-		InvocationID:  buildidentity.Derive(anchor),
-		StartAt:       e.At.Add(-e.Duration),
-		EndAt:         e.At,
-		Scheme:        e.Scheme,
-		Project:       e.Project,
-		Workspace:     e.Workspace,
-		Configuration: e.Configuration,
-		Action:        e.Action,
-		Success:       e.Success,
-		SuccessKnown:  true,
-		Duration:      e.Duration,
-		Reason:        BucketReasonEndMatched,
-		PeerPID:       a.ProxyPID,
-		PeerStartMS:   a.ProxyStartMS,
-		BlobStats:     a.snapshotBlobs(),
+		InvocationID:      buildidentity.Derive(anchor),
+		StartAt:           e.At.Add(-e.Duration),
+		EndAt:             e.At,
+		Scheme:            e.Scheme,
+		Project:           e.Project,
+		Workspace:         e.Workspace,
+		Configuration:     e.Configuration,
+		Action:            e.Action,
+		Success:           e.Success,
+		SuccessKnown:      true,
+		Duration:          e.Duration,
+		Reason:            BucketReasonEndMatched,
+		PeerPID:           a.ProxyPID,
+		PeerStartMS:       a.ProxyStartMS,
+		BlobStats:         a.snapshotBlobs(),
+		XCActivityLogPath: e.XCActivityLogPath,
 	}
 
 	a.debugf("Allocator: sole-End mint id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))

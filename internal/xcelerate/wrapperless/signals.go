@@ -28,6 +28,11 @@ type End struct {
 	Success          bool
 	UniqueIdentifier string
 	Duration         time.Duration
+	// XCActivityLogPath is the sealed sibling log at
+	// <ddRoot>/Logs/Build/<uniqueIdentifier>.xcactivitylog. Enriched-emit path
+	// reads CompilationCacheMetrics from here; empty when the manifest
+	// predates that layout.
+	XCActivityLogPath string
 }
 
 type Quit struct {

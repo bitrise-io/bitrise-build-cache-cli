@@ -455,6 +455,37 @@ func TestEndWatcher_EmitsParticipleVerbAction(t *testing.T) {
 	w.Close()
 }
 
+// TestEndWatcher_EmitsXCActivityLogPathForSealedEntry asserts the sibling
+// xcactivitylog path lands on the emitted End. The downstream enriched-emit
+// path reads CompilationCacheMetrics from this file for the log-tier hit-rate
+// override, so an empty path would silently drop that tier.
+func TestEndWatcher_EmitsXCActivityLogPathForSealedEntry(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-log")
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	path := writeManifest(t, root, sealedManifestFixture)
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	got := waitForEnd(t, ends)
+	wantDir := filepath.Dir(path)
+	assert.Equal(t, filepath.Join(wantDir, "AAAA-BBBB.xcactivitylog"), got.XCActivityLogPath)
+
+	w.Close()
+}
+
 // TestEndWatcher_SeedPicksUpPreExistingSealedManifest covers the window where
 // Xcode sealed a manifest before the proxy's EndWatcher started. The seed
 // walk must surface the sealed entry on Start.
