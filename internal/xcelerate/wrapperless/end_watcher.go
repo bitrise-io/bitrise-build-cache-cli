@@ -15,9 +15,16 @@ import (
 )
 
 type EndWatcher struct {
-	HomeDir   string
-	Logger    log.Logger
-	OnEnd     func(End)
+	HomeDir string
+	Logger  log.Logger
+	OnEnd   func(End)
+	// SeenStore, when non-nil, persists the emitted-uniqueIdentifier set
+	// across proxy restarts. Closes the dup-row race where a proxy
+	// restart within seedStaleGrace of a sealed manifest would otherwise
+	// re-emit the entry under a new InvocationID (the anchor shifts
+	// because ProxyPID differs). nil disables persistence — the in-memory
+	// seen set only dedups within one proxy lifetime.
+	SeenStore *HandledManifestStore
 	NewSource func() (DirEventSource, error)
 	Now       func() time.Time
 
@@ -35,6 +42,12 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 		w.seen = make(map[string]struct{})
 	}
 	w.mu.Unlock()
+
+	// Hydrate the seen set from disk so a restart within seedStaleGrace of
+	// a sealed manifest does not re-emit the entry. Stale records older
+	// than HandledManifestMaxAge are filtered on load; failures fall back
+	// to the in-memory seen set only.
+	w.hydrateSeen()
 
 	newSource := w.NewSource
 	if newSource == nil {
@@ -263,6 +276,12 @@ func (w *EndWatcher) scanManifest(path string) {
 		w.seen[e.UniqueIdentifier] = struct{}{}
 		w.mu.Unlock()
 
+		// Persist so a proxy restart within seedStaleGrace does not re-emit.
+		// Logged at warn on failure; the in-memory seen set still deduplicates
+		// within the current proxy lifetime so a write error can at worst
+		// re-emit after a restart — same risk as the SeenStore=nil case.
+		w.persistSeen(e.UniqueIdentifier)
+
 		if w.OnEnd == nil {
 			w.infof("EndWatcher: skip %s reason=no-OnEnd uuid=%s", path, e.UniqueIdentifier)
 
@@ -417,6 +436,41 @@ func loadManifestEntries(path string) ([]manifestLogEntry, error) {
 	}
 
 	return out, nil
+}
+
+// hydrateSeen loads the persisted uniqueIdentifier set into the in-memory
+// seen map. Called at Start so the first scanManifest after a restart
+// already knows which entries were emitted before.
+func (w *EndWatcher) hydrateSeen() {
+	if w.SeenStore == nil {
+		return
+	}
+
+	uuids, err := w.SeenStore.LoadFresh(w.now(), HandledManifestMaxAge)
+	if err != nil {
+		w.warn("end watcher hydrate seen store: %s", err)
+
+		return
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, u := range uuids {
+		w.seen[u] = struct{}{}
+	}
+
+	w.infof("EndWatcher: hydrated %d uuids from seen store", len(uuids))
+}
+
+func (w *EndWatcher) persistSeen(uuid string) {
+	if w.SeenStore == nil {
+		return
+	}
+
+	if err := w.SeenStore.Append(HandledManifest{UUID: uuid, HandledAt: w.now()}); err != nil {
+		w.warn("end watcher persist seen uuid=%s: %s", uuid, err)
+	}
 }
 
 func (w *EndWatcher) now() time.Time {

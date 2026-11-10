@@ -347,6 +347,67 @@ func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 	w.Close()
 }
 
+// TestEndWatcher_SeenStoreSuppressesRestartDuplicate covers the dup-row race
+// a proxy restart creates within seedStaleGrace of a sealed manifest. Without
+// persistence, the fresh EndWatcher's in-memory seen set is empty, so it
+// seed-walks the still-fresh plist and re-emits the UID — producing a second
+// BE row. With a SeenStore the first proxy's emit lands in the ledger and
+// the restart's EndWatcher skips it.
+func TestEndWatcher_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-restart")
+	manifestPath := writeManifest(t, root, sealedManifestFixture)
+
+	store := &HandledManifestStore{Path: filepath.Join(t.TempDir(), "handled.ndjson")}
+
+	// First proxy: emits once, Append lands in the store.
+	src1 := newFakeEventSource()
+	ends1 := make(chan End, 4)
+	info, err := os.Stat(manifestPath)
+	require.NoError(t, err)
+	manifestMtime := info.ModTime()
+
+	w1 := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends1 <- e },
+		NewSource: func() (DirEventSource, error) { return src1, nil },
+		SeenStore: store,
+		Now:       func() time.Time { return manifestMtime.Add(-time.Second) },
+	}
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	defer cancel1()
+	require.NoError(t, w1.Start(ctx1))
+	got1 := waitForEnd(t, ends1)
+	assert.Equal(t, "AAAA-BBBB", got1.UniqueIdentifier)
+	w1.Close()
+
+	// Second proxy: fresh EndWatcher sharing the store. Seed walk on the
+	// still-fresh manifest would otherwise re-emit — the store suppresses it.
+	src2 := newFakeEventSource()
+	ends2 := make(chan End, 4)
+
+	w2 := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends2 <- e },
+		NewSource: func() (DirEventSource, error) { return src2, nil },
+		SeenStore: store,
+		Now:       func() time.Time { return manifestMtime.Add(-time.Second) },
+	}
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	require.NoError(t, w2.Start(ctx2))
+
+	select {
+	case e := <-ends2:
+		t.Fatalf("duplicate End emitted across restart: %+v", e)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	w2.Close()
+}
+
 // TestEndWatcher_EmitsParticipleVerbAction asserts the scanManifest path
 // classifies participle verbs (Building / Archiving / Testing / Analyzing)
 // the same way as the imperative forms. Xcode writes the gerund variants

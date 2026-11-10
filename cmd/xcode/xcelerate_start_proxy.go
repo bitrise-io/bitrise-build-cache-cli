@@ -580,12 +580,22 @@ func maybeStartWrapperlessPipeline(
 		PendingSlimPath:  resolver.WrapperlessPendingSlimPath(),
 	}
 
-	pipeline := &wrapperless.Pipeline{
+	// EndWatcher gets its own on-disk seen-UUID ledger so a proxy restart
+	// within seedStaleGrace of a sealed manifest does not emit a duplicate
+	// BE row for the same build.
+	endWatcher := &wrapperless.EndWatcher{ //nolint:exhaustruct
 		HomeDir:   bundle.homeDir,
 		Logger:    logger,
-		Emitter:   emitter,
-		Proxy:     p,
-		BlobStats: p.BlobStatsSource(),
+		SeenStore: &wrapperless.HandledManifestStore{Path: resolver.WrapperlessHandledManifestsPath()},
+	}
+
+	pipeline := &wrapperless.Pipeline{
+		HomeDir:    bundle.homeDir,
+		Logger:     logger,
+		Emitter:    emitter,
+		Proxy:      p,
+		BlobStats:  p.BlobStatsSource(),
+		EndWatcher: endWatcher,
 	}
 
 	if err := pipeline.Start(ctx); err != nil {
