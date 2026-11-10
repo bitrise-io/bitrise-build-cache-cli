@@ -137,6 +137,8 @@ func (a *Allocator) onEnd(e End) {
 	a.cancelIDETimer()
 
 	if a.open == nil {
+		a.mintEndOnlyBucket(e)
+
 		return
 	}
 
@@ -155,6 +157,56 @@ func (a *Allocator) onEnd(e End) {
 	bucket.BlobStats = a.snapshotBlobs()
 
 	a.debugf("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
+
+	a.emit(bucket)
+}
+
+// mintEndOnlyBucket is the sole-End authoritative path: when Xcode reuses an
+// existing xcbuilddata dir on a warm ⌘B (no CREATE event → no Start event),
+// the LogStoreManifest seal is still a complete signal. Mint a one-shot bucket
+// keyed on the manifest UUID and emit slim+enriched back-to-back. Called only
+// when a.open == nil so the Start-paired flow is unaffected.
+//
+// Non-primary scheme entries (Signing / Packages / Localization sub-builds)
+// resolve to End.Action == "" via actionFromSignature and short-circuit here —
+// they are Xcode scaffolding, not user-visible builds.
+func (a *Allocator) mintEndOnlyBucket(e End) {
+	if e.Action == "" || e.UniqueIdentifier == "" {
+		a.debugf("Allocator: sole-End drop scheme=%s action=%q (not primary)", e.Scheme, e.Action)
+
+		return
+	}
+
+	anchor := buildidentity.Anchor{
+		Hostname:        a.Hostname,
+		PID:             a.ProxyPID,
+		StartTimeMS:     a.ProxyStartMS,
+		BuildRequestHex: e.UniqueIdentifier,
+	}
+
+	bucket := &Bucket{
+		InvocationID:  buildidentity.Derive(anchor),
+		StartAt:       e.At.Add(-e.Duration),
+		EndAt:         e.At,
+		Scheme:        e.Scheme,
+		Project:       e.Project,
+		Workspace:     e.Workspace,
+		Configuration: e.Configuration,
+		Action:        e.Action,
+		Success:       e.Success,
+		SuccessKnown:  true,
+		Duration:      e.Duration,
+		Reason:        BucketReasonEndMatched,
+		PeerPID:       a.ProxyPID,
+		PeerStartMS:   a.ProxyStartMS,
+		BlobStats:     a.snapshotBlobs(),
+	}
+
+	a.debugf("Allocator: sole-End mint id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
+
+	if a.OnOpenInvoc != nil {
+		a.OnOpenInvoc(bucket.InvocationID)
+	}
 
 	a.emit(bucket)
 }

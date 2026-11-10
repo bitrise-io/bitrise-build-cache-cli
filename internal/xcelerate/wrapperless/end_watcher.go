@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -293,6 +294,7 @@ func (w *EndWatcher) scanManifest(path string) {
 			Project:          firstSubmatch(projectFromSignature, e.Signature),
 			Workspace:        firstSubmatch(workspaceFromSignature, e.Signature),
 			Configuration:    firstSubmatch(configurationFromSignature, e.Signature),
+			Action:           actionFromSignature(e.Signature),
 			Success:          success,
 			UniqueIdentifier: e.UniqueIdentifier,
 			Duration:         cfAbsDuration(e.TimeStarted, e.TimeStopped),
@@ -326,12 +328,45 @@ var (
 	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
 )
 
+// signatureVerbToAction maps the leading verb of a LogStoreManifest signature
+// to the PrimaryAction. Signatures Xcode writes: "Build X", "Archive X",
+// "Testing X", "Analyze X". Verbs outside this set (Signing, Packages,
+// Localization, GameKit Configuration, Console) belong to sub-builds and
+// resolve to "" — callers use that to short-circuit the sole-End fallback.
+//
+//nolint:gochecknoglobals // immutable table
+var signatureVerbToAction = map[string]PrimaryAction{
+	"Build":   PrimaryActionBuild,
+	"Archive": PrimaryActionArchive,
+	"Testing": PrimaryActionTest,
+	"Test":    PrimaryActionTest,
+	"Analyze": PrimaryActionAnalyze,
+}
+
 func firstSubmatch(re *regexp.Regexp, s string) string {
 	if m := re.FindStringSubmatch(s); len(m) == 2 {
 		return m[1]
 	}
 
 	return ""
+}
+
+// actionFromSignature returns the PrimaryAction encoded in the signature's
+// leading verb, or "" when it falls outside the primary set. End events
+// with "" are sub-builds Signing / Packages / Localization / etc. that must
+// not mint a BE row via the sole-End fallback.
+func actionFromSignature(sig string) PrimaryAction {
+	s := strings.TrimSpace(sig)
+	if s == "" {
+		return ""
+	}
+
+	verb := s
+	if idx := strings.IndexByte(s, ' '); idx >= 0 {
+		verb = s[:idx]
+	}
+
+	return signatureVerbToAction[verb]
 }
 
 func cfAbsDuration(start, stop float64) time.Duration {

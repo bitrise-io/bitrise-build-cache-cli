@@ -112,11 +112,58 @@ func TestAllocator_StartStartClosesPriorAsEndOfPrior(t *testing.T) {
 	assert.Equal(t, "hex2", buckets[1].BuildRequestHex)
 }
 
-func TestAllocator_EndWithoutStartDoesNothing(t *testing.T) {
+func TestAllocator_EndWithoutStart_SubBuild_Drops(t *testing.T) {
 	var buckets []Bucket
 	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
 
-	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{}})
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{UniqueIdentifier: "uid-sub-01", Scheme: "Signing"}})
+
+	assert.Empty(t, buckets)
+}
+
+func TestAllocator_EndWithoutStart_PrimaryAction_MintsBucket(t *testing.T) {
+	var buckets []Bucket
+	a, blobs := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+	blobs.set(42)
+
+	ids := make(chan string, 1)
+	a.OnOpenInvoc = func(id string) { ids <- id }
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               time.Unix(100, 0),
+		Scheme:           "IceCubesApp",
+		Project:          "IceCubesApp",
+		Configuration:    "Debug",
+		Action:           PrimaryActionBuild,
+		UniqueIdentifier: "ABCD-EFGH",
+		Duration:         5 * time.Second,
+		Success:          true,
+	}})
+
+	require.Len(t, buckets, 1)
+	b := buckets[0]
+	assert.Equal(t, PrimaryActionBuild, b.Action)
+	assert.Equal(t, "IceCubesApp", b.Scheme)
+	assert.Equal(t, "Debug", b.Configuration)
+	assert.True(t, b.Success)
+	assert.Equal(t, BucketReasonEndMatched, b.Reason)
+	assert.NotEmpty(t, b.InvocationID)
+	require.NotNil(t, b.BlobStats)
+	assert.Equal(t, int64(42), b.BlobStats.Download.OpCount)
+
+	select {
+	case id := <-ids:
+		assert.Equal(t, b.InvocationID, id)
+	default:
+		t.Fatal("OnOpenInvoc not called for sole-End bucket")
+	}
+}
+
+func TestAllocator_EndWithoutStart_EmptyUID_Drops(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{Action: PrimaryActionBuild}})
 
 	assert.Empty(t, buckets)
 }
