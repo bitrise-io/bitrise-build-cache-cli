@@ -14,6 +14,12 @@ import (
 // HandledManifestMaxAge bounds how far back the EndWatcher replays a
 // uniqueIdentifier as new. Older records are pruned at load time so the
 // ledger does not grow forever.
+//
+// Deliberately larger than seedStaleGrace: that constant is a within-startup
+// wall-clock window (did a manifest seal just before this proxy started?),
+// while this one is cross-restart retention of the persisted seen-set, where
+// the worst case is a dev machine idle over a long weekend before the next
+// build.
 const HandledManifestMaxAge = 7 * 24 * time.Hour
 
 // HandledManifest is one NDJSON record in the ledger.
