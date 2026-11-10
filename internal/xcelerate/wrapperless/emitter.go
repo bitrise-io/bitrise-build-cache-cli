@@ -60,11 +60,7 @@ type Emitter struct {
 	SlimRetryBudget  int
 	SlimBackoff      time.Duration
 
-	// Health, when non-nil, receives TickAttempt / TickSuccess / TickFailure
-	// around the enriched PUT so `doctor` observes the same health rhythm
-	// regardless of which flow (wrapper, enricher, wrapperless) emitted the
-	// row. Reuse the enricher's health.json path so a single doctor read
-	// covers both.
+	// Health, when non-nil, ticks around the enriched PUT (nil disables).
 	Health *enrichment.HealthWriter
 
 	// LocalLogAppender appends a Record on each successful enriched PUT so
