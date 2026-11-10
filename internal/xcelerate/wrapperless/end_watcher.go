@@ -51,7 +51,7 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 
 	w.infof("EndWatcher: source init ok")
 
-	ddRoots := derivedDataRoots(ctx, w.HomeDir)
+	ddRoots := derivedDataRoots(w.HomeDir)
 	w.infof("EndWatcher: dd roots = %v", ddRoots)
 
 	for _, root := range ddRoots {
