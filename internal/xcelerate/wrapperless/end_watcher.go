@@ -51,11 +51,11 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 
 	w.infof("EndWatcher: source init ok")
 
-	ddRoot := w.derivedDataDir()
-	w.infof("EndWatcher: dd root = %q", ddRoot)
+	ddRoots := derivedDataRoots(ctx, w.HomeDir)
+	w.infof("EndWatcher: dd roots = %v", ddRoots)
 
-	if ddRoot != "" {
-		w.installWatch(src, ddRoot)
+	for _, root := range ddRoots {
+		w.installWatch(src, root)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -68,11 +68,11 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 	w.startedAt = w.now()
 	w.mu.Unlock()
 
-	// Seed-walk the DD tree for any already-sealed LogStoreManifest entries
+	// Seed-walk each DD tree for any already-sealed LogStoreManifest entries
 	// so a proxy that started after a build finished still picks them up.
 	seeded := 0
-	if ddRoot != "" {
-		seeded = w.seedWalk(ddRoot)
+	for _, root := range ddRoots {
+		seeded += w.seedWalk(root)
 	}
 	w.infof("EndWatcher: seed walk done (%d sealed found)", seeded)
 
@@ -140,22 +140,6 @@ func (w *EndWatcher) Close() {
 	if done != nil {
 		<-done
 	}
-}
-
-// derivedDataDir mirrors StartWatcher.derivedDataDir: the recursive FSEvents
-// watch is installed on the DD root so manifest writes under any app subdir
-// (including those created after the watcher starts) are observed.
-func (w *EndWatcher) derivedDataDir() string {
-	home := w.HomeDir
-	if home == "" {
-		h, err := os.UserHomeDir()
-		if err != nil || h == "" {
-			return ""
-		}
-		home = h
-	}
-
-	return filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
 }
 
 // seedWalk scans every existing LogStoreManifest.plist at Start, in case the
