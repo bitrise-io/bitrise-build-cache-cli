@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"sync"
 	"time"
 
@@ -284,12 +284,15 @@ func (w *EndWatcher) scanManifest(path string) {
 			continue
 		}
 
-		scheme := schemeFromSignature(e.Signature)
+		scheme := e.SchemeName
 		success := e.HighLevelStatus != "E" && e.HighLevelStatus != "F"
 		w.infof("EndWatcher: emit uuid=%s scheme=%s status=%s", e.UniqueIdentifier, scheme, e.HighLevelStatus)
 		w.OnEnd(End{
 			At:               w.now(),
 			Scheme:           scheme,
+			Project:          firstSubmatch(projectFromSignature, e.Signature),
+			Workspace:        firstSubmatch(workspaceFromSignature, e.Signature),
+			Configuration:    firstSubmatch(configurationFromSignature, e.Signature),
 			Success:          success,
 			UniqueIdentifier: e.UniqueIdentifier,
 			Duration:         cfAbsDuration(e.TimeStarted, e.TimeStopped),
@@ -316,29 +319,19 @@ func isSealedTerminal(status string) bool {
 	return status == "S" || status == "F" || status == "E"
 }
 
-// schemeFromSignature strips the leading verb (Build / Test / Archive /
-// Analyze) and returns the remainder. Xcode writes variants like "Build
-// MyScheme project" or "Testing MySchemeTests"; the second token is the
-// scheme.
-func schemeFromSignature(sig string) string {
-	s := strings.TrimSpace(sig)
-	if s == "" {
-		return ""
+//nolint:gochecknoglobals
+var (
+	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
+	workspaceFromSignature     = regexp.MustCompile(`(?i)\bworkspace\s+(\S+)`)
+	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
+)
+
+func firstSubmatch(re *regexp.Regexp, s string) string {
+	if m := re.FindStringSubmatch(s); len(m) == 2 {
+		return m[1]
 	}
 
-	first := strings.SplitN(s, " ", 2)
-	if len(first) < 2 {
-		return ""
-	}
-
-	rest := first[1]
-	for _, suffix := range []string{" project", " workspace"} {
-		if idx := strings.Index(rest, suffix); idx >= 0 {
-			rest = rest[:idx]
-		}
-	}
-
-	return strings.TrimSpace(rest)
+	return ""
 }
 
 func cfAbsDuration(start, stop float64) time.Duration {
@@ -356,6 +349,7 @@ func cfAbsDuration(start, stop float64) time.Duration {
 type manifestLogEntry struct {
 	UniqueIdentifier  string                     `plist:"uniqueIdentifier"`
 	Signature         string                     `plist:"signature"`
+	SchemeName        string                     `plist:"schemeIdentifier-schemeName"`
 	HighLevelStatus   string                     `plist:"highLevelStatus"`
 	TimeStarted       float64                    `plist:"timeStartedRecording"`
 	TimeStopped       float64                    `plist:"timeStoppedRecording"`

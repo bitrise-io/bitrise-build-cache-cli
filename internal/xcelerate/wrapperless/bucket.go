@@ -21,6 +21,9 @@ type Bucket struct {
 	StartAt         time.Time           `json:"startAt"`
 	EndAt           time.Time           `json:"endAt"`
 	Scheme          string              `json:"scheme,omitempty"`
+	Project         string              `json:"project,omitempty"`
+	Workspace       string              `json:"workspace,omitempty"`
+	Configuration   string              `json:"configuration,omitempty"`
 	Action          PrimaryAction       `json:"action,omitempty"`
 	Success         bool                `json:"success"`
 	SuccessKnown    bool                `json:"successKnown"`
