@@ -14,7 +14,10 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg wrapperless_test . InvocationPutter
@@ -57,6 +60,18 @@ type Emitter struct {
 	SlimRetryBudget  int
 	SlimBackoff      time.Duration
 
+	// Health, when non-nil, receives TickAttempt / TickSuccess / TickFailure
+	// around the enriched PUT so `doctor` observes the same health rhythm
+	// regardless of which flow (wrapper, enricher, wrapperless) emitted the
+	// row. Reuse the enricher's health.json path so a single doctor read
+	// covers both.
+	Health *enrichment.HealthWriter
+
+	// LocalLogAppender appends a Record on each successful enriched PUT so
+	// `bitrise-build-cache invocations list` surfaces the wrapperless row.
+	// nil disables.
+	LocalLogAppender invocationlog.Appender
+
 	mu sync.Mutex
 }
 
@@ -93,14 +108,56 @@ func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
 	}
 
 	inv := e.buildInvocation(bucket, PhaseEnriched, hitRate)
+
+	enrichment.TickAttempt(e.Health, e.Logger, e.now())
+
 	if err := e.Client.PutInvocation(inv); err != nil {
 		e.logWarn("wrapperless enriched PUT %s failed: %s", inv.InvocationID, err)
+		enrichment.TickFailure(e.Health, e.Logger, e.now(), err)
 
 		return
 	}
 
+	// matched=true: wrapperless is correlation-free — the ID being PUT is the
+	// authoritative ID, no manifest-to-pending-record match step runs.
+	enrichment.TickSuccess(e.Health, e.Logger, e.now(), true)
+
+	e.appendLocalLog(bucket, inv, hitRate)
+
 	e.logDebug("Emitter: enriched PUT id=%s scheme=%s bytes=%d hitRate=%.2f",
 		inv.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats), hitRate)
+}
+
+func (e *Emitter) appendLocalLog(bucket Bucket, inv analytics.Invocation, hitRate float32) {
+	if e.LocalLogAppender == nil {
+		return
+	}
+
+	rec := invocations.Record{
+		InvocationID: inv.InvocationID,
+		Command:      shortCommand(bucket),
+		Tool:         invocations.ToolXcode,
+		ToolVersion:  e.XcodeVersion,
+		CLIVersion:   inv.CLIVersion,
+		StartedAt:    bucket.StartAt.UTC(),
+		FinishedAt:   bucket.EndAt.UTC(),
+		ExitCode:     exitCodeFromBucket(bucket),
+		CIProvider:   e.Metadata.CIProvider,
+		Username:     inv.Username,
+		HitRate:      hitRate,
+	}
+
+	if err := e.LocalLogAppender.Append(rec); err != nil {
+		e.logWarn("wrapperless local log append %s failed: %s", inv.InvocationID, err)
+	}
+}
+
+func exitCodeFromBucket(bucket Bucket) int {
+	if bucket.SuccessKnown && !bucket.Success {
+		return 1
+	}
+
+	return 0
 }
 
 func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) analytics.Invocation {
