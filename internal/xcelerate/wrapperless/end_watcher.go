@@ -115,22 +115,6 @@ func (w *EndWatcher) installWatch(src DirEventSource, ddRoot string) {
 	w.infof("EndWatcher: watching %s recursively", path)
 }
 
-// MarkSeen records a uniqueIdentifier as already-emitted so a subsequent
-// event tick does not re-fire for it. Used by restart-recovery when it
-// synthesizes an End from the on-disk manifest before the watcher attaches.
-func (w *EndWatcher) MarkSeen(uniqueID string) {
-	if uniqueID == "" {
-		return
-	}
-
-	w.mu.Lock()
-	if w.seen == nil {
-		w.seen = make(map[string]struct{})
-	}
-	w.seen[uniqueID] = struct{}{}
-	w.mu.Unlock()
-}
-
 func (w *EndWatcher) Close() {
 	w.mu.Lock()
 	cancel := w.cancel
