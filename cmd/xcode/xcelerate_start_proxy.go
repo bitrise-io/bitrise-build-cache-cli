@@ -578,13 +578,14 @@ func maybeStartWrapperlessPipeline(
 		XcodeBuildNumber: bundle.xcodeBuildNumber,
 		Logger:           logger,
 		PendingSlimPath:  resolver.WrapperlessPendingSlimPath(),
-		// Reuse the enricher's health.json so `doctor` sees the same rhythm
-		// regardless of whether the enricher or the wrapperless pipeline
-		// emitted the row. Ensured via the `ensureWatcher` gate, which is
-		// off under wrapperless — so the writer has to be minted here.
+		// Minted here because the `ensureWatcher` gate — which normally mints
+		// it on the enricher path — is off under wrapperless.
 		LocalLogAppender: invocationlog.Default(logger),
 	}
 	if bundle.healthPath != "" {
+		// Reuse the enricher's health.json so `doctor` observes the same health
+		// rhythm regardless of which flow (wrapper, enricher, wrapperless)
+		// emitted the row.
 		emitter.Health = &enrichment.HealthWriter{Path: bundle.healthPath}
 	}
 
