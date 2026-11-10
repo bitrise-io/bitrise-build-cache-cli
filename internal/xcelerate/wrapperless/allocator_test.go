@@ -326,7 +326,7 @@ func TestAllocator_IDEBackground_UsesFixedCommand(t *testing.T) {
 	defer mu.Unlock()
 	require.Len(t, buckets, 1)
 	assert.Equal(t, BucketReasonIDEBackground, buckets[0].Reason)
-	assert.Equal(t, BuildRequestHexIDEBackground, "ide-background")
+	assert.Equal(t, AnchorSaltIDEBackground, "ide-background")
 }
 
 func TestAllocator_CLI_NoOpenBucketSynthesizesImplicitEND(t *testing.T) {

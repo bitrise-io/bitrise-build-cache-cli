@@ -11,14 +11,17 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
 )
 
-// BuildRequestHexIDEBackground anchors the IDE-background bucket's derived
-// InvocationID so trailing CAS traffic after a Quit{IDE} lands on its own
-// BE row.
-const BuildRequestHexIDEBackground = "ide-background"
+// AnchorSaltIDEBackground is the fixed label slotted into the build-request
+// field of the identity anchor for the IDE-background bucket. Not a real
+// xcbuilddata hex — the value is a stable salt so trailing CAS traffic after
+// a Quit{IDE} lands on its own BE row with a deterministic InvocationID.
+const AnchorSaltIDEBackground = "ide-background"
 
-// BuildRequestHexCLIRun anchors the implicit-END bucket's derived
-// InvocationID so a Quit{CLI} with no End still flushes to a stable row.
-const BuildRequestHexCLIRun = "cli-run"
+// AnchorSaltCLIRun is the fixed label slotted into the build-request field of
+// the identity anchor for the CLI-implicit bucket. Not a real xcbuilddata hex
+// — the value is a stable salt so a Quit{CLI} with no End still flushes to a
+// deterministic BE row.
+const AnchorSaltCLIRun = "cli-run"
 
 // BlobStatsSource is the Allocator's windowed-stats seam. TakeSnapshot must
 // snapshot and reset atomically so an RPC interleaving between the two does
@@ -338,7 +341,7 @@ func (a *Allocator) ideBackgroundBucket(q Quit, snap *blobstats.Snapshot) Bucket
 		Hostname:        a.Hostname,
 		PID:             peerPID,
 		StartTimeMS:     a.ProxyStartMS,
-		BuildRequestHex: BuildRequestHexIDEBackground,
+		BuildRequestHex: AnchorSaltIDEBackground,
 	}
 
 	start := q.At
@@ -371,7 +374,7 @@ func (a *Allocator) cliImplicitBucket(q Quit, snap *blobstats.Snapshot) Bucket {
 		Hostname:        a.Hostname,
 		PID:             peerPID,
 		StartTimeMS:     peerStartMS,
-		BuildRequestHex: BuildRequestHexCLIRun,
+		BuildRequestHex: AnchorSaltCLIRun,
 	}
 
 	return Bucket{
