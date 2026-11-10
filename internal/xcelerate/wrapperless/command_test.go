@@ -100,15 +100,18 @@ func TestFullCommand(t *testing.T) {
 
 func TestActionFromSignature(t *testing.T) {
 	cases := map[string]PrimaryAction{
-		"Build IceCubesApp project":                                    PrimaryActionBuild,
-		"Archive project Seek with scheme Seek":                        PrimaryActionArchive,
-		"Analyze project IceCubesApp with scheme IceCubesApp":          PrimaryActionAnalyze,
-		"Testing project IceCubesApp with scheme IceCubesAppTests":     PrimaryActionTest,
-		"Test project IceCubesApp with scheme IceCubesAppTests":        PrimaryActionTest,
-		"Signing IceCubesApp":                                          "",
-		"Resolve Packages":                                             "",
-		"Localization":                                                 "",
-		"":                                                             "",
+		"Build IceCubesApp project":                                 PrimaryActionBuild,
+		"Building project MinimalApp with scheme MinimalApp":        PrimaryActionBuild,
+		"Archive project Seek with scheme Seek":                     PrimaryActionArchive,
+		"Archiving project IceCubesApp with scheme IceCubesApp":     PrimaryActionArchive,
+		"Analyze project IceCubesApp with scheme IceCubesApp":       PrimaryActionAnalyze,
+		"Analyzing project IceCubesApp with scheme IceCubesApp":     PrimaryActionAnalyze,
+		"Testing project IceCubesApp with scheme IceCubesAppTests":  PrimaryActionTest,
+		"Test project IceCubesApp with scheme IceCubesAppTests":     PrimaryActionTest,
+		"Signing IceCubesApp":                                       "",
+		"Resolve Packages":                                          "",
+		"Localization":                                              "",
+		"":                                                          "",
 	}
 
 	for sig, want := range cases {

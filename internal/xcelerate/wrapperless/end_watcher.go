@@ -336,11 +336,14 @@ var (
 //
 //nolint:gochecknoglobals // immutable table
 var signatureVerbToAction = map[string]PrimaryAction{
-	"Build":   PrimaryActionBuild,
-	"Archive": PrimaryActionArchive,
-	"Testing": PrimaryActionTest,
-	"Test":    PrimaryActionTest,
-	"Analyze": PrimaryActionAnalyze,
+	"Build":     PrimaryActionBuild,
+	"Building":  PrimaryActionBuild,
+	"Archive":   PrimaryActionArchive,
+	"Archiving": PrimaryActionArchive,
+	"Test":      PrimaryActionTest,
+	"Testing":   PrimaryActionTest,
+	"Analyze":   PrimaryActionAnalyze,
+	"Analyzing": PrimaryActionAnalyze,
 }
 
 func firstSubmatch(re *regexp.Regexp, s string) string {
