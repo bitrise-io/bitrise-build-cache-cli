@@ -153,9 +153,9 @@ func (p *Pipeline) onBucketOpen(bucket Bucket) {
 
 	if p.Emitter != nil {
 		// Carry the Start's action / scheme / configuration into the slim PUT
-		// so the BE row renders e.g. "archive [Seek]" rather than a bare
-		// default "build" verb during the slim phase. Blob stats + duration
-		// are the enriched-phase payload; leave them zero.
+		// so the BE row carries the Start/End action instead of defaulting to
+		// "build". Blob stats + duration are the enriched-phase payload; leave
+		// them zero.
 		slim := Bucket{ //nolint:exhaustruct // slim-phase payload
 			InvocationID:  bucket.InvocationID,
 			StartAt:       time.Now(),
