@@ -172,7 +172,7 @@ func (p *Pipeline) onBucketOpen(bucket Bucket) {
 
 func (p *Pipeline) onBucketReady(b Bucket) {
 	if p.Emitter != nil {
-		p.Emitter.EmitEnriched(b, 0)
+		p.Emitter.EmitEnriched(b, computeHitRate(b))
 	}
 }
 
