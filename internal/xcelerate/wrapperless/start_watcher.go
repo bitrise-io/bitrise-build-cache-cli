@@ -166,11 +166,11 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 
 	w.infof("StartWatcher: source init ok")
 
-	ddRoot := w.derivedDataDir()
-	w.infof("StartWatcher: dd root = %q", ddRoot)
+	ddRoots := derivedDataRoots(ctx, w.HomeDir)
+	w.infof("StartWatcher: dd roots = %v", ddRoots)
 
-	if ddRoot != "" {
-		w.installWatch(src, ddRoot)
+	for _, root := range ddRoots {
+		w.installWatch(src, root)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -183,12 +183,12 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 	w.startedAt = w.now()
 	w.mu.Unlock()
 
-	// Seed-walk the DD tree for any xcbuilddata that already exists when
-	// the watcher starts. Closes the window where Xcode created dirs
-	// before the recursive watch was installed.
+	// Seed-walk each DD tree for any xcbuilddata that already exists when the
+	// watcher starts. Closes the window where Xcode created dirs before the
+	// recursive watch was installed.
 	seeded := 0
-	if ddRoot != "" {
-		seeded = w.seedWalk(ddRoot)
+	for _, root := range ddRoots {
+		seeded += w.seedWalk(root)
 	}
 	w.infof("StartWatcher: seed walk done (%d hex found)", seeded)
 
@@ -239,23 +239,6 @@ func (w *StartWatcher) installWatch(src DirEventSource, ddRoot string) {
 	}
 
 	w.infof("StartWatcher: watching %s recursively", recursivePath(ddRoot))
-}
-
-// derivedDataDir returns the parent DerivedData dir so we can install a
-// single recursive FSEvents watch that captures every xcbuilddata CREATE
-// below it — including dirs that appear after a wipe or a fresh Xcode
-// session, without any per-ancestor stair-step add.
-func (w *StartWatcher) derivedDataDir() string {
-	home := w.HomeDir
-	if home == "" {
-		h, err := os.UserHomeDir()
-		if err != nil || h == "" {
-			return ""
-		}
-		home = h
-	}
-
-	return filepath.Join(home, "Library", "Developer", "Xcode", "DerivedData")
 }
 
 // recursivePath is rjeczalik/notify's convention for a recursive watchpoint.
