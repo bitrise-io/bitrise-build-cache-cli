@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/manifestsig"
 )
 
 func TestShortCommand(t *testing.T) {
@@ -121,10 +123,10 @@ func TestActionFromSignature(t *testing.T) {
 
 func TestFirstSubmatch_SignatureRegexes(t *testing.T) {
 	sig := "Analyze project IceCubesApp with scheme IceCubesApp and Configuration Release"
-	assert.Equal(t, "IceCubesApp", firstSubmatch(projectFromSignature, sig))
-	assert.Equal(t, "Release", firstSubmatch(configurationFromSignature, sig))
-	assert.Equal(t, "", firstSubmatch(workspaceFromSignature, sig))
+	assert.Equal(t, "IceCubesApp", manifestsig.FirstSubmatch(manifestsig.Project, sig))
+	assert.Equal(t, "Release", manifestsig.FirstSubmatch(manifestsig.Configuration, sig))
+	assert.Equal(t, "", manifestsig.FirstSubmatch(manifestsig.Workspace, sig))
 
 	wsSig := "Build workspace Seek.xcworkspace with scheme Seek"
-	assert.Equal(t, "Seek.xcworkspace", firstSubmatch(workspaceFromSignature, wsSig))
+	assert.Equal(t, "Seek.xcworkspace", manifestsig.FirstSubmatch(manifestsig.Workspace, wsSig))
 }
