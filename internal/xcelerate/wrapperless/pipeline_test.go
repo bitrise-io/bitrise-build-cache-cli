@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/wrapperless"
 )
 
@@ -123,4 +124,95 @@ func TestPipeline_SlimPUTCarriesStartAction(t *testing.T) {
 	// is the actual slim-phase payload. The regression fixed by S5: without
 	// it this read "build".
 	assert.Equal(t, "archive", calls[0].Command, "slim PUT must carry Start.Action, not default to build")
+}
+
+type blockingPutter struct {
+	mu    sync.Mutex
+	block chan struct{}
+	calls []analytics.Invocation
+}
+
+func (b *blockingPutter) PutInvocation(inv analytics.Invocation) error {
+	<-b.block
+	b.mu.Lock()
+	b.calls = append(b.calls, inv)
+	b.mu.Unlock()
+
+	return nil
+}
+
+func (b *blockingPutter) snapshot() []analytics.Invocation {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	out := make([]analytics.Invocation, len(b.calls))
+	copy(out, b.calls)
+
+	return out
+}
+
+// TestPipeline_SlowPUTDoesNotBlockProxyStamp asserts the proxy's
+// CurrentBucketID is reseated for the next build even while the previous
+// build's enriched PUT is still in flight — i.e. HTTP latency does not stall
+// the Allocator reader.
+func TestPipeline_SlowPUTDoesNotBlockProxyStamp(t *testing.T) {
+	proxy := &fakeProxy{}
+	putter := &blockingPutter{block: make(chan struct{})}
+
+	tl := wrapperless.NewTimeline()
+	alloc := wrapperless.NewAllocator("h", 42, 1_000)
+
+	p := &wrapperless.Pipeline{
+		HomeDir:   t.TempDir(),
+		Timeline:  tl,
+		Allocator: alloc,
+		Proxy:     proxy,
+		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, p.Start(ctx))
+	t.Cleanup(func() {
+		close(putter.block)
+		p.Close()
+	})
+
+	// Build 1 Start + End → enriched PUT enters worker queue, blocks on
+	// putter.block. Allocator reader must remain free to drain the next event.
+	tl.PushStart(wrapperless.Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Action:          wrapperless.PrimaryActionBuild,
+	})
+	tl.PushEnd(wrapperless.End{
+		At:               time.Unix(2, 0),
+		Scheme:           "Build1",
+		Action:           wrapperless.PrimaryActionBuild,
+		UniqueIdentifier: "end-1",
+		Duration:         time.Second,
+		Success:          true,
+	})
+
+	// Build 2 Start lands behind the slow PUT.
+	tl.PushStart(wrapperless.Start{
+		At:              time.Unix(3, 0),
+		BuildRequestHex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Action:          wrapperless.PrimaryActionBuild,
+	})
+
+	// Wait for the proxy to see three stamps:
+	//   1. initial spec (Init)
+	//   2. build 1 real bucket
+	//   3. spec opened after build 1 End OR build 2 real bucket
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(proxy.snapshot()) >= 3 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	ids := proxy.snapshot()
+	require.GreaterOrEqual(t, len(ids), 3, "proxy must be reseated for build 2 while enriched PUT is still blocked")
 }
