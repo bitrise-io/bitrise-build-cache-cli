@@ -439,6 +439,48 @@ func TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate(t *testing.T) {
 	w.Close()
 }
 
+func TestStartWatcher_EmitsOnBuildRequestJSONWriteOnly(t *testing.T) {
+	fakeHome := t.TempDir()
+
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-writeonly")
+	hex := "cafecafecafecafecafecafecafecafe"
+	dir := writeBuildRequest(t, root, hex, "build", "")
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	// Drain any seed-walk emission for the pre-existing dir.
+	select {
+	case <-starts:
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Seed set now has the hex. Force re-emission by clearing it so the
+	// WRITE-only event genuinely drives the next Start.
+	w.seenMu.Lock()
+	delete(w.seenHexDirs, dir)
+	w.seenMu.Unlock()
+
+	buildReqPath := filepath.Join(dir, "build-request.json")
+	src.events <- Event{Path: buildReqPath, Op: EventWrite}
+
+	got := waitForStart(t, starts)
+	assert.Equal(t, hex, got.BuildRequestHex)
+	assert.Equal(t, PrimaryActionBuild, got.Action)
+
+	w.Close()
+}
+
 // TestStartWatcher_InstallsRecursiveWatch asserts the watchpoint is installed
 // at the DD root with the .../... recursive suffix — the single piece of
 // FSEvents plumbing we rely on instead of the old stair-step add chain.

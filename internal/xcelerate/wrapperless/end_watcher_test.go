@@ -518,6 +518,151 @@ func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 	w.Close()
 }
 
+func TestEndWatcher_AcceptsWarningStatus(t *testing.T) {
+	const warnFixture = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>WWWW-WARN</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>WWWW-WARN</string>
+    <key>signature</key><string>Build WarnScheme project WarnProject</string>
+    <key>schemeIdentifier-schemeName</key><string>WarnScheme</string>
+    <key>highLevelStatus</key><string>W</string>
+    <key>timeStartedRecording</key><real>762345678.5</real>
+    <key>timeStoppedRecording</key><real>762345688.75</real>
+  </dict>
+</dict></dict></plist>`
+
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-warn")
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	path := writeManifest(t, root, warnFixture)
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	got := waitForEnd(t, ends)
+	assert.Equal(t, "WWWW-WARN", got.UniqueIdentifier)
+	assert.True(t, got.Success)
+
+	w.Close()
+}
+
+func TestEndWatcher_SkipsNonPrimarySignature(t *testing.T) {
+	const signingFixture = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>SIGN-AAAA</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>SIGN-AAAA</string>
+    <key>signature</key><string>Signing Foo</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>timeStartedRecording</key><real>762345678.5</real>
+    <key>timeStoppedRecording</key><real>762345688.75</real>
+  </dict>
+</dict></dict></plist>`
+
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-signing")
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	path := writeManifest(t, root, signingFixture)
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	select {
+	case got := <-ends:
+		t.Fatalf("End emitted for non-primary signature: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
+func TestEndWatcher_StaleSeedMarksUUIDsSeen(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-stale-seen")
+	path := writeManifest(t, root, sealedManifestFixture)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	afterManifest := info.ModTime().Add(10 * time.Second)
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+		Now:       func() time.Time { return afterManifest },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	select {
+	case got := <-ends:
+		t.Fatalf("End emitted for stale-seed UUID on live write: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
+func TestEndWatcher_SeedPicksUpRootLevelManifest(t *testing.T) {
+	envRoot := t.TempDir()
+	t.Setenv(EnvDerivedDataDirs, envRoot)
+
+	manifestPath := writeManifest(t, envRoot, sealedManifestFixture)
+
+	info, err := os.Stat(manifestPath)
+	require.NoError(t, err)
+	beforeManifest := info.ModTime().Add(-time.Second)
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &EndWatcher{
+		HomeDir:   t.TempDir(),
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+		Now:       func() time.Time { return beforeManifest },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	got := waitForEnd(t, ends)
+	assert.Equal(t, "AAAA-BBBB", got.UniqueIdentifier)
+
+	w.Close()
+}
+
 // TestEndWatcher_SeedSkipsManifestOlderThanStart guards the phantom-row path
 // where a previous Xcode session's sealed manifest would otherwise fire a
 // ghost End against a freshly-restarted proxy.

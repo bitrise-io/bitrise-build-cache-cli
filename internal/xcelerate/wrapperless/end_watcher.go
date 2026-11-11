@@ -143,14 +143,21 @@ func (w *EndWatcher) Close() {
 // seedWalk scans every existing LogStoreManifest.plist at Start, in case the
 // proxy started after Xcode already sealed an entry. Returns the number of
 // manifests found on disk (not the number of sealed entries emitted — those go
-// through scanManifest's own dedup / seal gate).
+// through scanManifest's own dedup / seal gate). Stale-mtime manifests still
+// mark their UUIDs seen so a later live Write cannot resurrect them.
 func (w *EndWatcher) seedWalk(ddRoot string) int {
-	entries, err := os.ReadDir(ddRoot)
-	if err != nil {
-		return 0
+	count := 0
+
+	rootPath := filepath.Join(ddRoot, "Logs", buildDirName, "LogStoreManifest.plist")
+	if info, statErr := os.Stat(rootPath); statErr == nil && w.scanOrMarkSeen(rootPath, info) {
+		count++
 	}
 
-	count := 0
+	entries, err := os.ReadDir(ddRoot)
+	if err != nil {
+		return count
+	}
+
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -161,16 +168,52 @@ func (w *EndWatcher) seedWalk(ddRoot string) int {
 		if statErr != nil {
 			continue
 		}
-		if w.isStaleManifest(info) {
-			w.infof("EndWatcher: skip %s reason=stale mtime=%s started=%s", path, info.ModTime().Format(time.RFC3339Nano), w.startedAt.Format(time.RFC3339Nano))
-
-			continue
+		if w.scanOrMarkSeen(path, info) {
+			count++
 		}
-		count++
-		w.scanManifest(path)
 	}
 
 	return count
+}
+
+func (w *EndWatcher) scanOrMarkSeen(path string, info os.FileInfo) bool {
+	if w.isStaleManifest(info) {
+		w.infof("EndWatcher: stale-seed %s mtime=%s started=%s", path, info.ModTime().Format(time.RFC3339Nano), w.startedAt.Format(time.RFC3339Nano))
+		w.markManifestUUIDsSeen(path)
+
+		return false
+	}
+
+	w.scanManifest(path)
+
+	return true
+}
+
+// markManifestUUIDsSeen marks every sealed UUID as handled without invoking
+// OnEnd. A later live Write on the same manifest then hits the already-seen
+// gate instead of emitting phantom Ends for historical entries.
+func (w *EndWatcher) markManifestUUIDsSeen(path string) {
+	entries, err := loadManifestEntries(path)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if e.UniqueIdentifier == "" || !isSealedTerminal(e.HighLevelStatus) {
+			continue
+		}
+
+		w.mu.Lock()
+		_, already := w.seen[e.UniqueIdentifier]
+		if !already {
+			w.seen[e.UniqueIdentifier] = struct{}{}
+		}
+		w.mu.Unlock()
+
+		if !already {
+			w.persistSeen(e.UniqueIdentifier)
+		}
+	}
 }
 
 func (w *EndWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {
@@ -261,11 +304,14 @@ func (w *EndWatcher) scanManifest(path string) {
 		w.seen[e.UniqueIdentifier] = struct{}{}
 		w.mu.Unlock()
 
-		// Persist so a proxy restart within seedStaleGrace does not re-emit.
-		// Logged at warn on failure; the in-memory seen set still deduplicates
-		// within the current proxy lifetime so a write error can at worst
-		// re-emit after a restart — same risk as the SeenStore=nil case.
 		w.persistSeen(e.UniqueIdentifier)
+
+		action := actionFromSignature(e.Signature)
+		if action == "" {
+			w.infof("EndWatcher: skip uuid=%s reason=non-primary signature=%q", e.UniqueIdentifier, e.Signature)
+
+			continue
+		}
 
 		if w.OnEnd == nil {
 			w.infof("EndWatcher: skip %s reason=no-OnEnd uuid=%s", path, e.UniqueIdentifier)
@@ -283,7 +329,7 @@ func (w *EndWatcher) scanManifest(path string) {
 			Project:           manifestsig.FirstSubmatch(manifestsig.Project, e.Signature),
 			Workspace:         manifestsig.FirstSubmatch(manifestsig.Workspace, e.Signature),
 			Configuration:     manifestsig.FirstSubmatch(manifestsig.Configuration, e.Signature),
-			Action:            actionFromSignature(e.Signature),
+			Action:            action,
 			Success:           success,
 			UniqueIdentifier:  e.UniqueIdentifier,
 			Duration:          cfAbsDuration(e.TimeStarted, e.TimeStopped),
@@ -306,9 +352,9 @@ func (w *EndWatcher) isStaleManifest(info os.FileInfo) bool {
 }
 
 // isSealedTerminal reports whether the highLevelStatus marks a completed log
-// entry Xcode will not append to again. S=succeeded, F=failed, E=error.
+// entry Xcode will not append to again. S=succeeded, W=warning, F=failed, E=error.
 func isSealedTerminal(status string) bool {
-	return status == "S" || status == "F" || status == "E"
+	return status == "S" || status == "W" || status == "F" || status == "E"
 }
 
 // signatureVerbToAction maps the leading verb of a LogStoreManifest signature
@@ -339,10 +385,7 @@ func actionFromSignature(sig string) PrimaryAction {
 		return ""
 	}
 
-	verb := s
-	if idx := strings.IndexByte(s, ' '); idx >= 0 {
-		verb = s[:idx]
-	}
+	verb, _, _ := strings.Cut(s, " ")
 
 	return signatureVerbToAction[verb]
 }
