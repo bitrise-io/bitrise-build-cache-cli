@@ -81,8 +81,12 @@ const (
 	xcelerateWrapperlessSubdir = "wrapperless"
 
 	// wrapperlessPendingSlimFilename is the NDJSON ledger the slim emitter
-	// appends to after an inline-retry budget is exhausted.
+	// appends to on PUT failure; drained by Emitter's background retrier.
 	wrapperlessPendingSlimFilename = "pending-slim.ndjson"
+
+	// wrapperlessPendingEnrichedFilename is the NDJSON ledger the enriched
+	// emitter appends to on PUT failure; drained alongside the slim ledger.
+	wrapperlessPendingEnrichedFilename = "pending-enriched.ndjson"
 
 	// wrapperlessHandledManifestsFilename is the NDJSON ledger of
 	// LogStoreManifest uniqueIdentifiers the EndWatcher has already
@@ -362,9 +366,15 @@ func (p Paths) XcelerateWrapperlessDir() string {
 }
 
 // WrapperlessPendingSlimPath returns the NDJSON retry file the slim emitter
-// appends to after an inline-retry budget is exhausted.
+// appends to after a PUT failure.
 func (p Paths) WrapperlessPendingSlimPath() string {
 	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingSlimFilename)
+}
+
+// WrapperlessPendingEnrichedPath returns the NDJSON retry file the enriched
+// emitter appends to after a PUT failure.
+func (p Paths) WrapperlessPendingEnrichedPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingEnrichedFilename)
 }
 
 // WrapperlessHandledManifestsPath returns the NDJSON ledger of

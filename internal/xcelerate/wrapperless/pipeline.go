@@ -93,6 +93,10 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	}
 	p.QuitWatcher.Start(ctx)
 
+	if p.Emitter != nil {
+		p.Emitter.Start(ctx)
+	}
+
 	p.Allocator.Init()
 
 	go func() {
@@ -131,6 +135,10 @@ func (p *Pipeline) Close() {
 	}
 	if cancel != nil {
 		cancel()
+	}
+
+	if p.Emitter != nil {
+		p.Emitter.Stop()
 	}
 }
 
