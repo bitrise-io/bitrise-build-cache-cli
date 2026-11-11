@@ -54,3 +54,38 @@ func TestTimeline_PushAfterCloseDoesNotPanic(t *testing.T) {
 	tl.PushEnd(End{})
 	tl.PushQuit(Quit{})
 }
+
+func TestTimeline_DrainExhaustsBufferAfterContextCancel(t *testing.T) {
+	tl := NewTimeline()
+
+	tl.PushStart(Start{BuildRequestHex: "1"})
+	tl.PushEnd(End{UniqueIdentifier: "2"})
+	tl.PushQuit(Quit{PID: 3})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	tl.Close()
+
+	var mu sync.Mutex
+	kinds := make([]EventKind, 0, 3)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tl.Drain(ctx, func(ev TimelineEvent) {
+			mu.Lock()
+			kinds = append(kinds, ev.Kind)
+			mu.Unlock()
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("drain did not return")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []EventKind{EventKindStart, EventKindEnd, EventKindQuit}, kinds,
+		"buffered events must drain even when ctx is already cancelled")
+}

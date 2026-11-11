@@ -126,11 +126,11 @@ func (p *Pipeline) Close() {
 		p.Timeline.Close()
 	}
 
-	if cancel != nil {
-		cancel()
-	}
 	if done != nil {
 		<-done
+	}
+	if cancel != nil {
+		cancel()
 	}
 }
 

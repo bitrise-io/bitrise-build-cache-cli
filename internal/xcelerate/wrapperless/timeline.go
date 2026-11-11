@@ -66,18 +66,31 @@ func (t *Timeline) Close() {
 	})
 }
 
-// Drain forwards events from t into onEvent until ctx is cancelled or the
-// channel is closed. Single-reader by design — Allocator owns the drain.
+// Drain forwards events from t into onEvent. On ctx cancel it still consumes
+// any already-buffered events before returning — Pipeline.Close orders the
+// Timeline.Close() + wait-for-drain before cancelling ctx, so a mid-flight
+// End queued behind a slow enriched PUT is not silently dropped on shutdown.
+// Single-reader by design — Allocator owns the drain.
 func (t *Timeline) Drain(ctx context.Context, onEvent func(TimelineEvent)) {
 	for {
 		select {
-		case <-ctx.Done():
-			return
 		case ev, ok := <-t.ch:
 			if !ok {
 				return
 			}
 			onEvent(ev)
+		case <-ctx.Done():
+			for {
+				select {
+				case ev, ok := <-t.ch:
+					if !ok {
+						return
+					}
+					onEvent(ev)
+				default:
+					return
+				}
+			}
 		}
 	}
 }
