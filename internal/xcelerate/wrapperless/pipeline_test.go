@@ -61,9 +61,9 @@ func TestPipeline_StartOpensReseatsAndEmits(t *testing.T) {
 		Action:          wrapperless.PrimaryActionBuild,
 	})
 
-	deadline := time.Now().Add(1 * time.Second)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(proxy.snapshot()) > 0 {
+		if len(putter.snapshot()) > 0 {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -71,11 +71,11 @@ func TestPipeline_StartOpensReseatsAndEmits(t *testing.T) {
 
 	ids := proxy.snapshot()
 	require.NotEmpty(t, ids)
-	assert.NotEmpty(t, ids[0])
-
+	// Pipeline opens a spec on Init to keep CurrentBucketID live; the Start
+	// then supersedes it. Slim must fire on the Start-opened bucket.
 	calls := putter.snapshot()
 	require.NotEmpty(t, calls, "slim PUT must land")
-	assert.Equal(t, ids[0], calls[0].InvocationID)
+	assert.Equal(t, ids[len(ids)-1], calls[0].InvocationID)
 }
 
 // TestPipeline_SlimPUTCarriesStartAction asserts the slim phase's rendered

@@ -2,6 +2,7 @@ package wrapperless
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -22,6 +23,12 @@ const AnchorSaltIDEBackground = "ide-background"
 // — the value is a stable salt so a Quit{CLI} with no End still flushes to a
 // deterministic BE row.
 const AnchorSaltCLIRun = "cli-run"
+
+// anchorSaltSpecFmt derives per-cycle InvocationIDs for speculative buckets.
+// Every bucket close opens a fresh spec so proxy traffic between builds (or
+// during warm rebuilds that skip Start) lands under an ID that will be
+// classified at the next observed signal.
+const anchorSaltSpecFmt = "pending-%d"
 
 // BlobStatsSource is the Allocator's windowed-stats seam. TakeSnapshot must
 // snapshot and reset atomically so an RPC interleaving between the two does
@@ -102,20 +109,73 @@ func (a *Allocator) Done() {
 	}
 }
 
+// Init opens the first speculative bucket so proxy traffic observed before
+// any Start has a live InvocationID to stamp under. Idempotent: callers may
+// safely invoke it from Pipeline startup regardless of prior state.
+func (a *Allocator) Init() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.open == nil {
+		a.openSpec(a.now())
+	}
+}
+
+func isSpec(b *Bucket) bool {
+	return b != nil && b.Reason == BucketReasonSpeculative
+}
+
+// openSpec mints a fresh speculative bucket keyed on a monotonic salt and
+// stamps the proxy. Reason=Unknown signals downstream (Pipeline.onBucketOpen)
+// to skip the slim PUT — the row materialises only once the spec is
+// classified at the next Start / End / Quit.
+func (a *Allocator) openSpec(at time.Time) {
+	salt := fmt.Sprintf(anchorSaltSpecFmt, at.UnixNano())
+	anchor := buildidentity.Anchor{
+		Hostname:        a.Hostname,
+		PID:             a.ProxyPID,
+		StartTimeMS:     a.ProxyStartMS,
+		BuildRequestHex: salt,
+	}
+
+	spec := &Bucket{ //nolint:exhaustruct // other fields filled on classification
+		InvocationID: buildidentity.Derive(anchor),
+		StartAt:      at,
+		Reason:       BucketReasonSpeculative,
+		PeerPID:      a.ProxyPID,
+		PeerStartMS:  a.ProxyStartMS,
+	}
+	a.open = spec
+
+	a.debugf("Allocator: spec opened id=%s", spec.InvocationID)
+
+	if a.OnOpenInvoc != nil {
+		a.OnOpenInvoc(*spec)
+	}
+}
+
 func (a *Allocator) onStart(s Start) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	a.cancelIDETimer()
 
-	// Single-slot design: a second concurrent Start evicts the prior as
-	// EndOfPrior rather than opening a parallel bucket. Correct for serial
-	// IDE ⌘B and sequential CLI runs; parallel CLI builds from the same
-	// shell get interleaved attribution — proxy's global CurrentBucketID
-	// stamps every RPC with the latest, so the prior bucket closes with
-	// whatever bytes it saw before the swap. Per-peer-PID attribution is
-	// tracked as a follow-up.
-	if a.open != nil {
+	if isSpec(a.open) {
+		spec := a.open
+		a.open = nil
+		spec.EndAt = s.At
+		spec.BlobStats = a.snapshotBlobs()
+		if hasActivity(spec.BlobStats) {
+			spec.Reason = BucketReasonIDEBackground
+			a.emit(spec)
+		}
+	} else if a.open != nil {
+		// Single-slot design: a second concurrent Start evicts the prior as
+		// EndOfPrior rather than opening a parallel bucket. Correct for serial
+		// IDE ⌘B and sequential CLI runs; parallel CLI builds from the same
+		// shell get interleaved attribution — proxy's global CurrentBucketID
+		// stamps every RPC with the latest, so the prior bucket closes with
+		// whatever bytes it saw before the swap.
 		prior := a.open
 		a.warnf("Allocator: concurrent Start evicts bucket id=%s prior_hex=%s next_hex=%s", prior.InvocationID, prior.BuildRequestHex, s.BuildRequestHex)
 		prior.EndAt = s.At
@@ -143,6 +203,14 @@ func (a *Allocator) onEnd(e End) {
 
 	if a.open == nil {
 		a.mintEndOnlyBucket(e)
+		a.openSpec(a.now())
+
+		return
+	}
+
+	if isSpec(a.open) {
+		a.promoteSpecToEnd(e)
+		a.openSpec(a.now())
 
 		return
 	}
@@ -166,6 +234,43 @@ func (a *Allocator) onEnd(e End) {
 	bucket.XCActivityLogPath = e.XCActivityLogPath
 
 	a.infof("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
+
+	a.emit(bucket)
+	a.openSpec(a.now())
+}
+
+// promoteSpecToEnd turns the currently-open speculative bucket into the warm
+// rebuild's final invocation row. Keeps the spec's InvocationID — any CAS
+// RPCs the proxy stamped during the warm build (while no real Start fired)
+// already carry that ID, so BE DataTransfer rows join to the promoted row.
+//
+// Non-primary signatures (Signing / Packages / Localization) leave the spec
+// in place — they mark sub-builds, not a user-visible build.
+func (a *Allocator) promoteSpecToEnd(e End) {
+	if e.Action == "" || e.UniqueIdentifier == "" {
+		a.debugf("Allocator: spec-promote drop scheme=%s action=%q (not primary)", e.Scheme, e.Action)
+
+		return
+	}
+
+	bucket := a.open
+	a.open = nil
+
+	bucket.StartAt = e.At.Add(-e.Duration)
+	bucket.EndAt = e.At
+	bucket.Scheme = e.Scheme
+	bucket.Project = e.Project
+	bucket.Workspace = e.Workspace
+	bucket.Configuration = e.Configuration
+	bucket.Action = e.Action
+	bucket.Success = e.Success
+	bucket.SuccessKnown = true
+	bucket.Duration = e.Duration
+	bucket.Reason = BucketReasonEndMatched
+	bucket.BlobStats = a.snapshotBlobs()
+	bucket.XCActivityLogPath = e.XCActivityLogPath
+
+	a.infof("Allocator: spec-promote End id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
 
 	a.emit(bucket)
 }
@@ -264,12 +369,11 @@ func (a *Allocator) flushIDEBackground(q Quit) {
 	a.ideTimer = nil
 	a.ideTimerMu.Unlock()
 
-	// AfterFunc fires outside the lock; a fresh Start can land between the
+	// AfterFunc fires outside the lock; a non-spec Start can land between the
 	// timer trigger and the lock acquisition, opening a new bucket that
-	// belongs to the next build, not to this Quit. If the open bucket's
-	// StartAt is after the Quit, skip the EndOfPrior eviction — the new
-	// build already supersedes any trailing IDE-background sweep.
-	if a.open != nil && a.open.StartAt.After(q.At) {
+	// belongs to the next build, not to this Quit. Specs do NOT count — they
+	// carry the trailing IDE traffic the Quit meant to classify.
+	if a.open != nil && !isSpec(a.open) && a.open.StartAt.After(q.At) {
 		a.debugf("Allocator: IDE flush skipped, newer Start at %s > quit at %s", a.open.StartAt, q.At)
 
 		return
@@ -280,18 +384,28 @@ func (a *Allocator) flushIDEBackground(q Quit) {
 		a.open = nil
 
 		bucket.EndAt = a.now()
-		bucket.Reason = BucketReasonEndOfPrior
+		if bucket.Reason == BucketReasonSpeculative {
+			bucket.Reason = BucketReasonIDEBackground
+		} else {
+			bucket.Reason = BucketReasonEndOfPrior
+		}
 		bucket.BlobStats = a.snapshotBlobs()
-		a.emit(bucket)
-	}
+		if hasActivity(bucket.BlobStats) || bucket.Reason != BucketReasonIDEBackground {
+			a.emit(bucket)
+		}
 
-	snap := a.snapshotBlobs()
-	if !hasActivity(snap) {
+		a.openSpec(a.now())
+
 		return
 	}
 
-	bg := a.ideBackgroundBucket(q, snap)
-	a.emit(&bg)
+	snap := a.snapshotBlobs()
+	if hasActivity(snap) {
+		bg := a.ideBackgroundBucket(q, snap)
+		a.emit(&bg)
+	}
+
+	a.openSpec(a.now())
 }
 
 func (a *Allocator) flushCLI(q Quit) {
@@ -307,18 +421,22 @@ func (a *Allocator) flushCLI(q Quit) {
 		bucket.EndAt = q.At
 		bucket.Reason = BucketReasonCLIImplicit
 		bucket.BlobStats = a.snapshotBlobs()
-		a.emit(bucket)
+		if hasActivity(bucket.BlobStats) || !isSpec(bucket) {
+			a.emit(bucket)
+		}
+
+		a.openSpec(a.now())
 
 		return
 	}
 
 	snap := a.snapshotBlobs()
-	if !hasActivity(snap) {
-		return
+	if hasActivity(snap) {
+		bucket := a.cliImplicitBucket(q, snap)
+		a.emit(&bucket)
 	}
 
-	bucket := a.cliImplicitBucket(q, snap)
-	a.emit(&bucket)
+	a.openSpec(a.now())
 }
 
 // newBucket mints the InvocationID + metadata for a Start. ProxyPID /

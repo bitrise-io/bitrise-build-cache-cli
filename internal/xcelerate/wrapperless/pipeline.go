@@ -93,6 +93,8 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	}
 	p.QuitWatcher.Start(ctx)
 
+	p.Allocator.Init()
+
 	go func() {
 		defer close(done)
 		p.Allocator.Run(ctx, p.Timeline)
@@ -151,11 +153,13 @@ func (p *Pipeline) onBucketOpen(bucket Bucket) {
 		p.Proxy.SetCurrentBucketID(bucket.InvocationID)
 	}
 
+	// Speculative buckets exist to keep CurrentBucketID live between builds;
+	// they get classified (and slim-emitted) at the next Start / End / Quit.
+	if bucket.Reason == BucketReasonSpeculative {
+		return
+	}
+
 	if p.Emitter != nil {
-		// Carry the Start's action / scheme / configuration into the slim PUT
-		// so the BE row carries the Start/End action instead of defaulting to
-		// "build". Blob stats + duration are the enriched-phase payload; leave
-		// them zero.
 		slim := Bucket{ //nolint:exhaustruct // slim-phase payload
 			InvocationID:  bucket.InvocationID,
 			StartAt:       time.Now(),
