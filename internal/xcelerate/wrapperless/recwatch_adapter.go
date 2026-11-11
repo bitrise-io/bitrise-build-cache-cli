@@ -55,7 +55,7 @@ func (a *recwatchAdapter) Watch(root string, ops ...EventOp) error {
 func (a *recwatchAdapter) pump() {
 	for ev := range a.inner.Events() {
 		if a.logger != nil {
-			a.logger.Infof("recwatchAdapter: event op=%d %s", ev.Op, ev.Path)
+			a.logger.Debugf("recwatchAdapter: event op=%d %s", ev.Op, ev.Path)
 		}
 		select {
 		case a.events <- Event{Path: ev.Path, Op: fromRecwatchOp(ev.Op)}:
