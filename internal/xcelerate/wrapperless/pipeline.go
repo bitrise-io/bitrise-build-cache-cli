@@ -28,11 +28,35 @@ type Pipeline struct {
 	// since the previous bucket.
 	BlobStats BlobStatsSource
 
+	// PutQueueDepth sets the capacity of the async PUT worker queue. Keeps
+	// HTTP calls off the Allocator's single timeline reader (which holds
+	// a.mu across every event). 0 → defaultPutQueueDepth.
+	PutQueueDepth int
+	// PutDrainTimeout caps the time Close waits for the worker to flush
+	// remaining jobs. Anything still queued at the deadline is persisted to
+	// the Emitter's pending-ndjson for the next proxy start to replay.
+	// 0 → defaultPutDrainTimeout.
+	PutDrainTimeout time.Duration
+
 	mu      sync.Mutex
 	started bool
 	cancel  context.CancelFunc
 	done    chan struct{}
+
+	putQueue chan putJob
+	putDone  chan struct{}
 }
+
+type putJob struct {
+	phase   Phase
+	bucket  Bucket
+	hitRate float32
+}
+
+const (
+	defaultPutQueueDepth   = 1024
+	defaultPutDrainTimeout = 30 * time.Second
+)
 
 func (p *Pipeline) Start(ctx context.Context) error {
 	p.mu.Lock()
@@ -97,6 +121,20 @@ func (p *Pipeline) Start(ctx context.Context) error {
 		p.Emitter.Start(ctx)
 	}
 
+	depth := p.PutQueueDepth
+	if depth <= 0 {
+		depth = defaultPutQueueDepth
+	}
+	putQueue := make(chan putJob, depth)
+	putDone := make(chan struct{})
+
+	p.mu.Lock()
+	p.putQueue = putQueue
+	p.putDone = putDone
+	p.mu.Unlock()
+
+	go p.putWorker(putQueue, putDone)
+
 	p.Allocator.Init()
 
 	go func() {
@@ -111,8 +149,12 @@ func (p *Pipeline) Close() {
 	p.mu.Lock()
 	cancel := p.cancel
 	done := p.done
+	putQueue := p.putQueue
+	putDone := p.putDone
 	p.cancel = nil
 	p.done = nil
+	p.putQueue = nil
+	p.putDone = nil
 	p.started = false
 	p.mu.Unlock()
 
@@ -133,6 +175,24 @@ func (p *Pipeline) Close() {
 	if done != nil {
 		<-done
 	}
+
+	if putQueue != nil {
+		close(putQueue)
+
+		timeout := p.PutDrainTimeout
+		if timeout <= 0 {
+			timeout = defaultPutDrainTimeout
+		}
+
+		select {
+		case <-putDone:
+		case <-time.After(timeout):
+			p.warnf("Pipeline: put worker exceeded %s drain budget; remaining jobs persisted", timeout)
+			p.flushQueueToPending(putQueue)
+			<-putDone
+		}
+	}
+
 	if cancel != nil {
 		cancel()
 	}
@@ -140,6 +200,89 @@ func (p *Pipeline) Close() {
 	if p.Emitter != nil {
 		p.Emitter.Stop()
 	}
+}
+
+func (p *Pipeline) putWorker(queue chan putJob, done chan struct{}) {
+	defer close(done)
+
+	for job := range queue {
+		switch job.phase {
+		case PhaseSlim:
+			if p.Emitter != nil {
+				p.Emitter.EmitSlim(job.bucket)
+			}
+		case PhaseEnriched:
+			if p.Emitter != nil {
+				p.Emitter.EmitEnriched(job.bucket, job.hitRate)
+			}
+		}
+	}
+}
+
+func (p *Pipeline) enqueue(job putJob) {
+	p.mu.Lock()
+	q := p.putQueue
+	p.mu.Unlock()
+
+	if q == nil {
+		// Pre-Start or post-Close: fall back to the sync path so no row is lost.
+		p.directEmit(job)
+
+		return
+	}
+
+	select {
+	case q <- job:
+	default:
+		p.warnf("Pipeline: put queue full, persisting phase=%s id=%s", job.phase, job.bucket.InvocationID)
+		p.persistJob(job)
+	}
+}
+
+func (p *Pipeline) directEmit(job putJob) {
+	if p.Emitter == nil {
+		return
+	}
+	switch job.phase {
+	case PhaseSlim:
+		p.Emitter.EmitSlim(job.bucket)
+	case PhaseEnriched:
+		p.Emitter.EmitEnriched(job.bucket, job.hitRate)
+	}
+}
+
+func (p *Pipeline) persistJob(job putJob) {
+	if p.Emitter == nil {
+		return
+	}
+
+	p.Emitter.persistPending(Payload{
+		Phase:   job.phase,
+		Bucket:  job.bucket,
+		HitRate: job.hitRate,
+	})
+}
+
+func (p *Pipeline) flushQueueToPending(q chan putJob) {
+	for {
+		select {
+		case job, ok := <-q:
+			if !ok {
+				return
+			}
+			p.persistJob(job)
+		default:
+			return
+		}
+	}
+}
+
+func (p *Pipeline) warnf(format string, args ...any) {
+	if p.Logger == nil {
+		return
+	}
+
+	p.Logger.Warnf(format, args...)
 }
 
 // RegisterPeer feeds a peer PID into the QuitWatcher. Callers (the proxy)
@@ -167,25 +310,21 @@ func (p *Pipeline) onBucketOpen(bucket Bucket) {
 		return
 	}
 
-	if p.Emitter != nil {
-		slim := Bucket{ //nolint:exhaustruct // slim-phase payload
-			InvocationID:  bucket.InvocationID,
-			StartAt:       time.Now(),
-			Scheme:        bucket.Scheme,
-			Project:       bucket.Project,
-			Workspace:     bucket.Workspace,
-			Configuration: bucket.Configuration,
-			Action:        bucket.Action,
-			Reason:        bucket.Reason,
-		}
-		p.Emitter.EmitSlim(slim)
+	slim := Bucket{ //nolint:exhaustruct // slim-phase payload
+		InvocationID:  bucket.InvocationID,
+		StartAt:       time.Now(),
+		Scheme:        bucket.Scheme,
+		Project:       bucket.Project,
+		Workspace:     bucket.Workspace,
+		Configuration: bucket.Configuration,
+		Action:        bucket.Action,
+		Reason:        bucket.Reason,
 	}
+	p.enqueue(putJob{phase: PhaseSlim, bucket: slim})
 }
 
 func (p *Pipeline) onBucketReady(b Bucket) {
-	if p.Emitter != nil {
-		p.Emitter.EmitEnriched(b, computeHitRate(b))
-	}
+	p.enqueue(putJob{phase: PhaseEnriched, bucket: b, hitRate: computeHitRate(b)})
 }
 
 func hostAndSelf() (string, int, int64) {
