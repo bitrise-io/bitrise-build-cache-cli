@@ -3,7 +3,6 @@ package wrapperless
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
-	"github.com/rjeczalik/notify"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildrequest"
 )
@@ -46,93 +44,6 @@ type DirEventSource interface {
 	Stop()
 }
 
-type notifyAdapter struct {
-	events  chan Event
-	raw     chan notify.EventInfo
-	logger  log.Logger
-	stopMu  sync.Mutex
-	stopped bool
-}
-
-func newNotifyAdapter(logger log.Logger) *notifyAdapter {
-	raw := make(chan notify.EventInfo, eventChanBuffer)
-	out := make(chan Event, eventChanBuffer)
-	a := &notifyAdapter{events: out, raw: raw, logger: logger}
-
-	go a.pump()
-
-	return a
-}
-
-func (a *notifyAdapter) pump() {
-	for ev := range a.raw {
-		if a.logger != nil {
-			a.logger.Infof("notifyAdapter: raw event %v %s", ev.Event(), ev.Path())
-		}
-
-		op := EventOp(0)
-		if ev.Event()&notify.Create != 0 {
-			op |= EventCreate
-		}
-		if ev.Event()&notify.Write != 0 {
-			op |= EventWrite
-		}
-		if op == 0 {
-			continue
-		}
-
-		select {
-		case a.events <- Event{Path: ev.Path(), Op: op}:
-		default:
-			// Buffer full — drop rather than block the notify dispatcher.
-			// The seed walk at Start time guarantees we still pick up
-			// anything dropped here on the next relevant trigger.
-			if a.logger != nil {
-				a.logger.Warnf("notifyAdapter: event chan full, dropping %s", ev.Path())
-			}
-		}
-	}
-
-	close(a.events)
-}
-
-func (a *notifyAdapter) Events() <-chan Event { return a.events }
-
-func (a *notifyAdapter) Watch(root string, ops ...EventOp) error {
-	ev := notify.Event(0)
-	for _, op := range ops {
-		if op&EventCreate != 0 {
-			ev |= notify.Create
-		}
-		if op&EventWrite != 0 {
-			ev |= notify.Write
-		}
-	}
-	if ev == 0 {
-		return fmt.Errorf("notify watch %s: no event ops", root)
-	}
-
-	if err := notify.Watch(root, a.raw, ev); err != nil {
-		return fmt.Errorf("notify watch %s: %w", root, err)
-	}
-
-	return nil
-}
-
-func (a *notifyAdapter) Stop() {
-	a.stopMu.Lock()
-	if a.stopped {
-		a.stopMu.Unlock()
-
-		return
-	}
-	a.stopped = true
-	a.stopMu.Unlock()
-
-	notify.Stop(a.raw)
-	close(a.raw)
-}
-
 type StartWatcher struct {
 	HomeDir   string
 	Logger    log.Logger
@@ -154,7 +65,7 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 	newSource := w.NewSource
 	if newSource == nil {
 		logger := w.Logger
-		newSource = func() (DirEventSource, error) { return newNotifyAdapter(logger), nil }
+		newSource = func() (DirEventSource, error) { return newRecwatchAdapter(logger), nil }
 	}
 
 	src, err := newSource()
