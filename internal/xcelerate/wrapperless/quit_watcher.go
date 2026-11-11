@@ -3,13 +3,10 @@ package wrapperless
 import (
 	"context"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 )
-
-const quitPollInterval = 1 * time.Second
 
 type Ancestry int
 
@@ -19,19 +16,20 @@ const (
 	AncestryCLI
 )
 
+// NewNotifier is a seam for tests to inject a fake ExitNotifier. nil → use
+// the platform-default (kqueue on darwin, poll elsewhere).
 type QuitWatcher struct {
-	Logger       log.Logger
-	OnQuit       func(Quit)
-	PollInterval time.Duration
-	Now          func() time.Time
-	IsAlive      func(pid int) bool
+	Logger      log.Logger
+	OnQuit      func(Quit)
+	Now         func() time.Time
+	NewNotifier func() (ExitNotifier, error)
 
-	mu      sync.Mutex
-	watched map[int]watchedPeer
-	cancel  context.CancelFunc
-	done    chan struct{}
-	ticker  *time.Ticker
-	started bool
+	mu       sync.Mutex
+	watched  map[int]watchedPeer
+	notifier ExitNotifier
+	cancel   context.CancelFunc
+	done     chan struct{}
+	started  bool
 }
 
 type watchedPeer struct {
@@ -49,7 +47,14 @@ func (w *QuitWatcher) Register(pid int, ancestry Ancestry, startTimeMS int64) {
 		w.watched = make(map[int]watchedPeer)
 	}
 	w.watched[pid] = watchedPeer{Ancestry: ancestry, StartTimeMS: startTimeMS}
+	notifier := w.notifier
 	w.mu.Unlock()
+
+	if notifier != nil {
+		if err := notifier.Watch(pid); err != nil {
+			w.warn("quit watcher notifier watch pid=%d: %s", pid, err)
+		}
+	}
 }
 
 func (w *QuitWatcher) Start(ctx context.Context) {
@@ -65,12 +70,27 @@ func (w *QuitWatcher) Start(ctx context.Context) {
 		w.watched = make(map[int]watchedPeer)
 	}
 
-	interval := w.PollInterval
-	if interval <= 0 {
-		interval = quitPollInterval
+	factory := w.NewNotifier
+	if factory == nil {
+		factory = newExitNotifier
 	}
-	ticker := time.NewTicker(interval)
-	w.ticker = ticker
+
+	notifier, err := factory()
+	if err != nil {
+		w.warn("quit watcher notifier init: %s", err)
+		w.started = false
+		w.mu.Unlock()
+
+		return
+	}
+	w.notifier = notifier
+
+	// Arm notifier for peers that registered before Start.
+	for pid := range w.watched {
+		if err := notifier.Watch(pid); err != nil {
+			w.warn("quit watcher notifier watch pid=%d: %s", pid, err)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
@@ -78,17 +98,17 @@ func (w *QuitWatcher) Start(ctx context.Context) {
 	w.done = done
 	w.mu.Unlock()
 
-	go w.loop(ctx, ticker, done)
+	go w.loop(ctx, notifier, done)
 }
 
 func (w *QuitWatcher) Close() {
 	w.mu.Lock()
 	cancel := w.cancel
 	done := w.done
-	ticker := w.ticker
+	notifier := w.notifier
 	w.cancel = nil
 	w.done = nil
-	w.ticker = nil
+	w.notifier = nil
 	w.started = false
 	w.mu.Unlock()
 
@@ -98,8 +118,8 @@ func (w *QuitWatcher) Close() {
 
 	cancel()
 
-	if ticker != nil {
-		ticker.Stop()
+	if notifier != nil {
+		notifier.Close()
 	}
 
 	if done != nil {
@@ -107,7 +127,7 @@ func (w *QuitWatcher) Close() {
 	}
 }
 
-func (w *QuitWatcher) loop(ctx context.Context, ticker *time.Ticker, done chan struct{}) {
+func (w *QuitWatcher) loop(ctx context.Context, notifier ExitNotifier, done chan struct{}) {
 	defer func() {
 		if r := recover(); r != nil {
 			w.warn("quit watcher goroutine panic: %v", r)
@@ -116,81 +136,39 @@ func (w *QuitWatcher) loop(ctx context.Context, ticker *time.Ticker, done chan s
 		close(done)
 	}()
 
+	events := notifier.Events()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			w.scan()
+		case pid, ok := <-events:
+			if !ok {
+				return
+			}
+			w.emit(pid)
 		}
 	}
 }
 
-// Wrapper is pulled out so tests can stub by assigning IsAlive.
-func (w *QuitWatcher) alive(pid int) bool {
-	if w.IsAlive != nil {
-		return w.IsAlive(pid)
-	}
-
-	return defaultIsAlive(pid)
-}
-
-// defaultIsAlive sends signal 0 to pid; absent errors or EPERM mean the
-// process still exists. ESRCH means the PID is gone. Any other error we treat
-// as "still alive" so we don't fire spurious Quits on transient kernel
-// errors.
-func defaultIsAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-
-	err := syscall.Kill(pid, 0)
-	if err == nil {
-		return true
-	}
-
-	return err != syscall.ESRCH
-}
-
-func (w *QuitWatcher) scan() {
+func (w *QuitWatcher) emit(pid int) {
 	w.mu.Lock()
-	snapshot := make(map[int]watchedPeer, len(w.watched))
-	for pid, peer := range w.watched {
-		snapshot[pid] = peer
-	}
-	w.mu.Unlock()
-
-	var dead []int
-	for pid := range snapshot {
-		if !w.alive(pid) {
-			dead = append(dead, pid)
-		}
-	}
-
-	if len(dead) == 0 {
-		return
-	}
-
-	w.mu.Lock()
-	for _, pid := range dead {
+	peer, ok := w.watched[pid]
+	if ok {
 		delete(w.watched, pid)
 	}
 	w.mu.Unlock()
 
-	if w.OnQuit == nil {
+	if !ok || w.OnQuit == nil {
 		return
 	}
 
-	now := w.now()
-	for _, pid := range dead {
-		peer := snapshot[pid]
-		w.OnQuit(Quit{
-			At:          now,
-			PID:         pid,
-			StartTimeMS: peer.StartTimeMS,
-			AncestryIDE: peer.Ancestry == AncestryIDE,
-		})
-	}
+	w.OnQuit(Quit{
+		At:          w.now(),
+		PID:         pid,
+		StartTimeMS: peer.StartTimeMS,
+		AncestryIDE: peer.Ancestry == AncestryIDE,
+	})
 }
 
 func (w *QuitWatcher) now() time.Time {
