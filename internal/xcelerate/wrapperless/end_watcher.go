@@ -178,7 +178,7 @@ func (w *EndWatcher) seedWalk(ddRoot string) int {
 
 func (w *EndWatcher) scanOrMarkSeen(path string, info os.FileInfo) bool {
 	if w.isStaleManifest(info) {
-		w.infof("EndWatcher: stale-seed %s mtime=%s started=%s", path, info.ModTime().Format(time.RFC3339Nano), w.startedAt.Format(time.RFC3339Nano))
+		w.debugf("EndWatcher: stale-seed %s mtime=%s started=%s", path, info.ModTime().Format(time.RFC3339Nano), w.startedAt.Format(time.RFC3339Nano))
 		w.markManifestUUIDsSeen(path)
 
 		return false
@@ -244,17 +244,17 @@ func (w *EndWatcher) loop(ctx context.Context, src DirEventSource, done chan str
 			}
 
 			eventCount++
-			w.infof("EndWatcher: event #%d op=%d %s", eventCount, ev.Op, ev.Path)
+			w.debugf("EndWatcher: event #%d op=%d %s", eventCount, ev.Op, ev.Path)
 			w.handleEvent(ev)
 		}
 	}
 }
 
 func (w *EndWatcher) handleEvent(ev Event) {
-	w.infof("EndWatcher: handleEvent %s", ev.Path)
+	w.debugf("EndWatcher: handleEvent %s", ev.Path)
 
 	if ev.Op&(EventWrite|EventCreate) == 0 {
-		w.infof("EndWatcher: skip %s reason=op (op=%d)", ev.Path, ev.Op)
+		w.debugf("EndWatcher: skip %s reason=op (op=%d)", ev.Path, ev.Op)
 
 		return
 	}
@@ -265,7 +265,7 @@ func (w *EndWatcher) handleEvent(ev Event) {
 	// only so the sb- temp variants (which also pass the op filter) are
 	// dropped here with a reason.
 	if filepath.Base(ev.Path) != "LogStoreManifest.plist" {
-		w.infof("EndWatcher: skip %s reason=name", ev.Path)
+		w.debugf("EndWatcher: skip %s reason=name", ev.Path)
 
 		return
 	}
@@ -277,19 +277,19 @@ func (w *EndWatcher) scanManifest(path string) {
 	entries, err := loadManifestEntries(path)
 	if err != nil {
 		w.warn("end watcher load %s: %s", path, err)
-		w.infof("EndWatcher: skip %s reason=load-failed", path)
+		w.debugf("EndWatcher: skip %s reason=load-failed", path)
 
 		return
 	}
 
 	for _, e := range entries {
 		if !isSealedTerminal(e.HighLevelStatus) {
-			w.infof("EndWatcher: skip %s reason=not-sealed uuid=%s status=%q", path, e.UniqueIdentifier, e.HighLevelStatus)
+			w.debugf("EndWatcher: skip %s reason=not-sealed uuid=%s status=%q", path, e.UniqueIdentifier, e.HighLevelStatus)
 
 			continue
 		}
 		if e.TimeStopped == 0 || e.UniqueIdentifier == "" {
-			w.infof("EndWatcher: skip %s reason=missing-fields uuid=%s timeStopped=%v", path, e.UniqueIdentifier, e.TimeStopped)
+			w.debugf("EndWatcher: skip %s reason=missing-fields uuid=%s timeStopped=%v", path, e.UniqueIdentifier, e.TimeStopped)
 
 			continue
 		}
@@ -297,7 +297,7 @@ func (w *EndWatcher) scanManifest(path string) {
 		w.mu.Lock()
 		if _, ok := w.seen[e.UniqueIdentifier]; ok {
 			w.mu.Unlock()
-			w.infof("EndWatcher: skip %s reason=already-seen uuid=%s", path, e.UniqueIdentifier)
+			w.debugf("EndWatcher: skip %s reason=already-seen uuid=%s", path, e.UniqueIdentifier)
 
 			continue
 		}
@@ -308,13 +308,13 @@ func (w *EndWatcher) scanManifest(path string) {
 
 		action := actionFromSignature(e.Signature)
 		if action == "" {
-			w.infof("EndWatcher: skip uuid=%s reason=non-primary signature=%q", e.UniqueIdentifier, e.Signature)
+			w.debugf("EndWatcher: skip uuid=%s reason=non-primary signature=%q", e.UniqueIdentifier, e.Signature)
 
 			continue
 		}
 
 		if w.OnEnd == nil {
-			w.infof("EndWatcher: skip %s reason=no-OnEnd uuid=%s", path, e.UniqueIdentifier)
+			w.debugf("EndWatcher: skip %s reason=no-OnEnd uuid=%s", path, e.UniqueIdentifier)
 
 			continue
 		}
@@ -510,4 +510,12 @@ func (w *EndWatcher) infof(format string, args ...any) {
 	}
 
 	w.Logger.Infof(format, args...)
+}
+
+func (w *EndWatcher) debugf(format string, args ...any) {
+	if w.Logger == nil {
+		return
+	}
+
+	w.Logger.Debugf(format, args...)
 }

@@ -175,7 +175,7 @@ func (w *StartWatcher) seedWalk(ddRoot string) int {
 
 		if strings.HasSuffix(d.Name(), xcbuilddataSuffix) {
 			if w.isStaleCompletedBuild(path) {
-				w.infof("StartWatcher: skip seed %s reason=stale-sibling-manifest", path)
+				w.debugf("StartWatcher: skip seed %s reason=stale-sibling-manifest", path)
 
 				return filepath.SkipDir
 			}
@@ -239,14 +239,14 @@ func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan s
 			}
 
 			eventCount++
-			w.infof("StartWatcher: event #%d op=%d %s", eventCount, ev.Op, ev.Path)
+			w.debugf("StartWatcher: event #%d op=%d %s", eventCount, ev.Op, ev.Path)
 			w.handleEvent(ev)
 		}
 	}
 }
 
 func (w *StartWatcher) handleEvent(ev Event) {
-	w.infof("StartWatcher: handleEvent %s", ev.Path)
+	w.debugf("StartWatcher: handleEvent %s", ev.Path)
 
 	// Xcode's CREATE for the dir / file can fire before build-request.json
 	// is complete JSON; the subsequent WRITE on build-request.json is the
@@ -322,7 +322,7 @@ func (w *StartWatcher) emitStartOnce(xcbuildDataDir string) {
 		return
 	}
 
-	w.debugf("StartWatcher: emit hex=%s action=%s qos=%s", hex, info.Action, info.QoS)
+	w.infof("StartWatcher: emit hex=%s action=%s qos=%s", hex, info.Action, info.QoS)
 
 	w.OnStart(Start{
 		At:              w.now(),
