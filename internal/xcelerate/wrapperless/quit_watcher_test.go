@@ -11,21 +11,63 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestQuitWatcher_FiresOnDeadPID(t *testing.T) {
-	alive := map[int]bool{100: true, 200: true}
-	var mu sync.Mutex
+type fakeExitNotifier struct {
+	mu      sync.Mutex
+	events  chan int
+	watched map[int]struct{}
+	closed  bool
+}
 
+func newFakeExitNotifier() *fakeExitNotifier {
+	return &fakeExitNotifier{
+		events:  make(chan int, 16),
+		watched: make(map[int]struct{}),
+	}
+}
+
+func (f *fakeExitNotifier) Watch(pid int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.watched[pid] = struct{}{}
+
+	return nil
+}
+
+func (f *fakeExitNotifier) Unwatch(pid int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.watched, pid)
+}
+
+func (f *fakeExitNotifier) Events() <-chan int { return f.events }
+
+func (f *fakeExitNotifier) Close() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed {
+		return
+	}
+	f.closed = true
+	close(f.events)
+}
+
+func (f *fakeExitNotifier) fire(pid int) {
+	f.mu.Lock()
+	closed := f.closed
+	f.mu.Unlock()
+	if closed {
+		return
+	}
+	f.events <- pid
+}
+
+func TestQuitWatcher_FiresOnExitEvent(t *testing.T) {
+	src := newFakeExitNotifier()
 	quits := make(chan Quit, 4)
 
 	w := &QuitWatcher{
-		PollInterval: 5 * time.Millisecond,
-		OnQuit:       func(q Quit) { quits <- q },
-		IsAlive: func(pid int) bool {
-			mu.Lock()
-			defer mu.Unlock()
-
-			return alive[pid]
-		},
+		OnQuit:      func(q Quit) { quits <- q },
+		NewNotifier: func() (ExitNotifier, error) { return src, nil },
 	}
 	w.Register(100, AncestryIDE, 0)
 	w.Register(200, AncestryCLI, 0)
@@ -34,9 +76,7 @@ func TestQuitWatcher_FiresOnDeadPID(t *testing.T) {
 	defer cancel()
 	w.Start(ctx)
 
-	mu.Lock()
-	alive[100] = false
-	mu.Unlock()
+	src.fire(100)
 
 	select {
 	case q := <-quits:
@@ -46,9 +86,7 @@ func TestQuitWatcher_FiresOnDeadPID(t *testing.T) {
 		t.Fatal("no Quit for 100")
 	}
 
-	mu.Lock()
-	alive[200] = false
-	mu.Unlock()
+	src.fire(200)
 
 	select {
 	case q := <-quits:
@@ -74,16 +112,16 @@ func TestQuitWatcher_RegisterRejectsZero(t *testing.T) {
 }
 
 func TestQuitWatcher_FiresOncePerPID(t *testing.T) {
+	src := newFakeExitNotifier()
 	calls := 0
 	quits := make(chan Quit, 4)
 
 	w := &QuitWatcher{
-		PollInterval: 5 * time.Millisecond,
 		OnQuit: func(q Quit) {
 			calls++
 			quits <- q
 		},
-		IsAlive: func(_ int) bool { return false },
+		NewNotifier: func() (ExitNotifier, error) { return src, nil },
 	}
 	w.Register(42, AncestryCLI, 999)
 
@@ -91,12 +129,15 @@ func TestQuitWatcher_FiresOncePerPID(t *testing.T) {
 	defer cancel()
 	w.Start(ctx)
 
+	src.fire(42)
+
 	select {
 	case <-quits:
 	case <-time.After(1 * time.Second):
 		t.Fatal("no Quit")
 	}
 
+	src.fire(42)
 	time.Sleep(50 * time.Millisecond)
 
 	w.Close()
