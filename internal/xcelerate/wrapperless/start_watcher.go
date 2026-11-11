@@ -45,9 +45,14 @@ type DirEventSource interface {
 }
 
 type StartWatcher struct {
-	HomeDir   string
-	Logger    log.Logger
-	OnStart   func(Start)
+	HomeDir string
+	Logger  log.Logger
+	OnStart func(Start)
+	// SeenStore, when non-nil, is read at Start to hydrate the handled-UUID
+	// set used by the seedWalk's handled-sibling-manifest skip. Mirrors
+	// EndWatcher's SeenStore so a restart within seedStaleGrace of a sealed
+	// build cannot resurrect its xcbuilddata as a phantom Start.
+	SeenStore *HandledManifestStore
 	NewSource func() (DirEventSource, error)
 	Now       func() time.Time
 
@@ -56,6 +61,7 @@ type StartWatcher struct {
 	cancel    context.CancelFunc
 	done      chan struct{}
 	startedAt time.Time
+	handled   map[string]struct{}
 
 	seenMu      sync.Mutex
 	seenHexDirs map[string]struct{}
@@ -86,6 +92,8 @@ func (w *StartWatcher) Start(ctx context.Context) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
+
+	w.hydrateHandled()
 
 	w.mu.Lock()
 	w.src = src
@@ -179,6 +187,11 @@ func (w *StartWatcher) seedWalk(ddRoot string) int {
 
 				return filepath.SkipDir
 			}
+			if w.isHandledByManifest(path) {
+				w.debugf("StartWatcher: skip seed %s reason=handled-sibling-manifest", path)
+
+				return filepath.SkipDir
+			}
 			count++
 			w.emitStartOnce(path)
 
@@ -209,6 +222,61 @@ func (w *StartWatcher) isStaleCompletedBuild(xcbuildDataDir string) bool {
 	}
 
 	return info.ModTime().Before(w.startedAt.Add(-seedStaleGrace))
+}
+
+// isHandledByManifest reports whether every sealed entry in the sibling
+// LogStoreManifest.plist has a UniqueIdentifier already in the SeenStore
+// and no entry is still open-status (pre-seal). Covers the restart-within-
+// grace race where mtime alone would keep the xcbuilddata eligible for a
+// phantom Start even though the matching End is already in the ledger.
+func (w *StartWatcher) isHandledByManifest(xcbuildDataDir string) bool {
+	if len(w.handled) == 0 {
+		return false
+	}
+
+	root := rootForXCBuildDataPath(xcbuildDataDir)
+	manifest := filepath.Join(root, "Logs", buildDirName, "LogStoreManifest.plist")
+
+	entries, err := loadManifestEntries(manifest)
+	if err != nil || len(entries) == 0 {
+		return false
+	}
+
+	hasHandled := false
+	for _, e := range entries {
+		if !isSealedTerminal(e.HighLevelStatus) {
+			return false
+		}
+		if _, ok := w.handled[e.UniqueIdentifier]; ok {
+			hasHandled = true
+		}
+	}
+
+	return hasHandled
+}
+
+func (w *StartWatcher) hydrateHandled() {
+	if w.SeenStore == nil {
+		return
+	}
+
+	uuids, err := w.SeenStore.LoadFresh(w.now(), HandledManifestMaxAge)
+	if err != nil {
+		w.warn("start watcher hydrate seen store: %s", err)
+
+		return
+	}
+
+	set := make(map[string]struct{}, len(uuids))
+	for _, u := range uuids {
+		set[u] = struct{}{}
+	}
+
+	w.mu.Lock()
+	w.handled = set
+	w.mu.Unlock()
+
+	w.infof("StartWatcher: hydrated %d uuids from seen store", len(uuids))
 }
 
 func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan struct{}) {

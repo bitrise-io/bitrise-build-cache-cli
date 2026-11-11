@@ -273,6 +273,105 @@ func TestStartWatcher_DeepTreeCreatedAtomically(t *testing.T) {
 // TestStartWatcher_PreExistingHexDirsSeedOnStart verifies the seed walk
 // catches an xcbuilddata dir that exists before Start is called. Without a
 // seed walk the proxy would miss any build already running when it started.
+func TestStartWatcher_SeedSkipsHandledSiblingManifest(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-handled")
+	hex := "99999999999999999999999999999999"
+	_ = writeBuildRequest(t, root, hex, "build", "")
+
+	manifestPath := filepath.Join(root, "Logs", "Build", "LogStoreManifest.plist")
+	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
+	manifest := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>UID-HANDLED</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>UID-HANDLED</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>timeStoppedRecording</key><real>762345688.75</real>
+  </dict>
+</dict></dict></plist>`
+	require.NoError(t, os.WriteFile(manifestPath, []byte(manifest), 0o644))
+
+	storePath := filepath.Join(t.TempDir(), "handled.ndjson")
+	store := &HandledManifestStore{Path: storePath}
+	require.NoError(t, store.Append(HandledManifest{UUID: "UID-HANDLED", HandledAt: time.Now()}))
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		SeenStore: store,
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	select {
+	case got := <-starts:
+		t.Fatalf("Start emitted despite handled sibling manifest: %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
+func TestStartWatcher_SeedEmitsWhenManifestHasOpenEntry(t *testing.T) {
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-mixed")
+	hex := "88888888888888888888888888888888"
+	_ = writeBuildRequest(t, root, hex, "build", "")
+
+	manifestPath := filepath.Join(root, "Logs", "Build", "LogStoreManifest.plist")
+	require.NoError(t, os.MkdirAll(filepath.Dir(manifestPath), 0o755))
+	// One sealed + one open (no highLevelStatus) → cannot skip, live build in progress.
+	manifest := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>UID-SEALED</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>UID-SEALED</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>timeStoppedRecording</key><real>762345688.75</real>
+  </dict>
+  <key>UID-RUNNING</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>UID-RUNNING</string>
+    <key>timeStartedRecording</key><real>762345690.0</real>
+  </dict>
+</dict></dict></plist>`
+	require.NoError(t, os.WriteFile(manifestPath, []byte(manifest), 0o644))
+
+	storePath := filepath.Join(t.TempDir(), "handled.ndjson")
+	store := &HandledManifestStore{Path: storePath}
+	require.NoError(t, store.Append(HandledManifest{UUID: "UID-SEALED", HandledAt: time.Now()}))
+
+	src := newFakeEventSource()
+	starts := make(chan Start, 4)
+
+	w := &StartWatcher{
+		HomeDir:   fakeHome,
+		OnStart:   func(s Start) { starts <- s },
+		SeenStore: store,
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	select {
+	case got := <-starts:
+		assert.Equal(t, hex, got.BuildRequestHex)
+	case <-time.After(1 * time.Second):
+		t.Fatal("Start not emitted despite open sibling manifest entry")
+	}
+
+	w.Close()
+}
+
 // TestStartWatcher_SeedSkipsStaleCompletedBuild guards the phantom-row path:
 // a prior Xcode session's xcbuilddata lingers on disk alongside a sealed
 // LogStoreManifest.plist older than startedAt — seed must skip it.
