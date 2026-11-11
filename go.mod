@@ -12,6 +12,7 @@ require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.61
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.40
 	github.com/dustin/go-humanize v1.1.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gofrs/flock v0.13.1
 	github.com/gofrs/uuid/v5 v5.5.1
@@ -20,7 +21,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/klauspost/compress v1.18.7
 	github.com/pkg/xattr v0.4.12
-	github.com/rjeczalik/notify v0.9.3
 	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
