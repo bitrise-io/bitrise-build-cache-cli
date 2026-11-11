@@ -232,7 +232,7 @@ func (w *StartWatcher) installWatch(src DirEventSource, ddRoot string) {
 
 	w.infof("StartWatcher: mkdir ok")
 
-	if addErr := src.Watch(recursivePath(ddRoot), EventCreate); addErr != nil {
+	if addErr := src.Watch(recursivePath(ddRoot), EventCreate, EventWrite); addErr != nil {
 		w.warn("start watcher watch %s: %s", ddRoot, addErr)
 
 		return
@@ -337,20 +337,21 @@ func (w *StartWatcher) loop(ctx context.Context, src DirEventSource, done chan s
 func (w *StartWatcher) handleEvent(ev Event) {
 	w.infof("StartWatcher: handleEvent %s", ev.Path)
 
-	if ev.Op&EventCreate == 0 {
-		return
-	}
-
-	// Act on the terminal xcbuilddata dir — the recursive FSEvents watch
-	// delivers it directly. Also retry when build-request.json itself
-	// shows up: when Xcode writes the file after the dir CREATE, the
-	// initial emitStartOnce call hits ErrNotFound and the seen-set stays
-	// unmarked, so this second pass against the parent dir succeeds.
+	// Xcode's CREATE for the dir / file can fire before build-request.json
+	// is complete JSON; the subsequent WRITE on build-request.json is the
+	// retry trigger. xcbuilddata CREATE stays CREATE-only to avoid firing
+	// per nested-file WRITE under the dir.
 	base := filepath.Base(ev.Path)
 	switch {
 	case strings.HasSuffix(base, xcbuilddataSuffix):
+		if ev.Op&EventCreate == 0 {
+			return
+		}
 		w.emitStartOnce(ev.Path)
 	case base == "build-request.json":
+		if ev.Op&(EventCreate|EventWrite) == 0 {
+			return
+		}
 		w.emitStartOnce(filepath.Dir(ev.Path))
 	}
 }
