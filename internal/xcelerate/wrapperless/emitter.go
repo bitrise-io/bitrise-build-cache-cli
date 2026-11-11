@@ -221,7 +221,7 @@ func fixedReasonLabel(r BucketReason) (string, bool) {
 		return "ide background", true
 	case BucketReasonCLIImplicit:
 		return "cli run", true
-	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior:
+	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior, BucketReasonSpeculative:
 	}
 
 	return "", false

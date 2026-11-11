@@ -14,6 +14,10 @@ const (
 	BucketReasonEndOfPrior
 	BucketReasonIDEBackground
 	BucketReasonCLIImplicit
+	// BucketReasonSpeculative marks a provisional bucket opened to keep
+	// Proxy.CurrentBucketID live between builds. Promoted / classified at the
+	// next Start / End / Quit and never emitted as-is.
+	BucketReasonSpeculative
 )
 
 type Bucket struct {

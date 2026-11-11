@@ -48,6 +48,109 @@ func newTestAllocator(t *testing.T, onReady func(Bucket)) (*Allocator, *fakeBlob
 	return a, blobs
 }
 
+func TestAllocator_Init_OpensSpecAndStampsProxy(t *testing.T) {
+	a, _ := newTestAllocator(t, func(Bucket) {})
+	var stamped []string
+	a.OnOpenInvoc = func(b Bucket) { stamped = append(stamped, b.InvocationID) }
+
+	a.Init()
+
+	require.Len(t, stamped, 1)
+	assert.NotEmpty(t, stamped[0])
+}
+
+func TestAllocator_SpecPromotedOnWarmEnd_PreservesID(t *testing.T) {
+	var buckets []Bucket
+	a, blobs := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+	var stamped []string
+	a.OnOpenInvoc = func(b Bucket) { stamped = append(stamped, b.InvocationID) }
+
+	a.Init()
+	specID := stamped[0]
+
+	blobs.set(17)
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               time.Unix(50, 0),
+		Scheme:           "MinimalApp",
+		Action:           PrimaryActionBuild,
+		UniqueIdentifier: "WARM-UID",
+		Duration:         2 * time.Second,
+		Success:          true,
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.Equal(t, specID, buckets[0].InvocationID,
+		"warm sole-End must promote the spec, not mint a fresh InvocationID")
+	assert.Equal(t, BucketReasonEndMatched, buckets[0].Reason)
+	assert.Equal(t, "MinimalApp", buckets[0].Scheme)
+	assert.Equal(t, int64(17), buckets[0].BlobStats.Download.OpCount)
+}
+
+func TestAllocator_SpecClosedByStart_NoBytes_NoEmit(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+	a.OnOpenInvoc = func(Bucket) {}
+
+	a.Init()
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "deadbeefdeadbeefdeadbeefdeadbeef",
+		Action:          PrimaryActionBuild,
+	}})
+
+	assert.Empty(t, buckets, "zero-byte spec must drop silently on Start")
+}
+
+func TestAllocator_SpecClosedByStart_WithBytes_EmitsIDEBackground(t *testing.T) {
+	var buckets []Bucket
+	a, blobs := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+	a.OnOpenInvoc = func(Bucket) {}
+
+	a.Init()
+	blobs.set(9)
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "deadbeefdeadbeefdeadbeefdeadbeef",
+		Action:          PrimaryActionBuild,
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.Equal(t, BucketReasonIDEBackground, buckets[0].Reason)
+	assert.Equal(t, int64(9), buckets[0].BlobStats.Download.OpCount)
+}
+
+func TestAllocator_FreshSpecOpenedAfterEveryClose(t *testing.T) {
+	a, _ := newTestAllocator(t, func(Bucket) {})
+	var stamped []string
+	a.OnOpenInvoc = func(b Bucket) { stamped = append(stamped, b.InvocationID) }
+
+	a.Init()
+	initialSpec := stamped[0]
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "deadbeefdeadbeefdeadbeefdeadbeef",
+		Action:          PrimaryActionBuild,
+	}})
+	realBucket := stamped[1]
+	assert.NotEqual(t, initialSpec, realBucket)
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               time.Unix(2, 0),
+		Scheme:           "MinimalApp",
+		Action:           PrimaryActionBuild,
+		UniqueIdentifier: "END-1",
+		Duration:         time.Second,
+		Success:          true,
+	}})
+	postEndSpec := stamped[2]
+	assert.NotEqual(t, realBucket, postEndSpec,
+		"a fresh spec must open after a real bucket closes")
+}
+
 func TestAllocator_HappyPath_StartThenEndEmitsOne(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex
@@ -124,7 +227,7 @@ func TestAllocator_EndWithoutStart_PrimaryAction_MintsBucket(t *testing.T) {
 	a, blobs := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
 	blobs.set(42)
 
-	ids := make(chan string, 1)
+	ids := make(chan string, 4)
 	a.OnOpenInvoc = func(b Bucket) { ids <- b.InvocationID }
 
 	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
@@ -149,12 +252,20 @@ func TestAllocator_EndWithoutStart_PrimaryAction_MintsBucket(t *testing.T) {
 	require.NotNil(t, b.BlobStats)
 	assert.Equal(t, int64(42), b.BlobStats.Download.OpCount)
 
-	select {
-	case id := <-ids:
-		assert.Equal(t, b.InvocationID, id)
-	default:
-		t.Fatal("OnOpenInvoc not called for sole-End bucket")
+	// Drain OnOpenInvoc calls: sole-End mint + post-emit spec. Only the
+	// mint-side ID must match the emitted bucket.
+	seen := map[string]bool{}
+	for drained := 0; drained < 2; drained++ {
+		select {
+		case id := <-ids:
+			seen[id] = true
+		default:
+			if drained == 0 {
+				t.Fatal("OnOpenInvoc not called for sole-End bucket")
+			}
+		}
 	}
+	assert.True(t, seen[b.InvocationID], "OnOpenInvoc did not fire for sole-End InvocationID")
 }
 
 func TestAllocator_StartThenEnd_EndActionOverridesStartAction(t *testing.T) {
