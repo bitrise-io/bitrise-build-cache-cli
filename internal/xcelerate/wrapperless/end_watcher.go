@@ -53,7 +53,7 @@ func (w *EndWatcher) Start(ctx context.Context) error {
 	newSource := w.NewSource
 	if newSource == nil {
 		logger := w.Logger
-		newSource = func() (DirEventSource, error) { return newNotifyAdapter(logger), nil }
+		newSource = func() (DirEventSource, error) { return newRecwatchAdapter(logger), nil }
 	}
 
 	src, err := newSource()
