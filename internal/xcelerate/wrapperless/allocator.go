@@ -128,7 +128,7 @@ func (a *Allocator) onStart(s Start) {
 	fresh := a.newBucket(s.At, s)
 	a.open = fresh
 
-	a.debugf("Allocator: bucket opened id=%s action=%s", fresh.InvocationID, fresh.Action)
+	a.infof("Allocator: bucket opened id=%s action=%s", fresh.InvocationID, fresh.Action)
 
 	if a.OnOpenInvoc != nil && fresh.InvocationID != "" {
 		a.OnOpenInvoc(*fresh)
@@ -165,7 +165,7 @@ func (a *Allocator) onEnd(e End) {
 	bucket.BlobStats = a.snapshotBlobs()
 	bucket.XCActivityLogPath = e.XCActivityLogPath
 
-	a.debugf("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
+	a.infof("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
 
 	a.emit(bucket)
 }
@@ -212,7 +212,7 @@ func (a *Allocator) mintEndOnlyBucket(e End) {
 		XCActivityLogPath: e.XCActivityLogPath,
 	}
 
-	a.debugf("Allocator: sole-End mint id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
+	a.infof("Allocator: sole-End mint id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
 
 	if a.OnOpenInvoc != nil {
 		a.OnOpenInvoc(*bucket)
@@ -440,6 +440,14 @@ func snapshotBytes(snap *blobstats.Snapshot) int64 {
 	}
 
 	return snap.Upload.BytesTotal + snap.Download.BytesTotal
+}
+
+func (a *Allocator) infof(format string, args ...any) {
+	if a.Logger == nil {
+		return
+	}
+
+	a.Logger.Infof(format, args...)
 }
 
 func (a *Allocator) debugf(format string, args ...any) {
