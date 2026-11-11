@@ -3,6 +3,7 @@
 package wrapperless_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -71,9 +72,7 @@ func TestEmitter_SlimThenEnrichedSameID(t *testing.T) {
 	putter := &recordingPutter{}
 	e := &wrapperless.Emitter{
 		Client:          putter,
-		SlimBackoff:     time.Millisecond,
-		SlimRetryBudget: 1,
-	}
+			}
 
 	b := newBucket()
 	e.EmitSlim(b)
@@ -90,29 +89,13 @@ func TestEmitter_SlimThenEnrichedSameID(t *testing.T) {
 	assert.NotNil(t, calls[1].CacheBlobStats)
 }
 
-func TestEmitter_SlimRetriesOnFailure(t *testing.T) {
-	putter := &recordingPutter{fails: 2}
-	e := &wrapperless.Emitter{
-		Client:          putter,
-		SlimBackoff:     time.Millisecond,
-		SlimRetryBudget: 5,
-	}
-
-	e.EmitSlim(newBucket())
-
-	calls := putter.snapshot()
-	assert.Len(t, calls, 3)
-}
-
-func TestEmitter_SlimPersistsOnExhausted(t *testing.T) {
+func TestEmitter_SlimPersistsOnFailure(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pending-slim.ndjson")
 
 	putter := &recordingPutter{fails: 10}
 	e := &wrapperless.Emitter{
 		Client:          putter,
-		SlimBackoff:     time.Millisecond,
-		SlimRetryBudget: 2,
 		PendingSlimPath: path,
 	}
 
@@ -123,13 +106,132 @@ func TestEmitter_SlimPersistsOnExhausted(t *testing.T) {
 	require.NoError(t, err)
 
 	var p struct {
-		Phase  wrapperless.Phase
-		Bucket wrapperless.Bucket
+		Phase       wrapperless.Phase
+		Bucket      wrapperless.Bucket
+		PersistedAt time.Time
 	}
 	require.NoError(t, json.Unmarshal(body, &p))
 
 	assert.Equal(t, wrapperless.PhaseSlim, p.Phase)
 	assert.Equal(t, b.InvocationID, p.Bucket.InvocationID)
+	assert.False(t, p.PersistedAt.IsZero(), "persistedAt must be stamped so the drain can age it out")
+}
+
+func TestEmitter_EnrichedPersistsOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
+
+	putter := &recordingPutter{fails: 10}
+	e := &wrapperless.Emitter{
+		Client:              putter,
+		PendingEnrichedPath: path,
+	}
+
+	b := newBucket()
+	e.EmitEnriched(b, 0.42)
+
+	body, err := os.ReadFile(path) //nolint:gosec // test file
+	require.NoError(t, err)
+
+	var p struct {
+		Phase       wrapperless.Phase
+		Bucket      wrapperless.Bucket
+		HitRate     float32
+		PersistedAt time.Time
+	}
+	require.NoError(t, json.Unmarshal(body, &p))
+
+	assert.Equal(t, wrapperless.PhaseEnriched, p.Phase)
+	assert.Equal(t, b.InvocationID, p.Bucket.InvocationID)
+	assert.InDelta(t, 0.42, p.HitRate, 0.0001)
+	assert.False(t, p.PersistedAt.IsZero())
+}
+
+func TestEmitter_DrainReplaysPendingAndClearsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
+
+	// Pre-populate the pending file.
+	putter := &recordingPutter{fails: 10}
+	seed := &wrapperless.Emitter{
+		Client:              putter,
+		PendingEnrichedPath: path,
+	}
+	seed.EmitEnriched(newBucket(), 0.5)
+
+	// New emitter with succeeding client — drain should replay + clear.
+	ok := &recordingPutter{}
+	e := &wrapperless.Emitter{
+		Client:              ok,
+		PendingEnrichedPath: path,
+		DrainInterval:       10 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.Start(ctx)
+	defer e.Stop()
+
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "drain must clear the pending file on success")
+
+	calls := ok.snapshot()
+	require.NotEmpty(t, calls)
+}
+
+func TestEmitter_DrainAgesOutStaleEntries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
+
+	// Seed the file directly with a stale persistedAt timestamp.
+	stale := struct {
+		Phase       wrapperless.Phase   `json:"phase"`
+		Bucket      wrapperless.Bucket  `json:"bucket"`
+		HitRate     float32             `json:"hitRate"`
+		PersistedAt time.Time           `json:"persistedAt"`
+	}{
+		Phase:       wrapperless.PhaseEnriched,
+		Bucket:      newBucket(),
+		HitRate:     0.9,
+		PersistedAt: time.Now().Add(-48 * time.Hour),
+	}
+	body, err := json.Marshal(stale)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, append(body, '\n'), 0o600))
+
+	putter := &recordingPutter{fails: 10}
+	e := &wrapperless.Emitter{
+		Client:              putter,
+		PendingEnrichedPath: path,
+		DrainInterval:       10 * time.Millisecond,
+		MaxPendingAge:       1 * time.Hour,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.Start(ctx)
+	defer e.Stop()
+
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	_, err = os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "aged-out entry must be dropped, not re-tried")
+
+	assert.Empty(t, putter.snapshot(), "aged-out entries must not hit the client")
 }
 
 func TestEmitter_NilClientIsNoop(t *testing.T) {

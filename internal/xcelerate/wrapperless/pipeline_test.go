@@ -47,7 +47,7 @@ func TestPipeline_StartOpensReseatsAndEmits(t *testing.T) {
 		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     proxy,
-		Emitter:   &wrapperless.Emitter{Client: putter, SlimBackoff: time.Millisecond, SlimRetryBudget: 1},
+		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -94,7 +94,7 @@ func TestPipeline_SlimPUTCarriesStartAction(t *testing.T) {
 		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     proxy,
-		Emitter:   &wrapperless.Emitter{Client: putter, SlimBackoff: time.Millisecond, SlimRetryBudget: 1},
+		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

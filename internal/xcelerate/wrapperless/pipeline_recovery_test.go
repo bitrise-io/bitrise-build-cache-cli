@@ -62,7 +62,7 @@ func TestPipeline_RecoversSealedPrimary(t *testing.T) {
 		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     fp,
-		Emitter:   &wrapperless.Emitter{Client: putter, SlimBackoff: time.Millisecond, SlimRetryBudget: 1},
+		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -98,7 +98,7 @@ func TestPipeline_RecoversUnsealedPrimaryStartOnly(t *testing.T) {
 		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     fp,
-		Emitter:   &wrapperless.Emitter{Client: putter, SlimBackoff: time.Millisecond, SlimRetryBudget: 1},
+		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

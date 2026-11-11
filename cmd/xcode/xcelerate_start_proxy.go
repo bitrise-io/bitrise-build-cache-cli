@@ -571,13 +571,14 @@ func maybeStartWrapperlessPipeline(
 	}
 
 	emitter := &wrapperless.Emitter{
-		Client:           bundle.client,
-		Auth:             bundle.authProvider.Get(ctx),
-		Metadata:         bundle.metadata,
-		XcodeVersion:     bundle.xcodeVersion,
-		XcodeBuildNumber: bundle.xcodeBuildNumber,
-		Logger:           logger,
-		PendingSlimPath:  resolver.WrapperlessPendingSlimPath(),
+		Client:              bundle.client,
+		Auth:                bundle.authProvider.Get(ctx),
+		Metadata:            bundle.metadata,
+		XcodeVersion:        bundle.xcodeVersion,
+		XcodeBuildNumber:    bundle.xcodeBuildNumber,
+		Logger:              logger,
+		PendingSlimPath:     resolver.WrapperlessPendingSlimPath(),
+		PendingEnrichedPath: resolver.WrapperlessPendingEnrichedPath(),
 		// Minted here because the `ensureWatcher` gate — which normally mints
 		// it on the enricher path — is off under wrapperless.
 		LocalLogAppender: invocationlog.Default(logger),
