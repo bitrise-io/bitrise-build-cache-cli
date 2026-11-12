@@ -37,7 +37,8 @@ func TestHandledManifestStore_CompactDropsStaleRecordsFromDisk(t *testing.T) {
 	require.NoError(t, store.Append(stale))
 	require.NoError(t, store.Append(fresh))
 
-	require.NoError(t, store.Compact(now, 7*24*time.Hour))
+	_, err := store.LoadFreshAndCompact(now, 7*24*time.Hour)
+	require.NoError(t, err)
 
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -64,7 +65,8 @@ func TestHandledManifestStore_CompactNoopWhenAllFresh(t *testing.T) {
 	// produce a different mtime via the tmp + rename path.
 	time.Sleep(10 * time.Millisecond)
 
-	require.NoError(t, store.Compact(now, 7*24*time.Hour))
+	_, err = store.LoadFreshAndCompact(now, 7*24*time.Hour)
+	require.NoError(t, err)
 
 	after, err := os.Stat(path)
 	require.NoError(t, err)
@@ -78,8 +80,9 @@ func TestHandledManifestStore_CompactMissingFileIsNoop(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "handled.ndjson")
 	store := &wrapperless.HandledManifestStore{Path: path}
 
-	require.NoError(t, store.Compact(time.Now(), 7*24*time.Hour))
+	_, err := store.LoadFreshAndCompact(time.Now(), 7*24*time.Hour)
+	require.NoError(t, err)
 
-	_, err := os.Stat(path)
+	_, err = os.Stat(path)
 	assert.True(t, os.IsNotExist(err), "missing ledger must not be created on compact")
 }

@@ -113,21 +113,12 @@ func (s *HandledManifestStore) Append(rec HandledManifest) error {
 
 // LoadFreshAndCompact returns the UUIDs whose HandledAt is within maxAge of
 // now and, in the same pass, rewrites the on-disk ledger if any stale
-// records were dropped. Single read + write path.
+// records were dropped.
 func (s *HandledManifestStore) LoadFreshAndCompact(now time.Time, maxAge time.Duration) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.loadFreshAndCompactLocked(now, maxAge)
-}
-
-// Compact rewrites the on-disk ledger keeping only records within maxAge of
-// now. Thin wrapper around LoadFreshAndCompact — no prod callers; retained
-// so tests can assert the rewrite-vs-no-op contract directly.
-func (s *HandledManifestStore) Compact(now time.Time, maxAge time.Duration) error {
-	_, err := s.LoadFreshAndCompact(now, maxAge)
-
-	return err
 }
 
 func (s *HandledManifestStore) loadFreshAndCompactLocked(now time.Time, maxAge time.Duration) ([]string, error) {
