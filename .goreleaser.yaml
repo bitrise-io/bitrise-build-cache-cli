@@ -25,12 +25,10 @@ release:
 before:
   hooks:
     - go mod tidy
-    # Pre-build the trampoline per darwin arch into the embed source dir so
-    # the CLI binary carries it inline (no runtime R2 download). The build
-    # tags on internal/trampoline/download/embed_* only consume the matching
-    # arch; non-darwin CLI builds skip it via build tag.
-    - sh -c "GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags '-s -w' -o internal/trampoline/download/trampoline_darwin_amd64 ./cmd/trampoline"
-    - sh -c "GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags '-s -w' -o internal/trampoline/download/trampoline_darwin_arm64 ./cmd/trampoline"
+    # Stage the trampoline into the embed source dir so the CLI binary
+    # carries it inline. Per-arch files are consumed by the matching
+    # //go:build tagged embed_*.go; non-darwin CLI builds skip them.
+    - ./scripts/build_trampoline_embed.sh
 
 builds:
   - id: bitrise-build-cache

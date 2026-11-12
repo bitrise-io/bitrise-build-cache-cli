@@ -153,7 +153,7 @@ func init() {
 	xcelerateProxyCmd.Flags().BoolVar(
 		&wrapperlessPipelineEnabled,
 		"wrapperless-pipeline-enabled",
-		false,
+		wrapperlessPipelineEnabled,
 		"Run the opt-in wrapperless single-ID pipeline alongside the existing enricher",
 	)
 	xcelerateCommand.AddCommand(xcelerateProxyCmd)

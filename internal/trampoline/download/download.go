@@ -50,14 +50,17 @@ func Default() Deps {
 }
 
 // EnsureForVersion returns a path to a trampoline binary for the given CLI
-// version. Resolution order:
-//  1. BITRISE_XCELERATE_TRAMPOLINE_PATH (if set + executable).
-//  2. An embedded per-arch trampoline shipped inside the CLI binary (release
-//     builds have this; dev builds carry an empty placeholder and fall
-//     through).
-//  3. ~/.bitrise-xcelerate/toolchain/trampoline-<version>-universal when its
-//     sha matches the published checksum.
-//  4. Download trampoline + checksums from R2, verify, atomic-write, return.
+// version. Two mutually exclusive paths:
+//
+//   - Release build: the matching per-arch trampoline is baked into the CLI
+//     binary via //go:embed. installEmbedded rewrites the cache from those
+//     bytes and returns. Nothing after that branch runs.
+//   - Dev build: the embedded placeholder is zero bytes. The fallback below
+//     reads ~/.bitrise-xcelerate/toolchain/trampoline-<version>-universal if
+//     its sha matches the R2-published checksum, else downloads from R2.
+//
+// BITRISE_XCELERATE_TRAMPOLINE_PATH wins over both when set, pointing
+// dev loops at a locally-built trampoline without going through either path.
 func EnsureForVersion(ctx context.Context, cliVersion string, p paths.Paths) (string, error) {
 	return ensure(ctx, cliVersion, p, Default())
 }
@@ -143,7 +146,7 @@ func fetchChecksums(ctx context.Context, d Deps, cliVersion string) (map[string]
 		return nil, err
 	}
 
-	out := make(map[string]string, 3) //nolint:mnd // 3 trampoline binaries per release
+	out := make(map[string]string, 3) //nolint:mnd // universal + amd64 + arm64 entries in the shasum file
 	for line := range strings.SplitSeq(string(body), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {

@@ -40,6 +40,42 @@ func sum(body []byte) string {
 	return hex.EncodeToString(s[:])
 }
 
+// TestEnsureForVersion_EmbeddedShortCircuit covers the release-build path
+// where the CLI carries the trampoline inline via //go:embed. When the
+// embedded bytes are non-empty, ensure() must write them and bypass the
+// R2 download entirely.
+func TestEnsureForVersion_EmbeddedShortCircuit(t *testing.T) {
+	saved := embeddedTrampoline
+	embeddedTrampoline = []byte("MACHO-trampoline-stub\x00")
+	t.Cleanup(func() { embeddedTrampoline = saved })
+
+	home := t.TempDir()
+	p := paths.FromHome(home)
+
+	d := Deps{
+		Get: func(context.Context, string) ([]byte, error) {
+			t.Fatalf("embedded short-circuit must not consult R2")
+
+			return nil, nil
+		},
+		Now:      func() time.Time { return time.Unix(1_700_000_000, 0) },
+		Env:      func(string) string { return "" },
+		MkdirAll: os.MkdirAll,
+		Stat:     os.Stat,
+	}
+
+	got, err := ensure(context.Background(), "9.9.9", p, d)
+	require.NoError(t, err)
+
+	body, err := os.ReadFile(got)
+	require.NoError(t, err)
+	assert.Equal(t, embeddedTrampoline, body, "cache must carry the embedded bytes")
+
+	got2, err := ensure(context.Background(), "9.9.9", p, d)
+	require.NoError(t, err)
+	assert.Equal(t, got, got2, "second call is a no-op when existing sha matches")
+}
+
 func TestEnsureForVersion_DownloadSuccess(t *testing.T) {
 	home := t.TempDir()
 	p := paths.FromHome(home)
