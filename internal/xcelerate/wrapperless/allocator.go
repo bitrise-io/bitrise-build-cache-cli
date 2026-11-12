@@ -37,6 +37,11 @@ type BlobStatsSource interface {
 	TakeSnapshot() *blobstats.Snapshot
 }
 
+// intakeCapacity caps the single-producer→single-consumer timeline channel.
+// Overflow drops the newest event — the pipeline is a best-effort attributor,
+// not an at-least-once queue.
+const intakeCapacity = 10_000
+
 type Allocator struct {
 	Hostname        string
 	ProxyPID        int
@@ -53,6 +58,10 @@ type Allocator struct {
 	done       chan struct{}
 	ideTimerMu sync.Mutex
 	ideTimer   *time.Timer
+
+	intake     chan TimelineEvent
+	intakeDone chan struct{}
+	closeOnce  sync.Once
 }
 
 func NewAllocator(hostname string, proxyPID int, proxyStartMS int64) *Allocator {
@@ -60,7 +69,37 @@ func NewAllocator(hostname string, proxyPID int, proxyStartMS int64) *Allocator 
 		Hostname:     hostname,
 		ProxyPID:     proxyPID,
 		ProxyStartMS: proxyStartMS,
+		intake:       make(chan TimelineEvent, intakeCapacity),
+		intakeDone:   make(chan struct{}),
 	}
+}
+
+func (a *Allocator) PushStart(s Start) { a.push(TimelineEvent{Kind: EventKindStart, Start: s}) }
+func (a *Allocator) PushEnd(e End)     { a.push(TimelineEvent{Kind: EventKindEnd, End: e}) }
+func (a *Allocator) PushQuit(q Quit)   { a.push(TimelineEvent{Kind: EventKindQuit, Quit: q}) }
+
+func (a *Allocator) push(ev TimelineEvent) {
+	select {
+	case <-a.intakeDone:
+		return
+	default:
+	}
+
+	select {
+	case a.intake <- ev:
+	default:
+	}
+}
+
+// CloseIntake stops accepting new events and closes the channel so Run exits
+// after flushing any already-buffered events. Pipeline.Close orders this
+// before cancelling ctx so a mid-flight End queued behind a slow enriched PUT
+// is not silently dropped on shutdown.
+func (a *Allocator) CloseIntake() {
+	a.closeOnce.Do(func() {
+		close(a.intakeDone)
+		close(a.intake)
+	})
 }
 
 func (a *Allocator) now() time.Time {
@@ -84,7 +123,10 @@ func (a *Allocator) Handle(ev TimelineEvent) {
 	}
 }
 
-func (a *Allocator) Run(ctx context.Context, timeline *Timeline) {
+// Run drains the internal intake channel into Handle. On ctx cancel it still
+// consumes any already-buffered events before returning. Single-reader by
+// design — Allocator's state machine is not safe for concurrent drivers.
+func (a *Allocator) Run(ctx context.Context) {
 	a.mu.Lock()
 	if a.done == nil {
 		a.done = make(chan struct{})
@@ -94,7 +136,27 @@ func (a *Allocator) Run(ctx context.Context, timeline *Timeline) {
 
 	defer close(done)
 
-	timeline.Drain(ctx, a.Handle)
+	for {
+		select {
+		case ev, ok := <-a.intake:
+			if !ok {
+				return
+			}
+			a.Handle(ev)
+		case <-ctx.Done():
+			for {
+				select {
+				case ev, ok := <-a.intake:
+					if !ok {
+						return
+					}
+					a.Handle(ev)
+				default:
+					return
+				}
+			}
+		}
+	}
 }
 
 // Done blocks until Run returns. nil-safe for tests that drive Handle

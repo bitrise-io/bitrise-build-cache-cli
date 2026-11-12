@@ -18,7 +18,6 @@ type Pipeline struct {
 	Logger      log.Logger
 	Emitter     *Emitter
 	Allocator   *Allocator
-	Timeline    *Timeline
 	DDWatcher   *DDWatcher
 	QuitWatcher *QuitWatcher
 	Proxy       ProxyControl
@@ -72,9 +71,6 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	p.done = done
 	p.mu.Unlock()
 
-	if p.Timeline == nil {
-		p.Timeline = NewTimeline()
-	}
 	if p.Allocator == nil {
 		hostname, pid, startMs := hostAndSelf()
 		p.Allocator = NewAllocator(hostname, pid, startMs)
@@ -92,13 +88,13 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	if p.DDWatcher == nil {
 		p.DDWatcher = &DDWatcher{HomeDir: p.HomeDir, Logger: p.Logger} //nolint:exhaustruct
 	}
-	p.DDWatcher.OnStart = p.Timeline.PushStart
-	p.DDWatcher.OnEnd = p.Timeline.PushEnd
+	p.DDWatcher.OnStart = p.Allocator.PushStart
+	p.DDWatcher.OnEnd = p.Allocator.PushEnd
 
 	if p.QuitWatcher == nil {
 		p.QuitWatcher = &QuitWatcher{Logger: p.Logger} //nolint:exhaustruct
 	}
-	p.QuitWatcher.OnQuit = p.Timeline.PushQuit
+	p.QuitWatcher.OnQuit = p.Allocator.PushQuit
 
 	if err := p.DDWatcher.Start(ctx); err != nil {
 		cancel()
@@ -129,7 +125,7 @@ func (p *Pipeline) Start(ctx context.Context) error {
 
 	go func() {
 		defer close(done)
-		p.Allocator.Run(ctx, p.Timeline)
+		p.Allocator.Run(ctx)
 	}()
 
 	return nil
@@ -155,8 +151,8 @@ func (p *Pipeline) Close() {
 		p.QuitWatcher.Close()
 	}
 
-	if p.Timeline != nil {
-		p.Timeline.Close()
+	if p.Allocator != nil {
+		p.Allocator.CloseIntake()
 	}
 
 	if done != nil {
