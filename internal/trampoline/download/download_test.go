@@ -71,9 +71,21 @@ func TestEnsureForVersion_EmbeddedShortCircuit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, embeddedTrampoline, body, "cache must carry the embedded bytes")
 
+	info1, err := os.Stat(got)
+	require.NoError(t, err)
+
+	// Stamp an older mtime so the sha-match no-op path is the only way the
+	// second call can leave mtime unchanged; a rewrite would move it forward.
+	older := info1.ModTime().Add(-time.Hour)
+	require.NoError(t, os.Chtimes(got, older, older))
+
 	got2, err := ensure(context.Background(), "9.9.9", p, d)
 	require.NoError(t, err)
-	assert.Equal(t, got, got2, "second call is a no-op when existing sha matches")
+	assert.Equal(t, got, got2)
+
+	info2, err := os.Stat(got2)
+	require.NoError(t, err)
+	assert.Equal(t, older, info2.ModTime(), "sha-match path must not rewrite the cached file")
 }
 
 func TestEnsureForVersion_DownloadSuccess(t *testing.T) {

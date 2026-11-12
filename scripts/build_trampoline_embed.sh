@@ -10,6 +10,8 @@
 # falls through to the R2 download path at runtime.
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
 for arch in amd64 arm64; do
   echo "Building trampoline for darwin/$arch..."
   GOOS=darwin GOARCH=$arch CGO_ENABLED=0 go build -ldflags '-s -w' \
