@@ -56,8 +56,9 @@ for filename in "${filenames[@]}"; do
 done
 
 # Trampoline binaries + checksums.
-# Mirrors the R2 upload so the wrapperless activation flow can fall back to
-# GAR when R2 is degraded. Consumed by internal/trampoline/download.
+# Mirrors the R2 upload so GAR carries the same per-version artefact set as
+# the CLI binaries (consumers today read R2; adding GAR keeps the pinned
+# audit trail consistent should the download client learn to fall back).
 TRAMPOLINE_DIR="$DIST_DIR/trampoline"
 if [[ ! -d "$TRAMPOLINE_DIR" ]]; then
   echo "Trampoline directory $TRAMPOLINE_DIR missing — build_trampoline_universal.sh must run before this script."

@@ -75,7 +75,7 @@ var (
 				return fmt.Errorf("read xcelerate config: %w", err)
 			}
 
-			if !wrapperlessPipelineEnabled && config.WrapperlessPipelineEnabled {
+			if !cmd.Flags().Changed("wrapperless-pipeline-enabled") && config.WrapperlessPipelineEnabled {
 				wrapperlessPipelineEnabled = true
 			}
 

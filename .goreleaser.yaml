@@ -51,6 +51,13 @@ builds:
       - amd64
       - arm64
 
+universal_binaries:
+  - id: trampoline-universal
+    ids:
+      - trampoline
+    replace: false
+    name_template: 'trampoline'
+
 archives:
   - id: bitrise-build-cache
     ids:
@@ -61,6 +68,11 @@ archives:
       - trampoline
     formats: [binary]
     name_template: 'trampoline_v{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - id: trampoline-universal
+    ids:
+      - trampoline-universal
+    formats: [binary]
+    name_template: 'trampoline_v{{ .Version }}_darwin_universal'
 
 # Homebrew formula generation is intentionally NOT handled by goreleaser.
 # It is published by a separate, idempotent shell step in bitrise.yml

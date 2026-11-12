@@ -225,6 +225,10 @@ func overrideActivateXcodeParamsFromExistingConfig(
 			activateXcodeParams.XcrunPathOverride,
 			existingConfig.OriginalXcrunPath,
 		)
+
+		if !activateXcodeParams.WrapperlessPipelineEnabled && existingConfig.WrapperlessPipelineEnabled {
+			activateXcodeParams.WrapperlessPipelineEnabled = true
+		}
 	} else if isXcelerateInPath(osProxy, envs) {
 		logger.Warnf("It seems that the xcelerate config file is missing, but xcelerate is already in the PATH. \n" +
 			"This will lead to unexpected behavior when determining the xcodebuild path. \n" +

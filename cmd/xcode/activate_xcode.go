@@ -133,7 +133,7 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.WrapperlessPipelineEnabled,
 		"wrapperless-pipeline",
 		activateXcodeParams.WrapperlessPipelineEnabled,
-		`Opt into the wrapperless single-ID pipeline. The proxy will emit a BE invocation row per build from DerivedData filesystem events, attributing IDE ⌘B and direct /usr/bin/xcodebuild runs without rewriting argv. Requires the Bitrise CAS Xcode toolchain to be installed. See docs/wrapperless.md.`)
+		`Opt into the wrapperless single-ID pipeline. The proxy will emit a BE invocation row per build from DerivedData filesystem events, attributing IDE ⌘B and direct /usr/bin/xcodebuild runs without rewriting argv. See docs/wrapperless.md.`)
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheSkipFlags,
 		"cache-skip-flags",
 		activateXcodeParams.BuildCacheSkipFlags,
