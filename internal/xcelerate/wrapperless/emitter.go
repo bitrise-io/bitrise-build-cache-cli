@@ -403,7 +403,7 @@ func shortCommand(bucket Bucket) string {
 func fixedReasonLabel(r BucketReason) (string, bool) {
 	switch r {
 	case BucketReasonIDEBackground:
-		return "ide background", true
+		return "Xcode IDE background", true
 	case BucketReasonCLIImplicit:
 		return "cli run", true
 	case BucketReasonUnknown, BucketReasonEndMatched, BucketReasonEndOfPrior, BucketReasonSpeculative:

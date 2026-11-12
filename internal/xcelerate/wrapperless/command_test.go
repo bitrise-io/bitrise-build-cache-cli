@@ -34,7 +34,7 @@ func TestShortCommand(t *testing.T) {
 		{
 			name:   "ide background reason bypasses scheme",
 			bucket: Bucket{Reason: BucketReasonIDEBackground, Scheme: "Whatever"},
-			want:   "ide background",
+			want:   "Xcode IDE background",
 		},
 		{
 			name:   "cli implicit reason bypasses scheme",
@@ -89,7 +89,7 @@ func TestFullCommand(t *testing.T) {
 		{
 			name:   "ide background reason bypasses argv",
 			bucket: Bucket{Reason: BucketReasonIDEBackground, Scheme: "X", Project: "Y"},
-			want:   "ide background",
+			want:   "Xcode IDE background",
 		},
 	}
 
