@@ -9,6 +9,8 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/shortcmd"
 )
 
 //
@@ -240,16 +242,9 @@ func (p Default) ResolvesPackages() bool {
 }
 
 func (p Default) ShortCommand() string {
-	base := p.shortCommandBase()
-	suffix := p.shapingSuffix()
-	if suffix == "" {
-		return base
-	}
-	if base == "" {
-		return suffix
-	}
+	scheme, testPlan, configuration := p.extractShapingFlagValues()
 
-	return base + " " + suffix
+	return shortcmd.Render(p.shortCommandBase(), scheme, testPlan, configuration)
 }
 
 // shortCommandBase resolves the action keyword for the analytics short
@@ -274,29 +269,6 @@ func (p Default) shortCommandBase() string {
 	p.logger.Debugf("No action keyword in argv; defaulting to %q per xcodebuild(1)", "build")
 
 	return "build"
-}
-
-// shapingSuffix returns the bracketed "[scheme / testPlan / configuration]"
-// suffix appended to the short command for analytics. Missing values are
-// skipped (no placeholder). Returns "" if none of the three are present.
-func (p Default) shapingSuffix() string {
-	scheme, testPlan, configuration := p.extractShapingFlagValues()
-
-	parts := make([]string, 0, 3)
-	if scheme != "" {
-		parts = append(parts, scheme)
-	}
-	if testPlan != "" {
-		parts = append(parts, testPlan)
-	}
-	if configuration != "" {
-		parts = append(parts, configuration)
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-
-	return "[" + strings.Join(parts, " / ") + "]"
 }
 
 // extractShapingFlagValues scans OriginalArgs for `-scheme`, `-testPlan`, and
