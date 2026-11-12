@@ -388,6 +388,9 @@ func (s *fakeStore) Clear() error {
 }
 
 func TestPendingBrokerSource(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
 	_, ok := pendingBrokerSource(map[string]string{})
 	assert.False(t, ok)
 
@@ -403,6 +406,14 @@ func TestPendingBrokerSource(t *testing.T) {
 		authpkg.EnvVMToken:    "vm-token",
 		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
 		authpkg.EnvJWT:        "ci-jwt",
+	})
+	assert.False(t, ok)
+
+	// So does a stored credential.
+	require.NoError(t, keychain.New().Save(authpkg.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
+	_, ok = pendingBrokerSource(map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
 	})
 	assert.False(t, ok)
 }

@@ -1002,6 +1002,21 @@ func TestAuthCheck_OIDCMisconfiguredBesideAVMTokenWarns(t *testing.T) {
 	assert.Contains(t, res.Detail, authpkg.EnvVMToken)
 }
 
+// A stored login wins over the VM token, so it is what the check names.
+func TestAuthCheck_StoredLoginBeatsTheVMToken(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "t", WorkspaceID: "w"}}}
+	r.Envs = map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+	}
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateOK, res.State)
+	assert.NotContains(t, res.Detail, "VM token")
+}
+
 // The pending exchange must not hide a stored token the CLI cannot send.
 func TestAuthCheck_VMTokenDoesNotMaskABrokenStoredToken(t *testing.T) {
 	r := newMinimalDoctor(t)

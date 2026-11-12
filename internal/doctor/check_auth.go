@@ -30,7 +30,7 @@ func (d *Doctor) authCheck() Check {
 			// Only when nothing was found: a broken stored token must still surface.
 			var brokering string
 			if errors.Is(err, auth.ErrTokenNotProvided) || errors.Is(err, auth.ErrWorkspaceIDNotProvided) {
-				brokering = live.BrokeringEnv(d.Envs)
+				brokering = d.resolver().BrokeringEnv(d.Envs)
 			}
 			if res, ok := oidcResult(d.Envs, resolved, brokering); ok {
 				return res

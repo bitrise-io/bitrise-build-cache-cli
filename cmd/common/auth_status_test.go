@@ -27,7 +27,16 @@ func TestCurrentAuthStatus(t *testing.T) {
 		t.Fatalf("expected unconfigured, got %+v", a)
 	}
 
-	// A stored OAuth login is reported as such, with workspace + a future expiry.
+	// On a Remote Dev Env with nothing stored the VM token is what builds use, even
+	// though this offline read never exchanges it.
+	t.Setenv(auth.EnvVMToken, "vm-token")
+	t.Setenv(auth.EnvVMTokenURL, "https://instance-manager.services.bitrise.io/vm/tokens")
+	if a := currentAuthStatus(); !a.Configured || !strings.HasPrefix(a.Source, "VM token (brokered)") {
+		t.Fatalf("expected the pending VM token exchange, got %+v", a)
+	}
+
+	// A stored OAuth login is reported as such, with workspace + a future expiry,
+	// and wins over the VM token.
 	if err := oauthSave(t, auth.TokenSet{
 		AuthToken: "p", RefreshToken: "r", WorkspaceID: "acme",
 		PATExpiry: time.Now().Add(time.Hour),
@@ -40,14 +49,6 @@ func TestCurrentAuthStatus(t *testing.T) {
 	}
 	if a.Expired || a.TokenExpiry == "" {
 		t.Fatalf("expected a valid (non-expired) token with an expiry, got %+v", a)
-	}
-
-	// On a Remote Dev Env the VM token is exchanged ahead of the stored login, so it
-	// is what builds use, even though this offline read never exchanges it.
-	t.Setenv(auth.EnvVMToken, "vm-token")
-	t.Setenv(auth.EnvVMTokenURL, "https://instance-manager.services.bitrise.io/vm/tokens")
-	if a := currentAuthStatus(); !a.Configured || !strings.HasPrefix(a.Source, "VM token (brokered)") {
-		t.Fatalf("expected the pending VM token exchange, got %+v", a)
 	}
 
 	// A manual env token takes precedence over the stored login and is reported

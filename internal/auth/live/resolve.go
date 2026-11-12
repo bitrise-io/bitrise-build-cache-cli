@@ -80,7 +80,7 @@ func (r *Resolver) Resolve(ctx context.Context, envs map[string]string) (auth.Cr
 }
 
 func (r *Resolver) resolveAndRefresh(ctx context.Context, envs map[string]string, usable func(auth.TokenSet) bool) (auth.Credential, auth.Origin, error) {
-	cred, origin, backing, err := r.resolveWith(envs, usable, r.exchanged(ctx))
+	cred, origin, backing, err := r.resolveWith(envs, usable, r.oidcStep(ctx), r.brokerStep(ctx))
 	if err != nil || !origin.StoreManaged() {
 		return cred, origin, err
 	}
@@ -145,8 +145,10 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 // so neither a GitHub Actions OIDC token nor a VM token is exchanged here —
 // `status` and the doctor must report what is already on the machine.
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
-	return r.resolveWith(envs, auth.TokenSet.Populated, nil)
+	return r.resolveWith(envs, auth.TokenSet.Populated, nil, nil)
 }
+
+type exchangeStep func(map[string]string) (auth.Credential, auth.Origin, error)
 
 // resolveWith applies the precedence order and returns the backing store when the
 // credential came from one, so the caller can refresh in place. usable decides
@@ -154,7 +156,7 @@ func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin
 func (r *Resolver) resolveWith(
 	envs map[string]string,
 	usable func(auth.TokenSet) bool,
-	exchange func(map[string]string) (auth.Credential, auth.Origin, error),
+	oidc, broker exchangeStep,
 ) (auth.Credential, auth.Origin, store.Store, error) {
 	if r.Prefer == PreferStored {
 		if cred, origin, backing, ok := r.fromStores(usable); ok {
@@ -168,14 +170,12 @@ func (r *Resolver) resolveWith(
 		return cred, origin, nil, err
 	}
 
-	// After the injected credentials and before the stores: the job can always
-	// mint one, so trying it earlier would shadow an explicit token, and later
-	// would shadow it behind a stale login on the machine.
+	// Ahead of the stores, because the user configured a trust policy for this job.
 	// Kept for the end: if nothing else resolves, why the exchange the user asked
 	// for failed is the actionable error, not that no token is set.
 	var exchangeErr error
-	if exchange != nil {
-		cred, origin, err := exchange(envs)
+	if oidc != nil {
+		cred, origin, err := oidc(envs)
 		if err == nil && cred.Token != "" {
 			return cred, origin, nil, nil
 		}
@@ -187,6 +187,16 @@ func (r *Resolver) resolveWith(
 			r.warnFellBack(exchangeErr)
 
 			return validateStored(cred, origin, backing)
+		}
+	}
+
+	// After the stores: the VM token is a convenience the machine offers regardless,
+	// so a login or `auth set` token on it is the user's choice and wins.
+	if broker != nil {
+		if cred, origin, err := broker(envs); err == nil && cred.Token != "" {
+			r.warnFellBack(exchangeErr)
+
+			return cred, origin, nil, nil
 		}
 	}
 
@@ -225,27 +235,24 @@ func validateStored(cred auth.Credential, origin auth.Origin, backing store.Stor
 	return cred, origin, backing, nil
 }
 
-// exchanged returns the precedence step for a credential this CLI mints itself: the
-// GitHub Actions OIDC exchange first, because the user configured a policy, then the
-// VM token the machine offers regardless. Its error is only ever the OIDC failure; a
-// VM token nobody asked for is no reason to replace the usual one.
-func (r *Resolver) exchanged(ctx context.Context) func(map[string]string) (auth.Credential, auth.Origin, error) {
+func (r *Resolver) oidcStep(ctx context.Context) exchangeStep {
 	return func(envs map[string]string) (auth.Credential, auth.Origin, error) {
-		cred, oidcErr := r.oidcExchanged(ctx, envs)
-		if oidcErr == nil && cred.Token != "" {
-			return cred, auth.Origin{Backend: auth.BackendEnv, Provenance: auth.ProvenanceOIDC}, nil
-		}
+		cred, err := r.oidcExchanged(ctx, envs)
 
+		return cred, auth.Origin{Backend: auth.BackendEnv, Provenance: auth.ProvenanceOIDC}, err
+	}
+}
+
+// brokerStep logs a failure at debug level only: a VM token nobody asked for is no
+// reason to replace the usual error.
+func (r *Resolver) brokerStep(ctx context.Context) exchangeStep {
+	return func(envs map[string]string) (auth.Credential, auth.Origin, error) {
 		cred, err := r.brokerCredential(ctx, envs)
 		if err != nil {
 			r.debugf("could not broker a VM token: %s", err)
 
-			return auth.Credential{}, auth.Origin{}, oidcErr
+			return auth.Credential{}, auth.Origin{}, err
 		}
-		if cred.Token == "" {
-			return auth.Credential{}, auth.Origin{}, oidcErr
-		}
-		r.warnFellBack(oidcErr)
 
 		return cred, auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}, nil
 	}
@@ -308,16 +315,15 @@ func (r *Resolver) brokerCredential(ctx context.Context, envs map[string]string)
 	return auth.Credential{Token: token, WorkspaceID: workspaceID, Expiry: expiresAt}, nil
 }
 
-// CanBroker reports whether the environment offers a VM token this CLI would exchange.
-func CanBroker(envs map[string]string) bool {
-	return buildhub.TokenEnv(envs) != ""
-}
-
-// BrokeringEnv names the VM token env var Resolve would exchange ahead of anything
-// ResolveNoRefresh can find, or "". Offline callers use it to name the credential
-// builds will send, which ResolveNoRefresh never brokers.
-func BrokeringEnv(envs map[string]string) string {
+// BrokeringEnv names the VM token env var Resolve would exchange, or "": only when
+// no env credential, no runnable OIDC exchange and no stored credential precedes it.
+// Offline callers use it to name the credential builds will send, which
+// ResolveNoRefresh never brokers.
+func (r *Resolver) BrokeringEnv(envs map[string]string) string {
 	if hasAuthEnvVars(envs) || oidcCanExchange(envs) {
+		return ""
+	}
+	if _, _, _, ok := r.fromStores(auth.TokenSet.Populated); ok {
 		return ""
 	}
 
@@ -325,7 +331,7 @@ func BrokeringEnv(envs map[string]string) string {
 }
 
 // oidcCanExchange mirrors what oidcCredential needs before it tries the exchange;
-// without it Resolve falls through to the VM token.
+// without it Resolve falls through to the stores and then the VM token.
 func oidcCanExchange(envs map[string]string) bool {
 	return auth.OnGitHubActionsOIDC(envs) && strings.TrimSpace(envs[auth.EnvWorkspaceID]) != ""
 }

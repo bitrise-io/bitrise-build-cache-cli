@@ -68,11 +68,11 @@ func TestShadowingAuthEnv(t *testing.T) {
 		t.Fatalf("expected no shadowing env, got %q", got)
 	}
 
-	// On a Remote Dev Env the exchanged VM token is used ahead of any login.
+	// A login overrides the VM token, so it never shadows one.
 	t.Setenv(auth.EnvVMToken, "vm-token")
 	t.Setenv(auth.EnvVMTokenURL, "https://instance-manager.services.bitrise.io/vm/tokens")
-	if got := shadowingAuthEnv(); got != auth.EnvVMToken {
-		t.Fatalf("expected VM token shadow, got %q", got)
+	if got := shadowingAuthEnv(); got != "" {
+		t.Fatalf("expected no shadowing env with a VM token, got %q", got)
 	}
 
 	// The CI service token shadows a stored login.

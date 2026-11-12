@@ -246,8 +246,7 @@ The resolver. The only package a consumer needs.
 | `(*Bound).Cached(ttl) *Cached` | `Get` for a hot path: re-resolves at most once per ttl, or earlier near expiry, and serves the last good credential on failure. |
 | `(*Resolver).ResolveUsername(envs) (string, UsernameSource)` | Names the person behind a local invocation, for analytics attribution: env → stored record → OS user. Deliberately **not** part of `Resolve` — `auth username` writes the name independently of the token, so finding it costs a store read that the per-RPC callers must not pay for a value they never use. |
 | `Describe(Credential, Origin) string` | The one-line human description. Pure formatting, no I/O — `Origin` already carries everything it needs. |
-| `CanBroker(envs) bool` | The environment offers a usable VM token pair. |
-| `BrokeringEnv(envs) string`, `DescribePendingBroker() string` | For the offline callers: names the VM token `Resolve` would exchange ahead of anything `ResolveNoRefresh` can find — no injected credential, and no OIDC exchange it could actually attempt — so `status`, the doctor and `auth login` name the credential builds will send. |
+| `(*Resolver).BrokeringEnv(envs) string`, `DescribePendingBroker() string` | For the offline callers: names the VM token `Resolve` would exchange — only when there is no injected credential, no OIDC exchange it could actually attempt and no usable stored credential — so `status`, the doctor and `auth status` name the credential builds will send. |
 
 **Precedence**, in `Resolve`, `ResolveNoRefresh` and `ResolvePinned` alike:
 
@@ -255,19 +254,23 @@ The resolver. The only package a consumer needs.
 env vars (AUTH_TOKEN + WORKSPACE_ID)
   → CI JWT (BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN)
   → GitHub Actions OIDC exchange (OIDC_POLICY_ID + WORKSPACE_ID + GitHub's ACTIONS_ID_TOKEN_REQUEST_*)
-  → brokered VM token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL, else BITRISEIO_VM_TOKEN + _URL)
   → OS keychain
   → config file, `credentials` key
+  → brokered VM token (BITRISEIO_BUILD_HUB_VM_TOKEN + _URL, else BITRISEIO_VM_TOKEN + _URL)
   → config file, `authConfig` (analytics) block
 ```
 
-The two exchange steps sit after the injected credentials and before the stores.
-The job can always mint a credential, so trying earlier would shadow a token the
-user configured deliberately, and later would shadow it behind a stale login on the
-machine. They are the only precedence steps that make a network call, so they are
-passed into `resolveWith` as one step rather than called from it: `ResolveNoRefresh`
-passes nil and therefore stays offline, which is what `status` and the doctor depend
-on. A failed exchange is not fatal — resolution falls through to the stores. Each
+The OIDC exchange sits after the injected credentials and before the stores: a trust
+policy is something the user configured for the job, so it beats whatever login is on
+the machine. The VM token exchange sits after the stores: the VM offers it whether or
+not anyone asked, so an `auth login` or `auth set` credential on the machine is the
+user's explicit choice and wins (a Build Hub VM is ephemeral and normally holds
+none). It still beats the `authConfig` block, which holds at most an earlier copy of
+the brokered token. The exchanges are the only precedence steps that make a network
+call, so they are passed into `resolveWith` as steps rather than called from it:
+`ResolveNoRefresh` passes nil and therefore stays offline, which is what `status` and
+the doctor depend on. A failed exchange is not fatal — resolution falls through to
+the next step. Each
 exchange client is process-wide (`githuboidc.Shared`, `buildhub.Shared`), so every
 resolver in one command shares a single cached token, and each backs off for 30
 seconds after a failed exchange, so a down issuer does not cost every per-RPC resolve

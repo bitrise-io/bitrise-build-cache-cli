@@ -128,8 +128,8 @@ func TestResolve_OIDCBeatsTheStores(t *testing.T) {
 }
 
 // A rejected exchange degrades to whatever else is available rather than taking
-// the build down.
-func TestResolve_OIDCFailureFallsThroughToBrokeringThenTheStores(t *testing.T) {
+// the build down: the stores first, then the VM token.
+func TestResolve_OIDCFailureFallsThroughToTheStoresThenBrokering(t *testing.T) {
 	failing := func(context.Context, map[string]string) (auth.Credential, error) {
 		return auth.Credential{}, errors.New("invalid_token")
 	}
@@ -138,16 +138,19 @@ func TestResolve_OIDCFailureFallsThroughToBrokeringThenTheStores(t *testing.T) {
 		envs[k] = v
 	}
 
-	r := &Resolver{OIDC: failing, Broker: brokerReturning(t, "brokered-org", nil), Backends: []store.Store{}}
+	brokerCalls := 0
+	stored := &fakeStore{backend: auth.BackendKeychain, present: true, ts: auth.TokenSet{AuthToken: "stored-pat", WorkspaceID: "stored-org"}}
+	r := &Resolver{OIDC: failing, Broker: brokerReturning(t, "brokered-org", &brokerCalls), Backends: []store.Store{stored}}
+	cred, _, err := r.Resolve(context.Background(), envs)
+	require.NoError(t, err)
+	assert.Equal(t, "stored-pat", cred.Token)
+	assert.Zero(t, brokerCalls)
+
+	r = &Resolver{OIDC: failing, Broker: brokerReturning(t, "brokered-org", &brokerCalls), Backends: []store.Store{}}
 	_, origin, err := r.Resolve(context.Background(), envs)
 	require.NoError(t, err)
 	assert.Equal(t, auth.ProvenanceBrokered, origin.Provenance)
-
-	stored := &fakeStore{backend: auth.BackendKeychain, present: true, ts: auth.TokenSet{AuthToken: "stored-pat", WorkspaceID: "stored-org"}}
-	r = &Resolver{OIDC: failing, Backends: []store.Store{stored}}
-	cred, _, err := r.Resolve(context.Background(), oidcEnvs())
-	require.NoError(t, err)
-	assert.Equal(t, "stored-pat", cred.Token)
+	assert.Equal(t, 1, brokerCalls)
 }
 
 // The exchanged token is opaque, so there is no workspace to read from it; minting
