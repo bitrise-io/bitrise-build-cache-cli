@@ -28,34 +28,39 @@ The wrapperless pipeline listens at the filesystem layer where every Xcode build
 ## Components
 
 ```
-                ┌──────────────────────┐
-                │   DDWatcher (fsnotify) │
-                │   ~/Library/.../DerivedData │
-                └──────────┬───────────┘
-                           │
-          basename-dispatched handleEvent
-                           │
-      ┌────────────────────┼─────────────────────┐
-      │ xcbuilddata CREATE │ LogStoreManifest WRITE │
-      │                    │                         │
-      ▼                    ▼                         ▼
- Start{hex, action}    End{uuid, scheme, duration, status, xcactivitylog}
-      │                    │                         │
-      └──────────┬─────────┴─────────┬───────────────┘
-                 │                   │
-                 ▼                   ▼
-            ┌──────────────────────────┐
-            │       Allocator          │
-            │ single intake channel +  │
-            │ bucket state machine     │
-            └──────────┬───────────────┘
-                       │
-         OnOpenInvoc + OnReady callbacks
-                       │
-                       ▼
-                 ┌────────────┐
-                 │  Emitter   │ ─→ BE PutInvocation (slim, then enriched)
-                 └────────────┘
+   ┌──────────────────────┐             ┌──────────────────────┐
+   │ DDWatcher (fsnotify) │             │ QuitWatcher (kqueue) │
+   │ ~/Library/.../        │             │ peer process exit    │
+   │ DerivedData          │             │                      │
+   └──────────┬───────────┘             └──────────┬───────────┘
+              │ basename-dispatched                │
+              │ handleEvent                        │
+     ┌────────┴─────────┐                          │
+     │                  │                          │
+     ▼                  ▼                          ▼
+  xcbuilddata     LogStoreManifest             process exit
+  CREATE          WRITE                        event
+     │                  │                          │
+     ▼                  ▼                          ▼
+  Start{hex,      End{uuid, scheme,            Quit{pid,
+        action}         duration, status,             ancestry}
+                        xcactivitylog}
+     │                  │                          │
+     └──────────┬───────┴──────────────┬───────────┘
+                │                      │
+                ▼                      ▼
+           ┌───────────────────────────────┐
+           │           Allocator           │
+           │   single intake channel +     │
+           │   bucket state machine        │
+           └──────────────┬────────────────┘
+                          │
+            OnOpenInvoc + OnReady callbacks
+                          │
+                          ▼
+                    ┌────────────┐
+                    │  Emitter   │ ─→ BE PutInvocation (slim, then enriched)
+                    └────────────┘
 ```
 
 ### DDWatcher — `internal/xcelerate/wrapperless/dd_watcher.go`
