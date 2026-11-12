@@ -547,6 +547,50 @@ func TestEndWatcher_EmitsXCActivityLogPathForSealedEntry(t *testing.T) {
 	w.Close()
 }
 
+// TestEndWatcher_UsesFileNameFromManifest asserts the sibling xcactivitylog
+// path is read from the manifest entry's `fileName` field when present.
+// Xcode writes this per-entry, so relying on the UUID-convention fallback
+// alone is fragile.
+func TestEndWatcher_UsesFileNameFromManifest(t *testing.T) {
+	const bodyWithFileName = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>AAAA-BBBB</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>AAAA-BBBB</string>
+    <key>signature</key><string>Build MyScheme project MyProject</string>
+    <key>schemeIdentifier-schemeName</key><string>MyScheme</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>fileName</key><string>renamed-by-xcode.xcactivitylog</string>
+    <key>timeStartedRecording</key><real>9999999678.0</real>
+    <key>timeStoppedRecording</key><real>9999999688.0</real>
+  </dict>
+</dict></dict></plist>`
+
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-rename")
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	w := &DDWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	path := writeManifest(t, root, bodyWithFileName)
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	got := waitForEnd(t, ends)
+	assert.Equal(t, filepath.Join(filepath.Dir(path), "renamed-by-xcode.xcactivitylog"), got.XCActivityLogPath)
+
+	w.Close()
+}
+
 // TestEndWatcher_SeedPicksUpPreExistingSealedManifest covers the window where
 // Xcode sealed a manifest before the proxy's EndWatcher started. The seed
 // walk must surface the sealed entry on Start.
