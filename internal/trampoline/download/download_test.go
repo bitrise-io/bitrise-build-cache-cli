@@ -88,6 +88,46 @@ func TestEnsureForVersion_EmbeddedShortCircuit(t *testing.T) {
 	assert.Equal(t, older, info2.ModTime(), "sha-match path must not rewrite the cached file")
 }
 
+// TestEnsureForVersion_EnvOverrideWinsOverEmbed pins the documented
+// precedence: BITRISE_XCELERATE_TRAMPOLINE_PATH must short-circuit the
+// embed path too, not only the R2 fallback.
+func TestEnsureForVersion_EnvOverrideWinsOverEmbed(t *testing.T) {
+	saved := embeddedTrampoline
+	embeddedTrampoline = []byte("MACHO-trampoline-stub\x00")
+	t.Cleanup(func() { embeddedTrampoline = saved })
+
+	home := t.TempDir()
+	p := paths.FromHome(home)
+
+	override := filepath.Join(home, "local-trampoline")
+	require.NoError(t, os.WriteFile(override, []byte("local-build"), 0o755))
+
+	d := Deps{
+		Get: func(context.Context, string) ([]byte, error) {
+			t.Fatalf("override must short-circuit both embed and R2")
+
+			return nil, nil
+		},
+		Now: func() time.Time { return time.Unix(1_700_000_000, 0) },
+		Env: func(k string) string {
+			if k == EnvOverride {
+				return override
+			}
+
+			return ""
+		},
+		MkdirAll: os.MkdirAll,
+		Stat:     os.Stat,
+	}
+
+	got, err := ensure(context.Background(), "9.9.9", p, d)
+	require.NoError(t, err)
+	assert.Equal(t, override, got, "override path must win over the embed cache path")
+
+	_, err = os.Stat(p.TrampolineBinary("9.9.9"))
+	assert.True(t, os.IsNotExist(err), "embed must not write the cache when override is set")
+}
+
 func TestEnsureForVersion_DownloadSuccess(t *testing.T) {
 	home := t.TempDir()
 	p := paths.FromHome(home)

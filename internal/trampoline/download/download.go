@@ -56,8 +56,8 @@ func Default() Deps {
 //     binary via //go:embed. installEmbedded rewrites the cache from those
 //     bytes and returns. Nothing after that branch runs.
 //   - Dev build: the embedded placeholder is zero bytes. The fallback below
-//     reads ~/.bitrise-xcelerate/toolchain/trampoline-<version>-universal if
-//     its sha matches the R2-published checksum, else downloads from R2.
+//     reads the cached trampoline if its sha matches the R2-published
+//     checksum, else downloads from R2.
 //
 // BITRISE_XCELERATE_TRAMPOLINE_PATH wins over both when set, pointing
 // dev loops at a locally-built trampoline without going through either path.

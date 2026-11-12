@@ -25,9 +25,7 @@ release:
 before:
   hooks:
     - go mod tidy
-    # Stage the trampoline into the embed source dir so the CLI binary
-    # carries it inline. Per-arch files are consumed by the matching
-    # //go:build tagged embed_*.go; non-darwin CLI builds skip them.
+    # Stage the trampoline into the embed source dir for //go:embed to pick up.
     - ./scripts/build_trampoline_embed.sh
 
 builds:
