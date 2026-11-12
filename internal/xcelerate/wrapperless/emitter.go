@@ -20,6 +20,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/shortcmd"
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg wrapperless_test . InvocationPutter
@@ -373,27 +374,12 @@ func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) a
 	return *inv
 }
 
-// shortCommand renders the BE row's command string. Dedicated reasons
-// (IDE-background, CLI-implicit) carry a fixed label so the BE row never
-// masquerades as a user build; otherwise it's "<action> [<scheme> / <config>]"
-// matching the wrapper flow's convention. Configuration is appended only when
-// present; scheme-only renders as "<action> [<scheme>]".
 func shortCommand(bucket Bucket) string {
 	if label, ok := fixedReasonLabel(bucket.Reason); ok {
 		return label
 	}
 
-	action := actionVerb(bucket)
-	if bucket.Scheme == "" {
-		return action
-	}
-
-	target := bucket.Scheme
-	if bucket.Configuration != "" {
-		target += " / " + bucket.Configuration
-	}
-
-	return action + " [" + target + "]"
+	return shortcmd.Render(actionVerb(bucket), bucket.Scheme, "", bucket.Configuration)
 }
 
 // fixedReasonLabel returns the dedicated label for BucketReasons whose row
