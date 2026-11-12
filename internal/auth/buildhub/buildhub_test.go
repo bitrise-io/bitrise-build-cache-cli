@@ -261,8 +261,8 @@ func TestToken_BacksOffAfterAFailure(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
 }
 
-// hangingServer blocks while slow is set, then serves an hour-long token. calls counts
-// every request.
+// hangingServer holds a request that arrives while slow is set until the request is
+// cancelled; once slow is cleared, later requests get an hour-long token.
 func hangingServer(t *testing.T, slow *atomic.Bool, calls *int32) *httptest.Server {
 	t.Helper()
 	release := make(chan struct{})
