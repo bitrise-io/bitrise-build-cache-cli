@@ -968,3 +968,18 @@ func TestAuthCheck_OIDCMisconfiguredBesideAWorkingCredentialWarns(t *testing.T) 
 	assert.Equal(t, StateWarn, res.State)
 	assert.Contains(t, res.Detail, authpkg.EnvWorkspaceID)
 }
+
+// Like OIDC, a VM token the check never exchanges is not "no credentials".
+func TestAuthCheck_VMTokenBeforeTheFirstExchangeIsNotMissing(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
+	r.Envs = map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+	}
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateOK, res.State)
+	assert.Contains(t, res.Detail, "VM token (brokered)")
+}

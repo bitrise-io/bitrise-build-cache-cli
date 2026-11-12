@@ -137,3 +137,22 @@ func TestResolvePinned_HealthyKeychainLeavesTheFileUntouched(t *testing.T) {
 	require.True(t, ok, "the file store must still hold its record — an incidental write must not clear it")
 	assert.Equal(t, fileLogin, onDisk, "the file store must be byte-for-byte untouched")
 }
+
+// Off CI the analytics block would outlive the brokered token it holds and replace a
+// login's; on a Build Hub runner the offline readers still need it.
+func TestResolvePinned_MirrorsABrokeredTokenOnlyOnCI(t *testing.T) {
+	for _, tc := range []struct {
+		isCI     bool
+		mirrored bool
+	}{{isCI: true, mirrored: true}, {isCI: false, mirrored: false}} {
+		t.Setenv("HOME", t.TempDir())
+		r := &Resolver{Broker: brokerReturning(t, "org-slug", nil), Backends: []store.Store{}}
+
+		_, origin, err := r.ResolvePinned(t.Context(), brokerEnvs(), tc.isCI)
+		require.NoError(t, err)
+		require.Equal(t, auth.ProvenanceBrokered, origin.Provenance)
+
+		cfg, _ := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		assert.Equal(t, tc.mirrored, cfg.AuthConfig.Populated(), "isCI: %v", tc.isCI)
+	}
+}

@@ -5,6 +5,7 @@ package live
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 func brokerEnvs() map[string]string {
 	return map[string]string{
 		auth.EnvBuildHubVMToken:    "vm-token-value",
-		auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io/build_hub/vm_tokens",
+		auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io/build-hub/vm/tokens",
 	}
 }
 
@@ -154,4 +155,36 @@ func TestBrokeredOriginIsDistinctFromTheCIJWT(t *testing.T) {
 	assert.NotEqual(t, brokered.Label(), injected.Label())
 	assert.NotEqual(t, brokered.ShortLabel(), injected.ShortLabel())
 	assert.False(t, brokered.StoreManaged(), "a brokered token has no store to refresh from")
+}
+
+// The offline callers name the brokered token only where Resolve would actually
+// reach the exchange before what they found.
+func TestBrokeringEnv(t *testing.T) {
+	brokered := auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}
+	keychain := auth.Origin{Backend: auth.BackendKeychain, Provenance: auth.ProvenanceOAuthLogin}
+	rde := map[string]string{auth.EnvVMToken: "vm-token", auth.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens"}
+	with := func(extra map[string]string) map[string]string {
+		envs := maps.Clone(rde)
+		maps.Copy(envs, extra)
+
+		return envs
+	}
+
+	for _, tc := range []struct {
+		name   string
+		envs   map[string]string
+		origin auth.Origin
+		want   string
+	}{
+		{"shadows a login", rde, keychain, auth.EnvVMToken},
+		{"nothing found", rde, auth.Origin{}, auth.EnvVMToken},
+		{"Build Hub pair", brokerEnvs(), keychain, auth.EnvBuildHubVMToken},
+		{"no pair", map[string]string{}, keychain, ""},
+		{"already the brokered token", rde, brokered, ""},
+		{"injected JWT wins", with(map[string]string{auth.EnvJWT: "jwt"}), auth.Origin{Backend: auth.BackendJWT}, ""},
+		{"env token wins", with(map[string]string{auth.EnvAuthToken: "pat", auth.EnvWorkspaceID: "ws"}), auth.Origin{Backend: auth.BackendEnv}, ""},
+		{"OIDC goes first", with(map[string]string{auth.EnvOIDCPolicyID: "policy"}), keychain, ""},
+	} {
+		assert.Equal(t, tc.want, BrokeringEnv(tc.envs, tc.origin), tc.name)
+	}
 }

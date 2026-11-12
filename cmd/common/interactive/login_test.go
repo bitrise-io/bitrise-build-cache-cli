@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	keyring "github.com/zalando/go-keyring"
+
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
 // makeServiceJWT builds a minimal UMA-style Bitrise service JWT carrying org_id,
@@ -59,8 +61,18 @@ func TestShadowingAuthEnv(t *testing.T) {
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
 	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+	for _, key := range []string{auth.EnvBuildHubVMToken, auth.EnvBuildHubVMTokenURL, auth.EnvVMToken, auth.EnvVMTokenURL} {
+		t.Setenv(key, "")
+	}
 	if got := shadowingAuthEnv(); got != "" {
 		t.Fatalf("expected no shadowing env, got %q", got)
+	}
+
+	// On a Remote Dev Env the exchanged VM token is used ahead of any login.
+	t.Setenv(auth.EnvVMToken, "vm-token")
+	t.Setenv(auth.EnvVMTokenURL, "https://instance-manager.services.bitrise.io/vm/tokens")
+	if got := shadowingAuthEnv(); got != auth.EnvVMToken {
+		t.Fatalf("expected VM token shadow, got %q", got)
 	}
 
 	// The CI service token shadows a stored login.

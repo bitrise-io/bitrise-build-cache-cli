@@ -27,3 +27,9 @@ func Describe(cred auth.Credential, origin auth.Origin) string {
 
 	return out
 }
+
+// DescribePendingBroker is Describe for a VM token exchange that has not happened yet.
+func DescribePendingBroker() string {
+	return auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}.Label() +
+		", exchanged when a command first needs a credential"
+}

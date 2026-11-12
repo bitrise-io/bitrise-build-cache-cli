@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -196,61 +197,97 @@ func TestShared_ReusesOneClientPerPair(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestCanBrokerVMToken_MatchesFromEnv(t *testing.T) {
-	for _, envs := range []map[string]string{
-		{},
-		{auth.EnvBuildHubVMToken: "vm-token"},
-		{auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"},
-		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvBuildHubVMTokenURL: "https://api.bitrise.io"},
-		{auth.EnvVMToken: "vm-token"},
-		{auth.EnvVMTokenURL: "https://api.bitrise.io"},
-		{auth.EnvVMToken: "vm-token", auth.EnvVMTokenURL: "https://api.bitrise.io"},
-		{auth.EnvBuildHubVMToken: "vm-token", auth.EnvVMTokenURL: "https://api.bitrise.io"},
+const (
+	bhURL  = "https://api.bitrise.io/build-hub/vm/tokens"
+	rdeURL = "https://instance-manager.services.bitrise.io/vm/tokens"
+)
+
+// The first usable pair wins, a pair is usable only when both halves are set and the
+// URL is trusted, and halves never combine across pairs. TokenEnv must agree with
+// FromEnv, since the offline callers rely on it to predict the exchange.
+func TestFromEnv_PicksTheFirstUsablePair(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		envs      map[string]string
+		wantEnv   string
+		wantToken string
+		wantURL   string
+	}{
+		{"nothing", map[string]string{}, "", "", ""},
+		{"Build Hub pair", map[string]string{auth.EnvBuildHubVMToken: "bh", auth.EnvBuildHubVMTokenURL: bhURL}, auth.EnvBuildHubVMToken, "bh", bhURL},
+		{"neutral pair", map[string]string{auth.EnvVMToken: "rde", auth.EnvVMTokenURL: rdeURL}, auth.EnvVMToken, "rde", rdeURL},
+		{"both pairs", map[string]string{
+			auth.EnvBuildHubVMToken: "bh", auth.EnvBuildHubVMTokenURL: bhURL,
+			auth.EnvVMToken: "rde", auth.EnvVMTokenURL: rdeURL,
+		}, auth.EnvBuildHubVMToken, "bh", bhURL},
+		{"half-set Build Hub pair", map[string]string{auth.EnvBuildHubVMToken: "bh", auth.EnvVMToken: "rde", auth.EnvVMTokenURL: rdeURL}, auth.EnvVMToken, "rde", rdeURL},
+		{"untrusted Build Hub URL", map[string]string{
+			auth.EnvBuildHubVMToken: "bh", auth.EnvBuildHubVMTokenURL: "https://example.com/vm/tokens",
+			auth.EnvVMToken: "rde", auth.EnvVMTokenURL: rdeURL,
+		}, auth.EnvVMToken, "rde", rdeURL},
+		{"untrusted neutral URL", map[string]string{auth.EnvVMToken: "rde", auth.EnvVMTokenURL: "https://example.com/vm/tokens"}, "", "", ""},
+		{"http neutral URL", map[string]string{auth.EnvVMToken: "rde", auth.EnvVMTokenURL: "http://instance-manager.services.bitrise.io/vm/tokens"}, "", "", ""},
+		{"whitespace URL", map[string]string{auth.EnvVMToken: "rde", auth.EnvVMTokenURL: "  "}, "", "", ""},
+		{"whitespace token", map[string]string{auth.EnvVMToken: " ", auth.EnvVMTokenURL: rdeURL}, "", "", ""},
+		{"padded values", map[string]string{auth.EnvVMToken: " rde\n", auth.EnvVMTokenURL: " " + rdeURL + "\n"}, auth.EnvVMToken, "rde", rdeURL},
+		{"halves across pairs", map[string]string{auth.EnvBuildHubVMToken: "bh", auth.EnvVMTokenURL: rdeURL}, "", "", ""},
 	} {
-		_, ok := FromEnv(envs)
-		assert.Equal(t, ok, auth.CanBrokerVMToken(envs), "envs: %v", envs)
+		c, ok := FromEnv(tc.envs)
+		assert.Equal(t, tc.wantEnv, TokenEnv(tc.envs), tc.name)
+		if !assert.Equal(t, tc.wantEnv != "", ok, tc.name) || !ok {
+			continue
+		}
+		assert.Equal(t, tc.wantToken, c.vmToken, tc.name)
+		assert.Equal(t, tc.wantURL, c.tokenURL, tc.name)
 	}
 }
 
-// Remote Dev Envs carry the product-neutral pair, and must not count as Build Hub,
-// which would switch on CI behaviour on a developer's machine.
-func TestFromEnv_AcceptsTheNeutralPair(t *testing.T) {
-	envs := map[string]string{auth.EnvVMToken: "rde-token", auth.EnvVMTokenURL: "https://im.bitrise.io/build_hub/vm_tokens"}
+// A down instance-manager must not cost every per-RPC resolve another request.
+func TestToken_BacksOffAfterAFailure(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	c := clientFor(t, srv.URL)
 
-	c, ok := FromEnv(envs)
+	_, _, firstErr := c.Token(context.Background())
+	_, _, secondErr := c.Token(context.Background())
 
-	require.True(t, ok)
-	assert.Equal(t, "rde-token", c.vmToken)
-	assert.Equal(t, "https://im.bitrise.io/build_hub/vm_tokens", c.tokenURL)
-	assert.False(t, auth.OnBuildHub(envs))
+	require.Error(t, firstErr)
+	assert.Equal(t, firstErr, secondErr)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
 }
 
-func TestFromEnv_PrefersTheBuildHubPair(t *testing.T) {
-	c, ok := FromEnv(map[string]string{
-		auth.EnvBuildHubVMToken:    "bh-token",
-		auth.EnvBuildHubVMTokenURL: "https://bh.bitrise.io/build-hub/vm/tokens",
-		auth.EnvVMToken:            "rde-token",
-		auth.EnvVMTokenURL:         "https://im.bitrise.io/build_hub/vm_tokens",
-	})
+// A caller that gave up must not put every later caller into the backoff.
+func TestToken_CancelledCallerDoesNotBackOff(t *testing.T) {
+	var slow atomic.Bool
+	slow.Store(true)
+	release := make(chan struct{})
+	expiresAt := time.Now().Add(time.Hour).Format(time.RFC3339)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if slow.Load() {
+			select {
+			case <-r.Context().Done():
+			case <-release:
+			}
 
-	require.True(t, ok)
-	assert.Equal(t, "bh-token", c.vmToken)
-	assert.Equal(t, "https://bh.bitrise.io/build-hub/vm/tokens", c.tokenURL)
-}
+			return
+		}
+		_, _ = w.Write([]byte(`{"accessToken":"brokered-jwt","expiresAt":"` + expiresAt + `"}`))
+	}))
+	defer srv.Close()
+	defer close(release)
+	c := clientFor(t, srv.URL)
 
-// A half-set Build Hub pair counts as unset, so it must not hide a complete neutral one.
-func TestFromEnv_HalfSetBuildHubPairFallsBackToTheNeutralPair(t *testing.T) {
-	c, ok := FromEnv(map[string]string{
-		auth.EnvBuildHubVMToken: "bh-token",
-		auth.EnvVMToken:         "rde-token",
-		auth.EnvVMTokenURL:      "https://im.bitrise.io/build_hub/vm_tokens",
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err := c.Token(ctx)
+	require.Error(t, err)
+	slow.Store(false)
 
-	require.True(t, ok)
-	assert.Equal(t, "rde-token", c.vmToken)
-}
-
-func TestFromEnv_RejectsAnUntrustedNeutralURL(t *testing.T) {
-	_, ok := FromEnv(map[string]string{auth.EnvVMToken: "rde-token", auth.EnvVMTokenURL: "https://example.com/vm_tokens"})
-	assert.False(t, ok)
+	token, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", token)
 }

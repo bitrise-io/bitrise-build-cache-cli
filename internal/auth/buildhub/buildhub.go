@@ -29,8 +29,12 @@ const tokenType = "VM_TOKEN_TYPE_BUILD_CACHE" //nolint:gosec // enum name, not a
 const refreshSkew = 5 * time.Minute
 
 // requestTimeout bounds the exchange. This sits in front of every resolve on a
-// Build Hub runner, so a hanging instance-manager must not hang the build.
+// VM that offers a token, so a hanging instance-manager must not hang the build.
 const requestTimeout = 10 * time.Second
+
+// failureBackoff stops a down instance-manager from costing every per-RPC resolve
+// another requestTimeout before it falls through to the stores.
+const failureBackoff = 30 * time.Second
 
 var errEmptyToken = errors.New("instance-manager returned an empty token")
 
@@ -48,39 +52,68 @@ type Client struct {
 	mu          sync.RWMutex
 	token       string
 	expiresAt   time.Time
+	lastErr     error
+	lastErrAt   time.Time
 }
 
-// FromEnv builds a Client when the environment carries both halves of the pair.
-// Both or neither: a half-set pair means the runner is not offering to broker, and
-// guessing at the other half would produce a confusing failure later.
+// FromEnv builds a Client from the first usable pair, the Build Hub one first. A
+// pair is usable when both halves are set and the URL is a trusted https one; halves
+// are never combined across pairs.
 func FromEnv(envs map[string]string) (*Client, bool) {
-	vmToken, tokenURL, ok := auth.VMTokenPair(envs)
+	p, ok := vmTokenPair(envs)
 	if !ok {
-		return nil, false
-	}
-	// The VM token is sent to this URL, so one outside Bitrise's domains is not a broker.
-	tokenURL = strings.TrimSpace(tokenURL)
-	if !trustedurl.Allowed(tokenURL, "https") {
 		return nil, false
 	}
 
 	return &Client{
-		tokenURL:    tokenURL,
-		vmToken:     vmToken,
+		tokenURL:    p.tokenURL,
+		vmToken:     p.vmToken,
 		httpClient:  &http.Client{Timeout: requestTimeout},
 		refreshSlot: make(chan struct{}, 1),
 		mu:          sync.RWMutex{},
 		token:       "",
 		expiresAt:   time.Time{},
+		lastErr:     nil,
+		lastErrAt:   time.Time{},
 	}, true
+}
+
+// TokenEnv names the env var holding the VM token FromEnv would exchange, or "".
+func TokenEnv(envs map[string]string) string {
+	p, ok := vmTokenPair(envs)
+	if !ok {
+		return ""
+	}
+
+	return p.tokenEnv
+}
+
+type pair struct {
+	tokenEnv, vmToken, tokenURL string
+}
+
+func vmTokenPair(envs map[string]string) (pair, bool) {
+	for _, keys := range [...][2]string{
+		{auth.EnvBuildHubVMToken, auth.EnvBuildHubVMTokenURL},
+		{auth.EnvVMToken, auth.EnvVMTokenURL},
+	} {
+		vmToken := strings.TrimSpace(envs[keys[0]])
+		// The VM token is sent to this URL, so one outside Bitrise's domains is not a broker.
+		tokenURL := trustedurl.FromEnv(envs, keys[1], "https")
+		if vmToken != "" && tokenURL != "" {
+			return pair{tokenEnv: keys[0], vmToken: vmToken, tokenURL: tokenURL}, true
+		}
+	}
+
+	return pair{}, false
 }
 
 // Process-wide, so every resolver in one command shares a single cached exchange.
 var shared sync.Map //nolint:gochecknoglobals
 
 func Shared(envs map[string]string) (*Client, bool) {
-	vmToken, tokenURL, _ := auth.VMTokenPair(envs)
-	key := tokenURL + "\x00" + vmToken
+	p, _ := vmTokenPair(envs)
+	key := p.tokenURL + "\x00" + p.vmToken
 	if c, ok := shared.Load(key); ok {
 		return c.(*Client), true //nolint:forcetypeassert // only *Client is stored
 	}
@@ -120,17 +153,25 @@ func (c *Client) Token(ctx context.Context) (string, time.Time, error) {
 		return token, expiresAt, nil
 	}
 
-	token, expiresAt, err := c.exchange(ctx)
-	if err != nil {
-		// A failed early refresh must not cost the caller a token that still works.
-		if token, expiresAt, ok := c.unexpired(); ok {
+	err := c.recentFailure()
+	if err == nil {
+		var token string
+		var expiresAt time.Time
+		if token, expiresAt, err = c.exchange(ctx); err == nil {
 			return token, expiresAt, nil
 		}
-
-		return "", time.Time{}, err
+		// The caller giving up says nothing about instance-manager.
+		if ctx.Err() == nil {
+			c.recordFailure(err)
+		}
 	}
 
-	return token, expiresAt, nil
+	// A failed early refresh must not cost the caller a token that still works.
+	if token, expiresAt, ok := c.unexpired(); ok {
+		return token, expiresAt, nil
+	}
+
+	return "", time.Time{}, err
 }
 
 func (c *Client) exchange(ctx context.Context) (string, time.Time, error) {
@@ -206,8 +247,24 @@ func (c *Client) unexpired() (string, time.Time, bool) {
 	return "", time.Time{}, false
 }
 
+func (c *Client) recentFailure() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.lastErr != nil && time.Since(c.lastErrAt) < failureBackoff {
+		return c.lastErr
+	}
+
+	return nil
+}
+
+func (c *Client) recordFailure(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastErr, c.lastErrAt = err, time.Now()
+}
+
 func (c *Client) store(token string, expiresAt time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.token, c.expiresAt = token, expiresAt
+	c.token, c.expiresAt, c.lastErr = token, expiresAt, nil
 }

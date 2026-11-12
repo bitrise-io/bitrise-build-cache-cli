@@ -42,27 +42,6 @@ func OnBuildHub(envs map[string]string) bool {
 	return envs[EnvBuildHubVMToken] != "" && envs[EnvBuildHubVMTokenURL] != ""
 }
 
-// VMTokenPair returns the VM token and its exchange URL from the first pair with
-// both halves set, the Build Hub pair first. A half-set pair counts as unset.
-func VMTokenPair(envs map[string]string) (string, string, bool) {
-	if OnBuildHub(envs) {
-		return envs[EnvBuildHubVMToken], envs[EnvBuildHubVMTokenURL], true
-	}
-	if envs[EnvVMToken] != "" && envs[EnvVMTokenURL] != "" {
-		return envs[EnvVMToken], envs[EnvVMTokenURL], true
-	}
-
-	return "", "", false
-}
-
-// CanBrokerVMToken reports whether the environment offers a VM token to exchange.
-// Unlike OnBuildHub it is also true on a Remote Dev Env, which is not CI.
-func CanBrokerVMToken(envs map[string]string) bool {
-	_, _, ok := VMTokenPair(envs)
-
-	return ok
-}
-
 // OIDCPolicyConfigured reports whether the user asked for the GitHub Actions OIDC
 // exchange, whether or not this job can perform it.
 func OIDCPolicyConfigured(envs map[string]string) bool {

@@ -17,6 +17,13 @@ func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, is
 		return cred, origin, err
 	}
 
+	// Off CI a brokered token outlives any one build, and the block keeps no expiry:
+	// a later offline read would serve it expired, and it would overwrite a login's
+	// block. Anything that can broker it does so itself.
+	if origin.Provenance == auth.ProvenanceBrokered && !isCI {
+		return cred, origin, nil
+	}
+
 	// A JWT or an OIDC-exchanged token lives for one build at most, so it goes only to
 	// the authConfig block the analytics readers expect: the credentials block would
 	// serve it, expired, to a later job.

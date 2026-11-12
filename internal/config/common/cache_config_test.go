@@ -514,4 +514,8 @@ func TestIsCI(t *testing.T) {
 	assert.True(t, IsCI(buildHub, osProxy), "a Build Hub runner under an unrecognised CI is still CI")
 	assert.Empty(t, DetectCIProvider(buildHub, osProxy), "the provider name stays empty: nothing identifies which CI it is")
 	assert.False(t, IsCI(map[string]string{"BITRISEIO_BUILD_HUB_VM_TOKEN": "vm-token"}, osProxy), "half the pair is not Build Hub")
+	assert.False(t, IsCI(map[string]string{
+		"BITRISEIO_VM_TOKEN":     "vm-token",
+		"BITRISEIO_VM_TOKEN_URL": "https://instance-manager.services.bitrise.io/vm/tokens",
+	}, osProxy), "a Remote Dev Env offers a VM token but is a developer's machine")
 }

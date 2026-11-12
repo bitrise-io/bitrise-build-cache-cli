@@ -62,8 +62,8 @@ type Resolver struct {
 	// persists the CI JWT for the next offline resolve to pick up. Nil means the
 	// real reader.
 	AnalyticsBlock func() (auth.Credential, auth.Origin, bool)
-	// Broker exchanges a Build Hub VM token for a Build Cache token. Nil means the
-	// real client, built from the environment.
+	// Broker exchanges a VM token for a Build Cache token. Nil means the real
+	// client, built from the environment.
 	Broker func(ctx context.Context, envs map[string]string) (auth.Credential, error)
 	// OIDC exchanges a GitHub Actions OIDC token under a Bitrise trust policy. Nil
 	// means the real client, built from the environment.
@@ -141,7 +141,7 @@ func (b *Bound) Get(ctx context.Context) auth.Credential {
 }
 
 // resolve is the offline path: no network, no writes. It passes no exchange step,
-// so neither a GitHub Actions OIDC token nor a Build Hub token is exchanged here —
+// so neither a GitHub Actions OIDC token nor a VM token is exchanged here —
 // `status` and the doctor must report what is already on the machine.
 func (r *Resolver) resolve(envs map[string]string) (auth.Credential, auth.Origin, store.Store, error) {
 	return r.resolveWith(envs, auth.TokenSet.Populated, nil)
@@ -226,8 +226,8 @@ func validateStored(cred auth.Credential, origin auth.Origin, backing store.Stor
 
 // exchanged returns the precedence step for a credential this CLI mints itself: the
 // GitHub Actions OIDC exchange first, because the user configured a policy, then the
-// Build Hub token the runner offers regardless. Its error is only ever the OIDC
-// failure; a Build Hub token nobody asked for is no reason to replace the usual one.
+// VM token the machine offers regardless. Its error is only ever the OIDC failure; a
+// VM token nobody asked for is no reason to replace the usual one.
 func (r *Resolver) exchanged(ctx context.Context) func(map[string]string) (auth.Credential, auth.Origin, error) {
 	return func(envs map[string]string) (auth.Credential, auth.Origin, error) {
 		cred, oidcErr := r.oidcExchanged(ctx, envs)
@@ -237,7 +237,7 @@ func (r *Resolver) exchanged(ctx context.Context) func(map[string]string) (auth.
 
 		cred, err := r.brokerCredential(ctx, envs)
 		if err != nil {
-			r.debugf("could not broker a Build Hub token: %s", err)
+			r.debugf("could not broker a VM token: %s", err)
 
 			return auth.Credential{}, auth.Origin{}, oidcErr
 		}
@@ -305,6 +305,22 @@ func (r *Resolver) brokerCredential(ctx context.Context, envs map[string]string)
 	}
 
 	return auth.Credential{Token: token, WorkspaceID: workspaceID, Expiry: expiresAt}, nil
+}
+
+// CanBroker reports whether the environment offers a VM token this CLI would exchange.
+func CanBroker(envs map[string]string) bool {
+	return buildhub.TokenEnv(envs) != ""
+}
+
+// BrokeringEnv names the VM token env var Resolve would exchange ahead of the
+// credential ResolveNoRefresh found at origin, or "". Offline callers use it to name
+// the credential builds will send, which ResolveNoRefresh never brokers.
+func BrokeringEnv(envs map[string]string, origin auth.Origin) string {
+	if hasAuthEnvVars(envs) || auth.OIDCPolicyConfigured(envs) || origin.Provenance == auth.ProvenanceBrokered {
+		return ""
+	}
+
+	return buildhub.TokenEnv(envs)
 }
 
 func (r *Resolver) hasTokenWithoutWorkspace() bool {
@@ -401,7 +417,7 @@ func (r *Resolver) debugf(format string, args ...any) {
 var warned sync.Map //nolint:gochecknoglobals
 
 // warnFellBack reports a failed OIDC exchange that another credential stood in for.
-// Unlike a failed Build Hub exchange it isn't debug-level: the user asked for OIDC.
+// Unlike a failed VM token exchange it isn't debug-level: the user asked for OIDC.
 func (r *Resolver) warnFellBack(exchangeErr error) {
 	if exchangeErr == nil || r.Logger == nil {
 		return

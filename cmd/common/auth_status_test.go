@@ -3,6 +3,7 @@
 package common
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ func TestCurrentAuthStatus(t *testing.T) {
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
 	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+	clearVMTokenEnvs(t)
 
 	// Nothing configured.
 	if a := currentAuthStatus(); a.Configured || a.Source != "none" {
@@ -38,6 +40,14 @@ func TestCurrentAuthStatus(t *testing.T) {
 	}
 	if a.Expired || a.TokenExpiry == "" {
 		t.Fatalf("expected a valid (non-expired) token with an expiry, got %+v", a)
+	}
+
+	// On a Remote Dev Env the VM token is exchanged ahead of the stored login, so it
+	// is what builds use, even though this offline read never exchanges it.
+	t.Setenv(auth.EnvVMToken, "vm-token")
+	t.Setenv(auth.EnvVMTokenURL, "https://instance-manager.services.bitrise.io/vm/tokens")
+	if a := currentAuthStatus(); !a.Configured || !strings.HasPrefix(a.Source, "VM token (brokered)") {
+		t.Fatalf("expected the pending VM token exchange, got %+v", a)
 	}
 
 	// A manual env token takes precedence over the stored login and is reported
@@ -62,4 +72,11 @@ func oauthSave(t *testing.T, c auth.TokenSet) error {
 	_, err := oauth.SaveToWithFallback(store.NewKeychain(), c, false)
 
 	return err
+}
+
+func clearVMTokenEnvs(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{auth.EnvBuildHubVMToken, auth.EnvBuildHubVMTokenURL, auth.EnvVMToken, auth.EnvVMTokenURL} {
+		t.Setenv(key, "")
+	}
 }

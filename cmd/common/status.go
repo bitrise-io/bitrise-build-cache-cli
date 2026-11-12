@@ -133,7 +133,11 @@ type statusOutput struct {
 // currentAuthStatus reports the credential commands would use. Never refreshes
 // or writes.
 func currentAuthStatus() authStatusInfo {
-	cred, origin, err := live.Default(nil).ResolveNoRefresh(utils.AllEnvs())
+	envs := utils.AllEnvs()
+	cred, origin, err := live.Default(nil).ResolveNoRefresh(envs)
+	if live.BrokeringEnv(envs, origin) != "" {
+		return authStatusInfo{Configured: true, Source: live.DescribePendingBroker()}
+	}
 	switch {
 	case errors.Is(err, authpkg.ErrTokenNotProvided), errors.Is(err, authpkg.ErrWorkspaceIDNotProvided):
 		return authStatusInfo{Source: "none"}

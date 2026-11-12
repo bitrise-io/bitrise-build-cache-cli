@@ -111,7 +111,8 @@ cannot express that, and provenance alone cannot tell you which file to write.
 migrating off it, and three `pkg/` consumers read it as their only source. The CLI
 itself also reads it back as the last precedence step, because `pin.go` writes the
 brokered CI JWT only there (see below), and a later offline `ResolveNoRefresh`
-needs a channel to find that JWT. What `Static` means is narrower and permanent:
+needs a channel to find that JWT. Off CI (a Remote Dev Env) a brokered token is not
+pinned at all: the block keeps no expiry, and the token would outlive the build. What `Static` means is narrower and permanent:
 no refresh machinery, so never refreshable.
 
 `Resolve` prefers an OAuth-managed record over a manual one wherever it lives: a
@@ -147,8 +148,7 @@ The shared vocabulary. Imports nothing internal.
 | `ParseJWTWorkspaceID(string) (string, error)` | Extracts `org_id` from the Bitrise UMA JWT. Signature unverified — Bitrise mints these per build. |
 | `EnvAuthToken`, `EnvWorkspaceID`, `EnvJWT`, `EnvUsername` | The four environment keys. |
 | `EnvBuildHubVMToken`, `EnvBuildHubVMTokenURL` | The Build Hub pair. Both present is what makes a runner brokerable; a half-set pair is treated as neither. `OnBuildHub` checks it, and `IsCI` builds on that. |
-| `EnvVMToken`, `EnvVMTokenURL` | The product-neutral pair instance-manager exports on other VMs, such as Remote Dev Envs. Brokerable like the Build Hub pair, but does not make the machine count as CI. |
-| `VMTokenPair`, `CanBrokerVMToken` | The first complete pair, the Build Hub one first. |
+| `EnvVMToken`, `EnvVMTokenURL` | The product-neutral pair instance-manager exports on other VMs, such as Remote Dev Envs. Brokerable like the Build Hub pair, but does not make the machine count as CI. `buildhub.FromEnv` picks the first usable pair (both halves set, trusted https URL), the Build Hub one first, and never combines halves across pairs. |
 | `ErrTokenNotProvided`, `ErrWorkspaceIDNotProvided` | Distinguish "nothing configured" from a genuine failure. |
 | `ErrWorkspaceNotSelected` | A stored token with no workspace — what `auth login --no-workspace` leaves behind. Distinct from "nothing configured", which would send the user off to make a token they already have. |
 
@@ -242,6 +242,8 @@ The resolver. The only package a consumer needs.
 | `(*Bound).Cached(ttl) *Cached` | `Get` for a hot path: re-resolves at most once per ttl, or earlier near expiry, and serves the last good credential on failure. |
 | `(*Resolver).ResolveUsername(envs) (string, UsernameSource)` | Names the person behind a local invocation, for analytics attribution: env → stored record → OS user. Deliberately **not** part of `Resolve` — `auth username` writes the name independently of the token, so finding it costs a store read that the per-RPC callers must not pay for a value they never use. |
 | `Describe(Credential, Origin) string` | The one-line human description. Pure formatting, no I/O — `Origin` already carries everything it needs. |
+| `CanBroker(envs) bool` | The environment offers a usable VM token pair. |
+| `BrokeringEnv(envs, Origin) string`, `DescribePendingBroker() string` | For the offline callers: names the VM token `Resolve` would exchange ahead of what `ResolveNoRefresh` found, so `status`, the doctor and `auth login` name the credential builds will send. |
 
 **Precedence**, in `Resolve`, `ResolveNoRefresh` and `ResolvePinned` alike:
 
@@ -263,12 +265,13 @@ passed into `resolveWith` as one step rather than called from it: `ResolveNoRefr
 passes nil and therefore stays offline, which is what `status` and the doctor depend
 on. A failed exchange is not fatal — resolution falls through to the stores. Each
 exchange client is process-wide (`githuboidc.Shared`, `buildhub.Shared`), so every
-resolver in one command shares a single cached token.
+resolver in one command shares a single cached token, and each backs off for 30
+seconds after a failed exchange, so a down issuer does not cost every per-RPC resolve
+another request timeout.
 
 The OIDC exchange runs first because a trust policy ID is something the user set,
-while a Build Hub runner offers its token whether or not it was asked for. For the
-same reason its failures are not only logged at debug level, as a failed Build Hub
-exchange is: when another credential stands in, the failure is a warning (once per
+while a VM offers its token whether or not it was asked for. For the same reason its
+failures are not only logged at debug level, as a failed VM token exchange is: when another credential stands in, the failure is a warning (once per
 message), and when nothing does, it is the error `Resolve` returns instead of "no
 token set". The workspace comes from
 `BITRISE_BUILD_CACHE_WORKSPACE_ID`, not the token: what the exchange returns is a
@@ -476,8 +479,8 @@ cmd/common.currentAuthStatus
 
 The doctor's `auth-backend` probe resolves through this path with default precedence,
 so it agrees with a build about which credential is current — except that it never
-brokers, so on a Build Hub runner it reports the credential a failed exchange would
-fall back to. The doctor's `auth` check is the one deliberate exception —
+brokers, so on a VM that offers a token it reports the credential a failed exchange
+would fall back to. The doctor's `auth` check is the one deliberate exception —
 it is `PreferStored`, because it reports what is on the machine rather than what a
 build would send.
 

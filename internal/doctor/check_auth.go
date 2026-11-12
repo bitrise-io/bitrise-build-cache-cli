@@ -30,6 +30,10 @@ func (d *Doctor) authCheck() Check {
 			if res, ok := oidcResult(d.Envs, resolved); ok {
 				return res
 			}
+			// Like OIDC, an exchange this offline check never performs.
+			if !resolved && live.BrokeringEnv(d.Envs, origin) != "" {
+				return Result{State: StateOK, Detail: live.DescribePendingBroker()}
+			}
 			if !resolved {
 				return Result{
 					State:   StateError,
