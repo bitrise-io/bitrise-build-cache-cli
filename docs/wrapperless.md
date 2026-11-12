@@ -64,10 +64,12 @@ Single DerivedData watcher that merged the former StartWatcher + EndWatcher. One
 
 Dispatches by basename:
 
-| basename | event | emits |
+| basename | event(s) | emits |
 |---|---|---|
-| `*.xcbuilddata` (dir CREATE) | user build started | `Start{BuildRequestHex, Action}` |
-| `LogStoreManifest.plist` (file WRITE) | build log sealed | `End{UniqueIdentifier, Scheme, Duration, Success, XCActivityLogPath}` |
+| `build-request.json` inside `*.xcbuilddata` | CREATE or WRITE | `Start{BuildRequestHex, Action}` via `handleXCBuildData` |
+| `LogStoreManifest.plist` | CREATE or WRITE | `End{UniqueIdentifier, Scheme, Duration, Success, XCActivityLogPath}` via `scanManifest` |
+
+(The seed walk also surfaces pre-existing `*.xcbuilddata` dirs and `LogStoreManifest.plist` files once at startup, so a proxy that joins mid-build still gets a chance to emit both signals.)
 
 The `xcactivitylog` sibling path is read from the manifest entry's `fileName` field; falls back to `<UniqueIdentifier>.xcactivitylog` when absent.
 
@@ -93,7 +95,7 @@ Timeline events (Start / End / Quit) arrive on an in-process channel (multi-prod
 
 ### Emitter — `internal/xcelerate/wrapperless/emitter.go`
 
-Two-phase BE PUT with HTTP-outboard replay. Successful PUTs land on the BE's Invocation API; failures persist to `~/.local/state/xcelerate/pending-{slim,enriched}.ndjson` and are retried by a background goroutine at 30 s cadence. Entries older than 30 d are dropped.
+Two-phase BE PUT with HTTP-outboard replay. Successful PUTs land on the BE's Invocation API; failures persist to `~/.local/state/xcelerate/wrapperless/pending-{slim,enriched}.ndjson` and are retried by a background goroutine at 30 s cadence. Entries older than 30 d are dropped.
 
 Row rendering uses the shared `internal/xcelerate/shortcmd` renderer:
 
@@ -106,7 +108,7 @@ Both the wrapper flow (`xcodeargs.Default.ShortCommand`) and the wrapperless emi
 
 ### HandledManifestStore — `internal/xcelerate/wrapperless/handled_manifests.go`
 
-NDJSON ledger at `~/.local/state/xcelerate/wrapperless-handled-manifests.ndjson`. Closes the dup-row race across proxy restarts: a restart within `seedStaleGrace` of a sealed manifest would otherwise re-mint under a different InvocationID (anchor differs because ProxyPID differs).
+NDJSON ledger at `~/.local/state/xcelerate/wrapperless/handled-manifests.ndjson`. Closes the dup-row race across proxy restarts: a restart within `seedStaleGrace` of a sealed manifest would otherwise re-mint under a different InvocationID (anchor differs because ProxyPID differs).
 
 `LoadFreshAndCompact` reads and compacts in one pass at hydrate: records within `HandledManifestMaxAge` (7 d) hydrate into the in-memory seen set; stale records are dropped from disk via atomic tmp + rename.
 
@@ -158,24 +160,23 @@ Proxy stop
 
 ## Identity derivation
 
-Per-build InvocationID is a BLAKE3 hash over a `buildidentity.Anchor`:
+Per-build InvocationID is a SHA-256 hash over a `buildidentity.Anchor`, reshaped into UUIDv4 form (`internal/xcelerate/buildidentity/buildidentity.go`):
 
 ```go
-Anchor{
-  Hostname, PID, StartTimeMS,
-  BuildRequestHex,         // or UniqueIdentifier on sole-End / IDE-bg / CLI-run salts
-}
+Anchor{ Hostname, PID, StartTimeMS, BuildRequestHex }
 ```
 
-Important salts (fixed labels, not real xcbuilddata hexes):
+The PID + StartTimeMS source depends on the bucket type:
 
-| Constant | Used when |
-|---|---|
-| `AnchorSaltIDEBackground` | post-Quit IDE-ancestry CAS traffic flush |
-| `AnchorSaltCLIRun` | post-Quit CLI-ancestry fallback (no End ever arrived) |
-| `anchorSaltSpecFmt` | per-cycle speculative buckets between builds |
+| Bucket | PID / StartTimeMS source | BuildRequestHex |
+|---|---|---|
+| `newBucket` (Start-paired real build) | proxy (`ProxyPID` / `ProxyStartMS`) | `Start.BuildRequestHex` |
+| `mintEndOnlyBucket` (sole-End warm rebuild) | proxy | `End.UniqueIdentifier` |
+| `ideBackgroundBucket` | peer (from Quit) | `AnchorSaltIDEBackground` |
+| `cliImplicitBucket` | peer (from Quit) | `AnchorSaltCLIRun` |
+| `openSpec` (per-cycle speculative) | proxy | `fmt.Sprintf(anchorSaltSpecFmt, counter)` |
 
-Peer anchoring: `PeerPID` / `PeerStartMS` come from the gRPC peer handshake when a CAS conn arrives. For IDE / CLI buckets, the peer identity is baked into the anchor so two sessions with the same PID but different start-ms derive distinct InvocationIDs (PID recycling is a real risk on long-lived desktops).
+Peer anchoring (IDE / CLI) uses the `PID` / `StartTimeMS` from the QuitWatcher's `Quit{}` payload, not the proxy's. Two IDE sessions with the same PID but different start-ms therefore derive distinct InvocationIDs — PID recycling is a real risk on long-lived desktops.
 
 ---
 
@@ -202,8 +203,8 @@ grep 'Emitter: slim PUT\|Emitter: enriched PUT' proxy-*.log
 # CLIImplicit suppression
 grep 'flushCLI suppressed' proxy-*.log
 
-# Side-effect skip (non-primary sidecars)
-grep 'side-effect only' proxy-*.log
+# Non-primary sidecar skip (Signing / Packages / Localization sub-builds)
+grep 'reason=non-primary' proxy-*.log
 ```
 
 Flush the pending replay queue on demand:
