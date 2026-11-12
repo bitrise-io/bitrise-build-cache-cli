@@ -49,6 +49,13 @@ type Params struct {
 	// pipeline alongside the existing enricher. Persisted to the xcelerate
 	// config so `xcelerate start-proxy` can inherit the choice without the
 	// user having to pass the flag at every proxy restart.
+	//
+	// Sticky-on by design: a subsequent `activate xcode` without the flag
+	// keeps the opt-in, so an auto-invoked activate step cannot silently
+	// flip a user's choice back off. To force-disable at the proxy layer,
+	// pass `--wrapperless-pipeline-enabled=false` to `xcelerate start-proxy`;
+	// the CLI flag wins over the persisted value. To clear the persisted
+	// state entirely, edit `~/.bitrise-xcelerate/config.json`.
 	WrapperlessPipelineEnabled bool
 }
 
