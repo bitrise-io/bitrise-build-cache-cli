@@ -25,15 +25,15 @@ const sealedManifestFixture = `<?xml version="1.0" encoding="UTF-8"?>
       <key>signature</key><string>Build MyScheme project MyProject with Configuration Debug</string>
       <key>schemeIdentifier-schemeName</key><string>MyScheme</string>
       <key>highLevelStatus</key><string>S</string>
-      <key>timeStartedRecording</key><real>762345678.5</real>
-      <key>timeStoppedRecording</key><real>762345688.75</real>
+      <key>timeStartedRecording</key><real>9999999678.5</real>
+      <key>timeStoppedRecording</key><real>9999999688.75</real>
     </dict>
     <key>XXXX-OPEN</key>
     <dict>
       <key>uniqueIdentifier</key><string>XXXX-OPEN</string>
       <key>signature</key><string>Build Running project</string>
       <key>schemeIdentifier-schemeName</key><string>Running</string>
-      <key>timeStartedRecording</key><real>762345690.0</real>
+      <key>timeStartedRecording</key><real>9999999690.0</real>
     </dict>
   </dict>
 </dict>
@@ -136,7 +136,7 @@ func TestEndWatcher_IgnoresUnsealedEntries(t *testing.T) {
   <dict>
     <key>uniqueIdentifier</key><string>XXXX-OPEN</string>
     <key>signature</key><string>Build Running project</string>
-    <key>timeStartedRecording</key><real>762345690.0</real>
+    <key>timeStartedRecording</key><real>9999999690.0</real>
   </dict>
 </dict></dict></plist>`
 
@@ -177,8 +177,8 @@ func TestEndWatcher_FailureStatus(t *testing.T) {
     <key>signature</key><string>Build Failing project</string>
     <key>schemeIdentifier-schemeName</key><string>Failing</string>
     <key>highLevelStatus</key><string>E</string>
-    <key>timeStartedRecording</key><real>762345678.0</real>
-    <key>timeStoppedRecording</key><real>762345680.0</real>
+    <key>timeStartedRecording</key><real>9999999678.0</real>
+    <key>timeStoppedRecording</key><real>9999999680.0</real>
   </dict>
 </dict></dict></plist>`
 
@@ -224,8 +224,8 @@ func TestEndWatcher_EmitsForPrimaryObservableSealedEntry(t *testing.T) {
     <dict>
       <key>highLevelStatus</key><string>S</string>
     </dict>
-    <key>timeStartedRecording</key><real>762345678.0</real>
-    <key>timeStoppedRecording</key><real>762345680.0</real>
+    <key>timeStartedRecording</key><real>9999999678.0</real>
+    <key>timeStoppedRecording</key><real>9999999680.0</real>
   </dict>
 </dict></dict></plist>`
 
@@ -271,9 +271,9 @@ func TestEndWatcher_PrimaryObservableTimeStoppedFallback(t *testing.T) {
     <key>primaryObservable</key>
     <dict>
       <key>highLevelStatus</key><string>S</string>
-      <key>timeStoppedRecording</key><real>762345690.0</real>
+      <key>timeStoppedRecording</key><real>9999999690.0</real>
     </dict>
-    <key>timeStartedRecording</key><real>762345680.0</real>
+    <key>timeStartedRecording</key><real>9999999680.0</real>
   </dict>
 </dict></dict></plist>`
 
@@ -315,7 +315,7 @@ func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
     <key>signature</key><string>Build Env</string>
     <key>primaryObservable</key>
     <dict></dict>
-    <key>timeStartedRecording</key><real>762345680.0</real>
+    <key>timeStartedRecording</key><real>9999999680.0</real>
   </dict>
 </dict></dict></plist>`
 
@@ -408,6 +408,67 @@ func TestEndWatcher_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	w2.Close()
 }
 
+// TestEndWatcher_SkipsPreStartSealedEntries covers the first-build-after-
+// wrapperless-enable case: a DerivedData with an existing LogStoreManifest
+// holding older sealed entries must not re-emit them when the first new
+// build appends a fresh entry and bumps the file mtime.
+func TestEndWatcher_SkipsPreStartSealedEntries(t *testing.T) {
+	const mixedBody = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>logs</key><dict>
+  <key>OLD-1</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>OLD-1</string>
+    <key>signature</key><string>Build MyScheme project MyProject</string>
+    <key>schemeIdentifier-schemeName</key><string>MyScheme</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>timeStartedRecording</key><real>770000000.0</real>
+    <key>timeStoppedRecording</key><real>770000010.0</real>
+  </dict>
+  <key>NEW-1</key>
+  <dict>
+    <key>uniqueIdentifier</key><string>NEW-1</string>
+    <key>signature</key><string>Build MyScheme project MyProject</string>
+    <key>schemeIdentifier-schemeName</key><string>MyScheme</string>
+    <key>highLevelStatus</key><string>S</string>
+    <key>timeStartedRecording</key><real>770300000.0</real>
+    <key>timeStoppedRecording</key><real>770300020.0</real>
+  </dict>
+</dict></dict></plist>`
+
+	fakeHome := t.TempDir()
+	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Mixed-abc")
+
+	src := newFakeEventSource()
+	ends := make(chan End, 4)
+
+	startedAt := cfEpoch.Add(770200000 * time.Second)
+
+	w := &DDWatcher{
+		HomeDir:   fakeHome,
+		OnEnd:     func(e End) { ends <- e },
+		NewSource: func() (DirEventSource, error) { return src, nil },
+		Now:       func() time.Time { return startedAt },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, w.Start(ctx))
+
+	path := writeManifest(t, root, mixedBody)
+	src.events <- Event{Path: path, Op: EventWrite}
+
+	got := waitForEnd(t, ends)
+	assert.Equal(t, "NEW-1", got.UniqueIdentifier, "pre-start sealed entry must be skipped")
+
+	select {
+	case e := <-ends:
+		t.Fatalf("stale pre-start entry leaked: %+v", e)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	w.Close()
+}
+
 // TestEndWatcher_EmitsParticipleVerbAction asserts the scanManifest path
 // classifies participle verbs (Building / Archiving / Testing / Analyzing)
 // the same way as the imperative forms. Xcode writes the gerund variants
@@ -423,8 +484,8 @@ func TestEndWatcher_EmitsParticipleVerbAction(t *testing.T) {
     <key>signature</key><string>Building project MinimalApp with scheme MinimalApp</string>
     <key>schemeIdentifier-schemeName</key><string>MinimalApp</string>
     <key>highLevelStatus</key><string>S</string>
-    <key>timeStartedRecording</key><real>762345678.0</real>
-    <key>timeStoppedRecording</key><real>762345688.0</real>
+    <key>timeStartedRecording</key><real>9999999678.0</real>
+    <key>timeStoppedRecording</key><real>9999999688.0</real>
   </dict>
 </dict></dict></plist>`
 
@@ -527,8 +588,8 @@ func TestEndWatcher_AcceptsWarningStatus(t *testing.T) {
     <key>signature</key><string>Build WarnScheme project WarnProject</string>
     <key>schemeIdentifier-schemeName</key><string>WarnScheme</string>
     <key>highLevelStatus</key><string>W</string>
-    <key>timeStartedRecording</key><real>762345678.5</real>
-    <key>timeStoppedRecording</key><real>762345688.75</real>
+    <key>timeStartedRecording</key><real>9999999678.5</real>
+    <key>timeStoppedRecording</key><real>9999999688.75</real>
   </dict>
 </dict></dict></plist>`
 
@@ -566,8 +627,8 @@ func TestEndWatcher_SkipsNonPrimarySignature(t *testing.T) {
     <key>uniqueIdentifier</key><string>SIGN-AAAA</string>
     <key>signature</key><string>Signing Foo</string>
     <key>highLevelStatus</key><string>S</string>
-    <key>timeStartedRecording</key><real>762345678.5</real>
-    <key>timeStoppedRecording</key><real>762345688.75</real>
+    <key>timeStartedRecording</key><real>9999999678.5</real>
+    <key>timeStoppedRecording</key><real>9999999688.75</real>
   </dict>
 </dict></dict></plist>`
 

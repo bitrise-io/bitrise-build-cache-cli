@@ -346,6 +346,14 @@ func (w *DDWatcher) scanManifest(path string) {
 
 		w.persistSeen(e.UniqueIdentifier)
 
+		if stopped := cfAbsToTime(e.TimeStopped); !stopped.IsZero() && !w.startedAt.IsZero() &&
+			stopped.Before(w.startedAt.Add(-seedStaleGrace)) {
+			w.debugf("DDWatcher: skip pre-start uuid=%s stopped=%s started=%s",
+				e.UniqueIdentifier, stopped.Format(time.RFC3339Nano), w.startedAt.Format(time.RFC3339Nano))
+
+			continue
+		}
+
 		action := actionFromSignature(e.Signature)
 		if action == "" {
 			w.debugf("DDWatcher: skip uuid=%s reason=non-primary signature=%q", e.UniqueIdentifier, e.Signature)
@@ -631,6 +639,17 @@ func cfAbsDuration(start, stop float64) time.Duration {
 	}
 
 	return time.Duration((stop - start) * float64(time.Second))
+}
+
+//nolint:gochecknoglobals // package-level constant; cheap to compute once.
+var cfEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func cfAbsToTime(sec float64) time.Time {
+	if sec == 0 {
+		return time.Time{}
+	}
+
+	return cfEpoch.Add(time.Duration(sec * float64(time.Second)))
 }
 
 type manifestLogEntry struct {
