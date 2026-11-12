@@ -41,3 +41,21 @@ type Quit struct {
 	StartTimeMS int64
 	AncestryIDE bool
 }
+
+// EventKind tags which signal struct a TimelineEvent carries so Allocator's
+// single-reader goroutine can dispatch without a type switch across the
+// public signal types.
+type EventKind int
+
+const (
+	EventKindStart EventKind = iota
+	EventKindEnd
+	EventKindQuit
+)
+
+type TimelineEvent struct {
+	Kind  EventKind
+	Start Start
+	End   End
+	Quit  Quit
+}

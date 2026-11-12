@@ -54,12 +54,10 @@ func TestPipeline_RecoversSealedPrimary(t *testing.T) {
 	fp := &fakeProxy{}
 	putter := &recordingPutter{}
 
-	tl := wrapperless.NewTimeline()
 	alloc := wrapperless.NewAllocator("h", 42, 1_000)
 
 	p := &wrapperless.Pipeline{
 		HomeDir:   fakeHome,
-		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     fp,
 		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
@@ -90,12 +88,10 @@ func TestPipeline_RecoversUnsealedPrimaryStartOnly(t *testing.T) {
 	fp := &fakeProxy{}
 	putter := &recordingPutter{}
 
-	tl := wrapperless.NewTimeline()
 	alloc := wrapperless.NewAllocator("h", 42, 1_000)
 
 	p := &wrapperless.Pipeline{
 		HomeDir:   fakeHome,
-		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     fp,
 		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},

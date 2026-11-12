@@ -40,12 +40,10 @@ func TestPipeline_StartOpensReseatsAndEmits(t *testing.T) {
 	proxy := &fakeProxy{}
 	putter := &recordingPutter{}
 
-	tl := wrapperless.NewTimeline()
 	alloc := wrapperless.NewAllocator("h", 42, 1_000)
 
 	p := &wrapperless.Pipeline{
 		HomeDir:   t.TempDir(),
-		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     proxy,
 		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
@@ -56,7 +54,7 @@ func TestPipeline_StartOpensReseatsAndEmits(t *testing.T) {
 	require.NoError(t, p.Start(ctx))
 	t.Cleanup(p.Close)
 
-	tl.PushStart(wrapperless.Start{
+	alloc.PushStart(wrapperless.Start{
 		At:              time.Unix(1, 0),
 		BuildRequestHex: "deadbeefdeadbeefdeadbeefdeadbeef",
 		Action:          wrapperless.PrimaryActionBuild,
@@ -87,12 +85,10 @@ func TestPipeline_SlimPUTCarriesStartAction(t *testing.T) {
 	proxy := &fakeProxy{}
 	putter := &recordingPutter{}
 
-	tl := wrapperless.NewTimeline()
 	alloc := wrapperless.NewAllocator("h", 42, 1_000)
 
 	p := &wrapperless.Pipeline{
 		HomeDir:   t.TempDir(),
-		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     proxy,
 		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
@@ -104,7 +100,7 @@ func TestPipeline_SlimPUTCarriesStartAction(t *testing.T) {
 	t.Cleanup(p.Close)
 
 	// Drive an Archive Start — slim PUT must render "archive [Seek]", not "build [Seek]".
-	tl.PushStart(wrapperless.Start{
+	alloc.PushStart(wrapperless.Start{
 		At:              time.Unix(1, 0),
 		BuildRequestHex: "feedfacefeedfacefeedfacefeedface",
 		Action:          wrapperless.PrimaryActionArchive,
@@ -159,12 +155,10 @@ func TestPipeline_SlowPUTDoesNotBlockProxyStamp(t *testing.T) {
 	proxy := &fakeProxy{}
 	putter := &blockingPutter{block: make(chan struct{})}
 
-	tl := wrapperless.NewTimeline()
 	alloc := wrapperless.NewAllocator("h", 42, 1_000)
 
 	p := &wrapperless.Pipeline{
 		HomeDir:   t.TempDir(),
-		Timeline:  tl,
 		Allocator: alloc,
 		Proxy:     proxy,
 		Emitter:   &wrapperless.Emitter{Client: putter, DrainInterval: time.Hour},
@@ -180,12 +174,12 @@ func TestPipeline_SlowPUTDoesNotBlockProxyStamp(t *testing.T) {
 
 	// Build 1 Start + End → enriched PUT enters worker queue, blocks on
 	// putter.block. Allocator reader must remain free to drain the next event.
-	tl.PushStart(wrapperless.Start{
+	alloc.PushStart(wrapperless.Start{
 		At:              time.Unix(1, 0),
 		BuildRequestHex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Action:          wrapperless.PrimaryActionBuild,
 	})
-	tl.PushEnd(wrapperless.End{
+	alloc.PushEnd(wrapperless.End{
 		At:               time.Unix(2, 0),
 		Scheme:           "Build1",
 		Action:           wrapperless.PrimaryActionBuild,
@@ -195,7 +189,7 @@ func TestPipeline_SlowPUTDoesNotBlockProxyStamp(t *testing.T) {
 	})
 
 	// Build 2 Start lands behind the slow PUT.
-	tl.PushStart(wrapperless.Start{
+	alloc.PushStart(wrapperless.Start{
 		At:              time.Unix(3, 0),
 		BuildRequestHex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Action:          wrapperless.PrimaryActionBuild,
