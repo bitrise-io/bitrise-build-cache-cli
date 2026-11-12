@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildidentity"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/wrapperless"
 )
 
 // perConnIdleThreshold is the per-connection inactivity window after which an
@@ -370,6 +371,17 @@ func (h *sidecarStatsHandler) TagConn(ctx context.Context, info *grpcstats.ConnT
 
 	cs := newConnectionSession(key, pc.peerPID, pc.acceptedAt)
 	cs.ancestryEntries = h.resolveEntries(pc.peerPID)
+
+	// Reject peers whose ancestry does not anchor to a build-related parent
+	// (xcodebuild / Xcode / SWBBuildService). Supersedes the enricher's
+	// ancestryMatches filter. Skipped when the ancestry resolver is not wired
+	// (bufconn / unit tests), where every conn is trusted by construction.
+	if h.peerAncestryEntries != nil {
+		if kind, _, _ := classifyAncestryKind(cs.ancestryEntries); kind == wrapperless.AncestryUnknown {
+			return ctx
+		}
+	}
+
 	cs.derivedInvocationID = h.derivePeerInvocationID(cs.ancestryEntries, "")
 	cs.derivedDataPath = h.resolveDerivedDataPath(cs.ancestryEntries)
 	// Skip stamping when derivation produced no ID — health probes and

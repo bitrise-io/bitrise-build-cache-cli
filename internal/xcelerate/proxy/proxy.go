@@ -112,6 +112,11 @@ type SidecarOptions struct {
 	// buildRequestPollInterval under the registry's existing lock; it must
 	// return quickly or the tick stalls.
 	BuildRequestResolver BuildRequestResolver
+	// PeerAncestryEntries, when non-nil, overrides the default
+	// ancestry.ResolveAncestryEntries resolver. Tests wire a stub so the
+	// TagConn ancestry gate (classifyAncestryKind) does not reject the test
+	// process as Unknown.
+	PeerAncestryEntries func(pid int) []AncestryEntry
 }
 
 const defaultInactivityTimeout = 5 * time.Minute
@@ -208,11 +213,17 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	p.sessionRegistry = newSessionRegistry()
 	ancestry := buildidentity.NewAncestryCache()
 	p.BuildRequestResolver = opts.BuildRequestResolver
+
+	resolver := opts.PeerAncestryEntries
+	if resolver == nil {
+		resolver = ancestry.ResolveAncestryEntries
+	}
+
 	p.sidecarStats = &sidecarStatsHandler{
 		listener:                   opts.Listener,
 		registry:                   p.sessionRegistry,
 		writer:                     newSidecarWriter(opts.Dir, p.logger),
-		peerAncestryEntries:        ancestry.ResolveAncestryEntries,
+		peerAncestryEntries:        resolver,
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
 		buildRequestResolver:       opts.BuildRequestResolver,
