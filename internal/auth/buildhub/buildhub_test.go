@@ -256,17 +256,19 @@ func TestToken_BacksOffAfterAFailure(t *testing.T) {
 	_, _, secondErr := c.Token(context.Background())
 
 	require.Error(t, firstErr)
-	assert.Equal(t, firstErr, secondErr)
+	require.ErrorIs(t, secondErr, firstErr)
+	assert.Contains(t, secondErr.Error(), "backing off")
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
 }
 
-// A caller that gave up must not put every later caller into the backoff.
-func TestToken_CancelledCallerDoesNotBackOff(t *testing.T) {
-	var slow atomic.Bool
-	slow.Store(true)
+// hangingServer blocks while slow is set, then serves an hour-long token. calls counts
+// every request.
+func hangingServer(t *testing.T, slow *atomic.Bool, calls *int32) *httptest.Server {
+	t.Helper()
 	release := make(chan struct{})
 	expiresAt := time.Now().Add(time.Hour).Format(time.RFC3339)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(calls, 1)
 		if slow.Load() {
 			select {
 			case <-r.Context().Done():
@@ -277,9 +279,39 @@ func TestToken_CancelledCallerDoesNotBackOff(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"accessToken":"brokered-jwt","expiresAt":"` + expiresAt + `"}`))
 	}))
-	defer srv.Close()
-	defer close(release)
-	c := clientFor(t, srv.URL)
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
+
+	return srv
+}
+
+// A caller that gave up must not put every later caller into the backoff.
+func TestToken_CancelledCallerDoesNotBackOff(t *testing.T) {
+	var slow atomic.Bool
+	var calls int32
+	slow.Store(true)
+	c := clientFor(t, hangingServer(t, &slow, &calls).URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	_, _, err := c.Token(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	slow.Store(false)
+
+	token, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", token)
+}
+
+// A hanging instance-manager must back off short-deadline callers too, or each of
+// them waits out its whole deadline.
+func TestToken_DeadlineExceededBacksOff(t *testing.T) {
+	var slow atomic.Bool
+	var calls int32
+	slow.Store(true)
+	c := clientFor(t, hangingServer(t, &slow, &calls).URL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -287,7 +319,67 @@ func TestToken_CancelledCallerDoesNotBackOff(t *testing.T) {
 	require.Error(t, err)
 	slow.Store(false)
 
+	_, _, err = c.Token(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "backing off")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
+}
+
+func failingServer(t *testing.T, fail *atomic.Bool, calls *int32, expiresAt time.Time) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(calls, 1)
+		if fail.Load() {
+			w.WriteHeader(http.StatusBadGateway)
+
+			return
+		}
+		_, _ = w.Write([]byte(`{"accessToken":"brokered-jwt","expiresAt":"` + expiresAt.Format(time.RFC3339) + `"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+func TestToken_BackoffExpires(t *testing.T) {
+	var fail atomic.Bool
+	var calls int32
+	fail.Store(true)
+	now := time.Now()
+	c := clientFor(t, failingServer(t, &fail, &calls, now.Add(time.Hour)).URL)
+	c.now = func() time.Time { return now }
+
+	_, _, err := c.Token(context.Background())
+	require.Error(t, err)
+	fail.Store(false)
+	now = now.Add(failureBackoff - time.Second)
+	_, _, err = c.Token(context.Background())
+	require.Error(t, err, "still backing off")
+
+	now = now.Add(2 * time.Second)
 	token, _, err := c.Token(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, "brokered-jwt", token)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls))
+}
+
+// The backoff skips the exchange, not the token already held.
+func TestToken_BackoffStillServesAnUnexpiredToken(t *testing.T) {
+	var fail atomic.Bool
+	var calls int32
+	now := time.Now()
+	c := clientFor(t, failingServer(t, &fail, &calls, now.Add(refreshSkew+time.Minute)).URL)
+	c.now = func() time.Time { return now }
+
+	_, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	fail.Store(true)
+	now = now.Add(2 * time.Minute)
+
+	for range 2 {
+		token, _, err := c.Token(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "brokered-jwt", token)
+	}
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls), "the second early refresh is backed off")
 }

@@ -17,16 +17,10 @@ func (r *Resolver) ResolvePinned(ctx context.Context, envs map[string]string, is
 		return cred, origin, err
 	}
 
-	// Off CI a brokered token outlives any one build, and the block keeps no expiry:
-	// a later offline read would serve it expired, and it would overwrite a login's
-	// block. Anything that can broker it does so itself.
-	if origin.Provenance == auth.ProvenanceBrokered && !isCI {
-		return cred, origin, nil
-	}
-
-	// A JWT or an OIDC-exchanged token lives for one build at most, so it goes only to
-	// the authConfig block the analytics readers expect: the credentials block would
-	// serve it, expired, to a later job.
+	// A JWT or an OIDC-exchanged token is short-lived, so it goes only to the authConfig
+	// block the analytics readers expect: the credentials block would serve it, expired,
+	// to a later job. A brokered token is pinned off CI too, since GUI-started processes
+	// never see the VM env; the block outlives it, so the read-back skips it once expired.
 	if origin.Backend == auth.BackendJWT || origin.Provenance == auth.ProvenanceOIDC {
 		if legacyErr := writeAnalyticsCredential(cred, origin); legacyErr != nil {
 			r.debugf("could not mirror the credential to the analytics config: %s", legacyErr)

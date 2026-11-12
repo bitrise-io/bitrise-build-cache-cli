@@ -7,6 +7,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -312,15 +313,21 @@ func CanBroker(envs map[string]string) bool {
 	return buildhub.TokenEnv(envs) != ""
 }
 
-// BrokeringEnv names the VM token env var Resolve would exchange ahead of the
-// credential ResolveNoRefresh found at origin, or "". Offline callers use it to name
-// the credential builds will send, which ResolveNoRefresh never brokers.
-func BrokeringEnv(envs map[string]string, origin auth.Origin) string {
-	if hasAuthEnvVars(envs) || auth.OIDCPolicyConfigured(envs) || origin.Provenance == auth.ProvenanceBrokered {
+// BrokeringEnv names the VM token env var Resolve would exchange ahead of anything
+// ResolveNoRefresh can find, or "". Offline callers use it to name the credential
+// builds will send, which ResolveNoRefresh never brokers.
+func BrokeringEnv(envs map[string]string) string {
+	if hasAuthEnvVars(envs) || oidcCanExchange(envs) {
 		return ""
 	}
 
 	return buildhub.TokenEnv(envs)
+}
+
+// oidcCanExchange mirrors what oidcCredential needs before it tries the exchange;
+// without it Resolve falls through to the VM token.
+func oidcCanExchange(envs map[string]string) bool {
+	return auth.OnGitHubActionsOIDC(envs) && strings.TrimSpace(envs[auth.EnvWorkspaceID]) != ""
 }
 
 func (r *Resolver) hasTokenWithoutWorkspace() bool {
@@ -366,13 +373,25 @@ func (r *Resolver) fromStores(usable func(auth.TokenSet) bool) (auth.Credential,
 
 // analyticsFile is the cross-process read for a CI JWT that pin.go wrote into
 // the analytics config, so an offline ResolveNoRefresh in a later step still
-// sees the brokered credential.
+// sees the brokered credential. The block keeps no expiry and outlives the token,
+// so a JWT past its exp claim counts as absent.
 func (r *Resolver) analyticsFile() (auth.Credential, auth.Origin, bool) {
+	read := readAnalyticsCredential
 	if r.AnalyticsBlock != nil {
-		return r.AnalyticsBlock()
+		read = r.AnalyticsBlock
 	}
 
-	return readAnalyticsCredential()
+	cred, origin, ok := read()
+	if !ok {
+		return cred, origin, false
+	}
+	if exp, hasExp := auth.JWTExpiry(cred.Token); hasExp && !time.Now().Before(exp) {
+		r.debugf("ignoring the expired token in the analytics config")
+
+		return auth.Credential{}, auth.Origin{}, false
+	}
+
+	return cred, origin, true
 }
 
 func (r *Resolver) backends() []store.Store {

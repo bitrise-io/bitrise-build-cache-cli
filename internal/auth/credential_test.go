@@ -94,3 +94,17 @@ func TestParseJWTWorkspaceID(t *testing.T) {
 	_, err = ParseJWTWorkspaceID("not-a-jwt")
 	assert.Error(t, err)
 }
+
+func TestJWTExpiry(t *testing.T) {
+	// {"exp":1700000000}
+	exp, ok := JWTExpiry("header.eyJleHAiOjE3MDAwMDAwMDB9.sig")
+	require.True(t, ok)
+	assert.Equal(t, time.Unix(1700000000, 0), exp)
+
+	// {"org":"x"}
+	_, ok = JWTExpiry("header.eyJvcmciOiJ4In0.sig")
+	assert.False(t, ok, "no exp claim")
+
+	_, ok = JWTExpiry("not-a-jwt")
+	assert.False(t, ok)
+}

@@ -318,7 +318,7 @@ func saveLoginWithFallback(logger log.Logger, target store.Store, storage string
 func shadowingAuthEnv() string {
 	envs := utils.AllEnvs()
 	_, origin, _ := live.Default(nil).ResolveNoRefresh(envs)
-	if vmTokenEnv := live.BrokeringEnv(envs, origin); vmTokenEnv != "" {
+	if vmTokenEnv := live.BrokeringEnv(envs); vmTokenEnv != "" {
 		return vmTokenEnv
 	}
 

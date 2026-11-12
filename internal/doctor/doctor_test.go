@@ -983,3 +983,36 @@ func TestAuthCheck_VMTokenBeforeTheFirstExchangeIsNotMissing(t *testing.T) {
 	assert.Equal(t, StateOK, res.State)
 	assert.Contains(t, res.Detail, "VM token (brokered)")
 }
+
+// Builds still get a credential from the VM token, just not the way the user set up.
+func TestAuthCheck_OIDCMisconfiguredBesideAVMTokenWarns(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{err: keychain.ErrNotFound}}
+	envs := oidcDoctorEnvs()
+	delete(envs, authpkg.EnvGitHubOIDCRequestURL)
+	delete(envs, authpkg.EnvGitHubOIDCRequestToken)
+	envs[authpkg.EnvVMToken] = "vm-token"
+	envs[authpkg.EnvVMTokenURL] = "https://instance-manager.services.bitrise.io/vm/tokens"
+	r.Envs = envs
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.Equal(t, StateWarn, res.State)
+	assert.Contains(t, res.Detail, "id-token: write")
+	assert.Contains(t, res.Detail, authpkg.EnvVMToken)
+}
+
+// The pending exchange must not hide a stored token the CLI cannot send.
+func TestAuthCheck_VMTokenDoesNotMaskABrokenStoredToken(t *testing.T) {
+	r := newMinimalDoctor(t)
+	r.AuthBackends = []store.Store{fakeAuthStore{creds: authpkg.TokenSet{AuthToken: "bad\x01tok", WorkspaceID: "w"}}}
+	r.Envs = map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+	}
+
+	res := r.authCheck().Diagnose(context.Background())
+
+	assert.NotEqual(t, StateOK, res.State)
+	assert.NotContains(t, res.Detail, "VM token")
+}

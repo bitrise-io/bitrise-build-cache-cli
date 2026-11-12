@@ -135,7 +135,7 @@ type statusOutput struct {
 func currentAuthStatus() authStatusInfo {
 	envs := utils.AllEnvs()
 	cred, origin, err := live.Default(nil).ResolveNoRefresh(envs)
-	if live.BrokeringEnv(envs, origin) != "" {
+	if live.BrokeringEnv(envs) != "" {
 		return authStatusInfo{Configured: true, Source: live.DescribePendingBroker()}
 	}
 	switch {

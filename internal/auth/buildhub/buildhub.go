@@ -44,6 +44,7 @@ type Client struct {
 	tokenURL   string
 	vmToken    string
 	httpClient *http.Client
+	now        func() time.Time
 
 	// refreshSlot serialises exchanges so a burst of per-RPC resolves triggers one
 	// request rather than one each. A channel rather than a mutex so waiting honours
@@ -69,6 +70,7 @@ func FromEnv(envs map[string]string) (*Client, bool) {
 		tokenURL:    p.tokenURL,
 		vmToken:     p.vmToken,
 		httpClient:  &http.Client{Timeout: requestTimeout},
+		now:         time.Now,
 		refreshSlot: make(chan struct{}, 1),
 		mu:          sync.RWMutex{},
 		token:       "",
@@ -153,17 +155,9 @@ func (c *Client) Token(ctx context.Context) (string, time.Time, error) {
 		return token, expiresAt, nil
 	}
 
-	err := c.recentFailure()
+	token, expiresAt, err := c.exchangeUnlessBackingOff(ctx)
 	if err == nil {
-		var token string
-		var expiresAt time.Time
-		if token, expiresAt, err = c.exchange(ctx); err == nil {
-			return token, expiresAt, nil
-		}
-		// The caller giving up says nothing about instance-manager.
-		if ctx.Err() == nil {
-			c.recordFailure(err)
-		}
+		return token, expiresAt, nil
 	}
 
 	// A failed early refresh must not cost the caller a token that still works.
@@ -172,6 +166,22 @@ func (c *Client) Token(ctx context.Context) (string, time.Time, error) {
 	}
 
 	return "", time.Time{}, err
+}
+
+// A caller that cancelled says nothing about instance-manager, but one whose deadline
+// the exchange outlasted does: exempting that too would let a hanging instance-manager
+// cost every short-deadline caller the full wait.
+func (c *Client) exchangeUnlessBackingOff(ctx context.Context) (string, time.Time, error) {
+	if err := c.recentFailure(); err != nil {
+		return "", time.Time{}, fmt.Errorf("backing off after previous failure: %w", err)
+	}
+
+	token, expiresAt, err := c.exchange(ctx)
+	if err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+		c.recordFailure(err)
+	}
+
+	return token, expiresAt, err
 }
 
 func (c *Client) exchange(ctx context.Context) (string, time.Time, error) {
@@ -228,7 +238,7 @@ func (c *Client) exchange(ctx context.Context) (string, time.Time, error) {
 func (c *Client) cached() (string, time.Time, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.token != "" && time.Now().Add(refreshSkew).Before(c.expiresAt) {
+	if c.token != "" && c.now().Add(refreshSkew).Before(c.expiresAt) {
 		return c.token, c.expiresAt, true
 	}
 
@@ -240,7 +250,7 @@ func (c *Client) cached() (string, time.Time, bool) {
 func (c *Client) unexpired() (string, time.Time, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.token != "" && time.Now().Before(c.expiresAt) {
+	if c.token != "" && c.now().Before(c.expiresAt) {
 		return c.token, c.expiresAt, true
 	}
 
@@ -250,7 +260,7 @@ func (c *Client) unexpired() (string, time.Time, bool) {
 func (c *Client) recentFailure() error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if c.lastErr != nil && time.Since(c.lastErrAt) < failureBackoff {
+	if c.lastErr != nil && c.now().Sub(c.lastErrAt) < failureBackoff {
 		return c.lastErr
 	}
 
@@ -260,7 +270,7 @@ func (c *Client) recentFailure() error {
 func (c *Client) recordFailure(err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.lastErr, c.lastErrAt = err, time.Now()
+	c.lastErr, c.lastErrAt = err, c.now()
 }
 
 func (c *Client) store(token string, expiresAt time.Time) {

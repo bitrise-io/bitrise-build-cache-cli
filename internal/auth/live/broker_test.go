@@ -160,8 +160,6 @@ func TestBrokeredOriginIsDistinctFromTheCIJWT(t *testing.T) {
 // The offline callers name the brokered token only where Resolve would actually
 // reach the exchange before what they found.
 func TestBrokeringEnv(t *testing.T) {
-	brokered := auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}
-	keychain := auth.Origin{Backend: auth.BackendKeychain, Provenance: auth.ProvenanceOAuthLogin}
 	rde := map[string]string{auth.EnvVMToken: "vm-token", auth.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens"}
 	with := func(extra map[string]string) map[string]string {
 		envs := maps.Clone(rde)
@@ -169,22 +167,35 @@ func TestBrokeringEnv(t *testing.T) {
 
 		return envs
 	}
+	oidc := map[string]string{
+		auth.EnvOIDCPolicyID:           "policy",
+		auth.EnvWorkspaceID:            "ws",
+		auth.EnvGitHubOIDCRequestURL:   "https://token.actions.githubusercontent.com",
+		auth.EnvGitHubOIDCRequestToken: "gh-token",
+	}
+	without := func(keys ...string) map[string]string {
+		envs := with(oidc)
+		for _, k := range keys {
+			delete(envs, k)
+		}
+
+		return envs
+	}
 
 	for _, tc := range []struct {
-		name   string
-		envs   map[string]string
-		origin auth.Origin
-		want   string
+		name string
+		envs map[string]string
+		want string
 	}{
-		{"shadows a login", rde, keychain, auth.EnvVMToken},
-		{"nothing found", rde, auth.Origin{}, auth.EnvVMToken},
-		{"Build Hub pair", brokerEnvs(), keychain, auth.EnvBuildHubVMToken},
-		{"no pair", map[string]string{}, keychain, ""},
-		{"already the brokered token", rde, brokered, ""},
-		{"injected JWT wins", with(map[string]string{auth.EnvJWT: "jwt"}), auth.Origin{Backend: auth.BackendJWT}, ""},
-		{"env token wins", with(map[string]string{auth.EnvAuthToken: "pat", auth.EnvWorkspaceID: "ws"}), auth.Origin{Backend: auth.BackendEnv}, ""},
-		{"OIDC goes first", with(map[string]string{auth.EnvOIDCPolicyID: "policy"}), keychain, ""},
+		{"RDE pair", rde, auth.EnvVMToken},
+		{"Build Hub pair", brokerEnvs(), auth.EnvBuildHubVMToken},
+		{"no pair", map[string]string{}, ""},
+		{"injected JWT wins", with(map[string]string{auth.EnvJWT: "jwt"}), ""},
+		{"env token wins", with(map[string]string{auth.EnvAuthToken: "pat", auth.EnvWorkspaceID: "ws"}), ""},
+		{"OIDC goes first", with(oidc), ""},
+		{"policy set, no GitHub token", without(auth.EnvGitHubOIDCRequestToken), auth.EnvVMToken},
+		{"policy set, no workspace", without(auth.EnvWorkspaceID), auth.EnvVMToken},
 	} {
-		assert.Equal(t, tc.want, BrokeringEnv(tc.envs, tc.origin), tc.name)
+		assert.Equal(t, tc.want, BrokeringEnv(tc.envs), tc.name)
 	}
 }
