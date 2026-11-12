@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -14,6 +15,16 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/wrapperless"
 )
+
+func statInode(t *testing.T, path string) uint64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	sys, ok := info.Sys().(*syscall.Stat_t)
+	require.True(t, ok, "stat Sys() not syscall.Stat_t on this platform")
+
+	return sys.Ino
+}
 
 func TestHandledManifestStore_CompactDropsStaleRecordsFromDisk(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "handled.ndjson")
@@ -45,15 +56,22 @@ func TestHandledManifestStore_CompactNoopWhenAllFresh(t *testing.T) {
 		require.NoError(t, store.Append(wrapperless.HandledManifest{UUID: u, HandledAt: now.Add(-time.Hour)}))
 	}
 
-	before, err := os.ReadFile(path)
+	before, err := os.Stat(path)
 	require.NoError(t, err)
+	beforeIno := statInode(t, path)
+
+	// Sleep long enough that the all-fresh short-circuit's absence would
+	// produce a different mtime via the tmp + rename path.
+	time.Sleep(10 * time.Millisecond)
 
 	require.NoError(t, store.Compact(now, 7*24*time.Hour))
 
-	after, err := os.ReadFile(path)
+	after, err := os.Stat(path)
 	require.NoError(t, err)
+	afterIno := statInode(t, path)
 
-	assert.Equal(t, before, after, "all-fresh ledger must be untouched")
+	assert.Equal(t, before.ModTime(), after.ModTime(), "all-fresh ledger must not be rewritten")
+	assert.Equal(t, beforeIno, afterIno, "all-fresh ledger inode must not change")
 }
 
 func TestHandledManifestStore_CompactMissingFileIsNoop(t *testing.T) {

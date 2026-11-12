@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// HandledManifestMaxAge bounds how far back the EndWatcher replays a
+// HandledManifestMaxAge bounds how far back the DDWatcher replays a
 // uniqueIdentifier as new. Older records are pruned at load time so the
 // ledger does not grow forever.
 //
@@ -28,7 +28,7 @@ type HandledManifest struct {
 	HandledAt time.Time `json:"handled_at"`
 }
 
-// HandledManifestStore persists the EndWatcher's seen-uniqueIdentifier set
+// HandledManifestStore persists the DDWatcher's seen-uniqueIdentifier set
 // across proxy restarts. Mirrors the enricher's HandledManifestStore in shape
 // but is scoped to the wrapperless flow's own ledger file so the two sets
 // cannot collide.
@@ -141,28 +141,55 @@ func (s *HandledManifestStore) Compact(now time.Time, maxAge time.Duration) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	_, err := s.loadFreshAndCompactLocked(now, maxAge)
+
+	return err
+}
+
+// LoadFreshAndCompact returns the UUIDs whose HandledAt is within maxAge of
+// now, and in the same pass rewrites the on-disk ledger if any stale records
+// were dropped. Single read + write path replaces LoadFresh followed by
+// Compact at hydrate.
+func (s *HandledManifestStore) LoadFreshAndCompact(now time.Time, maxAge time.Duration) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.loadFreshAndCompactLocked(now, maxAge)
+}
+
+func (s *HandledManifestStore) loadFreshAndCompactLocked(now time.Time, maxAge time.Duration) ([]string, error) {
 	records, err := s.loadLocked()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(records) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	cutoff := now.Add(-maxAge)
 	kept := make([]HandledManifest, 0, len(records))
+	uuids := make([]string, 0, len(records))
 	for _, r := range records {
 		if r.HandledAt.Before(cutoff) {
 			continue
 		}
 
 		kept = append(kept, r)
+		uuids = append(uuids, r.UUID)
 	}
 
 	if len(kept) == len(records) {
-		return nil
+		return uuids, nil
 	}
 
+	if err := s.rewriteLocked(kept); err != nil {
+		return uuids, err
+	}
+
+	return uuids, nil
+}
+
+func (s *HandledManifestStore) rewriteLocked(kept []HandledManifest) error {
 	tmp := s.Path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // app-owned state file
 	if err != nil {

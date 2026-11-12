@@ -37,9 +37,9 @@ type BlobStatsSource interface {
 	TakeSnapshot() *blobstats.Snapshot
 }
 
-// intakeCapacity caps the single-producer→single-consumer timeline channel.
-// Overflow drops the newest event — the pipeline is a best-effort attributor,
-// not an at-least-once queue.
+// intakeCapacity caps the multi-producer (DDWatcher + QuitWatcher) →
+// single-consumer (Run) timeline channel. Overflow drops the newest event —
+// the pipeline is a best-effort attributor, not an at-least-once queue.
 const intakeCapacity = 10_000
 
 type Allocator struct {
@@ -91,14 +91,14 @@ func (a *Allocator) push(ev TimelineEvent) {
 	}
 }
 
-// CloseIntake stops accepting new events and closes the channel so Run exits
-// after flushing any already-buffered events. Pipeline.Close orders this
-// before cancelling ctx so a mid-flight End queued behind a slow enriched PUT
-// is not silently dropped on shutdown.
+// CloseIntake signals Run to flush buffered events and return. Pipeline.Close
+// orders this before cancelling ctx so a mid-flight End queued behind a slow
+// enriched PUT is not silently dropped on shutdown. The data channel is
+// intentionally not closed — doing so races with concurrent producers past
+// their intakeDone check.
 func (a *Allocator) CloseIntake() {
 	a.closeOnce.Do(func() {
 		close(a.intakeDone)
-		close(a.intake)
 	})
 }
 
@@ -123,9 +123,10 @@ func (a *Allocator) Handle(ev TimelineEvent) {
 	}
 }
 
-// Run drains the internal intake channel into Handle. On ctx cancel it still
-// consumes any already-buffered events before returning. Single-reader by
-// design — Allocator's state machine is not safe for concurrent drivers.
+// Run drains the internal intake channel into Handle. On CloseIntake or ctx
+// cancel it still consumes any already-buffered events before returning.
+// Single-reader by design — Allocator's state machine is not safe for
+// concurrent drivers.
 func (a *Allocator) Run(ctx context.Context) {
 	a.mu.Lock()
 	if a.done == nil {
@@ -138,36 +139,28 @@ func (a *Allocator) Run(ctx context.Context) {
 
 	for {
 		select {
-		case ev, ok := <-a.intake:
-			if !ok {
-				return
-			}
+		case ev := <-a.intake:
 			a.Handle(ev)
+		case <-a.intakeDone:
+			a.drainIntake()
+
+			return
 		case <-ctx.Done():
-			for {
-				select {
-				case ev, ok := <-a.intake:
-					if !ok {
-						return
-					}
-					a.Handle(ev)
-				default:
-					return
-				}
-			}
+			a.drainIntake()
+
+			return
 		}
 	}
 }
 
-// Done blocks until Run returns. nil-safe for tests that drive Handle
-// directly without ever calling Run.
-func (a *Allocator) Done() {
-	a.mu.Lock()
-	done := a.done
-	a.mu.Unlock()
-
-	if done != nil {
-		<-done
+func (a *Allocator) drainIntake() {
+	for {
+		select {
+		case ev := <-a.intake:
+			a.Handle(ev)
+		default:
+			return
+		}
 	}
 }
 
