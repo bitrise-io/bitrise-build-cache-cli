@@ -367,7 +367,11 @@ func (w *DDWatcher) scanManifest(path string) {
 
 		scheme := e.SchemeName
 		success := e.HighLevelStatus != "E" && e.HighLevelStatus != "F"
-		logPath := filepath.Join(filepath.Dir(path), e.UniqueIdentifier+".xcactivitylog")
+		logName := e.FileName
+		if logName == "" {
+			logName = e.UniqueIdentifier + ".xcactivitylog"
+		}
+		logPath := filepath.Join(filepath.Dir(path), logName)
 		w.infof("DDWatcher: emit End uuid=%s scheme=%s status=%s", e.UniqueIdentifier, scheme, e.HighLevelStatus)
 		w.OnEnd(End{
 			At:                w.now(),
@@ -657,6 +661,7 @@ type manifestLogEntry struct {
 	Signature         string                     `plist:"signature"`
 	SchemeName        string                     `plist:"schemeIdentifier-schemeName"`
 	HighLevelStatus   string                     `plist:"highLevelStatus"`
+	FileName          string                     `plist:"fileName"`
 	TimeStarted       float64                    `plist:"timeStartedRecording"`
 	TimeStopped       float64                    `plist:"timeStoppedRecording"`
 	PrimaryObservable manifestLogPrimaryObserver `plist:"primaryObservable"`
