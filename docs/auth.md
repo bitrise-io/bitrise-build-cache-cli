@@ -265,8 +265,10 @@ policy is something the user configured for the job, so it beats whatever login 
 the machine. The VM token exchange sits after the stores: the VM offers it whether or
 not anyone asked, so an `auth login` or `auth set` credential on the machine is the
 user's explicit choice and wins (a Build Hub VM is ephemeral and normally holds
-none). It still beats the `authConfig` block, which holds at most an earlier copy of
-the brokered token. The exchanges are the only precedence steps that make a network
+none). It still beats the `authConfig` block, which on such a machine normally holds
+only an earlier copy of the brokered token or a mirror of a credential the stores
+already hold; a PAT that an older CLI kept only in that block loses to the VM token.
+The exchanges are the only precedence steps that make a network
 call, so they are passed into `resolveWith` as steps rather than called from it:
 `ResolveNoRefresh` passes nil and therefore stays offline, which is what `status` and
 the doctor depend on. A failed exchange is not fatal — resolution falls through to

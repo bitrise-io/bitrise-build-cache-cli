@@ -320,14 +320,15 @@ func (r *Resolver) brokerCredential(ctx context.Context, envs map[string]string)
 // Offline callers use it to name the credential builds will send, which
 // ResolveNoRefresh never brokers.
 func (r *Resolver) BrokeringEnv(envs map[string]string) string {
-	if hasAuthEnvVars(envs) || oidcCanExchange(envs) {
+	env := buildhub.TokenEnv(envs)
+	if env == "" || hasAuthEnvVars(envs) || oidcCanExchange(envs) {
 		return ""
 	}
 	if _, _, _, ok := r.fromStores(auth.TokenSet.Populated); ok {
 		return ""
 	}
 
-	return buildhub.TokenEnv(envs)
+	return env
 }
 
 // oidcCanExchange mirrors what oidcCredential needs before it tries the exchange;

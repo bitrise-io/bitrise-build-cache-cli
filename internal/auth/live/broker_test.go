@@ -243,4 +243,8 @@ func TestBrokeringEnv(t *testing.T) {
 	assert.Empty(t, (&Resolver{Backends: []store.Store{stored}}).BrokeringEnv(rde), "a stored credential wins")
 	noWorkspace := &fakeStore{backend: auth.BackendKeychain, present: true, ts: auth.TokenSet{AuthToken: "pat"}}
 	assert.Equal(t, auth.EnvVMToken, (&Resolver{Backends: []store.Store{noWorkspace}}).BrokeringEnv(rde), "an unusable login does not")
+
+	untouched := &fakeStore{backend: auth.BackendKeychain}
+	assert.Empty(t, (&Resolver{Backends: []store.Store{untouched}}).BrokeringEnv(map[string]string{}))
+	assert.Zero(t, untouched.loadHits, "without a VM token the stores must not be read")
 }

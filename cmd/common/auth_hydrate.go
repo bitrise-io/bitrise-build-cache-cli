@@ -19,7 +19,10 @@ func hydrateStoredAuth(ctx context.Context) {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
-	resolver := live.Default(logger)
+	hydrateWith(ctx, envs, live.Default(logger), logger)
+}
+
+func hydrateWith(ctx context.Context, envs map[string]string, resolver *live.Resolver, logger log.Logger) {
 	if resolver.BrokeringEnv(envs) != "" {
 		return
 	}

@@ -356,9 +356,9 @@ var authStatusCmd = &cobra.Command{
 	},
 }
 
-// pendingBrokerSource labels the VM token builds will exchange when none of the
-// sources above holds a credential. It is not a migration source, since the token
-// is not a credential to store.
+// pendingBrokerSource labels the VM token builds will exchange when no env
+// credential, runnable OIDC policy or stored login precedes it. It is not a
+// migration source, since the token is not a credential to store.
 func pendingBrokerSource(envs map[string]string) (string, bool) {
 	env := live.Default(nil).BrokeringEnv(envs)
 	if env == "" {
