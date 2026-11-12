@@ -89,7 +89,7 @@ const (
 	wrapperlessPendingEnrichedFilename = "pending-enriched.ndjson"
 
 	// wrapperlessHandledManifestsFilename is the NDJSON ledger of
-	// LogStoreManifest uniqueIdentifiers the EndWatcher has already
+	// LogStoreManifest uniqueIdentifiers the DDWatcher has already
 	// emitted. Mirrors enrichment's handled-manifests file in shape but
 	// is scoped to the wrapperless flow's own set so the two cannot
 	// collide across restarts.
@@ -378,7 +378,7 @@ func (p Paths) WrapperlessPendingEnrichedPath() string {
 }
 
 // WrapperlessHandledManifestsPath returns the NDJSON ledger of
-// LogStoreManifest uniqueIdentifiers the EndWatcher has already emitted.
+// LogStoreManifest uniqueIdentifiers the DDWatcher has already emitted.
 // Persisted so a proxy restart within seedStaleGrace of a sealed build does
 // not emit a duplicate row for the same user action.
 func (p Paths) WrapperlessHandledManifestsPath() string {

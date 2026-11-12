@@ -349,10 +349,10 @@ func TestDDWatcher_End_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 
 // TestDDWatcher_End_SeenStoreSuppressesRestartDuplicate covers the dup-row race
 // a proxy restart creates within seedStaleGrace of a sealed manifest. Without
-// persistence, the fresh EndWatcher's in-memory seen set is empty, so it
+// persistence, the fresh DDWatcher's in-memory seen set is empty, so it
 // seed-walks the still-fresh plist and re-emits the UID — producing a second
 // BE row. With a SeenStore the first proxy's emit lands in the ledger and
-// the restart's EndWatcher skips it.
+// the restart's DDWatcher skips it.
 func TestDDWatcher_End_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-restart")
@@ -382,7 +382,7 @@ func TestDDWatcher_End_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	assert.Equal(t, "AAAA-BBBB", got1.UniqueIdentifier)
 	w1.Close()
 
-	// Second proxy: fresh EndWatcher sharing the store. Seed walk on the
+	// Second proxy: fresh DDWatcher sharing the store. Seed walk on the
 	// still-fresh manifest would otherwise re-emit — the store suppresses it.
 	src2 := newFakeEventSource()
 	ends2 := make(chan End, 4)
@@ -592,7 +592,7 @@ func TestDDWatcher_End_UsesFileNameFromManifest(t *testing.T) {
 }
 
 // TestDDWatcher_End_SeedPicksUpPreExistingSealedManifest covers the window where
-// Xcode sealed a manifest before the proxy's EndWatcher started. The seed
+// Xcode sealed a manifest before the proxy's DDWatcher started. The seed
 // walk must surface the sealed entry on Start.
 func TestDDWatcher_End_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 	fakeHome := t.TempDir()
