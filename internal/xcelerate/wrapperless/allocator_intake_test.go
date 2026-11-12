@@ -4,6 +4,7 @@ package wrapperless
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -14,6 +15,29 @@ func TestAllocator_PushAfterCloseIntakeDoesNotPanic(t *testing.T) {
 	a.PushStart(Start{})
 	a.PushEnd(End{})
 	a.PushQuit(Quit{})
+}
+
+// TestAllocator_ConcurrentPushAndCloseIntakeNeverPanics exercises the race
+// between a producer goroutine already past its intakeDone check and
+// CloseIntake firing in another goroutine. The intake channel is deliberately
+// never closed to make send-on-closed impossible.
+func TestAllocator_ConcurrentPushAndCloseIntakeNeverPanics(t *testing.T) {
+	a := NewAllocator("h", 1, 0)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 128; j++ {
+				a.PushStart(Start{BuildRequestHex: "aa"})
+			}
+		}()
+	}
+
+	time.Sleep(time.Millisecond)
+	a.CloseIntake()
+	wg.Wait()
 }
 
 // TestAllocator_RunReturnsAfterCloseIntake pins the drain's close-exit path:

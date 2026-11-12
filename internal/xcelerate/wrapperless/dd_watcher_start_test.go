@@ -64,7 +64,7 @@ func waitForStart(t *testing.T, ch chan Start) Start {
 	}
 }
 
-func TestStartWatcher_FiresOnPrimaryBuildCreate(t *testing.T) {
+func TestDDWatcher_Start_FiresOnPrimaryBuildCreate(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
@@ -99,9 +99,9 @@ func TestStartWatcher_FiresOnPrimaryBuildCreate(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_RejectsSubBuilds verifies the primary-action filter: dark
+// TestDDWatcher_Start_RejectsSubBuilds verifies the primary-action filter: dark
 // build (qos=default) and indexer runs must never emit a Start.
-func TestStartWatcher_RejectsSubBuilds(t *testing.T) {
+func TestDDWatcher_Start_RejectsSubBuilds(t *testing.T) {
 	for _, c := range []struct {
 		name, action, qos string
 	}{
@@ -145,7 +145,7 @@ func TestStartWatcher_RejectsSubBuilds(t *testing.T) {
 	}
 }
 
-func TestStartWatcher_FiresOnArchiveAndTest(t *testing.T) {
+func TestDDWatcher_Start_FiresOnArchiveAndTest(t *testing.T) {
 	for _, c := range []struct {
 		name, action string
 		want         PrimaryAction
@@ -188,7 +188,7 @@ func TestStartWatcher_FiresOnArchiveAndTest(t *testing.T) {
 	}
 }
 
-func TestStartWatcher_IgnoresMissingBuildRequest(t *testing.T) {
+func TestDDWatcher_Start_IgnoresMissingBuildRequest(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
@@ -222,19 +222,19 @@ func TestStartWatcher_IgnoresMissingBuildRequest(t *testing.T) {
 	w.Close()
 }
 
-func TestStartWatcher_CloseIdempotent(t *testing.T) {
+func TestDDWatcher_Start_CloseIdempotent(t *testing.T) {
 	w := &DDWatcher{}
 
 	w.Close()
 	w.Close()
 }
 
-// TestStartWatcher_DeepTreeCreatedAtomically simulates FSEvents delivering a
+// TestDDWatcher_Start_DeepTreeCreatedAtomically simulates FSEvents delivering a
 // single terminal CREATE for an xcbuilddata dir that appeared alongside its
 // entire ancestor chain in one mkdir-all. With rjeczalik/notify's recursive
 // FSEvents watch there are no intermediate adds to race — the terminal
 // CREATE is delivered directly.
-func TestStartWatcher_DeepTreeCreatedAtomically(t *testing.T) {
+func TestDDWatcher_Start_DeepTreeCreatedAtomically(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	src := newFakeEventSource()
@@ -270,10 +270,10 @@ func TestStartWatcher_DeepTreeCreatedAtomically(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_PreExistingHexDirsSeedOnStart verifies the seed walk
+// TestDDWatcher_Start_PreExistingHexDirsSeedOnStart verifies the seed walk
 // catches an xcbuilddata dir that exists before Start is called. Without a
 // seed walk the proxy would miss any build already running when it started.
-func TestStartWatcher_SeedSkipsHandledSiblingManifest(t *testing.T) {
+func TestDDWatcher_Start_SeedSkipsHandledSiblingManifest(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-handled")
 	hex := "99999999999999999999999999999999"
@@ -319,7 +319,7 @@ func TestStartWatcher_SeedSkipsHandledSiblingManifest(t *testing.T) {
 	w.Close()
 }
 
-func TestStartWatcher_SeedEmitsWhenManifestHasOpenEntry(t *testing.T) {
+func TestDDWatcher_Start_SeedEmitsWhenManifestHasOpenEntry(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-mixed")
 	hex := "88888888888888888888888888888888"
@@ -372,10 +372,10 @@ func TestStartWatcher_SeedEmitsWhenManifestHasOpenEntry(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_SeedSkipsStaleCompletedBuild guards the phantom-row path:
+// TestDDWatcher_Start_SeedSkipsStaleCompletedBuild guards the phantom-row path:
 // a prior Xcode session's xcbuilddata lingers on disk alongside a sealed
 // LogStoreManifest.plist older than startedAt — seed must skip it.
-func TestStartWatcher_SeedSkipsStaleCompletedBuild(t *testing.T) {
+func TestDDWatcher_Start_SeedSkipsStaleCompletedBuild(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-stale-start")
 	hex := "abcabcabcabcabcabcabcabcabcabc00"
@@ -412,7 +412,7 @@ func TestStartWatcher_SeedSkipsStaleCompletedBuild(t *testing.T) {
 	w.Close()
 }
 
-func TestStartWatcher_PreExistingHexDirsSeedOnStart(t *testing.T) {
+func TestDDWatcher_Start_PreExistingHexDirsSeedOnStart(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-preexisting")
@@ -441,10 +441,10 @@ func TestStartWatcher_PreExistingHexDirsSeedOnStart(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_SeedAndStreamDedup verifies the seen-set gates emission
+// TestDDWatcher_Start_SeedAndStreamDedup verifies the seen-set gates emission
 // across both paths: the seed walk fires once, and a later notify CREATE
 // for the same dir must be swallowed.
-func TestStartWatcher_SeedAndStreamDedup(t *testing.T) {
+func TestDDWatcher_Start_SeedAndStreamDedup(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-dedup")
@@ -479,12 +479,12 @@ func TestStartWatcher_SeedAndStreamDedup(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate covers the case
+// TestDDWatcher_Start_EmitsOnBuildRequestJSONWriteAfterDirCreate covers the case
 // where the xcbuilddata dir CREATE fires before build-request.json lands. The
 // initial emitStartOnce hits ErrNotFound and must not mark the seen-set; the
 // later CREATE for build-request.json retries against the parent dir and
 // emits exactly one Start.
-func TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate(t *testing.T) {
+func TestDDWatcher_Start_EmitsOnBuildRequestJSONWriteAfterDirCreate(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-late")
@@ -538,7 +538,7 @@ func TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate(t *testing.T) {
 	w.Close()
 }
 
-func TestStartWatcher_EmitsOnBuildRequestJSONWriteOnly(t *testing.T) {
+func TestDDWatcher_Start_EmitsOnBuildRequestJSONWriteOnly(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-writeonly")
@@ -580,10 +580,10 @@ func TestStartWatcher_EmitsOnBuildRequestJSONWriteOnly(t *testing.T) {
 	w.Close()
 }
 
-// TestStartWatcher_InstallsRecursiveWatch asserts the watchpoint is installed
+// TestDDWatcher_Start_InstallsRecursiveWatch asserts the watchpoint is installed
 // at the DD root with the .../... recursive suffix — the single piece of
 // FSEvents plumbing we rely on instead of the old stair-step add chain.
-func TestStartWatcher_InstallsRecursiveWatch(t *testing.T) {
+func TestDDWatcher_Start_InstallsRecursiveWatch(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	src := newFakeEventSource()

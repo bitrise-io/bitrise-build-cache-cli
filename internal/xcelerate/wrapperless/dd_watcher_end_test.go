@@ -67,7 +67,7 @@ func waitForEnd(t *testing.T, ch chan End) End {
 	}
 }
 
-func TestEndWatcher_EmitsForSealedEntry(t *testing.T) {
+func TestDDWatcher_End_EmitsForSealedEntry(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
 
@@ -97,7 +97,7 @@ func TestEndWatcher_EmitsForSealedEntry(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_DedupesAcrossWriteEvents(t *testing.T) {
+func TestDDWatcher_End_DedupesAcrossWriteEvents(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-abc")
 
@@ -129,7 +129,7 @@ func TestEndWatcher_DedupesAcrossWriteEvents(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_IgnoresUnsealedEntries(t *testing.T) {
+func TestDDWatcher_End_IgnoresUnsealedEntries(t *testing.T) {
 	const onlyOpen = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>XXXX-OPEN</key>
@@ -168,7 +168,7 @@ func TestEndWatcher_IgnoresUnsealedEntries(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_FailureStatus(t *testing.T) {
+func TestDDWatcher_End_FailureStatus(t *testing.T) {
 	const failedBody = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>FAIL-01</key>
@@ -208,11 +208,11 @@ func TestEndWatcher_FailureStatus(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_EmitsForPrimaryObservableSealedEntry covers newer Xcode
+// TestDDWatcher_End_EmitsForPrimaryObservableSealedEntry covers newer Xcode
 // manifests where highLevelStatus is nested under primaryObservable (and no
 // top-level highLevelStatus is written). The parser must fall through to the
 // nested field or it would treat the entry as never sealed.
-func TestEndWatcher_EmitsForPrimaryObservableSealedEntry(t *testing.T) {
+func TestDDWatcher_End_EmitsForPrimaryObservableSealedEntry(t *testing.T) {
 	const primaryObservableBody = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>PO-01</key>
@@ -257,10 +257,10 @@ func TestEndWatcher_EmitsForPrimaryObservableSealedEntry(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_PrimaryObservableTimeStoppedFallback covers the shape where
+// TestDDWatcher_End_PrimaryObservableTimeStoppedFallback covers the shape where
 // timeStoppedRecording is also nested under primaryObservable. The seal gate
 // must pick that up, otherwise a completed build looks unsealed.
-func TestEndWatcher_PrimaryObservableTimeStoppedFallback(t *testing.T) {
+func TestDDWatcher_End_PrimaryObservableTimeStoppedFallback(t *testing.T) {
 	const nestedStopBody = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>PO-02</key>
@@ -303,10 +303,10 @@ func TestEndWatcher_PrimaryObservableTimeStoppedFallback(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry asserts the nested-shape
-// equivalent of TestEndWatcher_IgnoresUnsealedEntries: no highLevelStatus and
+// TestDDWatcher_End_IgnoresUnsealedPrimaryObservableEntry asserts the nested-shape
+// equivalent of TestDDWatcher_End_IgnoresUnsealedEntries: no highLevelStatus and
 // no timeStoppedRecording anywhere means the entry is still running.
-func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
+func TestDDWatcher_End_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 	const openNestedBody = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>PO-OPEN</key>
@@ -347,13 +347,13 @@ func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_SeenStoreSuppressesRestartDuplicate covers the dup-row race
+// TestDDWatcher_End_SeenStoreSuppressesRestartDuplicate covers the dup-row race
 // a proxy restart creates within seedStaleGrace of a sealed manifest. Without
 // persistence, the fresh EndWatcher's in-memory seen set is empty, so it
 // seed-walks the still-fresh plist and re-emits the UID — producing a second
 // BE row. With a SeenStore the first proxy's emit lands in the ledger and
 // the restart's EndWatcher skips it.
-func TestEndWatcher_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
+func TestDDWatcher_End_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-restart")
 	manifestPath := writeManifest(t, root, sealedManifestFixture)
@@ -408,11 +408,11 @@ func TestEndWatcher_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	w2.Close()
 }
 
-// TestEndWatcher_SkipsPreStartSealedEntries covers the first-build-after-
+// TestDDWatcher_End_SkipsPreStartSealedEntries covers the first-build-after-
 // wrapperless-enable case: a DerivedData with an existing LogStoreManifest
 // holding older sealed entries must not re-emit them when the first new
 // build appends a fresh entry and bumps the file mtime.
-func TestEndWatcher_SkipsPreStartSealedEntries(t *testing.T) {
+func TestDDWatcher_End_SkipsPreStartSealedEntries(t *testing.T) {
 	const mixedBody = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>OLD-1</key>
@@ -469,13 +469,13 @@ func TestEndWatcher_SkipsPreStartSealedEntries(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_EmitsParticipleVerbAction asserts the scanManifest path
+// TestDDWatcher_End_EmitsParticipleVerbAction asserts the scanManifest path
 // classifies participle verbs (Building / Archiving / Testing / Analyzing)
 // the same way as the imperative forms. Xcode writes the gerund variants
 // for workspace-level signatures ("Building project … with scheme …"); the
 // imperative-only table would short-circuit as sub-build and never mint a
 // bucket.
-func TestEndWatcher_EmitsParticipleVerbAction(t *testing.T) {
+func TestDDWatcher_End_EmitsParticipleVerbAction(t *testing.T) {
 	const participleBody = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>PART-01</key>
@@ -516,11 +516,11 @@ func TestEndWatcher_EmitsParticipleVerbAction(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_EmitsXCActivityLogPathForSealedEntry asserts the sibling
+// TestDDWatcher_End_EmitsXCActivityLogPathForSealedEntry asserts the sibling
 // xcactivitylog path lands on the emitted End. The downstream enriched-emit
 // path reads CompilationCacheMetrics from this file for the log-tier hit-rate
 // override, so an empty path would silently drop that tier.
-func TestEndWatcher_EmitsXCActivityLogPathForSealedEntry(t *testing.T) {
+func TestDDWatcher_End_EmitsXCActivityLogPathForSealedEntry(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-log")
 
@@ -547,11 +547,11 @@ func TestEndWatcher_EmitsXCActivityLogPathForSealedEntry(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_UsesFileNameFromManifest asserts the sibling xcactivitylog
+// TestDDWatcher_End_UsesFileNameFromManifest asserts the sibling xcactivitylog
 // path is read from the manifest entry's `fileName` field when present.
 // Xcode writes this per-entry, so relying on the UUID-convention fallback
 // alone is fragile.
-func TestEndWatcher_UsesFileNameFromManifest(t *testing.T) {
+func TestDDWatcher_End_UsesFileNameFromManifest(t *testing.T) {
 	const bodyWithFileName = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>AAAA-BBBB</key>
@@ -591,10 +591,10 @@ func TestEndWatcher_UsesFileNameFromManifest(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_SeedPicksUpPreExistingSealedManifest covers the window where
+// TestDDWatcher_End_SeedPicksUpPreExistingSealedManifest covers the window where
 // Xcode sealed a manifest before the proxy's EndWatcher started. The seed
 // walk must surface the sealed entry on Start.
-func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
+func TestDDWatcher_End_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-preexisting")
 	manifestPath := writeManifest(t, root, sealedManifestFixture)
@@ -623,7 +623,7 @@ func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_AcceptsWarningStatus(t *testing.T) {
+func TestDDWatcher_End_AcceptsWarningStatus(t *testing.T) {
 	const warnFixture = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>WWWW-WARN</key>
@@ -663,7 +663,7 @@ func TestEndWatcher_AcceptsWarningStatus(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_SkipsNonPrimarySignature(t *testing.T) {
+func TestDDWatcher_End_SkipsNonPrimarySignature(t *testing.T) {
 	const signingFixture = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>logs</key><dict>
   <key>SIGN-AAAA</key>
@@ -704,7 +704,7 @@ func TestEndWatcher_SkipsNonPrimarySignature(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_StaleSeedMarksUUIDsSeen(t *testing.T) {
+func TestDDWatcher_End_StaleSeedMarksUUIDsSeen(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-stale-seen")
 	path := writeManifest(t, root, sealedManifestFixture)
@@ -738,7 +738,7 @@ func TestEndWatcher_StaleSeedMarksUUIDsSeen(t *testing.T) {
 	w.Close()
 }
 
-func TestEndWatcher_SeedPicksUpRootLevelManifest(t *testing.T) {
+func TestDDWatcher_End_SeedPicksUpRootLevelManifest(t *testing.T) {
 	envRoot := t.TempDir()
 	t.Setenv(EnvDerivedDataDirs, envRoot)
 
@@ -768,10 +768,10 @@ func TestEndWatcher_SeedPicksUpRootLevelManifest(t *testing.T) {
 	w.Close()
 }
 
-// TestEndWatcher_SeedSkipsManifestOlderThanStart guards the phantom-row path
+// TestDDWatcher_End_SeedSkipsManifestOlderThanStart guards the phantom-row path
 // where a previous Xcode session's sealed manifest would otherwise fire a
 // ghost End against a freshly-restarted proxy.
-func TestEndWatcher_SeedSkipsManifestOlderThanStart(t *testing.T) {
+func TestDDWatcher_End_SeedSkipsManifestOlderThanStart(t *testing.T) {
 	fakeHome := t.TempDir()
 	root := filepath.Join(fakeHome, "Library", "Developer", "Xcode", "DerivedData", "Seek-stale")
 	manifestPath := writeManifest(t, root, sealedManifestFixture)
