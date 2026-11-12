@@ -75,13 +75,6 @@ workflows:
             # (the critical path) free of any brew-related work.
             goreleaser release
     - script:
-        title: Build trampoline universal binary + checksums
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -e
-            ./scripts/build_trampoline_universal.sh
-    - script:
         title: Authenticate to GCP
         inputs:
           - content: |-

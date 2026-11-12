@@ -52,9 +52,12 @@ func Default() Deps {
 // EnsureForVersion returns a path to a trampoline binary for the given CLI
 // version. Resolution order:
 //  1. BITRISE_XCELERATE_TRAMPOLINE_PATH (if set + executable).
-//  2. ~/.bitrise-xcelerate/toolchain/trampoline-<version>-universal when its
+//  2. An embedded per-arch trampoline shipped inside the CLI binary (release
+//     builds have this; dev builds carry an empty placeholder and fall
+//     through).
+//  3. ~/.bitrise-xcelerate/toolchain/trampoline-<version>-universal when its
 //     sha matches the published checksum.
-//  3. Download trampoline + checksums from R2, verify, atomic-write, return.
+//  4. Download trampoline + checksums from R2, verify, atomic-write, return.
 func EnsureForVersion(ctx context.Context, cliVersion string, p paths.Paths) (string, error) {
 	return ensure(ctx, cliVersion, p, Default())
 }
@@ -76,6 +79,10 @@ func ensure(ctx context.Context, cliVersion string, p paths.Paths, d Deps) (stri
 	target := p.TrampolineBinary(cliVersion)
 	if err := d.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return "", fmt.Errorf("mkdir trampoline cache dir: %w", err)
+	}
+
+	if len(embeddedTrampoline) > 0 {
+		return installEmbedded(target, d)
 	}
 
 	published, err := fetchChecksums(ctx, d, cliVersion)
@@ -107,6 +114,24 @@ func ensure(ctx context.Context, cliVersion string, p paths.Paths, d Deps) (stri
 
 	if err := writeAtomic(target, body); err != nil {
 		return "", fmt.Errorf("install trampoline: %w", err)
+	}
+
+	return target, nil
+}
+
+func installEmbedded(target string, d Deps) (string, error) {
+	wantSum := sha256.Sum256(embeddedTrampoline)
+	wantHex := hex.EncodeToString(wantSum[:])
+
+	existing, statErr := d.Stat(target)
+	if statErr == nil && !existing.IsDir() && existing.Size() == int64(len(embeddedTrampoline)) {
+		if got, err := fileSHA256(target); err == nil && got == wantHex {
+			return target, nil
+		}
+	}
+
+	if err := writeAtomic(target, embeddedTrampoline); err != nil {
+		return "", fmt.Errorf("install embedded trampoline: %w", err)
 	}
 
 	return target, nil
