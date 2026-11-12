@@ -174,9 +174,9 @@ The PID + StartTimeMS source depends on the bucket type:
 | `mintEndOnlyBucket` (sole-End warm rebuild) | proxy | `End.UniqueIdentifier` |
 | `ideBackgroundBucket` | peer (from Quit) | `AnchorSaltIDEBackground` |
 | `cliImplicitBucket` | peer (from Quit) | `AnchorSaltCLIRun` |
-| `openSpec` (per-cycle speculative) | proxy | `fmt.Sprintf(anchorSaltSpecFmt, counter)` |
+| `openSpec` (per-cycle speculative) | proxy | `fmt.Sprintf(anchorSaltSpecFmt, at.UnixNano())` |
 
-Peer anchoring (IDE / CLI) uses the `PID` / `StartTimeMS` from the QuitWatcher's `Quit{}` payload, not the proxy's. Two IDE sessions with the same PID but different start-ms therefore derive distinct InvocationIDs — PID recycling is a real risk on long-lived desktops.
+Peer anchoring (IDE / CLI) uses the `PID` / `StartTimeMS` from the QuitWatcher's `Quit{}` payload, not the proxy's. Two IDE sessions with the same PID but different start-ms therefore derive distinct InvocationIDs — PID recycling is a real risk on long-lived desktops. `ideBackgroundBucket` and `cliImplicitBucket` fall back to the proxy's `PID` / `StartTimeMS` when the Quit payload has none; that path should only fire when the QuitWatcher never learned a peer identity, so an unexpected collapse under one ID is worth a Debug-level trace.
 
 ---
 
@@ -188,23 +188,18 @@ Structured proxy log:
 ~/.local/state/xcelerate/logs/proxy-<uuid>-out.log
 ```
 
-Grep for the usual milestones:
+Grep for the usual milestones. The first block works at the default log level; the second block needs `DebugLogging=true` in `~/.bitrise-xcelerate/config.json`:
 
 ```bash
-# Start events
-grep 'Allocator: bucket opened' proxy-*.log
+# info-level events
+grep 'Allocator: bucket opened\|Allocator: bucket closed\|Allocator: spec-promote End\|Allocator: sole-End mint' proxy-*.log
+```
 
-# End events + emissions
-grep 'Allocator: bucket closed\|Allocator: spec-promote End\|Allocator: sole-End mint' proxy-*.log
-
-# Emitter PUTs
+```bash
+# debug-level events (require DebugLogging=true)
 grep 'Emitter: slim PUT\|Emitter: enriched PUT' proxy-*.log
-
-# CLIImplicit suppression
 grep 'flushCLI suppressed' proxy-*.log
-
-# Non-primary sidecar skip (Signing / Packages / Localization sub-builds)
-grep 'reason=non-primary' proxy-*.log
+grep 'reason=non-primary' proxy-*.log            # Signing / Packages / Localization sub-builds
 ```
 
 Flush the pending replay queue on demand:
@@ -234,7 +229,7 @@ See `~/.claude/skills/rde-xcode-cas-test/SKILL.md` for the RDE smoke harness. Mi
 |---|---|
 | `testPlan` in `shortCommand` on wrapperless | not parsed from manifest signature; `xcactivitylog`-side extraction is a follow-up |
 | Parallel ⌘B on different schemes | Allocator is single-slot; Xcode serializes per workspace so single-user OK; cross-workspace concurrent builds tracked as follow-up |
-| CGO-disabled release fsnotify fallback | not re-validated in this PR; rjeczalik/notify continues to carry recursive-watch semantics |
+| Recursive watch on CGO-0 release | not re-validated in this PR; the in-tree `internal/xcelerate/wrapperless/recwatch` adapter layers synthetic walk-on-CREATE replay on top of `fsnotify`, replacing the former CGO-requiring `rjeczalik/notify` |
 | `LogStoreManifest.plist` as the only end-signal source | authoritative per Xcode 11-27; reconfirmed on Xcode 27.2 but not formally contracted |
 
 See the repo's open issues for the live list.
