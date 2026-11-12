@@ -687,3 +687,9 @@ func TestDefaultParams_CompressionOnWithDefaultThreshold(t *testing.T) {
 	assert.True(t, p.RemoteCacheCompression)
 	assert.Equal(t, kv.DefaultCompressionThreshold, p.RemoteCacheCompressionThreshold)
 }
+
+func TestDefaultParams_WrapperlessPipelineOptIn(t *testing.T) {
+	p := xcelerate.DefaultParams()
+
+	assert.False(t, p.WrapperlessPipelineEnabled, "wrapperless pipeline must default off (opt-in)")
+}

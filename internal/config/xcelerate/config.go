@@ -45,6 +45,11 @@ type Params struct {
 	ProxySocketPathOverride         string
 	PushEnabled                     bool
 	XcodebuildTimestampsEnabled     bool
+	// WrapperlessPipelineEnabled opts the proxy into the wrapperless single-ID
+	// pipeline alongside the existing enricher. Persisted to the xcelerate
+	// config so `xcelerate start-proxy` can inherit the choice without the
+	// user having to pass the flag at every proxy restart.
+	WrapperlessPipelineEnabled bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -72,6 +77,9 @@ type Config struct {
 	DebugLogging                    bool      `json:"debugLogging,omitempty"`
 	Silent                          bool      `json:"silent,omitempty"`
 	XcodebuildTimestamps            bool      `json:"xcodebuildTimestamps,omitempty"`
+	// WrapperlessPipelineEnabled is the persisted opt-in for the wrapperless
+	// single-ID pipeline. Read by xcelerate start-proxy to seed its own flag.
+	WrapperlessPipelineEnabled bool `json:"wrapperlessPipelineEnabled,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
@@ -234,6 +242,7 @@ func NewConfig(ctx context.Context,
 		DebugLogging:                    params.DebugLogging,
 		Silent:                          params.Silent,
 		XcodebuildTimestamps:            params.XcodebuildTimestampsEnabled,
+		WrapperlessPipelineEnabled:      params.WrapperlessPipelineEnabled,
 		AuthConfig:                      authConfig,
 		AuthOrigin:                      authOrigin,
 		ExternalAppID:                   metadata.ExternalAppID,
