@@ -55,4 +55,44 @@ for filename in "${filenames[@]}"; do
     --repository=build-cache-cli-releases
 done
 
+# Trampoline binaries + checksums.
+# Mirrors the R2 upload so the wrapperless activation flow can fall back to
+# GAR when R2 is degraded. Consumed by internal/trampoline/download.
+TRAMPOLINE_DIR="$DIST_DIR/trampoline"
+if [[ ! -d "$TRAMPOLINE_DIR" ]]; then
+  echo "Trampoline directory $TRAMPOLINE_DIR missing — build_trampoline_universal.sh must run before this script."
+  exit 1
+fi
+
+trampoline_files=("trampoline_v${tag}_darwin_amd64"
+                  "trampoline_v${tag}_darwin_arm64"
+                  "trampoline_v${tag}_darwin_universal"
+                  "trampoline_v${tag}_checksums.txt")
+for filename in "${trampoline_files[@]}"; do
+  src="$TRAMPOLINE_DIR/$filename"
+  if [[ ! -f "$src" ]]; then
+    echo "Trampoline file $src missing."
+    exit 1
+  fi
+  package_name="${filename/_v${tag}/}" # Files are versioned via the tag.
+
+  if gcloud artifacts files describe "$package_name:$tag:$filename" \
+       --project=ip-build-cache-prod \
+       --location=us-central1 \
+       --repository=build-cache-cli-releases \
+       >/dev/null 2>&1; then
+    echo "Already uploaded, skipping: $filename"
+    continue
+  fi
+
+  echo "Uploading $filename to GAR..."
+  gcloud artifacts generic upload \
+    --project=ip-build-cache-prod \
+    --source="$src" \
+    --package="$package_name" \
+    --version="$tag" \
+    --location=us-central1 \
+    --repository=build-cache-cli-releases
+done
+
 echo "Uploaded artifacts to GAR."
