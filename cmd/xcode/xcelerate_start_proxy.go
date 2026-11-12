@@ -592,26 +592,19 @@ func maybeStartWrapperlessPipeline(
 
 	seenStore := &wrapperless.HandledManifestStore{Path: resolver.WrapperlessHandledManifestsPath()}
 
-	endWatcher := &wrapperless.EndWatcher{ //nolint:exhaustruct
+	ddWatcher := &wrapperless.DDWatcher{ //nolint:exhaustruct
 		HomeDir:   bundle.homeDir,
 		Logger:    logger,
 		SeenStore: seenStore,
 	}
 
-	startWatcher := &wrapperless.StartWatcher{ //nolint:exhaustruct
+	pipeline := &wrapperless.Pipeline{ //nolint:exhaustruct
 		HomeDir:   bundle.homeDir,
 		Logger:    logger,
-		SeenStore: seenStore,
-	}
-
-	pipeline := &wrapperless.Pipeline{
-		HomeDir:      bundle.homeDir,
-		Logger:       logger,
-		Emitter:      emitter,
-		Proxy:        p,
-		BlobStats:    p.BlobStatsSource(),
-		StartWatcher: startWatcher,
-		EndWatcher:   endWatcher,
+		Emitter:   emitter,
+		Proxy:     p,
+		BlobStats: p.BlobStatsSource(),
+		DDWatcher: ddWatcher,
 	}
 
 	if err := pipeline.Start(ctx); err != nil {

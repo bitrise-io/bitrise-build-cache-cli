@@ -74,7 +74,7 @@ func TestEndWatcher_EmitsForSealedEntry(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -104,7 +104,7 @@ func TestEndWatcher_DedupesAcrossWriteEvents(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -146,7 +146,7 @@ func TestEndWatcher_IgnoresUnsealedEntries(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -188,7 +188,7 @@ func TestEndWatcher_FailureStatus(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -235,7 +235,7 @@ func TestEndWatcher_EmitsForPrimaryObservableSealedEntry(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -283,7 +283,7 @@ func TestEndWatcher_PrimaryObservableTimeStoppedFallback(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -325,7 +325,7 @@ func TestEndWatcher_IgnoresUnsealedPrimaryObservableEntry(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -367,7 +367,7 @@ func TestEndWatcher_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	require.NoError(t, err)
 	manifestMtime := info.ModTime()
 
-	w1 := &EndWatcher{
+	w1 := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends1 <- e },
 		NewSource: func() (DirEventSource, error) { return src1, nil },
@@ -387,7 +387,7 @@ func TestEndWatcher_SeenStoreSuppressesRestartDuplicate(t *testing.T) {
 	src2 := newFakeEventSource()
 	ends2 := make(chan End, 4)
 
-	w2 := &EndWatcher{
+	w2 := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends2 <- e },
 		NewSource: func() (DirEventSource, error) { return src2, nil },
@@ -434,7 +434,7 @@ func TestEndWatcher_EmitsParticipleVerbAction(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -466,7 +466,7 @@ func TestEndWatcher_EmitsXCActivityLogPathForSealedEntry(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -501,7 +501,7 @@ func TestEndWatcher_SeedPicksUpPreExistingSealedManifest(t *testing.T) {
 	require.NoError(t, err)
 	beforeManifest := info.ModTime().Add(-time.Second)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -538,7 +538,7 @@ func TestEndWatcher_AcceptsWarningStatus(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -577,7 +577,7 @@ func TestEndWatcher_SkipsNonPrimarySignature(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -611,7 +611,7 @@ func TestEndWatcher_StaleSeedMarksUUIDsSeen(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -646,7 +646,7 @@ func TestEndWatcher_SeedPicksUpRootLevelManifest(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   t.TempDir(),
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -678,7 +678,7 @@ func TestEndWatcher_SeedSkipsManifestOlderThanStart(t *testing.T) {
 	src := newFakeEventSource()
 	ends := make(chan End, 4)
 
-	w := &EndWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnEnd:     func(e End) { ends <- e },
 		NewSource: func() (DirEventSource, error) { return src, nil },

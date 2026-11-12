@@ -75,7 +75,7 @@ func TestStartWatcher_FiresOnPrimaryBuildCreate(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -118,7 +118,7 @@ func TestStartWatcher_RejectsSubBuilds(t *testing.T) {
 			src := newFakeEventSource()
 			starts := make(chan Start, 4)
 
-			w := &StartWatcher{
+			w := &DDWatcher{
 				HomeDir:   fakeHome,
 				OnStart:   func(s Start) { starts <- s },
 				NewSource: func() (DirEventSource, error) { return src, nil },
@@ -164,7 +164,7 @@ func TestStartWatcher_FiresOnArchiveAndTest(t *testing.T) {
 			src := newFakeEventSource()
 			starts := make(chan Start, 4)
 
-			w := &StartWatcher{
+			w := &DDWatcher{
 				HomeDir:   fakeHome,
 				OnStart:   func(s Start) { starts <- s },
 				NewSource: func() (DirEventSource, error) { return src, nil },
@@ -198,7 +198,7 @@ func TestStartWatcher_IgnoresMissingBuildRequest(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -223,7 +223,7 @@ func TestStartWatcher_IgnoresMissingBuildRequest(t *testing.T) {
 }
 
 func TestStartWatcher_CloseIdempotent(t *testing.T) {
-	w := &StartWatcher{}
+	w := &DDWatcher{}
 
 	w.Close()
 	w.Close()
@@ -240,7 +240,7 @@ func TestStartWatcher_DeepTreeCreatedAtomically(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -299,7 +299,7 @@ func TestStartWatcher_SeedSkipsHandledSiblingManifest(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		SeenStore: store,
@@ -351,7 +351,7 @@ func TestStartWatcher_SeedEmitsWhenManifestHasOpenEntry(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		SeenStore: store,
@@ -392,7 +392,7 @@ func TestStartWatcher_SeedSkipsStaleCompletedBuild(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -423,7 +423,7 @@ func TestStartWatcher_PreExistingHexDirsSeedOnStart(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -454,7 +454,7 @@ func TestStartWatcher_SeedAndStreamDedup(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -494,7 +494,7 @@ func TestStartWatcher_EmitsOnBuildRequestJSONWriteAfterDirCreate(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -548,7 +548,7 @@ func TestStartWatcher_EmitsOnBuildRequestJSONWriteOnly(t *testing.T) {
 	src := newFakeEventSource()
 	starts := make(chan Start, 4)
 
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		OnStart:   func(s Start) { starts <- s },
 		NewSource: func() (DirEventSource, error) { return src, nil },
@@ -587,7 +587,7 @@ func TestStartWatcher_InstallsRecursiveWatch(t *testing.T) {
 	fakeHome := t.TempDir()
 
 	src := newFakeEventSource()
-	w := &StartWatcher{
+	w := &DDWatcher{
 		HomeDir:   fakeHome,
 		NewSource: func() (DirEventSource, error) { return src, nil },
 	}
