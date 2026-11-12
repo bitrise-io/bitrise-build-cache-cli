@@ -328,7 +328,7 @@ var authStatusCmd = &cobra.Command{
 
 				continue
 			}
-			if renderSource(logger, s, audit) {
+			if renderSource(logger, s, audit) && !audit.shortLived {
 				foundElsewhere = true
 			}
 		}
@@ -395,6 +395,8 @@ type credAudit struct {
 	username    string
 	note        string
 	err         error
+	// shortLived marks a token that expires on its own and must not be migrated with `auth set`.
+	shortLived bool
 }
 
 type credSource struct {
@@ -536,7 +538,13 @@ func probeMultiplatform() credAudit {
 		return credAudit{state: sourceAbsent, note: "mirrors the file-store credentials above"}
 	}
 
-	return credAudit{state: sourcePopulated, workspaceID: cfg.AuthConfig.WorkspaceID, authToken: cfg.AuthConfig.AuthToken}
+	audit := credAudit{state: sourcePopulated, workspaceID: cfg.AuthConfig.WorkspaceID, authToken: cfg.AuthConfig.AuthToken}
+	if cfg.AuthConfig.IsJWT || cfg.AuthConfig.Provenance != "" {
+		audit.shortLived = true
+		audit.note = "short-lived token pinned for the analytics readers; renewed automatically, nothing to migrate"
+	}
+
+	return audit
 }
 
 // probeRawConfig reads the file directly — the per-tool ReadConfig overlays multiplatform credentials, which would mask the actual on-disk content this audit needs to see.

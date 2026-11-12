@@ -417,3 +417,24 @@ func TestPendingBrokerSource(t *testing.T) {
 	})
 	assert.False(t, ok)
 }
+
+// A pinned short-lived token is shown but must not trigger the `auth set` advice:
+// storing it would put a token that expires ahead of the one that renews.
+func TestProbeMultiplatform_ShortLivedTokenIsNotMigratable(t *testing.T) {
+	for name, block := range map[string]multiplatformconfig.AnalyticsAuthConfig{
+		"brokered": {AuthToken: "brokered-jwt", WorkspaceID: "ws", IsJWT: true, Provenance: multiplatformconfig.ProvenanceBrokered},
+		"oidc":     {AuthToken: "oidc-token", WorkspaceID: "ws", Provenance: multiplatformconfig.ProvenanceOIDC},
+		"pat":      {AuthToken: "legacy-pat", WorkspaceID: "ws"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			require.NoError(t, multiplatformconfig.Update(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
+				func(c *multiplatformconfig.Config) { c.AuthConfig = block }))
+
+			audit := probeMultiplatform()
+
+			assert.Equal(t, sourcePopulated, audit.state)
+			assert.Equal(t, name != "pat", audit.shortLived)
+		})
+	}
+}
