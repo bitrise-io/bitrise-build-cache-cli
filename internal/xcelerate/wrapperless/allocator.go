@@ -98,11 +98,9 @@ func (a *Allocator) push(ev TimelineEvent) {
 	}
 }
 
-// CloseIntake signals Run to flush buffered events and return. Pipeline.Close
-// orders this before cancelling ctx so a mid-flight End queued behind a slow
-// enriched PUT is not silently dropped on shutdown. The data channel is
-// intentionally not closed — doing so races with concurrent producers past
-// their intakeDone check.
+// CloseIntake signals Run to flush buffered events and return. The data
+// channel is intentionally not closed — doing so races with concurrent
+// producers past their intakeDone check.
 func (a *Allocator) CloseIntake() {
 	a.closeOnce.Do(func() {
 		close(a.intakeDone)

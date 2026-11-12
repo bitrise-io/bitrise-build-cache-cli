@@ -447,7 +447,6 @@ func TestAllocator_QuitCLI_AfterRealEndSuppressesAuxBucket(t *testing.T) {
 		UniqueIdentifier: "LOG-1", Success: true, Duration: 9 * time.Second,
 	}})
 
-	// CAS teardown activity lands on the post-End speculative bucket.
 	blobs.set(42)
 
 	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{

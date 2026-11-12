@@ -42,10 +42,9 @@ type DirEventSource interface {
 	Stop()
 }
 
-// DDWatcher is the single DerivedData watcher that merges the former
-// StartWatcher and EndWatcher: one source, one goroutine, one seed walk, one
-// handled-UUID ledger. Dispatches events by basename to the Start and End
-// consumers registered via OnStart / OnEnd.
+// DDWatcher is the single DerivedData watcher: one source, one goroutine,
+// one seed walk, one handled-UUID ledger. Dispatches events by basename to
+// the Start and End consumers registered via OnStart / OnEnd.
 type DDWatcher struct {
 	HomeDir   string
 	Logger    log.Logger
