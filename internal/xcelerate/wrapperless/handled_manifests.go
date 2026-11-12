@@ -112,9 +112,7 @@ func (s *HandledManifestStore) Append(rec HandledManifest) error {
 }
 
 // LoadFresh returns the UUIDs whose HandledAt is within maxAge of now.
-// Stale records are dropped from memory — they do not need to pin the
-// seen-set forever. Compaction of the on-disk file is left to a separate
-// call site; this method is read-only.
+// Stale records are dropped from memory.
 func (s *HandledManifestStore) LoadFresh(now time.Time, maxAge time.Duration) ([]string, error) {
 	records, err := s.Load()
 	if err != nil {
@@ -133,4 +131,79 @@ func (s *HandledManifestStore) LoadFresh(now time.Time, maxAge time.Duration) ([
 	}
 
 	return out, nil
+}
+
+// Compact rewrites the on-disk file keeping only records whose HandledAt is
+// within maxAge of now. Atomic via tmp + rename so a crash mid-write cannot
+// produce a partial ledger. No-op when the file does not exist or when no
+// records would be dropped.
+func (s *HandledManifestStore) Compact(now time.Time, maxAge time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	records, err := s.loadLocked()
+	if err != nil {
+		return err
+	}
+	if len(records) == 0 {
+		return nil
+	}
+
+	cutoff := now.Add(-maxAge)
+	kept := make([]HandledManifest, 0, len(records))
+	for _, r := range records {
+		if r.HandledAt.Before(cutoff) {
+			continue
+		}
+
+		kept = append(kept, r)
+	}
+
+	if len(kept) == len(records) {
+		return nil
+	}
+
+	tmp := s.Path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600) //nolint:gosec // app-owned state file
+	if err != nil {
+		return fmt.Errorf("open handled manifests tmp: %w", err)
+	}
+
+	w := bufio.NewWriter(f)
+	for _, r := range kept {
+		line, err := json.Marshal(r)
+		if err != nil {
+			_ = f.Close()
+			_ = os.Remove(tmp)
+
+			return fmt.Errorf("marshal handled manifest: %w", err)
+		}
+
+		if _, err := w.Write(append(line, '\n')); err != nil {
+			_ = f.Close()
+			_ = os.Remove(tmp)
+
+			return fmt.Errorf("write handled manifest: %w", err)
+		}
+	}
+
+	if err := w.Flush(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+
+		return fmt.Errorf("flush handled manifests: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+
+		return fmt.Errorf("close handled manifests tmp: %w", err)
+	}
+
+	if err := os.Rename(tmp, s.Path); err != nil {
+		_ = os.Remove(tmp)
+
+		return fmt.Errorf("rename handled manifests: %w", err)
+	}
+
+	return nil
 }

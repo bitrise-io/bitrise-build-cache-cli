@@ -509,6 +509,10 @@ func (w *DDWatcher) hydrateHandled() {
 		return
 	}
 
+	if err := w.SeenStore.Compact(w.now(), HandledManifestMaxAge); err != nil {
+		w.warn("DDWatcher compact seen store: %s", err)
+	}
+
 	set := make(map[string]struct{}, len(uuids))
 	for _, u := range uuids {
 		set[u] = struct{}{}
