@@ -14,15 +14,14 @@ type ProxyControl interface {
 }
 
 type Pipeline struct {
-	HomeDir      string
-	Logger       log.Logger
-	Emitter      *Emitter
-	Allocator    *Allocator
-	Timeline     *Timeline
-	StartWatcher *StartWatcher
-	EndWatcher   *EndWatcher
-	QuitWatcher  *QuitWatcher
-	Proxy        ProxyControl
+	HomeDir     string
+	Logger      log.Logger
+	Emitter     *Emitter
+	Allocator   *Allocator
+	Timeline    *Timeline
+	DDWatcher   *DDWatcher
+	QuitWatcher *QuitWatcher
+	Proxy       ProxyControl
 	// BlobStats, when non-nil, is attached to the Allocator at Start so each
 	// emitted Bucket carries the windowed blob-transfer stats for the period
 	// since the previous bucket.
@@ -90,27 +89,18 @@ func (p *Pipeline) Start(ctx context.Context) error {
 		p.Allocator.BlobStats = p.BlobStats
 	}
 
-	if p.StartWatcher == nil {
-		p.StartWatcher = &StartWatcher{HomeDir: p.HomeDir, Logger: p.Logger}
+	if p.DDWatcher == nil {
+		p.DDWatcher = &DDWatcher{HomeDir: p.HomeDir, Logger: p.Logger} //nolint:exhaustruct
 	}
-	p.StartWatcher.OnStart = p.Timeline.PushStart
-
-	if p.EndWatcher == nil {
-		p.EndWatcher = &EndWatcher{HomeDir: p.HomeDir, Logger: p.Logger}
-	}
-	p.EndWatcher.OnEnd = p.Timeline.PushEnd
+	p.DDWatcher.OnStart = p.Timeline.PushStart
+	p.DDWatcher.OnEnd = p.Timeline.PushEnd
 
 	if p.QuitWatcher == nil {
-		p.QuitWatcher = &QuitWatcher{Logger: p.Logger}
+		p.QuitWatcher = &QuitWatcher{Logger: p.Logger} //nolint:exhaustruct
 	}
 	p.QuitWatcher.OnQuit = p.Timeline.PushQuit
 
-	if err := p.StartWatcher.Start(ctx); err != nil {
-		cancel()
-
-		return err
-	}
-	if err := p.EndWatcher.Start(ctx); err != nil {
+	if err := p.DDWatcher.Start(ctx); err != nil {
 		cancel()
 
 		return err
@@ -158,11 +148,8 @@ func (p *Pipeline) Close() {
 	p.started = false
 	p.mu.Unlock()
 
-	if p.StartWatcher != nil {
-		p.StartWatcher.Close()
-	}
-	if p.EndWatcher != nil {
-		p.EndWatcher.Close()
+	if p.DDWatcher != nil {
+		p.DDWatcher.Close()
 	}
 	if p.QuitWatcher != nil {
 		p.QuitWatcher.Close()
