@@ -445,26 +445,6 @@ func (h *sidecarStatsHandler) derivePeerInvocationID(entries []AncestryEntry, bu
 	return buildidentity.Derive(anchor)
 }
 
-// isIDEAncestry reports whether the peer's ancestry roots in Xcode.app rather
-// than an xcodebuild CLI run. Xcode's own ancestry contains "Xcode" and/or
-// "SWBBuildService" but NOT "xcodebuild"; a CLI run contains "xcodebuild"
-// (optionally wrapped by shells/launchers). The per-⌘B reseat path only
-// applies to IDE peers — CLI peers have a stable InvocationID per process
-// and reseating them would split their rows apart for no gain.
-func isIDEAncestry(entries []AncestryEntry) bool {
-	hasIDE := false
-	for _, e := range entries {
-		if e.Name == xcodebuildAncestorName {
-			return false
-		}
-		if e.Name == "Xcode" || e.Name == "SWBBuildService" {
-			hasIDE = true
-		}
-	}
-
-	return hasIDE
-}
-
 // ResolveAndMaybeReseat is called by the per-conn flush timer (same cadence,
 // coalesced into one tick). For an IDE peer with a changed build-request hex
 // it re-derives the InvocationID so subsequent RPCs land on a fresh BE row;
@@ -479,7 +459,7 @@ func (h *sidecarStatsHandler) ResolveAndMaybeReseat(cs *connectionSession) bool 
 	if h.wrapperSessionActive != nil && h.wrapperSessionActive() {
 		return false
 	}
-	if !isIDEAncestry(cs.ancestryEntries) {
+	if kind, _, _ := classifyAncestryKind(cs.ancestryEntries); kind != wrapperless.AncestryIDE {
 		return false
 	}
 
