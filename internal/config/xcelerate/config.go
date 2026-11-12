@@ -45,18 +45,7 @@ type Params struct {
 	ProxySocketPathOverride         string
 	PushEnabled                     bool
 	XcodebuildTimestampsEnabled     bool
-	// WrapperlessPipelineEnabled opts the proxy into the wrapperless single-ID
-	// pipeline alongside the existing enricher. Persisted to the xcelerate
-	// config so `xcelerate start-proxy` can inherit the choice without the
-	// user having to pass the flag at every proxy restart.
-	//
-	// Sticky-on by design: a subsequent `activate xcode` without the flag
-	// keeps the opt-in, so an auto-invoked activate step cannot silently
-	// flip a user's choice back off. To force-disable at the proxy layer,
-	// pass `--wrapperless-pipeline-enabled=false` to `xcelerate start-proxy`;
-	// the CLI flag wins over the persisted value. To clear the persisted
-	// state entirely, edit `~/.bitrise-xcelerate/config.json`.
-	WrapperlessPipelineEnabled bool
+	WrapperlessPipelineEnabled      bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -84,9 +73,7 @@ type Config struct {
 	DebugLogging                    bool      `json:"debugLogging,omitempty"`
 	Silent                          bool      `json:"silent,omitempty"`
 	XcodebuildTimestamps            bool      `json:"xcodebuildTimestamps,omitempty"`
-	// WrapperlessPipelineEnabled is the persisted opt-in for the wrapperless
-	// single-ID pipeline. Read by xcelerate start-proxy to seed its own flag.
-	WrapperlessPipelineEnabled bool `json:"wrapperlessPipelineEnabled,omitempty"`
+	WrapperlessPipelineEnabled      bool      `json:"wrapperlessPipelineEnabled,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
