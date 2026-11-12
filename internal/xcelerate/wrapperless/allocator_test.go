@@ -425,6 +425,42 @@ func TestAllocator_QuitCLI_FlushesImmediately(t *testing.T) {
 	assert.NotEmpty(t, buckets[0].InvocationID)
 }
 
+// TestAllocator_QuitCLI_AfterRealEndSuppressesAuxBucket pins the suppression:
+// a CLI invocation that ran a scheme-matched End + then Quit must not also
+// mint a CLIImplicit aux bucket for the CAS teardown tail that lands on the
+// post-End speculative bucket.
+func TestAllocator_QuitCLI_AfterRealEndSuppressesAuxBucket(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, blobs := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At: time.Unix(1, 0), BuildRequestHex: "schemehex", Action: PrimaryActionBuild,
+	}})
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At: time.Unix(10, 0), Scheme: "IceCubesApp", Action: PrimaryActionBuild,
+		UniqueIdentifier: "LOG-1", Success: true, Duration: 9 * time.Second,
+	}})
+
+	// CAS teardown activity lands on the post-End speculative bucket.
+	blobs.set(42)
+
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+		At: time.Unix(20, 0), PID: 42,
+	}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1, "only the EndMatched scheme bucket must emit; CLIImplicit aux must be suppressed")
+	assert.Equal(t, BucketReasonEndMatched, buckets[0].Reason)
+	assert.Equal(t, "IceCubesApp", buckets[0].Scheme)
+}
+
 func TestAllocator_QuitIDE_EndDuringDebounceCancelsBackground(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex

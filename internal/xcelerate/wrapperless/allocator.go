@@ -62,6 +62,13 @@ type Allocator struct {
 	intake     chan TimelineEvent
 	intakeDone chan struct{}
 	closeOnce  sync.Once
+
+	// schemeEmittedSinceStart records whether a scheme-bearing End bucket was
+	// emitted since the most recent Start. Used by flushCLI to suppress the
+	// CLIImplicit fallback bucket whose only job is to catch a CLI invocation
+	// that quit without ever sealing a manifest — if a real End already
+	// emitted this cycle, the fallback is CAS tail noise, not a build.
+	schemeEmittedSinceStart bool
 }
 
 func NewAllocator(hostname string, proxyPID int, proxyStartMS int64) *Allocator {
@@ -242,6 +249,7 @@ func (a *Allocator) onStart(s Start) {
 
 	fresh := a.newBucket(s.At, s)
 	a.open = fresh
+	a.schemeEmittedSinceStart = false
 
 	a.infof("Allocator: bucket opened id=%s action=%s", fresh.InvocationID, fresh.Action)
 
@@ -291,6 +299,9 @@ func (a *Allocator) onEnd(e End) {
 	a.infof("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
 
 	a.emit(bucket)
+	if bucket.Scheme != "" {
+		a.schemeEmittedSinceStart = true
+	}
 	a.openSpec(a.now())
 }
 
@@ -328,6 +339,9 @@ func (a *Allocator) promoteSpecToEnd(e End) {
 	a.infof("Allocator: spec-promote End id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
 
 	a.emit(bucket)
+	if bucket.Scheme != "" {
+		a.schemeEmittedSinceStart = true
+	}
 }
 
 // mintEndOnlyBucket is the sole-End authoritative path: when Xcode reuses an
@@ -379,6 +393,9 @@ func (a *Allocator) mintEndOnlyBucket(e End) {
 	}
 
 	a.emit(bucket)
+	if bucket.Scheme != "" {
+		a.schemeEmittedSinceStart = true
+	}
 }
 
 func (a *Allocator) onQuit(q Quit) {
@@ -468,6 +485,14 @@ func (a *Allocator) flushCLI(q Quit) {
 	defer a.mu.Unlock()
 
 	a.cancelIDETimer()
+
+	if a.schemeEmittedSinceStart {
+		a.debugf("Allocator: flushCLI suppressed — scheme bucket already resolved this cycle")
+		a.open = nil
+		a.openSpec(a.now())
+
+		return
+	}
 
 	if a.open != nil {
 		bucket := a.open
