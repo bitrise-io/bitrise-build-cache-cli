@@ -305,6 +305,24 @@ func TestToken_CancelledCallerDoesNotBackOff(t *testing.T) {
 	assert.Equal(t, "brokered-jwt", token)
 }
 
+// A caller already past its deadline never reaches instance-manager, so it must not
+// put healthy callers into the backoff.
+func TestToken_AlreadyExpiredCallerDoesNotBackOff(t *testing.T) {
+	var slow atomic.Bool
+	var calls int32
+	c := clientFor(t, hangingServer(t, &slow, &calls).URL)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	_, _, err := c.Token(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	token, _, err := c.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "brokered-jwt", token)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
+}
+
 // A hanging instance-manager must back off short-deadline callers too, or each of
 // them waits out its whole deadline.
 func TestToken_DeadlineExceededBacksOff(t *testing.T) {

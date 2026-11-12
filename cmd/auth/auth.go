@@ -310,7 +310,8 @@ var authStatusCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		targets, migrationSources := credSources(utils.AllEnvs())
+		envs := utils.AllEnvs()
+		targets, migrationSources := credSources(envs)
 
 		var targetPopulated bool
 		for _, t := range targets {
@@ -332,12 +333,17 @@ var authStatusCmd = &cobra.Command{
 			}
 		}
 
+		if label, ok := pendingBrokerSource(envs); ok {
+			logger.TInfof("%s:", label)
+			logger.Infof("  %s", live.DescribePendingBroker())
+		}
+
 		if suppressed {
 			logger.Infof("(absent sources hidden — re-run with --debug to see the full audit)")
 		}
 
 		logger.Println()
-		renderUsername(logger, utils.AllEnvs())
+		renderUsername(logger, envs)
 
 		if !targetPopulated && foundElsewhere {
 			logger.Println()
@@ -348,6 +354,17 @@ var authStatusCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// pendingBrokerSource labels the VM token builds will exchange ahead of every source
+// above. It is not a migration source, since the token is not a credential to store.
+func pendingBrokerSource(envs map[string]string) (string, bool) {
+	env := live.BrokeringEnv(envs)
+	if env == "" {
+		return "", false
+	}
+
+	return fmt.Sprintf("VM token (%s)", env), true
 }
 
 func renderUsername(logger log.Logger, envs map[string]string) {

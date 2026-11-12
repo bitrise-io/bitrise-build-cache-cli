@@ -386,3 +386,23 @@ func (s *fakeStore) Clear() error {
 
 	return nil
 }
+
+func TestPendingBrokerSource(t *testing.T) {
+	_, ok := pendingBrokerSource(map[string]string{})
+	assert.False(t, ok)
+
+	label, ok := pendingBrokerSource(map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+	})
+	require.True(t, ok)
+	assert.Equal(t, "VM token (BITRISEIO_VM_TOKEN)", label)
+
+	// An env-var credential goes first, so the VM token is not what builds send.
+	_, ok = pendingBrokerSource(map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+		authpkg.EnvJWT:        "ci-jwt",
+	})
+	assert.False(t, ok)
+}

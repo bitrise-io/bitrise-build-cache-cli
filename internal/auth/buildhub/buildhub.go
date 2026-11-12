@@ -168,12 +168,15 @@ func (c *Client) Token(ctx context.Context) (string, time.Time, error) {
 	return "", time.Time{}, err
 }
 
-// A caller that cancelled says nothing about instance-manager, but one whose deadline
-// the exchange outlasted does: exempting that too would let a hanging instance-manager
-// cost every short-deadline caller the full wait.
+// A caller that cancelled, or was done before the request went out, says nothing about
+// instance-manager; one whose deadline the exchange outlasted does: exempting that too
+// would let a hanging instance-manager cost every short-deadline caller the full wait.
 func (c *Client) exchangeUnlessBackingOff(ctx context.Context) (string, time.Time, error) {
 	if err := c.recentFailure(); err != nil {
 		return "", time.Time{}, fmt.Errorf("backing off after previous failure: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", time.Time{}, fmt.Errorf("broker a Build Cache token: %w", err)
 	}
 
 	token, expiresAt, err := c.exchange(ctx)
