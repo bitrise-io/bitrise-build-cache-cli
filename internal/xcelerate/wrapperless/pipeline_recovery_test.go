@@ -37,8 +37,8 @@ func writeSealedManifest(t *testing.T, root string, uid string) {
     <key>uniqueIdentifier</key><string>` + uid + `</string>
     <key>signature</key><string>Build Seek project</string>
     <key>highLevelStatus</key><string>S</string>
-    <key>timeStartedRecording</key><real>762345678.0</real>
-    <key>timeStoppedRecording</key><real>762345688.0</real>
+    <key>timeStartedRecording</key><real>9999999678.0</real>
+    <key>timeStoppedRecording</key><real>9999999688.0</real>
   </dict>
 </dict></dict></plist>`
 

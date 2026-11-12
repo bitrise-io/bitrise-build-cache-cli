@@ -287,7 +287,7 @@ func TestStartWatcher_SeedSkipsHandledSiblingManifest(t *testing.T) {
   <dict>
     <key>uniqueIdentifier</key><string>UID-HANDLED</string>
     <key>highLevelStatus</key><string>S</string>
-    <key>timeStoppedRecording</key><real>762345688.75</real>
+    <key>timeStoppedRecording</key><real>9999999688.75</real>
   </dict>
 </dict></dict></plist>`
 	require.NoError(t, os.WriteFile(manifestPath, []byte(manifest), 0o644))
@@ -334,12 +334,12 @@ func TestStartWatcher_SeedEmitsWhenManifestHasOpenEntry(t *testing.T) {
   <dict>
     <key>uniqueIdentifier</key><string>UID-SEALED</string>
     <key>highLevelStatus</key><string>S</string>
-    <key>timeStoppedRecording</key><real>762345688.75</real>
+    <key>timeStoppedRecording</key><real>9999999688.75</real>
   </dict>
   <key>UID-RUNNING</key>
   <dict>
     <key>uniqueIdentifier</key><string>UID-RUNNING</string>
-    <key>timeStartedRecording</key><real>762345690.0</real>
+    <key>timeStartedRecording</key><real>9999999690.0</real>
   </dict>
 </dict></dict></plist>`
 	require.NoError(t, os.WriteFile(manifestPath, []byte(manifest), 0o644))
