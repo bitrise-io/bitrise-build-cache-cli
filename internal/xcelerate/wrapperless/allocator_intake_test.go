@@ -20,7 +20,9 @@ func TestAllocator_PushAfterCloseIntakeDoesNotPanic(t *testing.T) {
 // TestAllocator_ConcurrentPushAndCloseIntakeNeverPanics exercises the race
 // between a producer goroutine already past its intakeDone check and
 // CloseIntake firing in another goroutine. The intake channel is deliberately
-// never closed to make send-on-closed impossible.
+// never closed to make send-on-closed impossible — this test is the regression
+// guard against a future author re-introducing close(a.intake) inside
+// CloseIntake.
 func TestAllocator_ConcurrentPushAndCloseIntakeNeverPanics(t *testing.T) {
 	a := NewAllocator("h", 1, 0)
 

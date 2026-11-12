@@ -111,50 +111,23 @@ func (s *HandledManifestStore) Append(rec HandledManifest) error {
 	return nil
 }
 
-// LoadFresh returns the UUIDs whose HandledAt is within maxAge of now.
-// Stale records are dropped from memory.
-func (s *HandledManifestStore) LoadFresh(now time.Time, maxAge time.Duration) ([]string, error) {
-	records, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	cutoff := now.Add(-maxAge)
-	out := make([]string, 0, len(records))
-
-	for _, r := range records {
-		if r.HandledAt.Before(cutoff) {
-			continue
-		}
-
-		out = append(out, r.UUID)
-	}
-
-	return out, nil
-}
-
-// Compact rewrites the on-disk file keeping only records whose HandledAt is
-// within maxAge of now. Atomic via tmp + rename so a crash mid-write cannot
-// produce a partial ledger. No-op when the file does not exist or when no
-// records would be dropped.
-func (s *HandledManifestStore) Compact(now time.Time, maxAge time.Duration) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	_, err := s.loadFreshAndCompactLocked(now, maxAge)
-
-	return err
-}
-
 // LoadFreshAndCompact returns the UUIDs whose HandledAt is within maxAge of
-// now, and in the same pass rewrites the on-disk ledger if any stale records
-// were dropped. Single read + write path replaces LoadFresh followed by
-// Compact at hydrate.
+// now and, in the same pass, rewrites the on-disk ledger if any stale
+// records were dropped. Single read + write path.
 func (s *HandledManifestStore) LoadFreshAndCompact(now time.Time, maxAge time.Duration) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.loadFreshAndCompactLocked(now, maxAge)
+}
+
+// Compact rewrites the on-disk ledger keeping only records within maxAge of
+// now. Thin wrapper around LoadFreshAndCompact — no prod callers; retained
+// so tests can assert the rewrite-vs-no-op contract directly.
+func (s *HandledManifestStore) Compact(now time.Time, maxAge time.Duration) error {
+	_, err := s.LoadFreshAndCompact(now, maxAge)
+
+	return err
 }
 
 func (s *HandledManifestStore) loadFreshAndCompactLocked(now time.Time, maxAge time.Duration) ([]string, error) {
