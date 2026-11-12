@@ -39,6 +39,8 @@ Behind a restrictive egress firewall, see [`docs/network-endpoints.md`](docs/net
 
 Pressing ▶ in Xcode.app bypasses the `xcodebuild` wrapper — remote build cache engages only through the wrapper installed by `bitrise-build-cache activate xcode`. To route Xcode.app IDE builds through the proxy too, run `bitrise-build-cache xcode link <project>` (see [`docs/xcode-terminal-run.md`](docs/xcode-terminal-run.md)). For a scheme-level pre-build health check that catches a broken wrapper setup before ⌘B burns minutes on a no-cache build, see [`docs/xcode-scheme-self-check.md`](docs/xcode-scheme-self-check.md). macOS only.
 
+**Opt-in alternative — wrapperless pipeline.** A filesystem-driven flow that attributes IDE ⌘B and direct `/usr/bin/xcodebuild` runs to BE invocation rows without rewriting argv. Enable with `bitrise-build-cache xcelerate start-proxy --wrapperless-pipeline-enabled`; see [`docs/wrapperless.md`](docs/wrapperless.md) for the architecture, lifecycle, and known gaps.
+
 
 ## What does the CLI do on a high level?
 
