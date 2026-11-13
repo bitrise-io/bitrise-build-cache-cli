@@ -49,9 +49,6 @@ var (
 	initialInvocationID string
 
 	//nolint:gochecknoglobals
-	wrapperlessPipelineEnabled bool
-
-	//nolint:gochecknoglobals
 	xcelerateProxyCmd = &cobra.Command{
 		Use:          "start-proxy",
 		Short:        "Start Xcelerate Proxy",
@@ -146,12 +143,6 @@ func init() {
 		uuid.NewString(),
 		"Invocation ID to be used in the proxy",
 	)
-	xcelerateProxyCmd.Flags().BoolVar(
-		&wrapperlessPipelineEnabled,
-		"wrapperless-pipeline-enabled",
-		false,
-		"Run the opt-in wrapperless single-ID pipeline alongside the existing enricher",
-	)
 	xcelerateCommand.AddCommand(xcelerateProxyCmd)
 }
 
@@ -200,7 +191,7 @@ func StartXcodeCacheProxy(
 	}
 
 	var emitter proxy.InvocationEmitter
-	if !wrapperlessPipelineEnabled {
+	if !config.IDE {
 		emitter = bundle.emitter()
 	}
 
@@ -211,7 +202,7 @@ func StartXcodeCacheProxy(
 
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
-	if !wrapperlessPipelineEnabled {
+	if !config.IDE {
 		p.FlushHook = func(hookCtx context.Context) []string {
 			return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
 		}
@@ -221,19 +212,19 @@ func StartXcodeCacheProxy(
 	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelEnrich()
 
-	if bundle.enrichmentEnabled() && !wrapperlessPipelineEnabled {
+	if bundle.enrichmentEnabled() && !config.IDE {
 		go bundle.ensureWatcher(enrichCtx, initialLogger).Run(enrichCtx)
 		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
 
-	pipeline := maybeStartWrapperlessPipeline(enrichCtx, bundle, p, initialLogger)
+	pipeline := maybeStartIDEPipeline(enrichCtx, config, bundle, p, initialLogger)
 
 	bgCtx := context.WithoutCancel(ctx)
 
 	go func() {
 		<-ctx.Done()
 		p.GracefulStop()
-		if !wrapperlessPipelineEnabled {
+		if !config.IDE {
 			bundle.finalEnrichmentSweep(bgCtx, initialLogger)
 		}
 		if pipeline != nil {
@@ -544,17 +535,17 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 	return parsed
 }
 
-// maybeStartWrapperlessPipeline boots the opt-in wrapperless Pipeline when the
-// --wrapperless-pipeline-enabled flag is set. Returns nil when disabled or when
-// the bundle is incomplete. Runs alongside the existing enricher; BE accepts
-// same-ID re-PUT so overlap is harmless.
-func maybeStartWrapperlessPipeline(
+// maybeStartIDEPipeline boots the wrapperless Pipeline when the saved xcelerate
+// config selects IDE mode (`activate xcode --ide`). Returns nil when disabled or
+// when the bundle is incomplete.
+func maybeStartIDEPipeline(
 	ctx context.Context,
+	config xcelerate.Config,
 	bundle *analyticsBundle,
 	p *proxy.Proxy,
 	logger log.Logger,
 ) *wrapperless.Pipeline {
-	if !wrapperlessPipelineEnabled {
+	if !config.IDE {
 		return nil
 	}
 	if bundle == nil || bundle.client == nil || bundle.homeDir == "" {
@@ -615,7 +606,7 @@ func maybeStartWrapperlessPipeline(
 
 	p.SetWrapperlessPipeline(pipeline)
 
-	logger.Infof("Wrapperless pipeline running alongside enricher (opt-in).")
+	logger.Infof("IDE pipeline running (wrapperless, selected via activate xcode --ide).")
 
 	return pipeline
 }

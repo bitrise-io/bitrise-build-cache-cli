@@ -145,20 +145,34 @@ func Activate(
 		return fmt.Errorf("failed to copy xcelerate cli to ~/.bitrise-xcelerate/bin: %w", err)
 	}
 
-	if err := addXcelerateCommandToPathWithScriptWrapper(config, osProxy, logger, envs); err != nil { //nolint:contextcheck // envman export inside is fire-and-forget; ctx propagation would cascade through TemplateInventory/ApplyBenchmarkPhase for no operational gain
-		return fmt.Errorf("failed to add xcelerate command: %w", err)
+	if !config.IDE {
+		if err := addXcelerateCommandToPathWithScriptWrapper(config, osProxy, logger, envs); err != nil { //nolint:contextcheck // envman export inside is fire-and-forget; ctx propagation would cascade through TemplateInventory/ApplyBenchmarkPhase for no operational gain
+			return fmt.Errorf("failed to add xcelerate command: %w", err)
+		}
+
+		exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
 	}
 
-	exportDerivedDataPath(logger, config, envs) //nolint:contextcheck // envman export inside is fire-and-forget, matching the wrapper-script export above
-
 	logger.TInfof(ActivateXcodeSuccessful)
-	configcommon.PrintNextSteps(logger, []string{
+	configcommon.PrintNextSteps(logger, nextStepsFor(config), "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-xcode/configuring-the-build-cache-for-xcode-in-local-builds.html")
+
+	return nil
+}
+
+func nextStepsFor(config Config) []string {
+	if config.IDE {
+		return []string{
+			"Run `bitrise-build-cache xcode link <path-to-.xcodeproj|.xcworkspace>` so Xcode.app picks up the override xcconfig.",
+			"In Xcode.app, pick the Bitrise toolchain from Xcode > Toolchains.",
+			"Build from the IDE (⌘B). CLI xcodebuild builds in this project will bypass the cache.",
+		}
+	}
+
+	return []string{
 		"Open a new terminal (or run `source ~/.zshrc`) so this shell picks up the wrapper on PATH.",
 		"Build from the terminal, not Xcode.app. The Xcode.app GUI invokes xcodebuild by absolute path and will bypass the cache.",
 		"Quickest way to run a cached build: `bitrise-build-cache xcode build` or `bitrise-build-cache xcode test`. These resolve workspace/scheme/destination for you.",
-	}, "https://docs.bitrise.io/en/bitrise-build-cache/build-cache-for-xcode/configuring-the-build-cache-for-xcode-in-local-builds.html")
-
-	return nil
+	}
 }
 
 // ensureLogDir creates the dir the proxy would otherwise create on its first run,

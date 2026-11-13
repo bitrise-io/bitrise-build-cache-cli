@@ -45,6 +45,7 @@ type Params struct {
 	ProxySocketPathOverride         string
 	PushEnabled                     bool
 	XcodebuildTimestampsEnabled     bool
+	IDE                             bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -72,6 +73,8 @@ type Config struct {
 	DebugLogging                    bool      `json:"debugLogging,omitempty"`
 	Silent                          bool      `json:"silent,omitempty"`
 	XcodebuildTimestamps            bool      `json:"xcodebuildTimestamps,omitempty"`
+	// IDE selects the wrapperless pipeline for Xcode.app builds. Zero-value = xcodebuild CLI / CI flow with the enricher.
+	IDE bool `json:"ide,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
@@ -234,6 +237,7 @@ func NewConfig(ctx context.Context,
 		DebugLogging:                    params.DebugLogging,
 		Silent:                          params.Silent,
 		XcodebuildTimestamps:            params.XcodebuildTimestampsEnabled,
+		IDE:                             params.IDE,
 		AuthConfig:                      authConfig,
 		AuthOrigin:                      authOrigin,
 		ExternalAppID:                   metadata.ExternalAppID,

@@ -18,6 +18,8 @@ import (
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
+const testHostname = "test-host"
+
 func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 	home := t.TempDir()
 
@@ -34,7 +36,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			UserHomeDirFunc: func() (string, error) {
 				return home, nil
 			},
-			HostnameFunc:  func() (string, error) { return "test-host", nil },
+			HostnameFunc:  func() (string, error) { return testHostname, nil },
 			MkdirAllFunc:  os.MkdirAll,
 			CreateFunc:    os.Create,
 			OpenFileFunc:  os.OpenFile,
@@ -114,6 +116,51 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 		require.Equal(t, "abc123", config.AuthConfig.WorkspaceID)
 	})
 
+	t.Run("--ide persists mode and skips installing the xcodebuild wrapper", func(t *testing.T) {
+		ideHome := t.TempDir()
+		ideEnvs := map[string]string{
+			"HOME":                             ideHome,
+			"BITRISE_BUILD_CACHE_AUTH_TOKEN":   "token",
+			"BITRISE_BUILD_CACHE_WORKSPACE_ID": "abc123",
+			"GITHUB_ENV":                       filepath.Join(ideHome, ".github_env"),
+		}
+		osProxy := &utilsMocks.OsProxyMock{
+			ReadFileIfExistsFunc: utils.DefaultOsProxy{}.ReadFileIfExists,
+			UserHomeDirFunc:      func() (string, error) { return ideHome, nil },
+			HostnameFunc:         func() (string, error) { return testHostname, nil },
+			MkdirAllFunc:         os.MkdirAll,
+			CreateFunc:           os.Create,
+			OpenFileFunc:         os.OpenFile,
+			WriteFileFunc:        os.WriteFile,
+			RenameFunc:           os.Rename,
+			RemoveFunc:           os.Remove,
+			LstatFunc:            func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+		}
+
+		err := xcode.ActivateXcodeCommandFn(
+			context.Background(), mockLogger, osProxy, func(_ context.Context, _ string, _ ...string) utils.Command {
+				return &utilsMocks.CommandMock{}
+			},
+			utils.DefaultEncoderFactory{},
+			utils.DefaultDecoderFactory{},
+			xcelerate.Params{
+				BuildCacheEnabled:       true,
+				IDE:                     true,
+				XcodePathOverride:       "/xxx/xcodebuild",
+				XcrunPathOverride:       "/xxx/xcrun",
+				ProxySocketPathOverride: "/xxx/xcelerate.sock",
+			},
+			ideEnvs,
+		)
+		require.NoError(t, err)
+
+		config, err := xcelerate.ReadConfig(osProxy, utils.DefaultDecoderFactory{}, ideEnvs)
+		require.NoError(t, err)
+		require.True(t, config.IDE)
+		assert.NoFileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcodebuild")))
+		assert.NoFileExists(t, xcelerate.PathFor(osProxy, filepath.Join(xcelerate.BinDir, "xcrun")))
+	})
+
 	t.Run("When config save returns error activateXcodeCmdFn fails", func(t *testing.T) {
 		expectedError := errors.New("failed to save config")
 
@@ -122,7 +169,7 @@ func TestActivateXcode_activateXcodeCmdFn(t *testing.T) {
 			UserHomeDirFunc: func() (string, error) {
 				return home, nil
 			},
-			HostnameFunc: func() (string, error) { return "test-host", nil },
+			HostnameFunc: func() (string, error) { return testHostname, nil },
 			MkdirAllFunc: os.MkdirAll,
 			CreateFunc: func(name string) (*os.File, error) {
 				return nil, expectedError

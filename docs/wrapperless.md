@@ -4,13 +4,13 @@
 
 The wrapperless flow attributes Xcode CAS traffic and build analytics to one BE invocation row per build **without** the xcodebuild wrapper injecting an `InvocationID`. The CLI watches DerivedData for filesystem events, classifies each build directly from `build-request.json` + `LogStoreManifest.plist`, and emits a two-phase row (slim on Start, enriched on End) under a deterministic InvocationID derived from the proxy identity and the manifest / xcbuilddata hex.
 
-Opt-in flag on the proxy:
+Select by activating the machine in IDE mode:
 
 ```
-bitrise-build-cache xcelerate start-proxy --wrapperless-pipeline-enabled
+bitrise-build-cache activate xcode --ide
 ```
 
-It runs **alongside** the existing enricher — not as a replacement — so both flows produce rows and can be compared during beta testing.
+The mode is persisted in `~/.bitrise-xcelerate/config.json` (`"ide": true`) and read by `start-proxy` on launch. IDE mode is **sticky** across re-activations; pass `--ide=false` to switch back to the xcodebuild CLI / CI flow. When `--ide` is set, the proxy runs the wrapperless pipeline and `activate` does **not** install the `xcodebuild` / `xcrun` PATH wrappers — IDE builds go straight through `/usr/bin/xcodebuild` and the proxy socket.
 
 ---
 

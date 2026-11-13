@@ -14,6 +14,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
+const ideFlagName = "ide"
+
 const (
 	activateXcode = "Activate Bitrise Build Cache for Xcode"
 )
@@ -59,6 +61,13 @@ This command will:
 			return fmt.Errorf("resolve cache push: %w", err)
 		}
 		activateXcodeParams.PushEnabled = push
+
+		if !cmd.Flags().Changed(ideFlagName) {
+			if existing, err := xcelerate.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{}, utils.AllEnvs()); err == nil {
+				activateXcodeParams.IDE = existing.IDE
+			}
+		}
+		warnIrrelevantIDEFlags(cmd, activateXcodeParams, logger)
 
 		if err := xcelerate.Activate(
 			cmd.Context(),
@@ -154,6 +163,24 @@ Swift compile caching requires explicit modules, which some projects cannot buil
 		"Smallest blob, in bytes, that --remote-cache-compression compresses; smaller blobs are sent uncompressed.")
 
 	activateXcodeCmd.Flags().StringVar(&activateXcodeProjectMode, common.ProjectModeFlagName, "", common.ProjectModeFlagUsage)
+
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.IDE,
+		ideFlagName,
+		activateXcodeParams.IDE,
+		`Activate for Xcode.app IDE builds. Enables the wrapperless pipeline and skips installing the xcodebuild/xcrun PATH wrappers.
+Omit (default) for xcodebuild CLI / CI flow. Value is sticky across activations; pass --ide=false to flip back.`)
+}
+
+func warnIrrelevantIDEFlags(cmd *cobra.Command, params xcelerate.Params, logger log.Logger) {
+	if !params.IDE {
+		return
+	}
+
+	for _, name := range []string{"xcode-path", "xcrun-path", "timestamps"} {
+		if cmd.Flags().Changed(name) {
+			logger.Warnf("--%s has no effect with --ide; IDE mode skips the xcodebuild/xcrun wrapper.", name)
+		}
+	}
 }
 
 // ActivateXcodeCommandFn is a backward-compatible wrapper around xcelerate.Activate.

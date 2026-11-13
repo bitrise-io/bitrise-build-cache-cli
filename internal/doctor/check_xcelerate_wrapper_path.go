@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
 func (d *Doctor) xcelerateWrapperPathCheck() Check {
@@ -16,6 +18,10 @@ func (d *Doctor) xcelerateWrapperPathCheck() Check {
 		Diagnose: func(_ context.Context) Result {
 			if !d.toolActivated(toolconfig.Xcelerate) {
 				return Result{State: StateOK, Detail: "skipped (xcode not activated)"}
+			}
+
+			if cfg, err := xceleratconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}, d.Envs); err == nil && cfg.IDE {
+				return Result{State: StateOK, Detail: "skipped (IDE mode has no xcodebuild/xcrun wrapper)"}
 			}
 
 			home, err := os.UserHomeDir()

@@ -1,10 +1,30 @@
 package doctor
 
 import (
+	"context"
+
 	xceleratconfig "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/toolconfig"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
+
+func (d *Doctor) xcelerateModeCheck() Check {
+	return Check{
+		Name: "xcelerate-mode",
+		Diagnose: func(_ context.Context) Result {
+			cfg, err := xceleratconfig.ReadConfig(d.osProxy(), utils.DefaultDecoderFactory{}, d.Envs)
+			if err != nil {
+				return Result{State: StateOK, Detail: "xcelerate not activated"}
+			}
+
+			if cfg.IDE {
+				return Result{State: StateOK, Detail: "mode: IDE (wrapperless pipeline, Xcode.app builds)"}
+			}
+
+			return Result{State: StateOK, Detail: "mode: CLI (xcodebuild wrapper, terminal / CI builds)"}
+		},
+	}
+}
 
 func (d *Doctor) xcelerateProxyCheck() Check {
 	// No handshake, so a proxy that accepts but never answers reads as running —
