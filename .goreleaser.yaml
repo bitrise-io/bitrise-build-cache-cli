@@ -25,6 +25,8 @@ release:
 before:
   hooks:
     - go mod tidy
+    # Stage the trampoline into the embed source dir for //go:embed to pick up.
+    - ./scripts/build_trampoline_embed.sh
 
 builds:
   - id: bitrise-build-cache
@@ -38,29 +40,12 @@ builds:
       - linux
       # - windows
       - darwin
-  - id: trampoline
-    binary: trampoline
-    main: ./cmd/trampoline
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -s -w
-    goos:
-      - darwin
-    goarch:
-      - amd64
-      - arm64
 
 archives:
   - id: bitrise-build-cache
     ids:
       - bitrise-build-cache
     name_template: 'bitrise-build-cache_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-  - id: trampoline
-    ids:
-      - trampoline
-    formats: [binary]
-    name_template: 'trampoline_v{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 
 # Homebrew formula generation is intentionally NOT handled by goreleaser.
 # It is published by a separate, idempotent shell step in bitrise.yml

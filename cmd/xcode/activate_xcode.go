@@ -130,6 +130,10 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 		"timestamps",
 		activateXcodeParams.XcodebuildTimestampsEnabled,
 		"Enable xcodebuild timestamps. This will add timestamps to the xcodebuild output.")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.WrapperlessPipelineEnabled,
+		"wrapperless-pipeline",
+		activateXcodeParams.WrapperlessPipelineEnabled,
+		"Opt into the wrapperless single-ID pipeline (see docs/wrapperless.md).")
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheSkipFlags,
 		"cache-skip-flags",
 		activateXcodeParams.BuildCacheSkipFlags,

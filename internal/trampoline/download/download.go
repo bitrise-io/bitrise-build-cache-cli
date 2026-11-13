@@ -1,6 +1,7 @@
-// Package download fetches the universal trampoline binary from the R2 release
-// mirror and caches it under ~/.bitrise-xcelerate/toolchain/. Honours
-// BITRISE_XCELERATE_TRAMPOLINE_PATH for dev-loop overrides.
+// Package download materialises the trampoline binary into
+// ~/.bitrise-xcelerate/toolchain/ from the //go:embed bytes baked into the
+// CLI at release build time. Honours BITRISE_XCELERATE_TRAMPOLINE_PATH for
+// dev-loop overrides.
 package download
 
 import (
@@ -10,39 +11,27 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
 
-// EnvOverride lets dev loops point at a local trampoline build without going
-// through R2.
+// EnvOverride lets dev loops point at a local trampoline build instead of the
+// embedded bytes.
 const EnvOverride = "BITRISE_XCELERATE_TRAMPOLINE_PATH"
 
-// R2BaseURL is the public read URL of the release bucket.
-const R2BaseURL = "https://pub-a484c7653eeba8c8c00a4bf3967860a3.r2.dev/build-cache-cli-releases"
-
-// httpTimeout caps the trampoline download so a hung R2 can't block activation.
-const httpTimeout = 30 * time.Second
-
-// Deps bundles the OS/network seams; tests swap atoms.
+// Deps bundles the OS seams; tests swap atoms.
 type Deps struct {
-	Get      func(ctx context.Context, url string) ([]byte, error)
-	Now      func() time.Time
 	Env      func(key string) string
 	MkdirAll func(path string, perm os.FileMode) error
 	Stat     func(path string) (os.FileInfo, error)
 }
 
-// Default returns a Deps bundle wired to the real network + filesystem.
+// Default returns a Deps bundle wired to the real filesystem.
 func Default() Deps {
 	return Deps{
-		Get:      httpGet,
-		Now:      time.Now,
 		Env:      os.Getenv,
 		MkdirAll: os.MkdirAll,
 		Stat:     os.Stat,
@@ -50,16 +39,16 @@ func Default() Deps {
 }
 
 // EnsureForVersion returns a path to a trampoline binary for the given CLI
-// version. Resolution order:
-//  1. BITRISE_XCELERATE_TRAMPOLINE_PATH (if set + executable).
-//  2. ~/.bitrise-xcelerate/toolchain/trampoline-<version>-universal when its
-//     sha matches the published checksum.
-//  3. Download trampoline + checksums from R2, verify, atomic-write, return.
-func EnsureForVersion(ctx context.Context, cliVersion string, p paths.Paths) (string, error) {
-	return ensure(ctx, cliVersion, p, Default())
+// version. The CLI carries the matching per-arch trampoline inline via
+// //go:embed; installEmbedded rewrites the cache from those bytes.
+// BITRISE_XCELERATE_TRAMPOLINE_PATH wins when set and points at a local
+// build. A dev build whose embed is empty and whose override is unset must
+// run scripts/build_trampoline_embed.sh before activating.
+func EnsureForVersion(_ context.Context, cliVersion string, p paths.Paths) (string, error) {
+	return ensure(cliVersion, p, Default())
 }
 
-func ensure(ctx context.Context, cliVersion string, p paths.Paths, d Deps) (string, error) {
+func ensure(cliVersion string, p paths.Paths, d Deps) (string, error) {
 	if override := strings.TrimSpace(d.Env(EnvOverride)); override != "" {
 		if _, err := d.Stat(override); err != nil {
 			return "", fmt.Errorf("trampoline override %q: %w", override, err)
@@ -73,89 +62,40 @@ func ensure(ctx context.Context, cliVersion string, p paths.Paths, d Deps) (stri
 		return "", errors.New("CLI version is empty")
 	}
 
+	if len(embeddedTrampoline) == 0 {
+		return "", errors.New("trampoline not embedded in this build; run scripts/build_trampoline_embed.sh or set BITRISE_XCELERATE_TRAMPOLINE_PATH")
+	}
+
 	target := p.TrampolineBinary(cliVersion)
 	if err := d.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return "", fmt.Errorf("mkdir trampoline cache dir: %w", err)
 	}
 
-	published, err := fetchChecksums(ctx, d, cliVersion)
-	if err != nil {
-		return "", fmt.Errorf("fetch trampoline checksums for v%s: %w", cliVersion, err)
-	}
-	expectedSHA, ok := published[universalFilename(cliVersion)]
-	if !ok {
-		return "", fmt.Errorf("checksums file lists no entry for trampoline v%s", cliVersion)
-	}
+	return installEmbedded(target, d)
+}
 
-	if existing, ok := d.Stat(target); ok == nil && !existing.IsDir() {
-		got, err := fileSHA256(target)
-		if err == nil && got == expectedSHA {
+func installEmbedded(target string, d Deps) (string, error) {
+	wantSum := sha256.Sum256(embeddedTrampoline)
+	wantHex := hex.EncodeToString(wantSum[:])
+
+	existing, statErr := d.Stat(target)
+	if statErr == nil && !existing.IsDir() && existing.Size() == int64(len(embeddedTrampoline)) {
+		if got, err := fileSHA256(target); err == nil && got == wantHex {
 			return target, nil
 		}
 	}
 
-	body, err := d.Get(ctx, binaryURL(cliVersion))
-	if err != nil {
-		return "", fmt.Errorf("download trampoline: %w", err)
-	}
-
-	gotSum := sha256.Sum256(body)
-	gotHex := hex.EncodeToString(gotSum[:])
-	if gotHex != expectedSHA {
-		return "", fmt.Errorf("trampoline sha mismatch: got %s want %s", gotHex, expectedSHA)
-	}
-
-	if err := writeAtomic(target, body); err != nil {
-		return "", fmt.Errorf("install trampoline: %w", err)
+	if err := writeAtomic(target, embeddedTrampoline); err != nil {
+		return "", fmt.Errorf("install embedded trampoline: %w", err)
 	}
 
 	return target, nil
 }
 
-func fetchChecksums(ctx context.Context, d Deps, cliVersion string) (map[string]string, error) {
-	body, err := d.Get(ctx, checksumsURL(cliVersion))
-	if err != nil {
-		return nil, err
-	}
-
-	out := make(map[string]string, 3) //nolint:mnd // 3 trampoline binaries per release
-	for line := range strings.SplitSeq(string(body), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.Fields(line)
-		if len(parts) != 2 { //nolint:mnd // "sha  filename" is 2 fields
-			continue
-		}
-
-		out[parts[1]] = parts[0]
-	}
-
-	if len(out) == 0 {
-		return nil, errors.New("empty or malformed checksums body")
-	}
-
-	return out, nil
-}
-
-func binaryURL(cliVersion string) string {
-	return R2BaseURL + "/" + universalFilename(cliVersion)
-}
-
-func checksumsURL(cliVersion string) string {
-	return R2BaseURL + "/trampoline_v" + cliVersion + "_checksums.txt"
-}
-
-func universalFilename(cliVersion string) string {
-	return "trampoline_v" + cliVersion + "_darwin_universal"
-}
-
 func fileSHA256(path string) (string, error) {
 	f, err := os.Open(path) //nolint:gosec // path comes from paths.TrampolineBinary
 	if err != nil {
-		return "", err //nolint:wrapcheck // caller forces a re-download on any failure
+		return "", err //nolint:wrapcheck
 	}
 	defer func() { _ = f.Close() }()
 
@@ -174,30 +114,4 @@ func writeAtomic(path string, body []byte) error {
 	}
 
 	return os.Rename(tmp, path) //nolint:wrapcheck
-}
-
-func httpGet(ctx context.Context, url string) ([]byte, error) {
-	client := &http.Client{Timeout: httpTimeout}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("new request %s: %w", url, err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("get %s: %w", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode/100 != 2 { //nolint:mnd // 2xx
-		return nil, fmt.Errorf("get %s: status %d", url, resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", url, err)
-	}
-
-	return body, nil
 }

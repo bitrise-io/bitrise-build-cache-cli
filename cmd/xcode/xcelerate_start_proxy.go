@@ -75,6 +75,10 @@ var (
 				return fmt.Errorf("read xcelerate config: %w", err)
 			}
 
+			if !cmd.Flags().Changed("wrapperless-pipeline-enabled") && config.WrapperlessPipelineEnabled {
+				wrapperlessPipelineEnabled = true
+			}
+
 			allEnvs := utils.AllEnvs()
 
 			loggerFactory := func(invocationID string) (log.Logger, error) {

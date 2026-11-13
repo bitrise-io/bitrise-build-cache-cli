@@ -2214,8 +2214,6 @@ workflows:
         inputs:
         - content: |-
             set -exo pipefail
-            # Dev-loop override: point the activate step at the locally-built trampoline.
-            export BITRISE_XCELERATE_TRAMPOLINE_PATH="$BITRISE_SOURCE_DIR/dist/trampoline/trampoline_v$(../bitrise-build-cache-cli --version | awk '{print $NF}')_darwin_universal"
             ../bitrise-build-cache-cli activate xcode -d --cache --cache-push
     - script:
         title: Kill any running proxy to force cold-start via trampoline
