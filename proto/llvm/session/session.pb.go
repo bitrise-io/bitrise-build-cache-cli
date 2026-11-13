@@ -25,8 +25,13 @@ const (
 type FlushSessionResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	EmittedInvocationIds []string               `protobuf:"bytes,1,rep,name=emitted_invocation_ids,json=emittedInvocationIds,proto3" json:"emitted_invocation_ids,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// true when the proxy is running the wrapperless single-ID pipeline. The
+	// CLI uses this to suppress the "No pending invocations to flush" message
+	// because the pipeline emits invocations live, outside the FlushSession
+	// RPC path.
+	WrapperlessPipelineActive bool `protobuf:"varint,2,opt,name=wrapperless_pipeline_active,json=wrapperlessPipelineActive,proto3" json:"wrapperless_pipeline_active,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *FlushSessionResponse) Reset() {
@@ -64,6 +69,13 @@ func (x *FlushSessionResponse) GetEmittedInvocationIds() []string {
 		return x.EmittedInvocationIds
 	}
 	return nil
+}
+
+func (x *FlushSessionResponse) GetWrapperlessPipelineActive() bool {
+	if x != nil {
+		return x.WrapperlessPipelineActive
+	}
+	return false
 }
 
 type SetSessionRequest struct {
@@ -722,9 +734,10 @@ var File_llvm_session_session_proto protoreflect.FileDescriptor
 
 const file_llvm_session_session_proto_rawDesc = "" +
 	"\n" +
-	"\x1allvm/session/session.proto\x12\asession\x1a\x1bgoogle/protobuf/empty.proto\"L\n" +
+	"\x1allvm/session/session.proto\x12\asession\x1a\x1bgoogle/protobuf/empty.proto\"\x8c\x01\n" +
 	"\x14FlushSessionResponse\x124\n" +
-	"\x16emitted_invocation_ids\x18\x01 \x03(\tR\x14emittedInvocationIds\"\x8f\x01\n" +
+	"\x16emitted_invocation_ids\x18\x01 \x03(\tR\x14emittedInvocationIds\x12>\n" +
+	"\x1bwrapperless_pipeline_active\x18\x02 \x01(\bR\x19wrapperlessPipelineActive\"\x8f\x01\n" +
 	"\x11SetSessionRequest\x12#\n" +
 	"\rinvocation_id\x18\x01 \x01(\tR\finvocationId\x12\x19\n" +
 	"\bapp_slug\x18\x02 \x01(\tR\aappSlug\x12\x1d\n" +

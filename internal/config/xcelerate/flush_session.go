@@ -76,6 +76,11 @@ func printEmittedURLs(ctx context.Context, logger log.Logger, stdout io.Writer, 
 	logger.Debugf("FlushSession RPC returned %d emitted invocation IDs", len(ids))
 
 	if len(ids) == 0 {
+		if resp.GetWrapperlessPipelineActive() {
+			logger.Debugf("wrapperless pipeline active; suppressing no-pending message")
+
+			return nil
+		}
 		fmt.Fprintln(stdout, noPendingMessage)
 
 		return nil

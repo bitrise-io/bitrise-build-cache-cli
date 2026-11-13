@@ -48,6 +48,15 @@ func TestPrintEmittedURLs_EmptyResponseFallsBackToNoPendingMessage(t *testing.T)
 	assert.Equal(t, "No pending invocations to flush.\n", buf.String())
 }
 
+func TestPrintEmittedURLs_WrapperlessActiveSuppressesNoPendingMessage(t *testing.T) {
+	buf := &bytes.Buffer{}
+	client := &fakeFlushClient{resp: &session.FlushSessionResponse{WrapperlessPipelineActive: true}}
+
+	require.NoError(t, printEmittedURLs(context.Background(), nullLogger{}, buf, client))
+
+	assert.Empty(t, buf.String())
+}
+
 func TestPrintEmittedURLs_RPCErrorExitsZero(t *testing.T) {
 	buf := &bytes.Buffer{}
 	client := &fakeFlushClient{err: errors.New("boom")}

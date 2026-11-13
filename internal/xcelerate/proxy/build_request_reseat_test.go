@@ -15,10 +15,11 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/sessions"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/wrapperless"
 )
 
-// ideAncestry returns an ancestry chain that passes isIDEAncestry: the IDE
-// anchor is SWBBuildService, with no xcodebuild entry.
+// ideAncestry returns an ancestry chain classifyAncestryKind labels as
+// AncestryIDE: the IDE anchor is SWBBuildService, with no xcodebuild entry.
 func ideAncestry() []AncestryEntry {
 	return []AncestryEntry{
 		{PID: 10, Name: "swiftc", StartTimeMS: 1},
@@ -138,7 +139,7 @@ func TestResolveAndMaybeReseat_EmptyHexResultNoOp(t *testing.T) {
 	assert.Equal(t, initial, cs.invocationID())
 }
 
-func TestIsIDEAncestry_Classification(t *testing.T) {
+func TestClassifyAncestryKind_PicksIDE(t *testing.T) {
 	cases := []struct {
 		name    string
 		entries []AncestryEntry
@@ -177,7 +178,8 @@ func TestIsIDEAncestry_Classification(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, isIDEAncestry(tc.entries))
+			kind, _, _ := classifyAncestryKind(tc.entries)
+			assert.Equal(t, tc.want, kind == wrapperless.AncestryIDE)
 		})
 	}
 }

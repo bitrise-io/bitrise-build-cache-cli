@@ -41,7 +41,7 @@ const (
 // appears in the SLF form, so it is optional.
 //
 //nolint:gochecknoglobals // compiled once, read-only
-var HitRateRegexp = regexp.MustCompile(`(\d+)\s+hits\s*/\s*(\d+)\s+cacheable\s+tasks(?:\s*\(\s*\d+%\s*\))?`)
+var HitRateRegexp = regexp.MustCompile(`(\d+)\s+hits?\s*/\s*(\d+)\s+cacheable\s+tasks(?:\s*\(\s*\d+%\s*\))?`)
 
 // buildDescriptionHashRegexp captures the 32-hex build-description hash Xcode
 // writes into the log body as a plain ASCII substring.

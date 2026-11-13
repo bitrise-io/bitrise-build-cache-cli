@@ -29,6 +29,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/wrapperless"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeversion"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 	remoteexecution "github.com/bitrise-io/bitrise-build-cache-cli/v3/proto/build/bazel/remote/execution/v2"
@@ -46,6 +47,9 @@ const (
 var (
 	//nolint:gochecknoglobals
 	initialInvocationID string
+
+	//nolint:gochecknoglobals
+	wrapperlessPipelineEnabled bool
 
 	//nolint:gochecknoglobals
 	xcelerateProxyCmd = &cobra.Command{
@@ -142,6 +146,12 @@ func init() {
 		uuid.NewString(),
 		"Invocation ID to be used in the proxy",
 	)
+	xcelerateProxyCmd.Flags().BoolVar(
+		&wrapperlessPipelineEnabled,
+		"wrapperless-pipeline-enabled",
+		false,
+		"Run the opt-in wrapperless single-ID pipeline alongside the existing enricher",
+	)
 	xcelerateCommand.AddCommand(xcelerateProxyCmd)
 }
 
@@ -189,7 +199,10 @@ func StartXcodeCacheProxy(
 		initialLogger.Debugf("Enrichment prune skipped, cannot resolve paths: %v", err)
 	}
 
-	emitter := bundle.emitter()
+	var emitter proxy.InvocationEmitter
+	if !wrapperlessPipelineEnabled {
+		emitter = bundle.emitter()
+	}
 
 	sidecarOpts, peerListener := buildSidecarOptions(listener, initialLogger)
 	if peerListener != nil {
@@ -198,25 +211,34 @@ func StartXcodeCacheProxy(
 
 	p := proxy.NewProxyWithOptions(client, config.PushEnabled, initialLogger, loggerFactory, emitter, sidecarOpts)
 	p.InactivityTimeout = resolveInactivityTimeout(envProvider, initialLogger)
-	p.FlushHook = func(hookCtx context.Context) []string {
-		return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
+	if !wrapperlessPipelineEnabled {
+		p.FlushHook = func(hookCtx context.Context) []string {
+			return bundle.flushEnrichmentSweep(hookCtx, initialLogger)
+		}
 	}
 
 	// Cancelled only after the final sweep so sidecars written during GracefulStop still get drained.
 	enrichCtx, cancelEnrich := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelEnrich()
 
-	if bundle.enrichmentEnabled() {
+	if bundle.enrichmentEnabled() && !wrapperlessPipelineEnabled {
 		go bundle.ensureWatcher(enrichCtx, initialLogger).Run(enrichCtx)
 		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
+
+	pipeline := maybeStartWrapperlessPipeline(enrichCtx, bundle, p, initialLogger)
 
 	bgCtx := context.WithoutCancel(ctx)
 
 	go func() {
 		<-ctx.Done()
 		p.GracefulStop()
-		bundle.finalEnrichmentSweep(bgCtx, initialLogger)
+		if !wrapperlessPipelineEnabled {
+			bundle.finalEnrichmentSweep(bgCtx, initialLogger)
+		}
+		if pipeline != nil {
+			pipeline.Close()
+		}
 		cancelEnrich()
 	}()
 
@@ -520,4 +542,80 @@ func resolveInactivityTimeout(envs map[string]string, logger log.Logger) time.Du
 	}
 
 	return parsed
+}
+
+// maybeStartWrapperlessPipeline boots the opt-in wrapperless Pipeline when the
+// --wrapperless-pipeline-enabled flag is set. Returns nil when disabled or when
+// the bundle is incomplete. Runs alongside the existing enricher; BE accepts
+// same-ID re-PUT so overlap is harmless.
+func maybeStartWrapperlessPipeline(
+	ctx context.Context,
+	bundle *analyticsBundle,
+	p *proxy.Proxy,
+	logger log.Logger,
+) *wrapperless.Pipeline {
+	if !wrapperlessPipelineEnabled {
+		return nil
+	}
+	if bundle == nil || bundle.client == nil || bundle.homeDir == "" {
+		logger.Debugf("Wrapperless pipeline requested but bundle incomplete; skipping")
+
+		return nil
+	}
+
+	resolver, err := paths.Default()
+	if err != nil {
+		logger.Warnf("Wrapperless pipeline disabled, cannot resolve paths: %s", err)
+
+		return nil
+	}
+
+	emitter := &wrapperless.Emitter{
+		Client:              bundle.client,
+		Auth:                bundle.authProvider.Get(ctx),
+		Metadata:            bundle.metadata,
+		XcodeVersion:        bundle.xcodeVersion,
+		XcodeBuildNumber:    bundle.xcodeBuildNumber,
+		Logger:              logger,
+		PendingSlimPath:     resolver.WrapperlessPendingSlimPath(),
+		PendingEnrichedPath: resolver.WrapperlessPendingEnrichedPath(),
+		// Minted here because the `ensureWatcher` gate — which normally mints
+		// it on the enricher path — is off under wrapperless.
+		LocalLogAppender: invocationlog.Default(logger),
+	}
+	if bundle.healthPath != "" {
+		// Reuse the enricher's health.json so `doctor` observes the same health
+		// rhythm regardless of which flow (wrapper, enricher, wrapperless)
+		// emitted the row.
+		emitter.Health = &enrichment.HealthWriter{Path: bundle.healthPath}
+	}
+
+	seenStore := &wrapperless.HandledManifestStore{Path: resolver.WrapperlessHandledManifestsPath()}
+
+	ddWatcher := &wrapperless.DDWatcher{ //nolint:exhaustruct
+		HomeDir:   bundle.homeDir,
+		Logger:    logger,
+		SeenStore: seenStore,
+	}
+
+	pipeline := &wrapperless.Pipeline{ //nolint:exhaustruct
+		HomeDir:   bundle.homeDir,
+		Logger:    logger,
+		Emitter:   emitter,
+		Proxy:     p,
+		BlobStats: p.BlobStatsSource(),
+		DDWatcher: ddWatcher,
+	}
+
+	if err := pipeline.Start(ctx); err != nil {
+		logger.Warnf("Wrapperless pipeline start failed: %s", err)
+
+		return nil
+	}
+
+	p.SetWrapperlessPipeline(pipeline)
+
+	logger.Infof("Wrapperless pipeline running alongside enricher (opt-in).")
+
+	return pipeline
 }

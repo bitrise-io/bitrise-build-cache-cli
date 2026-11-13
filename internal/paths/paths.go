@@ -76,6 +76,25 @@ const (
 	// proxy writes on close, consumed by the enrichment side.
 	xcelerateSessionsSubdir = "sessions"
 
+	// xcelerateWrapperlessSubdir holds the wrapperless pipeline's on-disk
+	// fallbacks (slim-PUT retry queue, etc).
+	xcelerateWrapperlessSubdir = "wrapperless"
+
+	// wrapperlessPendingSlimFilename is the NDJSON ledger the slim emitter
+	// appends to on PUT failure; drained by Emitter's background retrier.
+	wrapperlessPendingSlimFilename = "pending-slim.ndjson"
+
+	// wrapperlessPendingEnrichedFilename is the NDJSON ledger the enriched
+	// emitter appends to on PUT failure; drained alongside the slim ledger.
+	wrapperlessPendingEnrichedFilename = "pending-enriched.ndjson"
+
+	// wrapperlessHandledManifestsFilename is the NDJSON ledger of
+	// LogStoreManifest uniqueIdentifiers the DDWatcher has already
+	// emitted. Mirrors enrichment's handled-manifests file in shape but
+	// is scoped to the wrapperless flow's own set so the two cannot
+	// collide across restarts.
+	wrapperlessHandledManifestsFilename = "handled-manifests.ndjson"
+
 	// handledManifestsFilename is the NDJSON append-only log of xcactivitylog UUIDs
 	// the Watcher has already emitted, so a proxy restart doesn't replay historic manifests.
 	handledManifestsFilename = "handled-manifests.ndjson"
@@ -339,6 +358,31 @@ func (p Paths) XcelerateEnrichmentDir() string {
 // proxy drops per-connection sidecar JSON files on close.
 func (p Paths) XcelerateSessionsDir() string {
 	return filepath.Join(p.XcelerateStateDir(), xcelerateSessionsSubdir)
+}
+
+// XcelerateWrapperlessDir returns ~/.local/state/xcelerate/wrapperless.
+func (p Paths) XcelerateWrapperlessDir() string {
+	return filepath.Join(p.XcelerateStateDir(), xcelerateWrapperlessSubdir)
+}
+
+// WrapperlessPendingSlimPath returns the NDJSON retry file the slim emitter
+// appends to after a PUT failure.
+func (p Paths) WrapperlessPendingSlimPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingSlimFilename)
+}
+
+// WrapperlessPendingEnrichedPath returns the NDJSON retry file the enriched
+// emitter appends to after a PUT failure.
+func (p Paths) WrapperlessPendingEnrichedPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessPendingEnrichedFilename)
+}
+
+// WrapperlessHandledManifestsPath returns the NDJSON ledger of
+// LogStoreManifest uniqueIdentifiers the DDWatcher has already emitted.
+// Persisted so a proxy restart within seedStaleGrace of a sealed build does
+// not emit a duplicate row for the same user action.
+func (p Paths) WrapperlessHandledManifestsPath() string {
+	return filepath.Join(p.XcelerateWrapperlessDir(), wrapperlessHandledManifestsFilename)
 }
 
 // HandledManifestsFile returns the NDJSON log the enrichment Watcher uses to

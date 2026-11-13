@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
@@ -63,6 +64,11 @@ type Proxy struct {
 	currentSession *SessionMeta
 	grpcServer     *grpc.Server
 
+	// currentBucketID, when non-empty, preempts the per-conn derivedInvocationID
+	// on every unary RPC so wrapperless-pipeline Starts can reseat live
+	// connections to a fresh BE row without mutating per-conn state.
+	currentBucketID atomic.Value
+
 	// InactivityTimeout is the idle window after which the current session is
 	// slim-emitted. Zero falls back to defaultInactivityTimeout.
 	InactivityTimeout time.Duration
@@ -106,6 +112,11 @@ type SidecarOptions struct {
 	// buildRequestPollInterval under the registry's existing lock; it must
 	// return quickly or the tick stalls.
 	BuildRequestResolver BuildRequestResolver
+	// PeerAncestryEntries, when non-nil, overrides the default
+	// ancestry.ResolveAncestryEntries resolver. Tests wire a stub so the
+	// TagConn ancestry gate (classifyAncestryKind) does not reject the test
+	// process as Unknown.
+	PeerAncestryEntries func(pid int) []AncestryEntry
 }
 
 const defaultInactivityTimeout = 5 * time.Minute
@@ -162,7 +173,11 @@ func NewProxyWithOptions(
 			// so a mid-connection reseat (ResolveAndMaybeReseat) is picked up by
 			// the KV layer on the next RPC. TagConn only sets the ID once at
 			// connection start.
-			ctx = rewrapInvocationID(ctx)
+			if id := proxy.CurrentBucketID(); id != "" {
+				ctx = kv.WithInvocationID(ctx, id)
+			} else {
+				ctx = rewrapInvocationID(ctx)
+			}
 
 			resp, err := handler(ctx, req)
 			if !isSessionServiceMethod(info.FullMethod) {
@@ -198,11 +213,17 @@ func (p *Proxy) installSidecar(opts SidecarOptions) {
 	p.sessionRegistry = newSessionRegistry()
 	ancestry := buildidentity.NewAncestryCache()
 	p.BuildRequestResolver = opts.BuildRequestResolver
+
+	resolver := opts.PeerAncestryEntries
+	if resolver == nil {
+		resolver = ancestry.ResolveAncestryEntries
+	}
+
 	p.sidecarStats = &sidecarStatsHandler{
 		listener:                   opts.Listener,
 		registry:                   p.sessionRegistry,
 		writer:                     newSidecarWriter(opts.Dir, p.logger),
-		peerAncestryEntries:        ancestry.ResolveAncestryEntries,
+		peerAncestryEntries:        resolver,
 		derivedDataPathFromEntries: peerDerivedDataPath,
 		wrapperSessionActive:       p.wrapperSessionActive,
 		buildRequestResolver:       opts.BuildRequestResolver,
@@ -238,6 +259,28 @@ func (p *Proxy) firePerConnFlush() {
 	if p.perConnFlushTimer != nil {
 		p.perConnFlushTimer.Reset(perConnIdleThreshold)
 	}
+}
+
+// SetCurrentBucketID installs a bucket-level InvocationID that the unary
+// interceptor stamps onto every subsequent RPC. Empty string clears the
+// override; callers pass the fresh ID on each new wrapperless Start.
+func (p *Proxy) SetCurrentBucketID(id string) {
+	p.currentBucketID.Store(id)
+}
+
+// CurrentBucketID returns the bucket-level override, or "" when unset.
+func (p *Proxy) CurrentBucketID() string {
+	v := p.currentBucketID.Load()
+	if v == nil {
+		return ""
+	}
+
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+
+	return s
 }
 
 // wrapperSessionActive reports whether the SetSession path currently owns the
@@ -477,14 +520,21 @@ func (p *Proxy) SetSession(ctx context.Context, request *session.SetSessionReque
 
 // FlushSession runs the registered flush hook synchronously and returns the
 // invocation IDs the hook reports as emitted. nil hook → empty list.
+// WrapperlessPipelineActive signals the wrapperless flow is live so the CLI
+// can suppress the "nothing to flush" message (pipeline emits live).
 func (p *Proxy) FlushSession(ctx context.Context, _ *emptypb.Empty) (*session.FlushSessionResponse, error) {
+	active := p.sidecarStats != nil && p.sidecarStats.wrapperlessPipeline != nil
+
 	if p.FlushHook == nil {
-		return &session.FlushSessionResponse{}, nil
+		return &session.FlushSessionResponse{WrapperlessPipelineActive: active}, nil
 	}
 
 	ids := p.FlushHook(ctx)
 
-	return &session.FlushSessionResponse{EmittedInvocationIds: ids}, nil
+	return &session.FlushSessionResponse{
+		EmittedInvocationIds:      ids,
+		WrapperlessPipelineActive: active,
+	}, nil
 }
 
 func (p *Proxy) GetSessionStats(_ context.Context, _ *emptypb.Empty) (*session.GetSessionStatsResponse, error) {

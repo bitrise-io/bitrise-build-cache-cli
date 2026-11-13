@@ -12,6 +12,7 @@ require (
 	github.com/bitrise-io/go-steputils/v2 v2.0.0-alpha.61
 	github.com/bitrise-io/go-utils/v2 v2.0.0-alpha.40
 	github.com/dustin/go-humanize v1.1.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gofrs/flock v0.13.1
 	github.com/gofrs/uuid/v5 v5.5.1
@@ -27,6 +28,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	github.com/zeebo/blake3 v0.2.4
 	golang.org/x/mod v0.42.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800
@@ -76,7 +78,6 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 )
 
