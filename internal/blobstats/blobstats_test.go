@@ -4,6 +4,8 @@ package blobstats_test
 
 import (
 	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -245,6 +247,64 @@ func Test_ProtocolCollector_emptyProtocolsStayEmpty(t *testing.T) {
 
 	assert.True(t, got.IsEmpty())
 	assert.Nil(t, blobstats.ToProto(got))
+}
+
+// Test_ProtocolCollector_TakeSnapshot_AccountsEveryByteUnderConcurrentRecord
+// drives concurrent RecordTransfers against a loop that calls TakeSnapshot
+// over and over. The invariant it pins: the sum of returned BytesTotal across
+// every snapshot equals the exact sum of RecordTransfer bytes — no byte is
+// lost in the snapshot/reset window. The prior Snapshot+Reset pair had a
+// race where an RPC in between would be snapshotted and then immediately
+// zeroed.
+func Test_ProtocolCollector_TakeSnapshot_AccountsEveryByteUnderConcurrentRecord(t *testing.T) {
+	c := blobstats.NewProtocolCollector()
+
+	const (
+		producers      = 4
+		opsPerProducer = 500
+		bytesPerOp     = 1024
+	)
+
+	var totalCollected atomic.Int64
+	stop := make(chan struct{})
+	collectorDone := make(chan struct{})
+
+	go func() {
+		defer close(collectorDone)
+		for {
+			snap := c.TakeSnapshot()
+			totalCollected.Add(snap.Download.BytesTotal + snap.Upload.BytesTotal)
+
+			select {
+			case <-stop:
+				// Drain any residual window after producers finished.
+				snap := c.TakeSnapshot()
+				totalCollected.Add(snap.Download.BytesTotal + snap.Upload.BytesTotal)
+
+				return
+			default:
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	for range producers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range opsPerProducer {
+				c.CAS.Download.RecordTransfer(bytesPerOp, time.Millisecond)
+				c.KV.Upload.RecordTransfer(bytesPerOp, time.Millisecond)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(stop)
+	<-collectorDone
+
+	expected := int64(producers * opsPerProducer * bytesPerOp * 2) // Download + Upload
+	assert.Equal(t, expected, totalCollected.Load(), "every recorded byte must land in exactly one snapshot")
 }
 
 // A plain collector sends no breakdown, which is the shape the Gradle plugin also sends.

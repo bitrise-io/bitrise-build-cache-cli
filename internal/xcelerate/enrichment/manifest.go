@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/manifestsig"
 )
 
 // MetricsLookup resolves an entry's xcactivitylog metrics. The Watcher wires
@@ -68,29 +68,14 @@ func (m ManifestEntry) Command() Command {
 // requiring "S" mislabelled every warning-carrying build as failed.
 const manifestStatusError = "E"
 
-//nolint:gochecknoglobals
-var (
-	configurationFromSignature = regexp.MustCompile(`(?i)\bconfiguration\s+(\S+)`)
-	projectFromSignature       = regexp.MustCompile(`(?i)\bproject\s+(\S+)`)
-	workspaceFromSignature     = regexp.MustCompile(`(?i)\bworkspace\s+(\S+)`)
-)
-
 // Configuration parses the configuration name out of Xcode's Signature string.
 func (m ManifestEntry) Configuration() string {
-	if match := configurationFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
-		return match[1]
-	}
-
-	return ""
+	return manifestsig.FirstSubmatch(manifestsig.Configuration, m.Signature)
 }
 
 // Project parses the project name out of Xcode's Signature string.
 func (m ManifestEntry) Project() string {
-	if match := projectFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
-		return match[1]
-	}
-
-	return ""
+	return manifestsig.FirstSubmatch(manifestsig.Project, m.Signature)
 }
 
 // Workspace parses the workspace name out of Xcode's Signature string.
@@ -98,11 +83,7 @@ func (m ManifestEntry) Project() string {
 // "Building workspace Foo with scheme Bar" and omit any project/configuration
 // token, so FullCommand needs the workspace to render an argv-shaped command.
 func (m ManifestEntry) Workspace() string {
-	if match := workspaceFromSignature.FindStringSubmatch(m.Signature); len(match) == 2 {
-		return match[1]
-	}
-
-	return ""
+	return manifestsig.FirstSubmatch(manifestsig.Workspace, m.Signature)
 }
 
 func (m ManifestEntry) Success() bool {

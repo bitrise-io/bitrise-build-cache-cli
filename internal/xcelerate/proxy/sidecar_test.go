@@ -68,7 +68,13 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 		kvClient, false, mockLogger,
 		func(string) (log.Logger, error) { return mockLogger, nil },
 		nil,
-		proxy.SidecarOptions{Dir: dir, Listener: pl},
+		proxy.SidecarOptions{
+			Dir:      dir,
+			Listener: pl,
+			PeerAncestryEntries: func(_ int) []proxy.AncestryEntry {
+				return []proxy.AncestryEntry{{Name: "xcodebuild", PID: 999, StartTimeMS: 1}}
+			},
+		},
 	)
 
 	go func() { _ = p.Serve(pl) }()
@@ -133,7 +139,7 @@ func TestSidecar_WritesOneFilePerConnection(t *testing.T) {
 		assert.Equal(t, os.Getpid(), sc.PeerPID, "peer PID equals this test process")
 		assert.NotZero(t, sc.AcceptedAt)
 		assert.NotZero(t, sc.ClosedAt)
-		assert.Nil(t, sc.WrapperSession, "wrapper_session must be nil when peer-ancestry anchoring has not succeeded")
+		assert.NotNil(t, sc.WrapperSession, "stub ancestry anchors to xcodebuild so peer-derived InvocationID is set")
 		require.NotNil(t, sc.BlobStats, "blob stats must be populated for an active connection")
 		assert.Equal(t, int64(1), sc.BlobStats.Download.OpCount, "one Get call => one download op")
 	}

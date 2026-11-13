@@ -55,6 +55,18 @@ func TestReadCompilationCacheMetrics_PartialHits(t *testing.T) {
 	assert.InDelta(t, float32(0.7), m.HitRate, 0.001)
 }
 
+func TestReadCompilationCacheMetrics_SingularHit(t *testing.T) {
+	dir := t.TempDir()
+	path := writeGzipped(t, dir, "singular.xcactivitylog", []byte("note: 1 hit / 2 cacheable tasks (50%)"))
+
+	m, err := xcactivitylog.ReadCompilationCacheMetrics(path)
+	require.NoError(t, err)
+	assert.Equal(t, xcactivitylog.OutcomeOK, m.Outcome)
+	assert.Equal(t, 1, m.Hits)
+	assert.Equal(t, 2, m.Total)
+	assert.InDelta(t, float32(0.5), m.HitRate, 0.001)
+}
+
 func TestReadCompilationCacheMetrics_WhitespaceVariations(t *testing.T) {
 	dir := t.TempDir()
 	// Multi-space / tab separators seen in live SLF samples.
