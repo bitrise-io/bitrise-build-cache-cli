@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -19,6 +20,11 @@ const (
 	// Cache token, so their presence is what tells the CLI it can broker one.
 	EnvBuildHubVMToken    = "BITRISEIO_BUILD_HUB_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
 	EnvBuildHubVMTokenURL = "BITRISEIO_BUILD_HUB_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
+
+	// EnvVMToken and EnvVMTokenURL are the product-neutral pair instance-manager
+	// exports on the VMs it starts outside Build Hub, such as Remote Dev Envs.
+	EnvVMToken    = "BITRISEIO_VM_TOKEN"     //nolint:gosec // env-var key, not a credential
+	EnvVMTokenURL = "BITRISEIO_VM_TOKEN_URL" //nolint:gosec // env-var key, not a credential
 
 	// Not a secret: the trust comes from the GitHub-signed token matching the policy.
 	EnvOIDCPolicyID = "BITRISE_BUILD_CACHE_OIDC_POLICY_ID"
@@ -92,14 +98,9 @@ type jwtPayload struct {
 // ParseJWTWorkspaceID extracts org_id from a Bitrise UMA-style JWT without
 // verifying the signature (we trust the issuer — Bitrise mints these per build).
 func ParseJWTWorkspaceID(token string) (string, error) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 { //nolint:mnd
-		return "", errors.New("invalid JWT format")
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	payload, err := jwtPayloadBytes(token)
 	if err != nil {
-		return "", fmt.Errorf("decode JWT payload: %w", err)
+		return "", err
 	}
 
 	var claims jwtPayload
@@ -124,6 +125,38 @@ func ParseJWTWorkspaceID(token string) (string, error) {
 	}
 
 	return "", errors.New("'default' permission not found in JWT")
+}
+
+// JWTExpiry returns the unverified exp claim of token; false when token is not a JWT
+// or carries no exp.
+func JWTExpiry(token string) (time.Time, bool) {
+	payload, err := jwtPayloadBytes(token)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	var claims struct {
+		Exp *float64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp == nil {
+		return time.Time{}, false
+	}
+
+	return time.Unix(int64(*claims.Exp), 0), true
+}
+
+func jwtPayloadBytes(token string) ([]byte, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 { //nolint:mnd
+		return nil, errors.New("invalid JWT format")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("decode JWT payload: %w", err)
+	}
+
+	return payload, nil
 }
 
 // IsNotConfigured reports whether err means "no credential is set up here", as

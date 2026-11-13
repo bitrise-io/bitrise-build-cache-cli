@@ -27,8 +27,16 @@ func (d *Doctor) authCheck() Check {
 				}
 			}
 			resolved := err == nil && origin.Resolved()
-			if res, ok := oidcResult(d.Envs, resolved); ok {
+			// Only when nothing was found: a broken stored token must still surface.
+			var brokering string
+			if errors.Is(err, auth.ErrTokenNotProvided) || errors.Is(err, auth.ErrWorkspaceIDNotProvided) {
+				brokering = d.resolver().BrokeringEnv(d.Envs)
+			}
+			if res, ok := oidcResult(d.Envs, resolved, brokering); ok {
 				return res
+			}
+			if brokering != "" {
+				return Result{State: StateOK, Detail: live.DescribePendingBroker()}
 			}
 			if !resolved {
 				return Result{
@@ -46,8 +54,9 @@ func (d *Doctor) authCheck() Check {
 
 // oidcResult covers a configured OIDC exchange, which this offline check never
 // performs, so nothing on the machine yet is not "no credentials". A policy the job
-// can't use is reported even when another credential resolved.
-func oidcResult(envs map[string]string, resolved bool) (Result, bool) {
+// can't use is reported even when another credential resolved, or when builds will
+// exchange the VM token named by brokering instead.
+func oidcResult(envs map[string]string, resolved bool, brokering string) (Result, bool) {
 	if !auth.OIDCPolicyConfigured(envs) {
 		return Result{}, false
 	}
@@ -61,6 +70,8 @@ func oidcResult(envs map[string]string, resolved bool) (Result, bool) {
 	}
 
 	switch {
+	case misconfigured != nil && brokering != "":
+		return Result{State: StateWarn, Detail: misconfigured.Error() + "; builds exchange " + brokering + " instead"}, true
 	case misconfigured != nil && resolved:
 		return Result{State: StateWarn, Detail: misconfigured.Error()}, true
 	case misconfigured != nil:

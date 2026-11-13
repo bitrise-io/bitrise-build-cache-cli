@@ -3,6 +3,7 @@
 package common
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -19,13 +20,23 @@ func TestCurrentAuthStatus(t *testing.T) {
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
 	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
+	clearVMTokenEnvs(t)
 
 	// Nothing configured.
 	if a := currentAuthStatus(); a.Configured || a.Source != "none" {
 		t.Fatalf("expected unconfigured, got %+v", a)
 	}
 
-	// A stored OAuth login is reported as such, with workspace + a future expiry.
+	// On a Remote Dev Env with nothing stored the VM token is what builds use, even
+	// though this offline read never exchanges it.
+	t.Setenv(auth.EnvVMToken, "vm-token")
+	t.Setenv(auth.EnvVMTokenURL, "https://instance-manager.services.bitrise.io/vm/tokens")
+	if a := currentAuthStatus(); !a.Configured || !strings.HasPrefix(a.Source, "VM token (brokered)") {
+		t.Fatalf("expected the pending VM token exchange, got %+v", a)
+	}
+
+	// A stored OAuth login is reported as such, with workspace + a future expiry,
+	// and wins over the VM token.
 	if err := oauthSave(t, auth.TokenSet{
 		AuthToken: "p", RefreshToken: "r", WorkspaceID: "acme",
 		PATExpiry: time.Now().Add(time.Hour),
@@ -62,4 +73,11 @@ func oauthSave(t *testing.T, c auth.TokenSet) error {
 	_, err := oauth.SaveToWithFallback(store.NewKeychain(), c, false)
 
 	return err
+}
+
+func clearVMTokenEnvs(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{auth.EnvBuildHubVMToken, auth.EnvBuildHubVMTokenURL, auth.EnvVMToken, auth.EnvVMTokenURL} {
+		t.Setenv(key, "")
+	}
 }

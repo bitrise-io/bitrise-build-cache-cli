@@ -93,8 +93,8 @@ starts each do their own once the gates have passed.
    commas or whitespace, or `all` (`*` also works) to bypass the gate for every
    workspace. The workspace comes from the build's own
    credential, resolved like any other command does: the `BITRISE_BUILD_CACHE_*`
-   envs, else a GitHub Actions OIDC exchange, a Build Hub broker exchange or a
-   stored login (the services token's `org_id` claim names the workspace). No
+   envs, else a GitHub Actions OIDC exchange, a stored login or a Build Hub broker
+   exchange (the services token's `org_id` claim names the workspace). No
    credential, a credential that cannot be resolved, no workspace, no list, or a
    workspace not on the list all mean: log one line, write nothing, exit 0. `all`
    skips the list but not the credential: with no workspace resolved, nothing is

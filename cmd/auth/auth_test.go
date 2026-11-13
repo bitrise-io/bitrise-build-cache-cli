@@ -386,3 +386,55 @@ func (s *fakeStore) Clear() error {
 
 	return nil
 }
+
+func TestPendingBrokerSource(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+
+	_, ok := pendingBrokerSource(map[string]string{})
+	assert.False(t, ok)
+
+	label, ok := pendingBrokerSource(map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+	})
+	require.True(t, ok)
+	assert.Equal(t, "VM token (BITRISEIO_VM_TOKEN)", label)
+
+	// An env-var credential goes first, so the VM token is not what builds send.
+	_, ok = pendingBrokerSource(map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+		authpkg.EnvJWT:        "ci-jwt",
+	})
+	assert.False(t, ok)
+
+	// So does a stored credential.
+	require.NoError(t, keychain.New().Save(authpkg.TokenSet{AuthToken: "tok", WorkspaceID: "ws"}))
+	_, ok = pendingBrokerSource(map[string]string{
+		authpkg.EnvVMToken:    "vm-token",
+		authpkg.EnvVMTokenURL: "https://instance-manager.services.bitrise.io/vm/tokens",
+	})
+	assert.False(t, ok)
+}
+
+// A pinned short-lived token is shown but must not trigger the `auth set` advice:
+// storing it would put a token that expires ahead of the one that renews.
+func TestProbeMultiplatform_ShortLivedTokenIsNotMigratable(t *testing.T) {
+	for name, block := range map[string]multiplatformconfig.AnalyticsAuthConfig{
+		"brokered": {AuthToken: "brokered-jwt", WorkspaceID: "ws", IsJWT: true, Provenance: multiplatformconfig.ProvenanceBrokered},
+		"oidc":     {AuthToken: "oidc-token", WorkspaceID: "ws", Provenance: multiplatformconfig.ProvenanceOIDC},
+		"pat":      {AuthToken: "legacy-pat", WorkspaceID: "ws"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			require.NoError(t, multiplatformconfig.Update(utils.DefaultOsProxy{}, utils.DefaultEncoderFactory{}, utils.DefaultDecoderFactory{},
+				func(c *multiplatformconfig.Config) { c.AuthConfig = block }))
+
+			audit := probeMultiplatform()
+
+			assert.Equal(t, sourcePopulated, audit.state)
+			assert.Equal(t, name != "pat", audit.shortLived)
+		})
+	}
+}

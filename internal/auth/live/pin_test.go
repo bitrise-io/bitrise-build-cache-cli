@@ -3,8 +3,11 @@
 package live
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -136,4 +139,60 @@ func TestResolvePinned_HealthyKeychainLeavesTheFileUntouched(t *testing.T) {
 	onDisk, ok := multiplatformconfig.ReadCredentials(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
 	require.True(t, ok, "the file store must still hold its record — an incidental write must not clear it")
 	assert.Equal(t, fileLogin, onDisk, "the file store must be byte-for-byte untouched")
+}
+
+// Processes started outside a login shell (Xcode.app, the ccache helper) never see the
+// VM env, so the brokered token is pinned off CI as well.
+func TestResolvePinned_MirrorsABrokeredTokenOnAndOffCI(t *testing.T) {
+	for _, isCI := range []bool{true, false} {
+		t.Setenv("HOME", t.TempDir())
+		r := &Resolver{Broker: brokerReturning(t, "org-slug", nil), Backends: []store.Store{}}
+
+		_, origin, err := r.ResolvePinned(t.Context(), brokerEnvs(), isCI)
+		require.NoError(t, err)
+		require.Equal(t, auth.ProvenanceBrokered, origin.Provenance)
+
+		cfg, _ := multiplatformconfig.ReadConfig(utils.DefaultOsProxy{}, utils.DefaultDecoderFactory{})
+		assert.True(t, cfg.AuthConfig.Populated(), "isCI: %v", isCI)
+	}
+}
+
+func jwtWithExp(t *testing.T, exp time.Time) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"exp": exp.Unix()})
+	require.NoError(t, err)
+
+	return "hdr." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+}
+
+// The analytics block outlives the brokered token it holds, so an offline read must
+// not serve it past its exp claim; a token it cannot read an expiry from is served.
+func TestResolveNoRefresh_SkipsAnExpiredAnalyticsJWT(t *testing.T) {
+	brokered := auth.Origin{Backend: auth.BackendJWT, Provenance: auth.ProvenanceBrokered}
+	for _, tc := range []struct {
+		name   string
+		token  string
+		origin auth.Origin
+		served bool
+	}{
+		{"expired brokered JWT", jwtWithExp(t, time.Now().Add(-time.Minute)), brokered, false},
+		{"unexpired brokered JWT", jwtWithExp(t, time.Now().Add(time.Hour)), brokered, true},
+		{"static token", "static-pat", auth.Origin{Backend: auth.BackendFile, Provenance: auth.ProvenanceStatic}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			require.NoError(t, writeAnalyticsCredential(auth.Credential{Token: tc.token, WorkspaceID: "ws"}, tc.origin))
+			r := &Resolver{Backends: []store.Store{}}
+
+			cred, _, err := r.ResolveNoRefresh(map[string]string{})
+
+			if !tc.served {
+				require.ErrorIs(t, err, auth.ErrTokenNotProvided)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.token, cred.Token)
+		})
+	}
 }

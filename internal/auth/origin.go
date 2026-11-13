@@ -27,7 +27,7 @@ const (
 	// the analytics authConfig block, and the pre-v3 xcelerate config it shares a
 	// shape with. Never refreshable, whatever backend it sits in.
 	ProvenanceStatic
-	// ProvenanceBrokered is a JWT this CLI fetched from the Bitrise Build Hub
+	// ProvenanceBrokered is a JWT this CLI exchanged a VM token for at the Bitrise
 	// instance-manager rather than one the environment handed it. Same backend as
 	// the CI JWT, different origin, so diagnostics can tell them apart.
 	ProvenanceBrokered
@@ -69,7 +69,7 @@ func (o Origin) Label() string {
 		return "environment variables"
 	case BackendJWT:
 		if o.Provenance == ProvenanceBrokered {
-			return "Build Hub token (brokered)"
+			return "VM token (brokered)"
 		}
 
 		return "CI JWT (" + EnvJWT + ")"

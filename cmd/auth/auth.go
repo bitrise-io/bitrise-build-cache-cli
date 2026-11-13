@@ -310,7 +310,8 @@ var authStatusCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, _ []string) error {
 		logger := log.NewLogger(log.WithDebugLog(common.IsDebugLogMode))
 
-		targets, migrationSources := credSources(utils.AllEnvs())
+		envs := utils.AllEnvs()
+		targets, migrationSources := credSources(envs)
 
 		var targetPopulated bool
 		for _, t := range targets {
@@ -327,9 +328,14 @@ var authStatusCmd = &cobra.Command{
 
 				continue
 			}
-			if renderSource(logger, s, audit) {
+			if renderSource(logger, s, audit) && !audit.shortLived {
 				foundElsewhere = true
 			}
+		}
+
+		if label, ok := pendingBrokerSource(envs); ok {
+			logger.TInfof("%s:", label)
+			logger.Infof("  %s", live.DescribePendingBroker())
 		}
 
 		if suppressed {
@@ -337,7 +343,7 @@ var authStatusCmd = &cobra.Command{
 		}
 
 		logger.Println()
-		renderUsername(logger, utils.AllEnvs())
+		renderUsername(logger, envs)
 
 		if !targetPopulated && foundElsewhere {
 			logger.Println()
@@ -348,6 +354,18 @@ var authStatusCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+// pendingBrokerSource labels the VM token builds will exchange when no env
+// credential, runnable OIDC policy or stored login precedes it. It is not a
+// migration source, since the token is not a credential to store.
+func pendingBrokerSource(envs map[string]string) (string, bool) {
+	env := live.Default(nil).BrokeringEnv(envs)
+	if env == "" {
+		return "", false
+	}
+
+	return fmt.Sprintf("VM token (%s)", env), true
 }
 
 func renderUsername(logger log.Logger, envs map[string]string) {
@@ -377,6 +395,8 @@ type credAudit struct {
 	username    string
 	note        string
 	err         error
+	// shortLived marks a token that expires on its own and must not be migrated with `auth set`.
+	shortLived bool
 }
 
 type credSource struct {
@@ -518,7 +538,13 @@ func probeMultiplatform() credAudit {
 		return credAudit{state: sourceAbsent, note: "mirrors the file-store credentials above"}
 	}
 
-	return credAudit{state: sourcePopulated, workspaceID: cfg.AuthConfig.WorkspaceID, authToken: cfg.AuthConfig.AuthToken}
+	audit := credAudit{state: sourcePopulated, workspaceID: cfg.AuthConfig.WorkspaceID, authToken: cfg.AuthConfig.AuthToken}
+	if cfg.AuthConfig.IsJWT || cfg.AuthConfig.Provenance != "" {
+		audit.shortLived = true
+		audit.note = "short-lived token pinned for the analytics readers; renewed automatically, nothing to migrate"
+	}
+
+	return audit
 }
 
 // probeRawConfig reads the file directly — the per-tool ReadConfig overlays multiplatform credentials, which would mask the actual on-disk content this audit needs to see.
