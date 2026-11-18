@@ -1594,6 +1594,92 @@ workflows:
             exit $fail
     - deploy-to-bitrise-io@2: {}
 
+  # --------------------------------------------------------------------------
+  # Dispatcher workflows — public PR CI side. Each dispatch workflow asks the
+  # private build-cache-e2e-testing Bitrise app to run the equivalent
+  # receive-cli-e2e-* workflow for this PR's commit, then tails its log in
+  # real time. No secrets of the private side are present here.
+  #
+  # Dispatcher auth: $E2E_TESTING_BUILD_TRIGGER_TOKEN (Project-level secret,
+  # app-scoped trigger token — rotatable, cannot read anything).
+  # Pilot (dispatch-e2e-smoke) proves the loop before the 16 real workflows
+  # move.
+  # --------------------------------------------------------------------------
+  dispatch-e2e-smoke:
+    description: |
+      Smoke dispatcher. Starts a build on build-cache-e2e-testing's Bitrise
+      app on branch `migrate/receive-cli-e2e` with workflow
+      `receive-cli-e2e-smoke`, passes this PR's commit as CLI_COMMIT, then
+      tails the private build's log until completion. Exits non-zero if the
+      private build fails.
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
+        machine_type_id: g1.linux.small
+    envs:
+    - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
+    - E2E_TESTING_BRANCH: migrate/receive-cli-e2e
+    - RECEIVER_WORKFLOW: receive-cli-e2e-smoke
+    steps:
+    - script:
+        title: Dispatch + tail private build
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            : "${E2E_TESTING_BUILD_TRIGGER_TOKEN:?missing trigger token}"
+            : "${BITRISE_GIT_COMMIT:?no commit to run e2e on}"
+
+            payload=$(cat <<EOF
+            {
+              "hook_info": {"type": "bitrise", "build_trigger_token": "$E2E_TESTING_BUILD_TRIGGER_TOKEN"},
+              "build_params": {
+                "branch": "$E2E_TESTING_BRANCH",
+                "workflow_id": "$RECEIVER_WORKFLOW",
+                "environments": [
+                  {"mapped_to": "CLI_COMMIT", "value": "$BITRISE_GIT_COMMIT", "is_expand": false}
+                ]
+              },
+              "triggered_by": "cli-dispatcher-$BITRISE_BUILD_SLUG"
+            }
+            EOF
+            )
+
+            resp=$(curl -sS -X POST \
+              -H 'Content-Type: application/json' \
+              -d "$payload" \
+              "https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/build/start.json")
+            echo "Dispatch response: $resp"
+            priv_build=$(echo "$resp" | jq -r '.build_slug')
+            if [[ -z "$priv_build" || "$priv_build" == "null" ]]; then
+              echo "No build_slug in response"; exit 1
+            fi
+            echo "Private build: https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/build/$priv_build"
+
+            # Tail + echo the log until the private build reaches a terminal status
+            printed=0
+            while :; do
+              status=$(curl -s -H "Authorization: $BITRISE_API_TOKEN" \
+                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/builds/$priv_build" \
+                | jq -r '.data.status')
+              # 0 = not-finished, 1 = success, 2 = error, 3 = aborted, 4 = aborted with success
+              log_json=$(curl -s -H "Authorization: $BITRISE_API_TOKEN" \
+                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/builds/$priv_build/log" || true)
+              if echo "$log_json" | jq -e '.log_chunks' >/dev/null 2>&1; then
+                total=$(echo "$log_json" | jq -r '[.log_chunks[].chunk] | join("") | length')
+                if [[ "$total" -gt "$printed" ]]; then
+                  echo "$log_json" | jq -r '[.log_chunks[].chunk] | join("")' | tail -c +$((printed + 1))
+                  printed=$total
+                fi
+              fi
+              case "$status" in
+                1) echo "Private build SUCCEEDED"; exit 0 ;;
+                2|3) echo "Private build FAILED (status=$status)"; exit 1 ;;
+                *) sleep 10 ;;
+              esac
+            done
+
   e2e-xcode-wrapper:
     description: |
       Full wrapper-flow coverage: `activate xcode` + wrapper-driven build,
