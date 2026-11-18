@@ -2702,7 +2702,7 @@ step_bundles:
             while :; do
               info=$(curl -s -H "Authorization: $BITRISE_API_TOKEN" \
                 "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug")
-              status=$(echo "$info" | jq -r '.data.status')
+              status=$(echo "$info" | jq -r '.status')
               case "$status" in
                 succeeded|failed|aborted|error) break ;;
                 *) sleep 20 ;;
@@ -2712,9 +2712,8 @@ step_bundles:
             echo
             echo "=== Per-workflow results (private pipeline $priv_slug) ==="
             echo "$info" | jq -r '
-              .data.stages[]?
-              | .workflows[]?
-              | "\(if .status == "succeeded" then "✓" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_build_slug // .slug // "?")"
+              .workflows[]?
+              | "\(if .status == "succeeded" then "✓" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_id // "?")"
             ' || echo "(could not parse pipeline detail)"
             echo
             echo "Private pipeline URL: $priv_url"
