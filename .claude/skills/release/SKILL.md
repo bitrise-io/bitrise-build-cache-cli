@@ -22,7 +22,7 @@ When you report status, report it **per channel**, and state what you actually c
 4. **Step auto-update PRs in all FIVE consumer repos** — **merged** (Step 7).
 5. **Step GitHub releases** — cut for the scoped steps (Step 8), **and for the two dual-line repos, BOTH lines cut and each tag asserted to sit on the branch it names** (Step 8). A `0.x` tag accidentally cut from `main` passes every other check in this list.
 6. **Steplib PRs** — merged (Step 9).
-7. **Steplib spec published** — the new version is actually in the published spec (Step 10). A merged steplib PR does NOT mean the step shipped. ⚠ This check reads `latest_version_number` only, so it **cannot** detect a `0.x` tag cut from `main` — it reports such a release as healthy. Channel 5's branch assertion is the only thing that catches it.
+7. **Steplib version published** — the new version is actually in the published StepLib API (Step 10). A merged steplib PR does NOT mean the step shipped. ⚠ This check reads the published version numbers only, so it **cannot** detect a `0.x` tag cut from `main` — it reports such a release as healthy. Channel 5's branch assertion is the only thing that catches it.
 
 Two distinct delivery paths exist and a complete release must finish BOTH: the **default fleet** gets CLI-driven features via **provisioning/preboot** (channel 3); customers who **pin a CLI version** get them via the **steps** (channels 4–7). Confirming one says nothing about the other.
 
@@ -238,7 +238,7 @@ gh pr merge --squash --auto --repo bitrise-io/bitrise-steplib <PR_NUMBER>
 
 Always wait for CI to pass — never bypass branch protection. The steplib repo requires squash merges (merge commits are blocked).
 
-### 10. Verify the steplib spec was published (⏳ SLOW — budget ~1h for a full batch)
+### 10. Verify the steplib version was published (⏳ SLOW — budget ~1h for a full batch)
 
 ⚠ **Tell the user up front that this step is a long wait.** Merging a steplib PR triggers a `deploy` build on **`tooling-steplib-controller [STEPLIB]`** (app `4320df4cdbe4bf24`, owned by Bitrise #Steps) which regenerates the spec every build resolves `@<major>` against. Those deploys are **serialized — one at a time, ~7–22 min each** (`pr_audit` builds are unaffected and start instantly). Merging four steplib PRs within a couple of minutes therefore queues four deploys back to back, and the last one waits out all the others.
 
@@ -259,20 +259,19 @@ for b in sorted(json.load(sys.stdin)['data'], key=lambda b: b['build_number']):
     print(b['build_number'], b['status_text'], b.get('triggered_workflow'), 'wait='+wait, b.get('abort_reason') or '')"
 ```
 
-Then verify the published artifact — this is the only check that proves delivery:
+Then verify the published artifact — this is the only check that proves delivery. Read the StepLib API (`steplib.bitrise.io/api/v2`): it is the last thing `deploy` uploads, after the spec files, so a new version there means the whole deploy ran.
 
 ```bash
-curl -fsS --compressed https://steplib.bitrise.io/slim-spec.json -o /tmp/spec.json
-python3 -c "
-import json
-d=json.load(open('/tmp/spec.json'))['steps']
-for n in ('activate-build-cache-for-gradle','activate-build-cache-for-xcode','activate-build-cache-for-react-native','activate-gradle-mirrors'):
-    print(n, d[n]['latest_version_number'])"
+for id in activate-build-cache-for-gradle activate-build-cache-for-xcode activate-build-cache-for-react-native activate-gradle-mirrors; do
+  curl -fsS https://steplib.bitrise.io/api/v2/index/steps/$id/latest.json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["step_id"], "latest="+d["latest"], "by_major="+json.dumps(d["latest_by_major"]))'
+done
 ```
 
-If a version is missing, re-trigger `deploy` on `master` at that steplib squash-merge commit (master HEAD if it merged last). It is idempotent — it regenerates from master — and on an empty queue it **starts immediately** and takes ~20 min, so this recovery is quick. Then re-check the spec.
+`latest_by_major` lists the newest published version in each major, so check the entry for the major you released (`"0"` for a `0.x` release), not only `latest`. One small request per step, cached for 60 seconds. Do not read `slim-spec.json.gz` for this: it is cached for 4 hours, and the old `bitrise-steplib-collection` S3 copy is no longer updated.
 
-Step 9 says to merge each steplib PR as soon as it is mergeable, which is right for throughput but is what creates this queue. Keep doing that, then always come back and verify the spec — or stagger the last merge if a deploy backlog is already visible.
+If a version is missing, re-trigger `deploy` on `master` at that steplib squash-merge commit (master HEAD if it merged last). It is idempotent — it regenerates from master — and on an empty queue it **starts immediately** and takes ~20 min, so this recovery is quick. Then re-check the API.
+
+Step 9 says to merge each steplib PR as soon as it is mergeable, which is right for throughput but is what creates this queue. Keep doing that, then always come back and verify the published version — or stagger the last merge if a deploy backlog is already visible.
 
 ## Flaky E2E tests — cache hit rate
 
