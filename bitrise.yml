@@ -1615,7 +1615,7 @@ workflows:
     meta:
       bitrise.io:
         stack: linux-docker-android-22.04
-        machine_type_id: g1.linux.small
+        machine_type_id: g2.linux.medium
     envs:
     - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
     - E2E_TESTING_BRANCH: migrate/receive-cli-e2e
