@@ -1614,8 +1614,10 @@ workflows:
         title: DEBUG trace MONOLITH_API_PAT at workflow start
         inputs:
           - content: |-
-              echo "AT_WF_START len=${#MONOLITH_API_PAT}"
-              echo "AT_WF_START first4=${MONOLITH_API_PAT:0:4}"
+              echo "AT_WF_START MONOLITH_API_PAT len=${#MONOLITH_API_PAT}"
+              echo "AT_WF_START MONOLITH_API_PAT first4=${MONOLITH_API_PAT:0:4}"
+              echo "AT_WF_START TEST_PAT_DEBUG_123 len=${#TEST_PAT_DEBUG_123}"
+              echo "AT_WF_START TEST_PAT_DEBUG_123 first4=${TEST_PAT_DEBUG_123:0:4}"
     - bundle::feature-e2e-setup: {}
     - script:
         title: activate xcode using CLI
