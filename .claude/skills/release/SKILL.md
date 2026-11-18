@@ -262,10 +262,10 @@ for b in sorted(json.load(sys.stdin)['data'], key=lambda b: b['build_number']):
 Then verify the published artifact — this is the only check that proves delivery:
 
 ```bash
-curl -sS https://bitrise-steplib-collection.s3.amazonaws.com/slim-spec.json.gz -o /tmp/spec.gz
+curl -fsS --compressed https://steplib.bitrise.io/slim-spec.json -o /tmp/spec.json
 python3 -c "
-import gzip,json
-d=json.load(gzip.open('/tmp/spec.gz'))['steps']
+import json
+d=json.load(open('/tmp/spec.json'))['steps']
 for n in ('activate-build-cache-for-gradle','activate-build-cache-for-xcode','activate-build-cache-for-react-native','activate-gradle-mirrors'):
     print(n, d[n]['latest_version_number'])"
 ```
