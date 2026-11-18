@@ -2696,7 +2696,7 @@ step_bundles:
             if [[ -z "$priv_slug" || "$priv_slug" == "null" ]]; then
               echo "No build_slug in response"; exit 1
             fi
-            priv_url="https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/pipeline/$priv_slug"
+            priv_url="https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug"
             echo "Private pipeline: $priv_url"
 
             while :; do
