@@ -1610,6 +1610,12 @@ workflows:
     - COMMIT: ead11e04e5011c437722c1990d22f80d87056978
     - CHECKOUT_NATIVE_DIR: $HOME/checkout-native
     steps:
+    - script:
+        title: DEBUG trace MONOLITH_API_PAT at workflow start
+        inputs:
+          - content: |-
+              echo "AT_WF_START len=${#MONOLITH_API_PAT}"
+              echo "AT_WF_START first4=${MONOLITH_API_PAT:0:4}"
     - bundle::feature-e2e-setup: {}
     - script:
         title: activate xcode using CLI
@@ -1659,6 +1665,12 @@ workflows:
                 echo "FAIL: the server rejected compressed uploads"
                 exit 1
               fi
+    - script:
+        title: DEBUG trace MONOLITH_API_PAT before gather info
+        inputs:
+          - content: |-
+              echo "BEFORE_GATHER len=${#MONOLITH_API_PAT}"
+              echo "BEFORE_GATHER first4=${MONOLITH_API_PAT:0:4}"
     - script:
         title: gather info
         inputs:
