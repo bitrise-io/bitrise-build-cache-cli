@@ -638,10 +638,12 @@ step_bundles:
             while :; do
               if (( SECONDS > BUDGET )); then
                 echo "DISPATCHER TIMEOUT: watched ${SECONDS}s (>${BUDGET}s), aborting watch"
-                curl -sS -X POST --max-time 30 \
+                abort_resp=$(curl -sS -w "\nHTTP %{http_code}" -X POST --max-time 30 \
                   -H "Authorization: $BITRISE_API_TOKEN" \
+                  -H 'Content-Type: application/json' \
                   "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug/abort" \
-                  -d '{"abort_reason":"dispatcher wall-clock budget exceeded"}' || true
+                  -d '{"abort_reason":"dispatcher wall-clock budget exceeded","abort_with_success":false,"skip_notifications":true}' || true)
+                echo "Abort response: $abort_resp"
                 exit 1
               fi
               info=$(curl -s --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
