@@ -3178,47 +3178,19 @@ pipelines:
           regex: '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
 
   features-e2e:
+    # Public CI entry point for PRs. Keeps only the workflows that still
+    # live here (test/pr-release-check/ccache/react-seek) and dispatches
+    # the migrated e2e suite to build-cache-e2e-testing's `features-e2e`
+    # pipeline via dispatch-e2e-cli. Secrets for the dispatched legs stay
+    # on the private app so fork PRs can't exfiltrate them.
     workflows:
       test: {}
       pr-release-check-linux: {}
       pr-release-check-mac: {}
-      feature-e2e-bazel-bitrisedc-no-rbe: {}
-      feature-e2e-bazel-bitrisedc-credhelper: {}
-      feature-e2e-bazel-public-no-rbe: {}
-      feature-e2e-gradle-duckduck: {}
-      feature-e2e-gradle-7: {}
-      feature-e2e-gradle-bitwarden: {}
-      feature-e2e-github-actions: {}
-      feature-e2e-github-actions-xcode: {}
-
-      # Cross-DC configuration-cache reuse: 5 parallel saves blanket the
-      # DC pool, then 3 parallel restores per platform exercise the read
-      # path. The save fan-out is needed because the accelerate cache is
-      # written per-DC and cross-DC replication isn't immediate — a single
-      # save would only seed its own DC, and restores landing elsewhere
-      # would fall back to the stale slug-only key.
-      gradle-configuration-e2e-osx-save:
-        parallel: 5
-      gradle-configuration-e2e-osx-restore:
-        depends_on:
-        - gradle-configuration-e2e-osx-save
-        parallel: 3
-      gradle-configuration-e2e-linux-save:
-        parallel: 5
-      gradle-configuration-e2e-linux-restore:
-        depends_on:
-        - gradle-configuration-e2e-linux-save
-        parallel: 3
-      e2e-xcode-wrapper: {}
-      e2e-xcode-cas-key-stable: {}
-      e2e-xcode-wrapper-watcher-race: {}
-      e2e-proxy-cache-macos: {}
-      e2e-scenarios-linux: {}
-      e2e-scenarios-macos: {}
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
-      e2e-mavencentral-mirror-duckduck: {}
+      dispatch-e2e-cli: {}
       # TEMP: RDE smoke tests disabled while the RDE provisioning is failing.
       # rde-mac-local-dx-smoke: {}
       # rde-linux-local-dx-smoke: {}
