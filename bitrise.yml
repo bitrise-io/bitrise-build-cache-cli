@@ -634,14 +634,24 @@ step_bundles:
             # public build's global budget.
             SECONDS=0
             BUDGET=5400
+            info_ok=""
             while :; do
               if (( SECONDS > BUDGET )); then
                 echo "DISPATCHER TIMEOUT: watched ${SECONDS}s (>${BUDGET}s), aborting watch"
+                curl -sS -X POST --max-time 30 \
+                  -H "Authorization: $BITRISE_API_TOKEN" \
+                  "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug/abort" \
+                  -d '{"abort_reason":"dispatcher wall-clock budget exceeded"}' || true
                 exit 1
               fi
-              info=$(curl -s --retry 3 --retry-connrefused --max-time 30 \
+              info=$(curl -s --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
                 -H "Authorization: $BITRISE_API_TOKEN" \
                 "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug")
+              if ! echo "$info" | jq -e '.status' >/dev/null 2>&1; then
+                sleep 20
+                continue
+              fi
+              info_ok=$info
               status=$(echo "$info" | jq -r '.status')
               case "$status" in
                 succeeded|succeeded_with_abort|failed|aborted) break ;;
@@ -651,9 +661,9 @@ step_bundles:
 
             echo
             echo "=== Per-workflow results (private pipeline $priv_slug) ==="
-            echo "$info" | jq -r '
+            echo "$info_ok" | jq -r '
               [.workflows[]?, .stages[]?.workflows[]?][]
-              | "\(if .status == "succeeded" then "✓" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_id // "?")"
+              | "\(if (.status == "succeeded" or .status == "succeeded_with_abort") then "✓" elif .status == "skipped" then "·" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_id // "?")"
             ' || echo "(could not parse pipeline detail)"
             echo
             echo "Private pipeline URL: $priv_url"
