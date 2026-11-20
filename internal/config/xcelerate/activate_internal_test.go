@@ -19,27 +19,27 @@ import (
 )
 
 func TestOverrideFromExistingConfig_CarriesWrapperlessPipelineForward(t *testing.T) {
-	params := loadParamsWithSavedWrapperless(t, Params{})
+	params := loadParamsWithSavedWrapperless(t, true, Params{})
 
 	assert.True(t, params.WrapperlessPipelineEnabled, "silent re-run must preserve the persisted opt-in")
 }
 
 func TestOverrideFromExistingConfig_ExplicitFalseTurnsWrapperlessOff(t *testing.T) {
-	params := loadParamsWithSavedWrapperless(t, Params{WrapperlessPipelineExplicit: true})
+	params := loadParamsWithSavedWrapperless(t, true, Params{WrapperlessPipelineExplicit: true})
 
 	assert.False(t, params.WrapperlessPipelineEnabled, "explicit --wrapperless-pipeline=false must beat persisted true")
 }
 
 func TestOverrideFromExistingConfig_ExplicitTrueStaysOn(t *testing.T) {
-	params := loadParamsWithSavedWrapperless(t, Params{
+	params := loadParamsWithSavedWrapperless(t, false, Params{
 		WrapperlessPipelineEnabled:  true,
 		WrapperlessPipelineExplicit: true,
 	})
 
-	assert.True(t, params.WrapperlessPipelineEnabled, "explicit --wrapperless-pipeline=true must stay on")
+	assert.True(t, params.WrapperlessPipelineEnabled, "explicit --wrapperless-pipeline=true must beat persisted false")
 }
 
-func loadParamsWithSavedWrapperless(t *testing.T, params Params) Params {
+func loadParamsWithSavedWrapperless(t *testing.T, savedWrapperless bool, params Params) Params {
 	t.Helper()
 
 	home := t.TempDir()
@@ -50,7 +50,7 @@ func loadParamsWithSavedWrapperless(t *testing.T, params Params) Params {
 
 	configPath := PathFor(osProxy, "config.json")
 	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o755))
-	body, err := json.Marshal(Config{WrapperlessPipelineEnabled: true})
+	body, err := json.Marshal(Config{WrapperlessPipelineEnabled: savedWrapperless})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, body, 0o600))
 
