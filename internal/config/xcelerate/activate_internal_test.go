@@ -18,10 +18,30 @@ import (
 	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 )
 
-// TestOverrideFromExistingConfig_CarriesWrapperlessPipelineForward pins the
-// re-run semantics: a user who ran `activate xcode --wrapperless-pipeline`
-// once must keep the opt-in on a later `activate xcode` without the flag.
 func TestOverrideFromExistingConfig_CarriesWrapperlessPipelineForward(t *testing.T) {
+	params := loadParamsWithSavedWrapperless(t, Params{})
+
+	assert.True(t, params.WrapperlessPipelineEnabled, "silent re-run must preserve the persisted opt-in")
+}
+
+func TestOverrideFromExistingConfig_ExplicitFalseTurnsWrapperlessOff(t *testing.T) {
+	params := loadParamsWithSavedWrapperless(t, Params{WrapperlessPipelineExplicit: true})
+
+	assert.False(t, params.WrapperlessPipelineEnabled, "explicit --wrapperless-pipeline=false must beat persisted true")
+}
+
+func TestOverrideFromExistingConfig_ExplicitTrueStaysOn(t *testing.T) {
+	params := loadParamsWithSavedWrapperless(t, Params{
+		WrapperlessPipelineEnabled:  true,
+		WrapperlessPipelineExplicit: true,
+	})
+
+	assert.True(t, params.WrapperlessPipelineEnabled, "explicit --wrapperless-pipeline=true must stay on")
+}
+
+func loadParamsWithSavedWrapperless(t *testing.T, params Params) Params {
+	t.Helper()
+
 	home := t.TempDir()
 	osProxy := &utilsMocks.OsProxyMock{
 		UserHomeDirFunc: func() (string, error) { return home, nil },
@@ -34,11 +54,10 @@ func TestOverrideFromExistingConfig_CarriesWrapperlessPipelineForward(t *testing
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(configPath, body, 0o600))
 
-	params := Params{}
 	overrideActivateXcodeParamsFromExistingConfig(
 		log.NewLogger(), osProxy, &params, utils.DefaultDecoderFactory{}, map[string]string{})
 
-	assert.True(t, params.WrapperlessPipelineEnabled, "re-run must preserve the persisted opt-in")
+	return params
 }
 
 func TestEnsureLogDir_CreatesWhatTheProxyWouldCreateLazily(t *testing.T) {
