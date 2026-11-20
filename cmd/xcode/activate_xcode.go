@@ -60,6 +60,8 @@ This command will:
 		}
 		activateXcodeParams.PushEnabled = push
 
+		activateXcodeParams.WrapperlessPipelineExplicit = cmd.Flags().Changed("wrapperless-pipeline")
+
 		if err := xcelerate.Activate(
 			cmd.Context(),
 			logger,

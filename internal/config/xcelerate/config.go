@@ -46,6 +46,7 @@ type Params struct {
 	PushEnabled                     bool
 	XcodebuildTimestampsEnabled     bool
 	WrapperlessPipelineEnabled      bool
+	WrapperlessPipelineExplicit     bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
