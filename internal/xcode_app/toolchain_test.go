@@ -37,6 +37,8 @@ func TestRenderToolchainInfoPlist_containsAllRequiredKeys(t *testing.T) {
 		"<key>OverrideBuildSettings</key>",
 		"<key>CLANG_ENABLE_COMPILE_CACHE</key>",
 		"<key>CLANG_ENABLE_MODULES</key>",
+		"<key>CLANG_ENABLE_PREFIX_MAPPING</key>",
+		"<key>CLANG_OTHER_PREFIX_MAPPINGS</key>",
 		"<key>COMPILATION_CACHE_ENABLE_CACHING</key>",
 		"<key>COMPILATION_CACHE_ENABLE_PLUGIN</key>",
 		"<key>COMPILATION_CACHE_PLUGIN_PATH</key>",
@@ -44,8 +46,27 @@ func TestRenderToolchainInfoPlist_containsAllRequiredKeys(t *testing.T) {
 		"<key>COMPILATION_CACHE_REMOTE_SERVICE_PATH</key>",
 		"<string>/tmp/proxy.sock</string>",
 		"<key>SWIFT_ENABLE_COMPILE_CACHE</key>",
+		"<key>SWIFT_ENABLE_PREFIX_MAPPING</key>",
+		"<key>SWIFT_OTHER_PREFIX_MAPPINGS</key>",
+		"<string>$(HOME)=/^home</string>",
+		"<string>$(SRCROOT)=/^src</string>",
+		"<string>$(DERIVED_DATA_DIR)=/^dd</string>",
+		"<string>$(PROJECT_TEMP_DIR)=/^obj</string>",
 	} {
 		assert.Contains(t, rendered, want)
+	}
+}
+
+func TestRenderToolchainInfoPlist_prefixMappingsEmitAsArrays(t *testing.T) {
+	body, err := RenderToolchainInfoPlist("/tmp/proxy.sock", "/dev/null")
+	require.NoError(t, err)
+
+	rendered := string(body)
+	for _, key := range []string{"CLANG_OTHER_PREFIX_MAPPINGS", "SWIFT_OTHER_PREFIX_MAPPINGS"} {
+		idx := strings.Index(rendered, "<key>"+key+"</key>")
+		require.NotEqual(t, -1, idx, "missing key %s", key)
+		tail := rendered[idx:]
+		assert.Contains(t, tail[:min(len(tail), 400)], "<array>", "%s value must be an array", key)
 	}
 }
 

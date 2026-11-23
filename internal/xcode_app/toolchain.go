@@ -54,15 +54,28 @@ var ToolchainOverrideBuildSettingsKeys = func() []string {
 	return keys
 }()
 
-func toolchainOverrideBuildSettings(proxySocketPath, pluginPath string) map[string]string {
-	return map[string]string{
+func toolchainOverrideBuildSettings(proxySocketPath, pluginPath string) map[string]any {
+	// Virtual-namespace rewriting matches the wrapper's -fdepscan-prefix-map
+	// argv keys so CAS entries stay compatible across the two injection paths.
+	prefixMappings := []string{
+		"$(HOME)=/^home",
+		"$(SRCROOT)=/^src",
+		"$(DERIVED_DATA_DIR)=/^dd",
+		"$(PROJECT_TEMP_DIR)=/^obj",
+	}
+
+	return map[string]any{
 		"CLANG_ENABLE_COMPILE_CACHE":            "YES",
 		"CLANG_ENABLE_MODULES":                  "YES",
+		"CLANG_ENABLE_PREFIX_MAPPING":           "YES",
+		"CLANG_OTHER_PREFIX_MAPPINGS":           prefixMappings,
 		"COMPILATION_CACHE_ENABLE_CACHING":      "YES",
 		"COMPILATION_CACHE_ENABLE_PLUGIN":       "YES",
 		"COMPILATION_CACHE_PLUGIN_PATH":         pluginPath,
 		"COMPILATION_CACHE_REMOTE_SERVICE_PATH": proxySocketPath,
 		"SWIFT_ENABLE_COMPILE_CACHE":            "YES",
+		"SWIFT_ENABLE_PREFIX_MAPPING":           "YES",
+		"SWIFT_OTHER_PREFIX_MAPPINGS":           prefixMappings,
 	}
 }
 
@@ -328,7 +341,7 @@ func symlinkDeveloperDir(installPath, defaultToolchainPath, anchorToolchainPath 
 
 // marshalToolchainPlist is hand-written because encoding/xml does not emit the
 // DOCTYPE Xcode's plist parser requires.
-func marshalToolchainPlist(overrideSettings map[string]string) string {
+func marshalToolchainPlist(overrideSettings map[string]any) string {
 	keys := make([]string, 0, len(overrideSettings))
 	for k := range overrideSettings {
 		keys = append(keys, k)
@@ -354,14 +367,34 @@ func marshalToolchainPlist(overrideSettings map[string]string) string {
 	for _, k := range keys {
 		b.WriteString("\t\t<key>")
 		b.WriteString(xmlEscape(k))
-		b.WriteString("</key>\n\t\t<string>")
-		b.WriteString(xmlEscape(overrideSettings[k]))
-		b.WriteString("</string>\n")
+		b.WriteString("</key>\n")
+		writeOverrideValue(&b, overrideSettings[k])
 	}
 	b.WriteString("\t</dict>\n")
 	b.WriteString("</dict>\n</plist>\n")
 
 	return b.String()
+}
+
+func writeOverrideValue(b *strings.Builder, v any) {
+	switch val := v.(type) {
+	case string:
+		b.WriteString("\t\t<string>")
+		b.WriteString(xmlEscape(val))
+		b.WriteString("</string>\n")
+	case []string:
+		b.WriteString("\t\t<array>\n")
+		for _, s := range val {
+			b.WriteString("\t\t\t<string>")
+			b.WriteString(xmlEscape(s))
+			b.WriteString("</string>\n")
+		}
+		b.WriteString("\t\t</array>\n")
+	default:
+		b.WriteString("\t\t<string>")
+		b.WriteString(xmlEscape(fmt.Sprintf("%v", val)))
+		b.WriteString("</string>\n")
+	}
 }
 
 func writeKey(b *strings.Builder, key string) {
