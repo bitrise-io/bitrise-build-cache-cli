@@ -601,9 +601,24 @@ step_bundles:
             : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
             : "${BITRISE_API_TOKEN:?missing BITRISE_API_TOKEN (needs WAT with Developer role on build-cache-e2e-testing)}"
 
+            resolved_branch="$E2E_TESTING_BRANCH"
+            pr_branch="${BITRISE_GIT_BRANCH:-}"
+            if [[ -n "$pr_branch" && "$pr_branch" != "$E2E_TESTING_BRANCH" && -n "${GIT_BOT_USER_ACCESS_TOKEN:-}" ]]; then
+              http_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+                -H "Authorization: token $GIT_BOT_USER_ACCESS_TOKEN" \
+                -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/bitrise-io/build-cache-e2e-testing/branches/$pr_branch" || echo "000")
+              if [[ "$http_status" == "200" ]]; then
+                resolved_branch="$pr_branch"
+                echo "Paired with matching branch '$pr_branch' on build-cache-e2e-testing"
+              else
+                echo "No matching branch '$pr_branch' on build-cache-e2e-testing (HTTP $http_status); using default '$E2E_TESTING_BRANCH'"
+              fi
+            fi
+
             payload=$(jq -nc \
               --arg token "$E2E_TESTING_BUILD_TRIGGER_TOKEN" \
-              --arg branch "$E2E_TESTING_BRANCH" \
+              --arg branch "$resolved_branch" \
               --arg pipeline "$RECEIVER_PIPELINE" \
               --arg commit "$BITRISE_GIT_COMMIT" \
               --arg triggered_by "cli-dispatcher-$BITRISE_BUILD_SLUG" \
