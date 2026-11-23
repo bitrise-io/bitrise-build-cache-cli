@@ -74,6 +74,12 @@ type Task struct {
 	// compare signatures across builds — that's a v2.1+ extension gated on a
 	// second snapshot.
 	Signature string `json:"signature,omitempty"`
+
+	// Diagnostics are the structured compiler messages v3 attaches via
+	// AttachDiagnostics — stderr-extracted today, `.dia`-sourced once that
+	// reader ships. One record per `file:line:col: severity: message`
+	// header. Empty when the task emitted no recognizable diagnostics.
+	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing

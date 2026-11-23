@@ -139,12 +139,19 @@ The CLI already has a thin reader at `internal/xcactivitylog/reader.go`
 for CompilationCacheMetrics. The analyzer extends this with a full
 section walker (not a line scanner — SLF payloads trip bufio.Scanner).
 
-### 4. `*.dia` — clang serialized diagnostics (v3, optional)
+### 4. `*.dia` — clang serialized diagnostics (v3, deferred)
 
-Path: `Build/Intermediates.noindex/.../ArchIntermediates/.../*.dia`
+Path: `Build/Intermediates.noindex/.../Objects-normal/<arch>/*.dia`
 
-Clang's binary diagnostic format. Richer than the stderr block (ranges,
-fix-its, notes). Parsing requires cgo libclang; v1 skips, v2 revisits.
+Clang's binary diagnostic format — an LLVM bitstream stream with a block
+hierarchy (META / DIAG) and ABBREV records, starting with a four-byte `DIAG`
+magic. A pure-Go reader is viable in principle (the bitstream codec is well
+documented), but weighing in at 1–2 days of focused work for a minimal viable
+decoder, it was scoped OUT of v3 — the fallback policy explicitly allows it.
+
+Swift's `swiftc` doesn't emit `.dia` regardless, so the stderr extractor is
+the sole Swift source either way. v3 ships that extractor; a future phase
+revisits the `.dia` reader if the stderr coverage proves insufficient.
 
 ## Output
 
@@ -222,7 +229,43 @@ usable.
 | **v1.1** | Join-time fixups on top of v1: Task.Args populated from the matched manifest Command; description-side normalization widened (`\ ` → ` `, whitespace-run collapse) on both sides of the join so SwiftDriver/CompileSwift rows land; SwiftCompile/SwiftEmitModule/SwiftDriverJobDiscovery activity-log sub-events attribute to the parent `SwiftDriver Compilation <target>` command by target name; llbuild `P<N>:<scope>:<config>:` priority prefix split off the keys and surfaced as `Task.Priority` + `Task.ManifestKey`, with Dependency edges and dot labels using the stripped form. | **landed** |
 | **v2** | + build.db read (`modernc.org/sqlite`, pure Go) → execution-reason classifier populates `Task.ExecutionReason` / `Task.Iteration` / `Task.Signature`. Four buckets: `cold`, `ran-this-build`, `skipped-up-to-date`, `unclassified`. Pretty output gains a one-letter reason column (C/R/S/U); dot renderer thickens node borders for `ran-this-build`. | **landed** |
 | **v2.1** | `Task.Iteration int64` replaces the earlier `Task.BuiltAt time.Time` carrier — the llbuild `built_at` column is an iteration counter, not a wall-clock timestamp, so the time.Time rendering (`1970-01-01T00:00:01Z` for iter=1) was actively misleading. `RuleResult.Iteration` now typed accordingly; classification semantics unchanged. | **landed** |
-| **v3** | + `.dia` parsing via cgo libclang (OR skip permanently if coverage from xcactivitylog stderr is enough). | TBD |
+| **v3** | + `Task.Diagnostics []Diagnostic` populated by `AttachDiagnostics(report, derivedData, DiagMode)` — stderr-regex extractor surfaces `path:line:col: severity: message` records from `Task.StderrExcerpt` (clang + swiftc form), continuation lines fold into the preceding record's message. `cmd xcode analyze --diagnostics=auto\|dia\|stderr\|off` (default `auto`). Pretty output gains a one-letter `[E/W/N]` diagnostic column + indented per-diagnostic continuation lines. | **landed (stderr only; .dia deferred — see below)** |
+
+### v3 fallback — `.dia` reader deferred
+
+Per the v3 scope policy (ship stderr-only when the `.dia` bitstream decoder
+blows the budget), v3 lands with the stderr path only. The deferral rationale:
+
+- `.dia` is clang's LLVM bitstream encoding — a VBR6 stream with a block
+  hierarchy (META / DIAG) and ABBREV records. Writing a tractable pure-Go
+  reader means implementing the bitstream VBR codec, abbreviation definitions,
+  the clang-serialized-diagnostics schema (record kinds 1–7 for version,
+  diagnostic, source-range, fix-it, filename, category, …), and a string pool.
+  Minimum viable reader is a 1–2 day job on its own; a robust one is longer.
+- Swift's `swiftc` doesn't emit `.dia` at all. The stderr path is the sole
+  source for Swift diagnostics regardless of what we do with `.dia`.
+- The stderr extractor covers the high-value case — a human-legible
+  `path:line:col: error: message` is what a build-log reader cares about —
+  and the richer ranges / fix-its / notes that `.dia` carries are marginal
+  for post-mortem analysis without an IDE to surface them.
+
+The DiagMode enum (`auto`, `dia`, `stderr`, `off`) and `AttachDiagnostics`
+signature are stable: a future PR drops a `dia.go` reader in and the `dia` /
+`auto` branches switch from no-op to populated without touching the CLI flag
+or the Diagnostic struct.
+
+#### Known gap: empty `StderrExcerpt` on today's SLF parse
+
+The v0 SLF walker lifts the longest string of each section as `commandDetail`
+and currently leaves `StderrExcerpt` empty — the activity log DOES embed the
+compiler's stderr in `emittedOutputText` but the heuristic lift doesn't
+attribute it to the stderr field. Result: on a real failing MinimalApp build,
+`AttachDiagnostics` sees empty stderr on every task and surfaces zero
+records. The structured diagnostic extraction is covered by a synthesized
+integration test (`TestAttachDiagnostics_Auto_UsesStderrPath`) that injects
+the swiftc-shaped blob the SLF parser SHOULD surface. A later phase that
+walks the SLF schema properly (v3.1 or v4) unlocks this end-to-end on real
+builds; the stderr extractor itself needs no change.
 
 Each phase is its own PR. v0 ships useful on day one (standalone JSON
 of executed tasks, already better than `xcodebuild -verbose` greps).
@@ -244,6 +287,11 @@ of executed tasks, already better than `xcodebuild -verbose` greps).
     color-coded green/red/grey, with v2's `penwidth` bump for
     `ran-this-build` borders.
   - `task.go` — the joined `Report` struct + `Task` + `Dependency`.
+  - `diagnostic.go` — `Diagnostic` / `Range` / `FixIt` structs + severity
+    constants used by v3's stderr extractor and the deferred `.dia` reader.
+  - `stderr_diag.go` — `ExtractStderrDiagnostics` regex-based extractor for
+    `path:line:col: severity: message` clang / swiftc headers with
+    continuation-line folding (**v3**).
 - `cmd/xcode/analyze.go` — cobra subcommand `bitrise-build-cache
   xcode analyze <DerivedDataPath|xcresult>`.
 - `docs/xcode-build-analyzer.md` — this file.

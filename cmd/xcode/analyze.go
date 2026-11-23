@@ -24,6 +24,7 @@ var (
 	analyzeFlagManifest    string
 	analyzeFlagBuildDB     string
 	analyzeFlagOutput      string
+	analyzeFlagDiagnostics string
 )
 
 //nolint:gochecknoglobals
@@ -58,6 +59,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&analyzeFlagManifest, "manifest", "", "Optional path to a manifest.json for planned-task graph + dependency DAG. Auto-discovered when --derived-data is set.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagBuildDB, "build-db", "", "Optional path to an llbuild build.db for execution-reason classification. Auto-discovered when --derived-data is set.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagOutput, "output", outputJSON, "Output format: `json` (default), `pretty`, or `dot`.")
+	analyzeCmd.Flags().StringVar(&analyzeFlagDiagnostics, "diagnostics", string(buildanalyzer.DiagModeAuto), "Diagnostics source: `auto` (default), `dia`, `stderr`, or `off`. v3 ships with the `.dia` reader deferred — `auto` and `stderr` behave identically today.")
 }
 
 func runAnalyze(out, stderr io.Writer) error {
@@ -76,6 +78,10 @@ func runAnalyze(out, stderr io.Writer) error {
 	}
 
 	if err := classifyIfAvailable(&report, stderr, analyzeFlagBuildDB, analyzeFlagDerivedData); err != nil {
+		return err
+	}
+
+	if err := attachDiagnosticsFromFlag(&report, analyzeFlagDerivedData, analyzeFlagDiagnostics); err != nil {
 		return err
 	}
 
@@ -151,6 +157,28 @@ func classifyIfAvailable(report *buildanalyzer.Report, stderr io.Writer, explici
 	buildanalyzer.Classify(report, snap)
 
 	return nil
+}
+
+// attachDiagnosticsFromFlag validates the --diagnostics flag value and runs
+// AttachDiagnostics against the report. Unknown values error out — unlike the
+// manifest / build.db path, the flag is user-supplied text so a typo should
+// surface immediately rather than silently pick `auto`.
+func attachDiagnosticsFromFlag(report *buildanalyzer.Report, derivedData, flag string) error {
+	if flag == "" {
+		flag = string(buildanalyzer.DiagModeAuto)
+	}
+
+	switch buildanalyzer.DiagMode(flag) {
+	case buildanalyzer.DiagModeAuto,
+		buildanalyzer.DiagModeDia,
+		buildanalyzer.DiagModeStderr,
+		buildanalyzer.DiagModeOff:
+		buildanalyzer.AttachDiagnostics(report, derivedData, buildanalyzer.DiagMode(flag))
+
+		return nil
+	default:
+		return fmt.Errorf("unknown --diagnostics %q (want auto|dia|stderr|off)", flag)
+	}
 }
 
 // resolveAnalyzeLogPath enforces the "one of two flags required" contract
@@ -244,10 +272,11 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 	}
 
 	for _, task := range report.Tasks {
-		if _, err := fmt.Fprintf(out, "%s  %10s  %s  exit=%d  %s\n",
+		if _, err := fmt.Fprintf(out, "%s  %10s  %s  %s  exit=%d  %s\n",
 			task.StartedAt.Format("15:04:05.000"),
 			task.Duration,
 			reasonLetter(task.ExecutionReason),
+			diagnosticsIcon(task.Diagnostics),
 			task.ExitCode,
 			truncate(task.Key, 160),
 		); err != nil {
@@ -259,9 +288,64 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 				return fmt.Errorf("write pretty error line: %w", err)
 			}
 		}
+
+		for _, d := range task.Diagnostics {
+			if _, err := fmt.Fprintf(out, "    %s %s:%d:%d  %s\n",
+				severityGlyph(d.Severity), d.File, d.Line, d.Column,
+				truncate(d.Message, 200),
+			); err != nil {
+				return fmt.Errorf("write pretty diagnostic line: %w", err)
+			}
+		}
 	}
 
 	return nil
+}
+
+// diagnosticsIcon surfaces a `[E/W/N]` column per task: `E` when any
+// error/fatal is attached, else `W` when a warning is present, else `N` when
+// a note is present, else `-`. The order matters — a failing task with both
+// warnings and errors reads as `E`.
+func diagnosticsIcon(diags []buildanalyzer.Diagnostic) string {
+	if len(diags) == 0 {
+		return "-"
+	}
+
+	var hasErr, hasWarn, hasNote bool
+	for _, d := range diags {
+		switch d.Severity {
+		case buildanalyzer.SeverityError, buildanalyzer.SeverityFatal:
+			hasErr = true
+		case buildanalyzer.SeverityWarning:
+			hasWarn = true
+		case buildanalyzer.SeverityNote:
+			hasNote = true
+		}
+	}
+
+	switch {
+	case hasErr:
+		return "E"
+	case hasWarn:
+		return "W"
+	case hasNote:
+		return "N"
+	default:
+		return "-"
+	}
+}
+
+func severityGlyph(sev buildanalyzer.Severity) string {
+	switch sev {
+	case buildanalyzer.SeverityError, buildanalyzer.SeverityFatal:
+		return "!"
+	case buildanalyzer.SeverityWarning:
+		return "~"
+	case buildanalyzer.SeverityNote:
+		return "i"
+	default:
+		return "?"
+	}
 }
 
 func formatTimestamp(s string) string {

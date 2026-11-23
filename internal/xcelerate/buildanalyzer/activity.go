@@ -84,6 +84,63 @@ func MostRecentActivityLog(derivedData string) (string, error) {
 	return cands[0].path, nil
 }
 
+// DiagMode selects which source(s) AttachDiagnostics consults when populating
+// Task.Diagnostics. `auto` is the default and ships whatever's available —
+// currently stderr only, with `.dia` wired in once that reader lands. `dia`
+// and `stderr` force a single source so an operator can isolate one path.
+// `off` is the explicit opt-out.
+type DiagMode string
+
+const (
+	DiagModeAuto   DiagMode = "auto"
+	DiagModeDia    DiagMode = "dia"
+	DiagModeStderr DiagMode = "stderr"
+	DiagModeOff    DiagMode = "off"
+)
+
+// AttachDiagnostics walks report.Tasks and populates Task.Diagnostics from the
+// sources selected by mode. derivedDataPath is reserved for the `.dia` reader
+// which has to resolve per-task .dia paths under `Build/Intermediates.noindex`;
+// v3 ships with that reader deferred so the argument is currently unused but
+// the signature is stable for the next phase. See docs/xcode-build-analyzer.md.
+//
+// Idempotent: calling it a second time overwrites Diagnostics in place.
+func AttachDiagnostics(report *Report, derivedDataPath string, mode DiagMode) {
+	if report == nil || mode == DiagModeOff {
+		return
+	}
+
+	_ = derivedDataPath
+
+	switch mode {
+	case DiagModeAuto, DiagModeStderr:
+		attachStderrDiagnostics(report)
+	case DiagModeDia:
+		// `.dia` reader is deferred; nothing to do in this mode today.
+		// Explicitly handled so a future reader drop-in is a one-line swap.
+	case DiagModeOff:
+		// Unreachable — guarded above.
+	}
+}
+
+// attachStderrDiagnostics runs the regex extractor on every Task's
+// StderrExcerpt and merges the result into Task.Diagnostics. Replaces any
+// pre-existing entries so re-runs stay predictable.
+func attachStderrDiagnostics(report *Report) {
+	for i := range report.Tasks {
+		task := &report.Tasks[i]
+
+		diags := ExtractStderrDiagnostics(task.StderrExcerpt)
+		if len(diags) == 0 {
+			task.Diagnostics = nil
+
+			continue
+		}
+
+		task.Diagnostics = diags
+	}
+}
+
 // JoinManifest extends report in place with manifest-sourced data:
 //   - matches each ran Task to a planned Command (by signature when both
 //     carry one, else by description string normalized the same way) and

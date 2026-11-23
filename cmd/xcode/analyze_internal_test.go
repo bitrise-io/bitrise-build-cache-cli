@@ -171,3 +171,57 @@ func TestJoinManifestIfAvailable_SuccessfulLoadExtendsReport(t *testing.T) {
 	assert.True(t, report.Tasks[0].Planned)
 	assert.Equal(t, "linker", report.Tasks[0].Tool)
 }
+
+func TestAttachDiagnosticsFromFlag_DefaultsToAuto(t *testing.T) {
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{
+			StderrExcerpt: "App.swift:5:9: error: cannot find 'Foo' in scope\n",
+		}},
+	}
+
+	require.NoError(t, attachDiagnosticsFromFlag(&report, "", ""))
+	require.Len(t, report.Tasks[0].Diagnostics, 1)
+	assert.Equal(t, buildanalyzer.SeverityError, report.Tasks[0].Diagnostics[0].Severity)
+}
+
+func TestAttachDiagnosticsFromFlag_Off_LeavesTasksAlone(t *testing.T) {
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{
+			StderrExcerpt: "App.swift:5:9: error: cannot find 'Foo' in scope\n",
+		}},
+	}
+
+	require.NoError(t, attachDiagnosticsFromFlag(&report, "", "off"))
+	assert.Empty(t, report.Tasks[0].Diagnostics)
+}
+
+func TestAttachDiagnosticsFromFlag_UnknownValue_Errors(t *testing.T) {
+	err := attachDiagnosticsFromFlag(&buildanalyzer.Report{}, "", "yolo")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown --diagnostics")
+}
+
+func TestRenderPretty_DiagnosticsIconPresent(t *testing.T) {
+	// Confirms the [E/W/N] column lands and the attached diagnostic
+	// surfaces in the indented continuation line.
+	report := buildanalyzer.Report{
+		Build: buildanalyzer.BuildMeta{Title: "Build Foo"},
+		Tasks: []buildanalyzer.Task{{
+			Key: "SwiftCompile App.swift",
+			Diagnostics: []buildanalyzer.Diagnostic{{
+				File: "App.swift", Line: 5, Column: 9,
+				Severity: buildanalyzer.SeverityError, Message: "cannot find 'Foo' in scope",
+			}},
+		}},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, renderPretty(&buf, report))
+
+	out := buf.String()
+	// Icon column shows E for error.
+	assert.Contains(t, out, " E ")
+	// Indented diagnostic line surfaces file:line:col.
+	assert.Contains(t, out, "App.swift:5:9")
+	assert.Contains(t, out, "cannot find 'Foo' in scope")
+}
