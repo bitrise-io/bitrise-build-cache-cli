@@ -30,7 +30,7 @@ const (
 	ReasonUnclassified ExecutionReason = "unclassified"
 )
 
-// Classify walks every Task on report and sets ExecutionReason + BuiltAt +
+// Classify walks every Task on report and sets ExecutionReason + Iteration +
 // Signature from the Snapshot. Lookup is three-tiered, mirroring the match
 // order the manifest join uses:
 //
@@ -40,8 +40,7 @@ const (
 //     (tests, older schema).
 //  3. snap.Rules[task.Key]                — activity-log-only fallback.
 //
-// Classification then compares the rule's iteration counter (stored in
-// RuleResult.BuiltAt via iterationToTime) against snap.Iteration:
+// Classification compares rule.Iteration against snap.Iteration:
 //   - equal iteration → ReasonRanThisBuild
 //   - lower iteration → ReasonSkippedUpToDate
 //   - no row          → ReasonCold
@@ -49,7 +48,7 @@ const (
 //     defensively)
 //
 // When snap.Iteration is zero (e.g. the info row was empty) we fall back to
-// activity-log Ran as the Rand/Skipped tiebreaker so warm-build output stays
+// activity-log Ran as the Ran/Skipped tiebreaker so warm-build output stays
 // usable; the cold bucket still trips cleanly on missing rows.
 func Classify(report *Report, snap Snapshot) {
 	if report == nil {
@@ -66,7 +65,7 @@ func Classify(report *Report, snap Snapshot) {
 			continue
 		}
 
-		task.BuiltAt = rule.BuiltAt
+		task.Iteration = rule.Iteration
 		if len(rule.Signature) > 0 {
 			task.Signature = hex.EncodeToString(rule.Signature)
 		}
@@ -116,15 +115,10 @@ func reasonForRule(rule RuleResult, iteration int64, ran bool) ExecutionReason {
 		return ReasonSkippedUpToDate
 	}
 
-	ruleIteration := rule.BuiltAt.Unix()
-	if rule.BuiltAt.IsZero() {
-		ruleIteration = 0
-	}
-
 	switch {
-	case ruleIteration == iteration:
+	case rule.Iteration == iteration:
 		return ReasonRanThisBuild
-	case ruleIteration > 0 && ruleIteration < iteration:
+	case rule.Iteration > 0 && rule.Iteration < iteration:
 		return ReasonSkippedUpToDate
 	default:
 		return ReasonUnclassified

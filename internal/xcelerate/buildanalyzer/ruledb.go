@@ -22,14 +22,11 @@ import (
 //     command name prefixed with a one-byte rule-kind tag — `C` for a
 //     Command rule, `N` for a Node (file / virtual node) rule. The reader
 //     keeps the tag so callers decide their own matching strategy.
-//   - BuiltAt is the rule's `built_at` iteration counter, NOT a wall-clock
-//     timestamp — on the Xcode 26 schema it's a small integer that equals
-//     `info.iteration` on the build that computed the row and stays stuck at
-//     an older value for rules carried over unchanged. The classifier uses
-//     this for the ReasonSkippedUpToDate / ReasonRanThisBuild split. We still
-//     expose it as a time.Time for the JSON shape promised by the task
-//     spec — encoded as Unix(iteration, 0) so round-tripping the counter is
-//     lossless.
+//   - Iteration is the rule's `built_at` iteration counter — a small integer
+//     that equals `info.iteration` on the build that computed the row and
+//     stays stuck at an older value for rules carried over unchanged. The
+//     classifier uses this for the ReasonSkippedUpToDate / ReasonRanThisBuild
+//     split.
 //   - BuiltAtStart is the `start` REAL column (mach-absolute-time-based
 //     seconds since boot, NOT CF absolute time; not comparable to
 //     xcactivitylog timestamps). Kept as raw seconds for callers that need
@@ -41,7 +38,7 @@ import (
 //   - Value is the opaque llbuild rule-value blob; v2 does not interpret it.
 type RuleResult struct {
 	Key          string
-	BuiltAt      time.Time
+	Iteration    int64
 	BuiltAtStart float64
 	Signature    []byte
 	Value        []byte
@@ -171,7 +168,7 @@ JOIN key_names k ON k.id = r.key_id
 
 		out[key] = RuleResult{
 			Key:          key,
-			BuiltAt:      iterationToTime(builtAt),
+			Iteration:    builtAt,
 			BuiltAtStart: start.Float64,
 			Signature:    signatureBytes(signature),
 			Value:        value,
@@ -183,18 +180,6 @@ JOIN key_names k ON k.id = r.key_id
 	}
 
 	return out, nil
-}
-
-// iterationToTime encodes the rule's built_at iteration counter in a time.Time
-// so the JSON field the task spec promised round-trips the integer losslessly.
-// Classification uses the raw counter, not the time; this is purely a carrier.
-// time.Time{} (zero) stays zero so downstream JSON omitempty behaves.
-func iterationToTime(builtAt int64) time.Time {
-	if builtAt == 0 {
-		return time.Time{}
-	}
-
-	return time.Unix(builtAt, 0).UTC()
 }
 
 // signatureBytes serializes the SQLite INTEGER signature to an 8-byte

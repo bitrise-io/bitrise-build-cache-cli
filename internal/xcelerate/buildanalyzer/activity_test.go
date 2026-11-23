@@ -656,13 +656,13 @@ func TestReadJoinClassify_EndToEnd(t *testing.T) {
 			// Linker ran this build.
 			"CP2:target-X:Debug:Ld /Foo": {
 				Key:       "CP2:target-X:Debug:Ld /Foo",
-				BuiltAt:   time.Unix(7, 0).UTC(),
+				Iteration: 7,
 				Signature: []byte{0x11, 0x22},
 			},
 			// Compile was skipped — carried over from iteration 2.
 			"CP0:target-X:Debug:CompileSwift Bar.swift": {
 				Key:       "CP0:target-X:Debug:CompileSwift Bar.swift",
-				BuiltAt:   time.Unix(2, 0).UTC(),
+				Iteration: 2,
 				Signature: []byte{0x33},
 			},
 			// CopyPNGFile is cold — no rule row (left absent on purpose).

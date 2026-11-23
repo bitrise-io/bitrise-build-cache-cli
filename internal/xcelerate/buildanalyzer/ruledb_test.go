@@ -31,13 +31,13 @@ func TestReadBuildDB_InMemoryJoin(t *testing.T) {
 
 	swift, ok := snap.Rules["CP0:::Compile Foo.swift"]
 	require.True(t, ok)
-	require.Equal(t, int64(5), swift.BuiltAt.Unix())
+	require.Equal(t, int64(5), swift.Iteration)
 	require.NotEmpty(t, swift.Signature)
 	require.Equal(t, 100.5, swift.BuiltAtStart)
 
 	link, ok := snap.Rules["CP0:::Link Foo"]
 	require.True(t, ok)
-	require.Equal(t, int64(4), link.BuiltAt.Unix())
+	require.Equal(t, int64(4), link.Iteration)
 	require.NotEqual(t, swift.Signature, link.Signature)
 
 	node, ok := snap.Rules["N/tmp/Foo.swift"]

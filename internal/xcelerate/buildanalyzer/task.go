@@ -64,10 +64,11 @@ type Task struct {
 	// Empty when no build.db was read; see ExecutionReason constants for the
 	// four buckets.
 	ExecutionReason ExecutionReason `json:"executionReason,omitempty"`
-	// BuiltAt carries the rule_results.built_at value for this task. On the
-	// Xcode 26 schema this is an iteration counter (not a wall-clock time),
-	// encoded losslessly as Unix(iteration, 0) so round-tripping stays safe.
-	BuiltAt time.Time `json:"builtAt,omitempty"`
+	// Iteration is the llbuild build-counter the rule row carries — equal to
+	// the snapshot's current iteration when the task ran this build, lower
+	// when its result was reused from an earlier build. Zero when no row was
+	// matched.
+	Iteration int64 `json:"iteration,omitempty"`
 	// Signature is the llbuild rule signature hex-encoded. Empty when the
 	// task had no build.db row (cold rule, or no snapshot joined). v2 doesn't
 	// compare signatures across builds — that's a v2.1+ extension gated on a
