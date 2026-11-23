@@ -8,8 +8,8 @@ package buildanalyzer
 import "time"
 
 // Task is a single IDEActivityLogCommandInvocationSection, trimmed to the
-// fields v0 can reliably lift from the log alone. Fields that depend on the
-// manifest (inputs/outputs, tool from llbuild, exec reason) stay out of v0.
+// fields v0 can reliably lift from the log alone. v1 extends it with
+// manifest-sourced Planned/Ran/Inputs/Outputs when a manifest join succeeds.
 type Task struct {
 	// Key is the section signature — the stable identifier Xcode and llbuild
 	// share, e.g. `Ld /path/Foo normal arm64`.
@@ -19,7 +19,10 @@ type Task struct {
 	// clause (preparation / compute-graph sections).
 	Target string `json:"target,omitempty"`
 	// Tool is a best-effort first-word of the signature (`Ld`, `SwiftCompile`,
-	// `CompileC`, …). Not canonical — v1 overrides with the manifest tool.
+	// `CompileC`, …). v1's JoinManifest overrides this with the manifest's
+	// `tool` field when a Command match is found — that value is llbuild's
+	// internal tool label (`swift-driver-compilation`, `linker`, `shell`, …)
+	// and is more canonical than the signature prefix heuristic.
 	Tool          string        `json:"tool,omitempty"`
 	StartedAt     time.Time     `json:"startedAt"`
 	Duration      time.Duration `json:"duration"`
@@ -27,6 +30,19 @@ type Task struct {
 	StdoutExcerpt string        `json:"stdoutExcerpt,omitempty"`
 	StderrExcerpt string        `json:"stderrExcerpt,omitempty"`
 	Errors        []string      `json:"errors,omitempty"`
+
+	// Planned is true when JoinManifest found a Command matching this Task's
+	// Key (via signature or description).
+	Planned bool `json:"planned,omitempty"`
+	// Ran is true when the Task appears in the activity log — i.e. every Task
+	// in Report.Tasks starts with Ran=true. The field exists so the renderer
+	// sees Planned-only Commands (synthesized Tasks with Ran=false) through
+	// the same code path.
+	Ran bool `json:"ran,omitempty"`
+	// Inputs / Outputs are llbuild-declared file paths from the matched
+	// Command. Empty when no manifest match is available.
+	Inputs  []string `json:"inputs,omitempty"`
+	Outputs []string `json:"outputs,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing
@@ -38,9 +54,21 @@ type BuildMeta struct {
 	Duration   time.Duration `json:"duration"`
 }
 
-// Report is the JSON shape rendered by `xcode analyze`. Mirrors the design
-// doc's `Report` but trimmed to v0 fields; v1+ extend without a schema break.
+// Dependency is a directed edge in the task graph, derived by v1 from the
+// manifest commands' input/output file paths: when Command A lists file F as
+// an output and Command B lists F as an input, B depends on A and the join
+// emits `Dependency{From: A.Key, To: B.Key}`.
+type Dependency struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// Report is the JSON shape rendered by `xcode analyze`. v0 fills Build +
+// Tasks from the xcactivitylog; v1's JoinManifest extends Tasks in place with
+// Planned/Ran/Inputs/Outputs, appends planned-only Tasks (Ran=false), and
+// populates Dependencies.
 type Report struct {
-	Build BuildMeta `json:"build"`
-	Tasks []Task    `json:"tasks"`
+	Build        BuildMeta    `json:"build"`
+	Tasks        []Task       `json:"tasks"`
+	Dependencies []Dependency `json:"dependencies,omitempty"`
 }

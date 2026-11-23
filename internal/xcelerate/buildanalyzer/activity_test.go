@@ -306,6 +306,137 @@ func TestMostRecentActivityLog_MissingDir(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestJoinManifest_MatchesByDescription_OverridesTool_FillsIO(t *testing.T) {
+	// A Task in the activity log carries the signature-form key, which is
+	// `<description> (in target '<name>' from project '<name>')`. JoinManifest
+	// strips that suffix and matches against the manifest's description.
+	report := buildanalyzer.Report{
+		Build: buildanalyzer.BuildMeta{Title: "Build Foo"},
+		Tasks: []buildanalyzer.Task{
+			{
+				Key:      "Ld /Foo normal arm64 (in target 'Foo' from project 'Foo')",
+				Tool:     "Ld", // v0 first-word heuristic
+				ExitCode: 0,
+				Ran:      true,
+			},
+		},
+	}
+
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P2:target-X:Debug:Ld Foo": {
+				Tool:        "linker",
+				Description: "Ld /Foo normal arm64",
+				Inputs:      []string{"Foo.o"},
+				Outputs:     []string{"/Foo"},
+			},
+			"<all>": {Tool: "phony"},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	require.Len(t, report.Tasks, 1, "no planned-only tasks appended; the only descripted command matched")
+	assert.True(t, report.Tasks[0].Planned)
+	assert.True(t, report.Tasks[0].Ran)
+	assert.Equal(t, "linker", report.Tasks[0].Tool, "manifest tool wins over v0's first-word heuristic")
+	assert.Equal(t, []string{"Foo.o"}, report.Tasks[0].Inputs)
+	assert.Equal(t, []string{"/Foo"}, report.Tasks[0].Outputs)
+}
+
+func TestJoinManifest_PrefersSignatureOverDescription(t *testing.T) {
+	// Two manifest commands sharing the same description; the task's Key
+	// equals the signature of command B. Signature match beats description.
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{Key: "sig-B", Ran: true}},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"CmdA": {Tool: "linker", Description: "shared", Signature: "sig-A"},
+			"CmdB": {Tool: "shell", Description: "shared", Signature: "sig-B", Outputs: []string{"out-B"}},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	// The signature-matched Task picks up CmdB's tool + outputs.
+	var matched buildanalyzer.Task
+	for _, task := range report.Tasks {
+		if task.Ran {
+			matched = task
+		}
+	}
+	assert.Equal(t, "shell", matched.Tool)
+	assert.Equal(t, []string{"out-B"}, matched.Outputs)
+}
+
+func TestJoinManifest_AppendsPlannedNotRanTasks(t *testing.T) {
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{Key: "Ld /A (in target 'A' from project 'A')", Ran: true}},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"CmdLd":     {Tool: "linker", Description: "Ld /A"},
+			"CmdCompileNotRun": {Tool: "swift-driver-compilation", Description: "CompileSwift Unused.swift"},
+			"<orch>":    {Tool: "phony"}, // no description — skipped
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	require.Len(t, report.Tasks, 2, "ran + one planned-only; phony orchestration commands are skipped")
+	planned := report.Tasks[1]
+	assert.False(t, planned.Ran)
+	assert.True(t, planned.Planned)
+	assert.Equal(t, "CmdCompileNotRun", planned.Key)
+	assert.Equal(t, "swift-driver-compilation", planned.Tool)
+}
+
+func TestJoinManifest_DerivesDependencyEdgesFromFilePaths(t *testing.T) {
+	report := buildanalyzer.Report{}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"CompileA": {Tool: "swift-driver-compilation", Description: "Compile A.swift", Outputs: []string{"A.o"}},
+			"CompileB": {Tool: "swift-driver-compilation", Description: "Compile B.swift", Outputs: []string{"B.o"}},
+			"Ld":       {Tool: "linker", Description: "Ld /App", Inputs: []string{"A.o", "B.o"}, Outputs: []string{"/App"}},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	// Two edges: CompileA -> Ld, CompileB -> Ld (sorted lexicographically on From).
+	require.Len(t, report.Dependencies, 2)
+	assert.Equal(t, "CompileA", report.Dependencies[0].From)
+	assert.Equal(t, "Ld", report.Dependencies[0].To)
+	assert.Equal(t, "CompileB", report.Dependencies[1].From)
+	assert.Equal(t, "Ld", report.Dependencies[1].To)
+}
+
+func TestJoinManifest_UnescapesBackslashSpace(t *testing.T) {
+	// SwiftDriver signatures carry `\ ` (backslash-space) in the activity log
+	// that the manifest description omits.
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{
+			Key: `SwiftDriver\ Compilation MinimalApp normal arm64 (in target 'X' from project 'X')`,
+			Ran: true,
+		}},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"CompReq": {
+				Tool:        "swift-driver-compilation",
+				Description: "SwiftDriver Compilation MinimalApp normal arm64",
+				Outputs:     []string{"MinimalApp.swiftmodule"},
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	assert.True(t, report.Tasks[0].Planned, "backslash-space normalization should still match")
+	assert.Equal(t, "swift-driver-compilation", report.Tasks[0].Tool)
+}
+
 // TestReadReport_RealSample exercises the walker against the committed
 // fixture from the sibling xcactivitylog package — a ~405 KB CasProbe build
 // with Xcode 26.x logFormatVersion 11. The fixture is shared to avoid

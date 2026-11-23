@@ -88,21 +88,86 @@ func TestRenderPretty_IncludesTitleAndTaskKeys(t *testing.T) {
 }
 
 func TestRunAnalyze_UnknownOutput_Error(t *testing.T) {
-	prevLog, prevDD, prevOut := analyzeFlagActivityLog, analyzeFlagDerivedData, analyzeFlagOutput
+	prevLog, prevDD, prevMan, prevOut := analyzeFlagActivityLog, analyzeFlagDerivedData, analyzeFlagManifest, analyzeFlagOutput
 	defer func() {
-		analyzeFlagActivityLog, analyzeFlagDerivedData, analyzeFlagOutput = prevLog, prevDD, prevOut
+		analyzeFlagActivityLog, analyzeFlagDerivedData, analyzeFlagManifest, analyzeFlagOutput = prevLog, prevDD, prevMan, prevOut
 	}()
 
 	// Point the explicit flag at *any* path that would otherwise reach the
 	// renderer — the unknown-output branch is tested before the reader runs.
 	analyzeFlagActivityLog = "/nope"
 	analyzeFlagDerivedData = ""
+	analyzeFlagManifest = ""
 	analyzeFlagOutput = "yaml"
 
-	err := runAnalyze(&bytes.Buffer{})
+	err := runAnalyze(&bytes.Buffer{}, &bytes.Buffer{})
 	require.Error(t, err)
 	// Either the missing file OR the unknown-output branch is acceptable —
 	// the former reaches the read-error path, the latter the format-check.
 	assert.True(t, strings.Contains(err.Error(), "unknown --output") || strings.Contains(err.Error(), "analyze"),
 		"got: %v", err)
+}
+
+func TestResolveAnalyzeManifestPath_ExplicitWins(t *testing.T) {
+	path, err := resolveAnalyzeManifestPath("/tmp/explicit.json", "/tmp/derived")
+	require.NoError(t, err)
+	assert.Equal(t, "/tmp/explicit.json", path)
+}
+
+func TestResolveAnalyzeManifestPath_NoFlags_ReturnsEmpty(t *testing.T) {
+	// Not setting either flag is legal — the caller falls back to v0 output.
+	path, err := resolveAnalyzeManifestPath("", "")
+	require.NoError(t, err)
+	assert.Empty(t, path)
+}
+
+func TestResolveAnalyzeManifestPath_AutoDiscoverFromDerivedData(t *testing.T) {
+	dir := t.TempDir()
+	xcbuild := filepath.Join(dir, "Build", "Intermediates.noindex", "XCBuildData", "hash.xcbuilddata")
+	require.NoError(t, os.MkdirAll(xcbuild, 0o755))
+	manifestPath := filepath.Join(xcbuild, "manifest.json")
+	require.NoError(t, os.WriteFile(manifestPath, []byte("{}"), 0o644))
+
+	path, err := resolveAnalyzeManifestPath("", dir)
+	require.NoError(t, err)
+	assert.Equal(t, manifestPath, path)
+}
+
+func TestJoinManifestIfAvailable_MissingManifest_WarnsAndSkipsNoError(t *testing.T) {
+	var report buildanalyzer.Report
+	var stderr bytes.Buffer
+
+	err := joinManifestIfAvailable(&report, &stderr, "", "")
+	require.NoError(t, err)
+	assert.Contains(t, stderr.String(), "no manifest.json available")
+}
+
+func TestJoinManifestIfAvailable_BadManifestFile_WarnsAndSkipsNoError(t *testing.T) {
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "manifest.json")
+	require.NoError(t, os.WriteFile(bad, []byte("{not json"), 0o644))
+
+	var report buildanalyzer.Report
+	var stderr bytes.Buffer
+
+	err := joinManifestIfAvailable(&report, &stderr, bad, "")
+	require.NoError(t, err, "soft-fallback — the activity log alone is still useful")
+	assert.Contains(t, stderr.String(), "manifest.json read failed")
+}
+
+func TestJoinManifestIfAvailable_SuccessfulLoadExtendsReport(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+	body := `{"commands": {"Ld": {"tool":"linker","description":"Ld /Foo","outputs":["/Foo"]}}}`
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{Key: "Ld /Foo (in target 'Foo' from project 'Foo')", Ran: true, Tool: "Ld"}},
+	}
+	var stderr bytes.Buffer
+
+	require.NoError(t, joinManifestIfAvailable(&report, &stderr, path, ""))
+	assert.Empty(t, stderr.String(), "no warning on clean load")
+	assert.True(t, report.Tasks[0].Planned)
+	assert.Equal(t, "linker", report.Tasks[0].Tool)
 }

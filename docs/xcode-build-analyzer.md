@@ -49,20 +49,46 @@ v1 uses this purely as a "was the signature the same as last build?"
 oracle per key. v2 may walk `rule_dependencies` to attribute the
 mismatch to a specific upstream key.
 
-### 2. `manifest-*.xcbuild` — static planned task graph
+### 2. `manifest.json` — static planned task graph
 
-Path: `<build-hex>.xcbuilddata/manifest-*.xcbuild`
+Path: `<build-hex>.xcbuilddata/manifest.json`
 
-llbuild manifest, YAML. Source of graph shape + tool labels. Key
-sections:
+**Deviation from the original sketch (v1 implementation):** the file is
+**JSON**, not YAML, and the filename is `manifest.json`, not
+`manifest-*.xcbuild`. Pre-v1 the design doc trusted XCLogParser prose that
+hasn't been updated for current Xcode versions. The structural shape
+under `commands` still matches llbuild's model.
 
-- `nodes` — virtual nodes (phases / target dependencies).
-- `commands` — one entry per real task. Each command carries:
-  - `inputs` / `outputs` — file paths.
-  - `tool` — e.g. `swift-driver`, `clang`, `ld`, `cp`.
-  - `args` — full command line.
-  - `description` — the human-readable label Xcode shows.
-  - `signature` — the key llbuild uses to look up `rule_results`.
+Top-level shape:
+
+```jsonc
+{
+  "client": { … },
+  "targets": { … },
+  "nodes": { … },
+  "commands": {
+    "<command-key>": { "tool": …, "description": …, "inputs": […], "outputs": […], "args": […], "signature": … }
+  }
+}
+```
+
+- `commands` is a map keyed by llbuild's internal command name (usually a
+  priority prefix `P0:::` / `P2:target-<guid>:Debug:` followed by the same
+  text that lives in `description`).
+- `tool` is llbuild's internal label: `swift-driver-compilation`, `linker`,
+  `shell`, `file-copy`, `phony`, `auxiliary-file`, `create-build-directory`,
+  `stale-file-removal`, `embed-swift-stdlib`, etc. v1's JoinManifest uses
+  this to **override v0's first-word tool heuristic**.
+- `description` is the human-readable label that also surfaces as the
+  activity-log section signature (modulo the `(in target 'X' from project
+  'Y')` suffix that the activity log appends). This is the **primary join
+  key** — the design doc's "signature preferred" is backward in practice:
+  only a handful of `shell` commands (ClangStatCache, …) carry a `signature`
+  field; the rest rely on description matching.
+- Orchestration commands (`phony`, `stale-file-removal`,
+  `create-build-directory`, target-dependency aggregation nodes) carry a
+  bare `{tool, inputs?, outputs?}` subset with no description. v1 skips
+  them so the DAG surfaces real tasks only.
 
 The manifest is the authoritative "what Xcode planned to do" input.
 
@@ -150,11 +176,11 @@ single upstream key whose signature changed first.
 
 ## Phasing
 
-| Phase | Scope | Est. effort |
+| Phase | Scope | Status |
 |---|---|---|
-| **v0** | xcactivitylog → flat list of tasks w/ status, duration, errors. JSON dump. No manifest. No build.db. | ~1d |
-| **v1** | + manifest parse → real planned task graph joined to executed sections. Graphviz dot renderer. | ~2d |
-| **v2** | + build.db signature diff → execution reasons populated per task. | ~2–3d |
+| **v0** | xcactivitylog → flat list of tasks w/ status, duration, errors. JSON dump. No manifest. No build.db. | **landed** |
+| **v1** | + manifest parse → real planned task graph joined to executed sections. Graphviz dot renderer. | **landed** |
+| **v2** | + build.db signature diff → execution reasons populated per task. | planned |
 | **v3** | + `.dia` parsing via cgo libclang (OR skip permanently if coverage from xcactivitylog stderr is enough). | TBD |
 
 Each phase is its own PR. v0 ships useful on day one (standalone JSON
@@ -164,11 +190,16 @@ of executed tasks, already better than `xcodebuild -verbose` greps).
 
 - `internal/xcelerate/buildanalyzer/` — new package. Pure data +
   readers, no network, no auth.
-  - `manifest.go` — YAML decoder for `manifest-*.xcbuild`.
-  - `ruledb.go` — `modernc.org/sqlite` reader for `build.db` (no cgo).
-  - `activity.go` — extends the existing `internal/xcactivitylog`
-    reader with an `IDEActivityLogCommandInvocationSection` walker.
-  - `report.go` — the joined `Report` struct + JSON/dot renderers.
+  - `manifest.go` — JSON decoder for `manifest.json` (**v1**).
+  - `ruledb.go` — `modernc.org/sqlite` reader for `build.db` (no cgo,
+    v2).
+  - `activity.go` — SLF walker that surfaces one Task per
+    `IDEActivityLogCommandInvocationSection`, plus v1's `JoinManifest`
+    that annotates Tasks with Planned/Tool/Inputs/Outputs and emits
+    `Dependency` edges from the manifest's input/output file-path join.
+  - `dot.go` — pure stdlib Graphviz `.dot` renderer (v1); nodes
+    color-coded green/red/grey.
+  - `task.go` — the joined `Report` struct + `Task` + `Dependency`.
 - `cmd/xcode/analyze.go` — cobra subcommand `bitrise-build-cache
   xcode analyze <DerivedDataPath|xcresult>`.
 - `docs/xcode-build-analyzer.md` — this file.
@@ -186,8 +217,9 @@ analyzer is an off-line consumer of artifacts the OS already wrote.
   `mattn/go-sqlite3` (cgo, faster). Pure Go wins on cross-compile
   cleanliness; the DB is tiny (KB–MB) and post-mortem, speed is a
   non-issue.
-- **YAML parser**: `gopkg.in/yaml.v3` handles the manifest fine; no
-  need for a custom parser.
+- **Manifest parser**: `encoding/json` works out of the box. The design
+  doc assumed YAML — current Xcode emits JSON (see the deviation note
+  above). No third-party dep needed.
 - **llbuild signature semantics**: v1 treats the signature as opaque
   ("mismatched" or "matched"). Reverse-engineering llbuild's signature
   composition is a project unto itself and would only improve the

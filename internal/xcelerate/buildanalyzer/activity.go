@@ -84,6 +84,172 @@ func MostRecentActivityLog(derivedData string) (string, error) {
 	return cands[0].path, nil
 }
 
+// JoinManifest extends report in place with manifest-sourced data:
+//   - matches each ran Task to a planned Command (by signature when both
+//     carry one, else by description string normalized the same way) and
+//     stamps Planned=true + overrides Tool + fills Inputs/Outputs.
+//   - appends a synthetic Task (Ran=false, Planned=true) for every Command
+//     that had no activity-log section.
+//   - derives Dependency edges from the manifest's input/output file-path
+//     join: when Command A outputs file F and Command B inputs F, emit
+//     Dependency{From: A.Key, To: B.Key}.
+//
+// Commands with no description are orchestration artifacts (phony,
+// stale-file-removal, create-build-directory …) that never produce an
+// activity-log section; they're skipped entirely so the DAG stays readable.
+func JoinManifest(report *Report, manifest Manifest) {
+	// Index Commands by description + signature. Each commandEntry carries the
+	// canonical Key the Report will use — the command map's key string, which
+	// is what Graphviz nodes get labeled with.
+	type commandEntry struct {
+		key string
+		cmd ManifestCommand
+	}
+
+	bySignature := make(map[string]commandEntry, len(manifest.Commands))
+	byDescription := make(map[string]commandEntry, len(manifest.Commands))
+
+	for key, cmd := range manifest.Commands {
+		if cmd.Description == "" {
+			continue
+		}
+
+		entry := commandEntry{key: key, cmd: cmd}
+		if cmd.Signature != "" {
+			bySignature[cmd.Signature] = entry
+		}
+		byDescription[cmd.Description] = entry
+	}
+
+	matched := make(map[string]struct{}, len(manifest.Commands))
+
+	for i := range report.Tasks {
+		task := &report.Tasks[i]
+
+		stripped := stripInTargetSuffix(task.Key)
+		var hit commandEntry
+		var ok bool
+		if entry, found := bySignature[task.Key]; found {
+			hit, ok = entry, true
+		} else if entry, found := byDescription[stripped]; found {
+			hit, ok = entry, true
+		}
+
+		if !ok {
+			continue
+		}
+
+		matched[hit.key] = struct{}{}
+
+		task.Planned = true
+		// Override v0's first-word tool heuristic with the manifest's llbuild
+		// tool label — `linker`, `swift-driver-compilation`, `shell`, etc.
+		// The manifest value is canonical; v0's extractTool is a prefix hack.
+		task.Tool = hit.cmd.Tool
+		task.Inputs = hit.cmd.Inputs
+		task.Outputs = hit.cmd.Outputs
+	}
+
+	// Append planned-only Tasks so the dot renderer can render them greyed-out.
+	// Walk commands in sorted key order for a stable append sequence.
+	unmatchedKeys := make([]string, 0, len(manifest.Commands))
+	for key, cmd := range manifest.Commands {
+		if cmd.Description == "" {
+			continue
+		}
+		if _, hit := matched[key]; hit {
+			continue
+		}
+
+		unmatchedKeys = append(unmatchedKeys, key)
+	}
+	sort.Strings(unmatchedKeys)
+
+	for _, key := range unmatchedKeys {
+		cmd := manifest.Commands[key]
+		report.Tasks = append(report.Tasks, Task{
+			Key:     key,
+			Tool:    cmd.Tool,
+			Target:  extractTarget(cmd.Description),
+			Planned: true,
+			Ran:     false,
+			Inputs:  cmd.Inputs,
+			Outputs: cmd.Outputs,
+		})
+	}
+
+	report.Dependencies = deriveDependencies(manifest)
+}
+
+// deriveDependencies walks the manifest commands and emits one edge per
+// input/output file-path join. Orchestration commands (empty description) are
+// skipped on both sides so the DAG surfaces real tasks only.
+func deriveDependencies(manifest Manifest) []Dependency {
+	// Index: file path -> list of command keys that produce it.
+	producers := make(map[string][]string, len(manifest.Commands))
+
+	for key, cmd := range manifest.Commands {
+		if cmd.Description == "" {
+			continue
+		}
+
+		for _, out := range cmd.Outputs {
+			producers[out] = append(producers[out], key)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(manifest.Commands))
+	deps := make([]Dependency, 0, len(manifest.Commands))
+
+	for consumerKey, cmd := range manifest.Commands {
+		if cmd.Description == "" {
+			continue
+		}
+
+		for _, in := range cmd.Inputs {
+			for _, producerKey := range producers[in] {
+				if producerKey == consumerKey {
+					continue
+				}
+
+				edgeID := producerKey + "\x00" + consumerKey
+				if _, dup := seen[edgeID]; dup {
+					continue
+				}
+				seen[edgeID] = struct{}{}
+
+				deps = append(deps, Dependency{From: producerKey, To: consumerKey})
+			}
+		}
+	}
+
+	sort.Slice(deps, func(i, j int) bool {
+		if deps[i].From != deps[j].From {
+			return deps[i].From < deps[j].From
+		}
+
+		return deps[i].To < deps[j].To
+	})
+
+	return deps
+}
+
+// stripInTargetSuffix peels off ` (in target 'X' from project 'Y')` and any
+// trailing whitespace. Activity-log signatures always carry the target
+// clause; manifest descriptions never do, so the stripped form is the lowest
+// common denominator for description matching. Also unescapes `\ ` → ` ` to
+// bridge the activity log's Objective-C-style escaping of embedded spaces in
+// SwiftDriver / SwiftEmitModule signatures.
+func stripInTargetSuffix(key string) string {
+	// Strip the trailing (in target '…' from project '…') clause — one
+	// predictable suffix, cheaper to find by substring than regex.
+	if idx := strings.Index(key, " (in target '"); idx > 0 {
+		key = key[:idx]
+	}
+
+	return strings.ReplaceAll(key, `\ `, " ")
+}
+
 // Private — SLF parse
 
 // commandInvocationClass is the one class name whose instances the v0
@@ -258,6 +424,7 @@ func taskFromFields(fields []token) (Task, bool) {
 		StdoutExcerpt: "",
 		StderrExcerpt: "",
 		Errors:        extractErrors(commandDetail),
+		Ran:           true,
 	}, true
 }
 
