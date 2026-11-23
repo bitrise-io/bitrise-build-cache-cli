@@ -376,9 +376,9 @@ func TestJoinManifest_AppendsPlannedNotRanTasks(t *testing.T) {
 	}
 	manifest := buildanalyzer.Manifest{
 		Commands: map[string]buildanalyzer.ManifestCommand{
-			"CmdLd":     {Tool: "linker", Description: "Ld /A"},
+			"CmdLd":            {Tool: "linker", Description: "Ld /A"},
 			"CmdCompileNotRun": {Tool: "swift-driver-compilation", Description: "CompileSwift Unused.swift"},
-			"<orch>":    {Tool: "phony"}, // no description — skipped
+			"<orch>":           {Tool: "phony"}, // no description — skipped
 		},
 	}
 
@@ -435,6 +435,153 @@ func TestJoinManifest_UnescapesBackslashSpace(t *testing.T) {
 
 	assert.True(t, report.Tasks[0].Planned, "backslash-space normalization should still match")
 	assert.Equal(t, "swift-driver-compilation", report.Tasks[0].Tool)
+}
+
+func TestJoinManifest_NormalizesEscapedSpacesOnManifestSide(t *testing.T) {
+	// Defensive — if a future Xcode starts emitting `\ ` in the manifest
+	// description too, the join should still land. Both sides pass through
+	// normalizeMatchKey.
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{
+			Key: `CompileC foo bar.m (in target 'X' from project 'X')`,
+			Ran: true,
+		}},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"Cmd": {
+				Tool:        "clang-driver",
+				Description: `CompileC foo\ bar.m`,
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	assert.True(t, report.Tasks[0].Planned, "both sides should normalize to the same form")
+	assert.Equal(t, "clang-driver", report.Tasks[0].Tool)
+}
+
+func TestJoinManifest_AttachesSwiftSubEventsToParentDriver(t *testing.T) {
+	// Activity-log SwiftCompile / SwiftEmitModule / SwiftDriverJobDiscovery
+	// rows are sub-events of the swift driver with no separate manifest
+	// entry. JoinManifest attributes them to the parent driver command by
+	// target name so Planned=true and the Tool/Inputs/Outputs match.
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{
+			{Key: `SwiftCompile normal arm64 Compiling\ App.swift /tmp/App.swift (in target 'MinimalApp' from project 'MinimalApp')`, Ran: true},
+			{Key: `SwiftEmitModule normal arm64 Emitting\ module\ for\ MinimalApp (in target 'MinimalApp' from project 'MinimalApp')`, Ran: true},
+			{Key: `SwiftDriverJobDiscovery normal arm64 Compiling App.swift (in target 'MinimalApp' from project 'MinimalApp')`, Ran: true},
+		},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P0:target-X:Debug:SwiftDriver Compilation MinimalApp normal arm64 com.apple.xcode.tools.swift.compiler": {
+				Tool:        "swift-driver-compilation",
+				Description: "SwiftDriver Compilation MinimalApp normal arm64 com.apple.xcode.tools.swift.compiler",
+				Outputs:     []string{"MinimalApp.swiftmodule"},
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	for i, task := range report.Tasks[:3] {
+		assert.True(t, task.Planned, "swift sub-event %d should attach to parent driver", i)
+		assert.Equal(t, "swift-driver-compilation", task.Tool, "sub-event %d inherits driver's tool", i)
+	}
+}
+
+func TestJoinManifest_PopulatesArgs(t *testing.T) {
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{
+			Key: `Ld /Foo normal arm64 (in target 'Foo' from project 'Foo')`,
+			Ran: true,
+		}},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P2:target-X:Debug:Ld Foo": {
+				Tool:        "linker",
+				Description: "Ld /Foo normal arm64",
+				Args:        []string{"/usr/bin/clang", "-Xlinker", "-no_deduplicate"},
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	assert.Equal(t, []string{"/usr/bin/clang", "-Xlinker", "-no_deduplicate"}, report.Tasks[0].Args)
+}
+
+func TestJoinManifest_StripsPriorityPrefix(t *testing.T) {
+	report := buildanalyzer.Report{
+		Tasks: []buildanalyzer.Task{{
+			Key: `Ld /Foo normal arm64 (in target 'Foo' from project 'Foo')`,
+			Ran: true,
+		}},
+	}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P2:target-X:Debug:Ld /Foo normal arm64": {
+				Tool:        "linker",
+				Description: "Ld /Foo normal arm64",
+				Outputs:     []string{"/Foo"},
+			},
+			// Also an unmatched one — its planned-only Task should also
+			// carry the stripped key + priority.
+			"P0:::CreateBuildDirectory /tmp/out": {
+				Tool:        "create-build-directory",
+				Description: "CreateBuildDirectory /tmp/out",
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	// Ran task: Key preserved (activity-log form), ManifestKey + Priority added.
+	ranTask := report.Tasks[0]
+	assert.Equal(t, 2, ranTask.Priority, "priority parsed off P<N>: prefix")
+	assert.Equal(t, "P2:target-X:Debug:Ld /Foo normal arm64", ranTask.ManifestKey,
+		"original manifest key preserved on the matched task")
+
+	// Planned-only task: Key is stripped, ManifestKey carries the full form.
+	var plannedOnly buildanalyzer.Task
+	for _, t := range report.Tasks {
+		if !t.Ran {
+			plannedOnly = t
+		}
+	}
+	assert.Equal(t, "CreateBuildDirectory /tmp/out", plannedOnly.Key,
+		"planned-only Task.Key is the stripped form (no `P0:::` prefix)")
+	assert.Equal(t, "P0:::CreateBuildDirectory /tmp/out", plannedOnly.ManifestKey)
+	assert.Equal(t, 0, plannedOnly.Priority)
+
+	// Dependency edges — none wired for this fixture, but verify any edge
+	// that would be synthesized uses the stripped key form.
+}
+
+func TestJoinManifest_DependencyEdgesUseStrippedKeys(t *testing.T) {
+	// Two manifest commands with prefix; the derived dependency's endpoints
+	// must carry the stripped key form so a reader can grep the Dot output
+	// cleanly.
+	report := buildanalyzer.Report{}
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P0:target-X:Debug:CompileA": {
+				Tool: "swift-driver-compilation", Description: "CompileA", Outputs: []string{"A.o"},
+			},
+			"P2:target-X:Debug:LdApp": {
+				Tool: "linker", Description: "LdApp", Inputs: []string{"A.o"}, Outputs: []string{"/App"},
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	require.Len(t, report.Dependencies, 1)
+	assert.Equal(t, "CompileA", report.Dependencies[0].From, "edge uses stripped key, not P0:... prefix")
+	assert.Equal(t, "LdApp", report.Dependencies[0].To)
 }
 
 // TestReadReport_RealSample exercises the walker against the committed

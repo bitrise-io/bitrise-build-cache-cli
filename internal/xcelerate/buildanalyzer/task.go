@@ -43,6 +43,22 @@ type Task struct {
 	// Command. Empty when no manifest match is available.
 	Inputs  []string `json:"inputs,omitempty"`
 	Outputs []string `json:"outputs,omitempty"`
+	// Args is the matched llbuild Command's argv (first entry is the tool
+	// binary; rest are its flags). Only a small subset of manifest Commands
+	// carry args — orchestration / phony / Gate entries omit the field, and
+	// the SwiftDriver compilation entry delegates its argv to the driver —
+	// so most joined Tasks come out with Args empty.
+	Args []string `json:"args,omitempty"`
+
+	// Priority is the llbuild scheduler priority parsed off the manifest key's
+	// `P<N>:` prefix (0 when the prefix is absent — phony / Gate / virtual
+	// nodes). Lower runs earlier.
+	Priority int `json:"priority,omitempty"`
+	// ManifestKey preserves the full unparsed llbuild key (with the `P<N>:`
+	// prefix) so callers who need to correlate back to a specific manifest
+	// entry still can; the primary Key field holds the stripped form that
+	// Dependency edges reference.
+	ManifestKey string `json:"manifestKey,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing

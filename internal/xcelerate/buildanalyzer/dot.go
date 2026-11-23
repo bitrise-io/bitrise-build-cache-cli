@@ -76,10 +76,14 @@ func dotID(key string) string {
 	return fmt.Sprintf("n%016x", h)
 }
 
-// dotLabel renders a two-line label: the key (truncated), then a small
-// metadata line with tool + duration + exit when the task ran.
+// dotLabel renders a two-line label: the key (truncated) with an optional
+// priority suffix, then a small metadata line with tool + duration + exit
+// when the task ran.
 func dotLabel(task Task) string {
 	primary := truncateLabel(task.Key, 80)
+	if task.Priority > 0 {
+		primary = fmt.Sprintf("%s [P%d]", primary, task.Priority)
+	}
 	if !task.Ran {
 		return primary + "\\n(planned)"
 	}

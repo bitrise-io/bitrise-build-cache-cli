@@ -87,38 +87,54 @@ func MostRecentActivityLog(derivedData string) (string, error) {
 // JoinManifest extends report in place with manifest-sourced data:
 //   - matches each ran Task to a planned Command (by signature when both
 //     carry one, else by description string normalized the same way) and
-//     stamps Planned=true + overrides Tool + fills Inputs/Outputs.
+//     stamps Planned=true + overrides Tool + fills Inputs/Outputs/Args.
 //   - appends a synthetic Task (Ran=false, Planned=true) for every Command
 //     that had no activity-log section.
 //   - derives Dependency edges from the manifest's input/output file-path
 //     join: when Command A outputs file F and Command B inputs F, emit
-//     Dependency{From: A.Key, To: B.Key}.
+//     Dependency{From: A.Key, To: B.Key} — using the priority-stripped key
+//     on both ends so the edge strings read cleanly.
 //
 // Commands with no description are orchestration artifacts (phony,
 // stale-file-removal, create-build-directory …) that never produce an
 // activity-log section; they're skipped entirely so the DAG stays readable.
 func JoinManifest(report *Report, manifest Manifest) {
-	// Index Commands by description + signature. Each commandEntry carries the
-	// canonical Key the Report will use — the command map's key string, which
-	// is what Graphviz nodes get labeled with.
-	type commandEntry struct {
-		key string
-		cmd ManifestCommand
-	}
+	// Index Commands by description + signature. Each commandEntry carries
+	// BOTH the stripped key (used for Report-side identity + edges) and the
+	// original manifestKey (used for the matched-set bookkeeping), so a
+	// re-run on the same report stays idempotent and dependency emission
+	// uses the clean string.
 
 	bySignature := make(map[string]commandEntry, len(manifest.Commands))
 	byDescription := make(map[string]commandEntry, len(manifest.Commands))
+	// swiftDriverCompilations: target name -> entry for the top-level
+	// `SwiftDriver Compilation <target> normal <arch>` command. Activity-log
+	// sub-events emitted by the swift driver (SwiftCompile per-file,
+	// SwiftEmitModule, SwiftDriverJobDiscovery) have no separate manifest
+	// entry but belong to this parent — we attribute them so the TOP-N
+	// slowest list isn't dominated by unjoined "ran but not planned" rows.
+	swiftDriverCompilations := make(map[string]commandEntry)
 
 	for key, cmd := range manifest.Commands {
 		if cmd.Description == "" {
 			continue
 		}
 
-		entry := commandEntry{key: key, cmd: cmd}
+		stripped, priority := stripPriorityPrefix(key)
+		entry := commandEntry{
+			strippedKey: stripped,
+			manifestKey: key,
+			priority:    priority,
+			cmd:         cmd,
+		}
 		if cmd.Signature != "" {
 			bySignature[cmd.Signature] = entry
 		}
-		byDescription[cmd.Description] = entry
+		byDescription[normalizeMatchKey(cmd.Description)] = entry
+
+		if target := extractSwiftDriverCompilationTarget(cmd.Description); target != "" {
+			swiftDriverCompilations[target] = entry
+		}
 	}
 
 	matched := make(map[string]struct{}, len(manifest.Commands))
@@ -126,28 +142,23 @@ func JoinManifest(report *Report, manifest Manifest) {
 	for i := range report.Tasks {
 		task := &report.Tasks[i]
 
-		stripped := stripInTargetSuffix(task.Key)
-		var hit commandEntry
-		var ok bool
-		if entry, found := bySignature[task.Key]; found {
-			hit, ok = entry, true
-		} else if entry, found := byDescription[stripped]; found {
-			hit, ok = entry, true
-		}
-
+		hit, ok := matchCommand(task.Key, bySignature, byDescription, swiftDriverCompilations)
 		if !ok {
 			continue
 		}
 
-		matched[hit.key] = struct{}{}
+		matched[hit.manifestKey] = struct{}{}
 
 		task.Planned = true
+		task.ManifestKey = hit.manifestKey
+		task.Priority = hit.priority
 		// Override v0's first-word tool heuristic with the manifest's llbuild
 		// tool label — `linker`, `swift-driver-compilation`, `shell`, etc.
 		// The manifest value is canonical; v0's extractTool is a prefix hack.
 		task.Tool = hit.cmd.Tool
 		task.Inputs = hit.cmd.Inputs
 		task.Outputs = hit.cmd.Outputs
+		task.Args = hit.cmd.Args
 	}
 
 	// Append planned-only Tasks so the dot renderer can render them greyed-out.
@@ -167,25 +178,65 @@ func JoinManifest(report *Report, manifest Manifest) {
 
 	for _, key := range unmatchedKeys {
 		cmd := manifest.Commands[key]
+		stripped, priority := stripPriorityPrefix(key)
 		report.Tasks = append(report.Tasks, Task{
-			Key:     key,
-			Tool:    cmd.Tool,
-			Target:  extractTarget(cmd.Description),
-			Planned: true,
-			Ran:     false,
-			Inputs:  cmd.Inputs,
-			Outputs: cmd.Outputs,
+			Key:         stripped,
+			ManifestKey: key,
+			Priority:    priority,
+			Tool:        cmd.Tool,
+			Target:      extractTarget(cmd.Description),
+			Planned:     true,
+			Ran:         false,
+			Inputs:      cmd.Inputs,
+			Outputs:     cmd.Outputs,
+			Args:        cmd.Args,
 		})
 	}
 
 	report.Dependencies = deriveDependencies(manifest)
 }
 
+// matchCommand runs a Task.Key through the three lookup indexes in priority
+// order: exact signature match first (the strongest identity), then
+// normalized description (handles the `\ ` escape differences between
+// activity-log signatures and manifest descriptions), then the swift-driver
+// sub-event fallback that attributes SwiftCompile / SwiftEmitModule /
+// SwiftDriverJobDiscovery activity-log rows to their parent manifest
+// `SwiftDriver Compilation <target>` command.
+func matchCommand(taskKey string, bySignature, byDescription, swiftDrivers map[string]commandEntry) (commandEntry, bool) {
+	if entry, found := bySignature[taskKey]; found {
+		return entry, true
+	}
+
+	normalized := normalizeMatchKey(stripInTargetSuffix(taskKey))
+	if entry, found := byDescription[normalized]; found {
+		return entry, true
+	}
+
+	if target := extractSwiftSubEventTarget(taskKey); target != "" {
+		if entry, found := swiftDrivers[target]; found {
+			return entry, true
+		}
+	}
+
+	return commandEntry{}, false
+}
+
+// commandEntry mirrors JoinManifest's inner type; exported at package scope
+// so matchCommand can take it as a parameter.
+type commandEntry struct {
+	strippedKey string
+	manifestKey string
+	priority    int
+	cmd         ManifestCommand
+}
+
 // deriveDependencies walks the manifest commands and emits one edge per
 // input/output file-path join. Orchestration commands (empty description) are
-// skipped on both sides so the DAG surfaces real tasks only.
+// skipped on both sides so the DAG surfaces real tasks only. Edge endpoints
+// carry the priority-stripped key form to match Task.Key.
 func deriveDependencies(manifest Manifest) []Dependency {
-	// Index: file path -> list of command keys that produce it.
+	// Index: file path -> list of stripped command keys that produce it.
 	producers := make(map[string][]string, len(manifest.Commands))
 
 	for key, cmd := range manifest.Commands {
@@ -193,8 +244,9 @@ func deriveDependencies(manifest Manifest) []Dependency {
 			continue
 		}
 
+		stripped, _ := stripPriorityPrefix(key)
 		for _, out := range cmd.Outputs {
-			producers[out] = append(producers[out], key)
+			producers[out] = append(producers[out], stripped)
 		}
 	}
 
@@ -206,19 +258,20 @@ func deriveDependencies(manifest Manifest) []Dependency {
 			continue
 		}
 
+		strippedConsumer, _ := stripPriorityPrefix(consumerKey)
 		for _, in := range cmd.Inputs {
 			for _, producerKey := range producers[in] {
-				if producerKey == consumerKey {
+				if producerKey == strippedConsumer {
 					continue
 				}
 
-				edgeID := producerKey + "\x00" + consumerKey
+				edgeID := producerKey + "\x00" + strippedConsumer
 				if _, dup := seen[edgeID]; dup {
 					continue
 				}
 				seen[edgeID] = struct{}{}
 
-				deps = append(deps, Dependency{From: producerKey, To: consumerKey})
+				deps = append(deps, Dependency{From: producerKey, To: strippedConsumer})
 			}
 		}
 	}
@@ -237,9 +290,7 @@ func deriveDependencies(manifest Manifest) []Dependency {
 // stripInTargetSuffix peels off ` (in target 'X' from project 'Y')` and any
 // trailing whitespace. Activity-log signatures always carry the target
 // clause; manifest descriptions never do, so the stripped form is the lowest
-// common denominator for description matching. Also unescapes `\ ` → ` ` to
-// bridge the activity log's Objective-C-style escaping of embedded spaces in
-// SwiftDriver / SwiftEmitModule signatures.
+// common denominator for description matching.
 func stripInTargetSuffix(key string) string {
 	// Strip the trailing (in target '…' from project '…') clause — one
 	// predictable suffix, cheaper to find by substring than regex.
@@ -247,7 +298,146 @@ func stripInTargetSuffix(key string) string {
 		key = key[:idx]
 	}
 
-	return strings.ReplaceAll(key, `\ `, " ")
+	return key
+}
+
+// normalizeMatchKey normalizes a string so activity-log signatures and
+// manifest descriptions compare equal regardless of Xcode's whitespace
+// encoding. Applied to BOTH sides of the join. Current fold-ins, observed on
+// Xcode 26.x MinimalApp:
+//   - `\ ` (backslash-space) -> ` `. Activity-log signatures escape embedded
+//     spaces in SwiftDriver / SwiftEmitModule entries; manifest descriptions
+//     don't.
+//   - runs of ASCII whitespace -> a single space. Keeps the match tolerant
+//     to future drift (e.g. tabs inserted by a tool version bump).
+//   - leading/trailing whitespace trimmed.
+//
+// The normalization is intentionally cheap — one pass, no regex compile —
+// because JoinManifest calls it per-command and per-task.
+func normalizeMatchKey(s string) string {
+	s = strings.ReplaceAll(s, `\ `, " ")
+
+	var b strings.Builder
+	b.Grow(len(s))
+
+	lastSpace := false
+	for i := range len(s) {
+		c := s[i]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			if !lastSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			lastSpace = true
+
+			continue
+		}
+		lastSpace = false
+		b.WriteByte(c)
+	}
+
+	out := b.String()
+	if len(out) > 0 && out[len(out)-1] == ' ' {
+		out = out[:len(out)-1]
+	}
+
+	return out
+}
+
+// stripPriorityPrefix peels the llbuild `P<N>:<scope>:<config>:` prefix off
+// a manifest command key, returning the bare description tail plus the
+// numeric priority. The prefix encodes two fields after the priority:
+//
+//   - Top-level commands have both empty: `P0:::<desc>` — three consecutive
+//     colons after `P<N>`.
+//   - Target-scoped commands carry `target-<guid>:<config>`:
+//     `P2:target-X:Debug:<desc>` — two colons, non-empty fields in between.
+//
+// So the strip rule is uniform: drop exactly two more colon-terminated
+// fields after the priority colon. The returned priority is 0 when the
+// prefix is missing or malformed — virtual nodes like `<all>` and
+// `<target-…>` fall into that bucket, and the whole key passes through.
+func stripPriorityPrefix(key string) (string, int) {
+	if len(key) < 2 || key[0] != 'P' {
+		return key, 0
+	}
+
+	// Scan digits after 'P'.
+	i := 1
+	for i < len(key) && key[i] >= '0' && key[i] <= '9' {
+		i++
+	}
+	if i == 1 || i >= len(key) || key[i] != ':' {
+		return key, 0
+	}
+
+	priority := 0
+	for j := 1; j < i; j++ {
+		priority = priority*10 + int(key[j]-'0')
+	}
+
+	// Walk past the two scope fields: find the next two colons.
+	rest := key[i+1:]
+	for range 2 {
+		colon := strings.IndexByte(rest, ':')
+		if colon < 0 {
+			return key, 0
+		}
+		rest = rest[colon+1:]
+	}
+
+	return rest, priority
+}
+
+// extractSwiftDriverCompilationTarget returns the target name encoded in a
+// manifest description of the form `SwiftDriver Compilation <target>
+// normal <arch> com.apple.xcode.tools.swift.compiler`. Empty when the
+// description is not a swift-driver compilation entry.
+//
+// Used by JoinManifest to build a target-indexed table of swift-driver
+// commands, so the activity log's sub-event rows can attach back to their
+// parent.
+func extractSwiftDriverCompilationTarget(description string) string {
+	const prefix = "SwiftDriver Compilation "
+	if !strings.HasPrefix(description, prefix) {
+		return ""
+	}
+
+	rest := description[len(prefix):]
+
+	// Skip an optional "Requirements " token — SwiftDriver also emits a
+	// `SwiftDriver Compilation Requirements <target> ...` command whose
+	// activity-log sub-events we do NOT want to attribute to the main
+	// compilation (they have their own driver entry already matched by
+	// description).
+	if strings.HasPrefix(rest, "Requirements ") {
+		return ""
+	}
+
+	// `<target> normal <arch> ...` — target is the first whitespace-delimited
+	// token.
+	if idx := strings.IndexByte(rest, ' '); idx > 0 {
+		return rest[:idx]
+	}
+
+	return rest
+}
+
+// extractSwiftSubEventTarget returns the target name encoded in an
+// activity-log task key for a swift-driver sub-event (SwiftCompile,
+// SwiftEmitModule, SwiftDriverJobDiscovery). These rows have no separate
+// manifest entry — the swift driver emits them internally — so the join
+// attributes them to the parent `SwiftDriver Compilation <target> ...`
+// command via the target name lifted from the `in target '…'` suffix.
+// Empty when the key is not a swift sub-event or omits the suffix.
+func extractSwiftSubEventTarget(taskKey string) string {
+	switch {
+	case strings.HasPrefix(taskKey, "SwiftCompile "),
+		strings.HasPrefix(taskKey, "SwiftEmitModule "),
+		strings.HasPrefix(taskKey, "SwiftDriverJobDiscovery "):
+		return extractTarget(taskKey)
+	default:
+		return ""
+	}
 }
 
 // Private — SLF parse
