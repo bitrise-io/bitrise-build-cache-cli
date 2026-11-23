@@ -616,3 +616,68 @@ func TestReadReport_RealSample(t *testing.T) {
 	}
 	assert.Less(t, nonZero, len(report.Tasks)/4, "most tasks on a green build decode as exitCode 0")
 }
+
+// TestReadJoinClassify_EndToEnd chains Read → JoinManifest → Classify against
+// an in-memory fixture so the v2 pipeline is proven end-to-end without a real
+// DerivedData tree. The fixture pins one of each ExecutionReason bucket.
+func TestReadJoinClassify_EndToEnd(t *testing.T) {
+	// Report seeded as-if ReadReport returned three ran tasks (two match the
+	// manifest, one is a cold rule with no manifest entry).
+	report := buildanalyzer.Report{
+		Build: buildanalyzer.BuildMeta{Title: "Build Foo"},
+		Tasks: []buildanalyzer.Task{
+			{Key: `Ld /Foo (in target 'Foo' from project 'Foo')`, Ran: true},
+			{Key: `CompileSwift Bar.swift (in target 'Foo' from project 'Foo')`, Ran: true},
+			{Key: `BogusActivityOnlySection`, Ran: true},
+		},
+	}
+
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P2:target-X:Debug:Ld /Foo": {
+				Tool: "linker", Description: "Ld /Foo", Outputs: []string{"/Foo"},
+			},
+			"P0:target-X:Debug:CompileSwift Bar.swift": {
+				Tool: "swift-driver-compilation", Description: "CompileSwift Bar.swift",
+			},
+			// A planned command that didn't run this build — becomes
+			// Planned=true, Ran=false after JoinManifest.
+			"P0:::CopyPNGFile Icon.png": {
+				Tool: "shell", Description: "CopyPNGFile Icon.png",
+			},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	snap := buildanalyzer.Snapshot{
+		Iteration: 7,
+		Rules: map[string]buildanalyzer.RuleResult{
+			// Linker ran this build.
+			"CP2:target-X:Debug:Ld /Foo": {
+				Key:       "CP2:target-X:Debug:Ld /Foo",
+				BuiltAt:   time.Unix(7, 0).UTC(),
+				Signature: []byte{0x11, 0x22},
+			},
+			// Compile was skipped — carried over from iteration 2.
+			"CP0:target-X:Debug:CompileSwift Bar.swift": {
+				Key:       "CP0:target-X:Debug:CompileSwift Bar.swift",
+				BuiltAt:   time.Unix(2, 0).UTC(),
+				Signature: []byte{0x33},
+			},
+			// CopyPNGFile is cold — no rule row (left absent on purpose).
+		},
+	}
+
+	buildanalyzer.Classify(&report, snap)
+
+	// Count by reason.
+	counts := map[buildanalyzer.ExecutionReason]int{}
+	for _, task := range report.Tasks {
+		counts[task.ExecutionReason]++
+	}
+
+	assert.Equal(t, 1, counts[buildanalyzer.ReasonRanThisBuild], "Ld /Foo ran this build")
+	assert.Equal(t, 1, counts[buildanalyzer.ReasonSkippedUpToDate], "CompileSwift was reused")
+	assert.Equal(t, 2, counts[buildanalyzer.ReasonCold], "CopyPNGFile + BogusActivityOnlySection are cold")
+}

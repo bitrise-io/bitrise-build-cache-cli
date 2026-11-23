@@ -33,21 +33,50 @@ No flags required. Every Xcode build writes these as a side-effect.
 
 ### 1. `build.db` — llbuild incremental state
 
-Path: `~/Library/Developer/Xcode/DerivedData/<Proj>-<hash>/Build/Intermediates.noindex/XCBuildData/<build-hex>.xcbuilddata/build.db`
+Path on Xcode 26: `~/Library/Developer/Xcode/DerivedData/<Proj>-<hash>/Build/Intermediates.noindex/XCBuildData/build.db`
+
+**Deviation from the original sketch (v2 implementation):** the DB does NOT
+live inside the `<build-hex>.xcbuilddata/` directory next to `manifest.json`
+— it sits one level up in `XCBuildData/` and the same DB covers every
+`.xcbuilddata` sibling (one row per rule-key, with multiple manifests
+sharing the row space). `LocateBuildDB` resolves the parent-level path
+directly. If a future Xcode moves it back inside the hex directory, update
+that locator.
 
 SQLite database. Source of "did this task's signature change since the
-last build". Key tables:
+last build". Key tables as observed on Xcode 26.x:
 
-- `key_names` — interned string pool for rule keys.
-- `rule_results` — one row per llbuild rule: `(key_id, value_bytes,
-  built_at, signature)`. `value_bytes` is an opaque llbuild blob;
-  `signature` is the hash llbuild compares against to decide "re-run
-  or reuse".
-- `rule_dependencies` — adjacency: `(rule_id, dependency_rule_id)`.
+- `key_names (id INTEGER PRIMARY KEY, key STRING UNIQUE)` — interned string
+  pool for rule keys. The reader joins against this. Keys carry a one-byte
+  rule-kind prefix: `C` for a Command rule (manifest-command-keyed), `N`
+  for a Node rule (file / virtual node). The classifier looks up Task
+  rules as `"C" + Task.ManifestKey` with raw-key fallbacks.
+- `rule_results (key_id, value BLOB, signature INTEGER, built_at INTEGER,
+  computed_at INTEGER, start REAL, end REAL, dependencies BLOB)`.
+  - `built_at` turned out to be **an iteration counter, NOT a timestamp**
+    — a small integer that equals `info.iteration` on the build that
+    computed the row and stays stuck at an older value for rules carried
+    over unchanged. v2 uses this for the ReasonRanThisBuild /
+    ReasonSkippedUpToDate split via iteration equality.
+  - `start` / `end` are REAL seconds on a clock that is NOT CoreFoundation
+    absolute time (observed range ≈ 7.3 million on an Xcode build whose
+    activity-log timestamps decoded to a 2026 wall-clock). The reader
+    surfaces `start` as `RuleResult.BuiltAtStart` for callers that want
+    per-rule ordering within one build, but classification does not depend
+    on it — comparing it to the xcactivitylog wall-clock is incorrect.
+  - `signature` is an 8-byte INTEGER (int64 / uint64 bit pattern).
+- `info (id, version, client_version, iteration)` — one row carrying the
+  current build's iteration counter. `info.iteration` drives the
+  classifier.
+- `rule_dependencies` — adjacency: `(rule_id, dependency_rule_id)`. v2
+  does not read this; v3 may walk it to attribute the mismatch to a
+  specific upstream key.
 
-v1 uses this purely as a "was the signature the same as last build?"
-oracle per key. v2 may walk `rule_dependencies` to attribute the
-mismatch to a specific upstream key.
+v2 explicitly does NOT attempt to distinguish
+`signature-mismatch-with-prior` from `new-task` — that needs the prior
+build's `build.db` snapshot and we only have the current one. The four
+buckets v2 ships are the ones that fall out cleanly from a single-snapshot
+read.
 
 ### 2. `manifest.json` — static planned task graph
 
@@ -160,19 +189,29 @@ a re-parse.
 
 ## Execution reasons — how we classify
 
-For each task present in the manifest:
+v2 (landed) classifies with a single snapshot — the current build's `build.db`
+— so the signature-mismatch vs new-task distinction is **deliberately
+deferred** (that needs the prior snapshot). The four buckets v2 ships:
 
 | Condition | Reason |
 |---|---|
-| No `rule_results` row for its signature in prior build.db | `cold` |
-| Signature matches prior row + no corresponding xcactivitylog section | `skipped-up-to-date` |
-| Signature matches prior row + xcactivitylog section present | `re-ran-same-signature` *(rare — forced re-run)* |
-| Signature differs from prior row | `signature-mismatch` → list deps whose signature changed |
-| Never seen in any prior build.db | `new-task` |
+| No `rule_results` row for the task's `C`-prefixed manifest key | `cold` |
+| Rule's `built_at` == `info.iteration` | `ran-this-build` |
+| Rule's `built_at` < `info.iteration` | `skipped-up-to-date` |
+| Rule's `built_at` > `info.iteration` (shouldn't happen, defensive) | `unclassified` |
 
-v1 uses llbuild's opaque signature as the mismatch granularity ("this
-signature changed"). v2 walks `rule_dependencies` to point at the
-single upstream key whose signature changed first.
+When `info.iteration` is zero (test fixtures / older schema), v2 falls back
+to the activity-log Ran flag as the tiebreaker so warm-build output stays
+usable.
+
+**Deferred for later phases (both would need a second data source):**
+
+- `signature-mismatch` vs `new-task` — needs the prior `build.db` to diff
+  the signature column. v2 exposes the per-task `signature` hex so a BE
+  roll-up CAN run the diff across invocations, even though the CLI itself
+  doesn't.
+- Upstream-dependency attribution (the "which input key changed first"
+  message) — needs `rule_dependencies` traversal.
 
 ## Phasing
 
@@ -181,7 +220,7 @@ single upstream key whose signature changed first.
 | **v0** | xcactivitylog → flat list of tasks w/ status, duration, errors. JSON dump. No manifest. No build.db. | **landed** |
 | **v1** | + manifest parse → real planned task graph joined to executed sections. Graphviz dot renderer. | **landed** |
 | **v1.1** | Join-time fixups on top of v1: Task.Args populated from the matched manifest Command; description-side normalization widened (`\ ` → ` `, whitespace-run collapse) on both sides of the join so SwiftDriver/CompileSwift rows land; SwiftCompile/SwiftEmitModule/SwiftDriverJobDiscovery activity-log sub-events attribute to the parent `SwiftDriver Compilation <target>` command by target name; llbuild `P<N>:<scope>:<config>:` priority prefix split off the keys and surfaced as `Task.Priority` + `Task.ManifestKey`, with Dependency edges and dot labels using the stripped form. | **landed** |
-| **v2** | + build.db signature diff → execution reasons populated per task. | planned |
+| **v2** | + build.db read (`modernc.org/sqlite`, pure Go) → execution-reason classifier populates `Task.ExecutionReason` / `Task.BuiltAt` / `Task.Signature`. Four buckets: `cold`, `ran-this-build`, `skipped-up-to-date`, `unclassified`. Pretty output gains a one-letter reason column (C/R/S/U); dot renderer thickens node borders for `ran-this-build`. | **landed** |
 | **v3** | + `.dia` parsing via cgo libclang (OR skip permanently if coverage from xcactivitylog stderr is enough). | TBD |
 
 Each phase is its own PR. v0 ships useful on day one (standalone JSON
@@ -192,14 +231,17 @@ of executed tasks, already better than `xcodebuild -verbose` greps).
 - `internal/xcelerate/buildanalyzer/` — new package. Pure data +
   readers, no network, no auth.
   - `manifest.go` — JSON decoder for `manifest.json` (**v1**).
-  - `ruledb.go` — `modernc.org/sqlite` reader for `build.db` (no cgo,
-    v2).
+  - `ruledb.go` — `modernc.org/sqlite` reader for `build.db` (**v2**,
+    pure Go, no cgo).
+  - `reason.go` — v2 execution-reason classifier against the ruledb
+    Snapshot.
   - `activity.go` — SLF walker that surfaces one Task per
     `IDEActivityLogCommandInvocationSection`, plus v1's `JoinManifest`
     that annotates Tasks with Planned/Tool/Inputs/Outputs and emits
     `Dependency` edges from the manifest's input/output file-path join.
   - `dot.go` — pure stdlib Graphviz `.dot` renderer (v1); nodes
-    color-coded green/red/grey.
+    color-coded green/red/grey, with v2's `penwidth` bump for
+    `ran-this-build` borders.
   - `task.go` — the joined `Report` struct + `Task` + `Dependency`.
 - `cmd/xcode/analyze.go` — cobra subcommand `bitrise-build-cache
   xcode analyze <DerivedDataPath|xcresult>`.

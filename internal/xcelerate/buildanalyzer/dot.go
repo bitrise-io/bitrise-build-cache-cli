@@ -8,7 +8,9 @@ import (
 )
 
 // RenderDot writes a Graphviz `digraph` representation of report to out.
-// Nodes: green=ran OK, red=ran failed, grey=planned-not-ran.
+// Nodes: green=ran OK, red=ran failed, grey=planned-not-ran. Tasks the v2
+// classifier marks `ran-this-build` get a slightly bolder border so the warm
+// path still reads as skipped-cheap and the "actually re-ran" tasks pop.
 //
 // Pure string building, zero third-party deps — `dot(1)` accepts any stream
 // with the right grammar, and the subset used here (quoted labels, fillcolor,
@@ -35,7 +37,8 @@ func RenderDot(out io.Writer, report Report) error {
 		id := dotID(task.Key)
 		label := dotLabel(task)
 		fill := dotFill(task)
-		fmt.Fprintf(&b, "  %s [label=%q, fillcolor=%q];\n", id, label, fill)
+		penwidth := dotPenwidth(task)
+		fmt.Fprintf(&b, "  %s [label=%q, fillcolor=%q, penwidth=%q];\n", id, label, fill, penwidth)
 	}
 
 	if len(report.Dependencies) > 0 {
@@ -109,6 +112,17 @@ func dotFill(task Task) string {
 	default:
 		return "#B4F8B4" // green — ran OK
 	}
+}
+
+// dotPenwidth bolds the border of tasks the v2 classifier marks
+// `ran-this-build`, so the actually-executed path stands out against the
+// typically-dominant skipped-up-to-date background on warm builds.
+func dotPenwidth(task Task) string {
+	if task.ExecutionReason == ReasonRanThisBuild {
+		return "2.5"
+	}
+
+	return "1"
 }
 
 func truncateLabel(s string, limit int) string {

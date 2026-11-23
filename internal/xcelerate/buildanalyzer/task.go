@@ -59,6 +59,20 @@ type Task struct {
 	// entry still can; the primary Key field holds the stripped form that
 	// Dependency edges reference.
 	ManifestKey string `json:"manifestKey,omitempty"`
+
+	// ExecutionReason is populated by Classify (v2) from the build.db join.
+	// Empty when no build.db was read; see ExecutionReason constants for the
+	// four buckets.
+	ExecutionReason ExecutionReason `json:"executionReason,omitempty"`
+	// BuiltAt carries the rule_results.built_at value for this task. On the
+	// Xcode 26 schema this is an iteration counter (not a wall-clock time),
+	// encoded losslessly as Unix(iteration, 0) so round-tripping stays safe.
+	BuiltAt time.Time `json:"builtAt,omitempty"`
+	// Signature is the llbuild rule signature hex-encoded. Empty when the
+	// task had no build.db row (cold rule, or no snapshot joined). v2 doesn't
+	// compare signatures across builds — that's a v2.1+ extension gated on a
+	// second snapshot.
+	Signature string `json:"signature,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing

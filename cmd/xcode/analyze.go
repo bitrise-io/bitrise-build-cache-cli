@@ -22,6 +22,7 @@ var (
 	analyzeFlagActivityLog string
 	analyzeFlagDerivedData string
 	analyzeFlagManifest    string
+	analyzeFlagBuildDB     string
 	analyzeFlagOutput      string
 )
 
@@ -55,6 +56,7 @@ func init() {
 	analyzeCmd.Flags().StringVar(&analyzeFlagActivityLog, "xcactivitylog", "", "Path to an .xcactivitylog file. Overrides --derived-data when both are set.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagDerivedData, "derived-data", "", "DerivedData path; the newest Logs/Build/*.xcactivitylog and matching XCBuildData/manifest.json are picked.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagManifest, "manifest", "", "Optional path to a manifest.json for planned-task graph + dependency DAG. Auto-discovered when --derived-data is set.")
+	analyzeCmd.Flags().StringVar(&analyzeFlagBuildDB, "build-db", "", "Optional path to an llbuild build.db for execution-reason classification. Auto-discovered when --derived-data is set.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagOutput, "output", outputJSON, "Output format: `json` (default), `pretty`, or `dot`.")
 }
 
@@ -70,6 +72,10 @@ func runAnalyze(out, stderr io.Writer) error {
 	}
 
 	if err := joinManifestIfAvailable(&report, stderr, analyzeFlagManifest, analyzeFlagDerivedData); err != nil {
+		return err
+	}
+
+	if err := classifyIfAvailable(&report, stderr, analyzeFlagBuildDB, analyzeFlagDerivedData); err != nil {
 		return err
 	}
 
@@ -114,6 +120,35 @@ func joinManifestIfAvailable(report *buildanalyzer.Report, stderr io.Writer, exp
 	}
 
 	buildanalyzer.JoinManifest(report, manifest)
+
+	return nil
+}
+
+// classifyIfAvailable resolves the build.db path with the same precedence as
+// manifest discovery (--build-db flag wins over auto-discover under
+// --derived-data). On miss or read failure the classifier is skipped with a
+// stderr warning; every Task keeps ExecutionReason empty so JSON omitempty
+// hides the field. Not an error — the DB is additive, not required.
+func classifyIfAvailable(report *buildanalyzer.Report, stderr io.Writer, explicit, derivedData string) error {
+	path, err := resolveAnalyzeBuildDBPath(explicit, derivedData)
+	if err != nil {
+		return err
+	}
+
+	if path == "" {
+		fmt.Fprintln(stderr, "analyze: no build.db available; execution-reason classification skipped")
+
+		return nil
+	}
+
+	snap, err := buildanalyzer.ReadBuildDB(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "analyze: build.db read failed (%v); execution-reason classification skipped\n", err)
+
+		return nil
+	}
+
+	buildanalyzer.Classify(report, snap)
 
 	return nil
 }
@@ -163,6 +198,26 @@ func resolveAnalyzeManifestPath(explicit, derivedData string) (string, error) {
 	return path, nil
 }
 
+// resolveAnalyzeBuildDBPath picks the build.db path — same precedence as the
+// manifest resolver. Empty + nil error means "no DB to classify against" and
+// callers soft-fall-back to the pre-classify output.
+func resolveAnalyzeBuildDBPath(explicit, derivedData string) (string, error) {
+	if explicit != "" {
+		return filepath.Clean(explicit), nil
+	}
+
+	if derivedData == "" {
+		return "", nil
+	}
+
+	path, err := buildanalyzer.LocateBuildDB(derivedData)
+	if err != nil {
+		return "", fmt.Errorf("locate build.db under %s: %w", derivedData, err)
+	}
+
+	return path, nil
+}
+
 func renderJSON(out io.Writer, report buildanalyzer.Report) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -189,9 +244,10 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 	}
 
 	for _, task := range report.Tasks {
-		if _, err := fmt.Fprintf(out, "%s  %10s  exit=%d  %s\n",
+		if _, err := fmt.Fprintf(out, "%s  %10s  %s  exit=%d  %s\n",
 			task.StartedAt.Format("15:04:05.000"),
 			task.Duration,
+			reasonLetter(task.ExecutionReason),
 			task.ExitCode,
 			truncate(task.Key, 160),
 		); err != nil {
@@ -214,4 +270,22 @@ func formatTimestamp(s string) string {
 	}
 
 	return s
+}
+
+// reasonLetter returns a single-character column shown before the exit code
+// in --output=pretty: `C` cold, `R` ran this build, `S` skipped up-to-date,
+// `U` unclassified, `-` when the field is unpopulated (no build.db joined).
+func reasonLetter(reason buildanalyzer.ExecutionReason) string {
+	switch reason {
+	case buildanalyzer.ReasonCold:
+		return "C"
+	case buildanalyzer.ReasonRanThisBuild:
+		return "R"
+	case buildanalyzer.ReasonSkippedUpToDate:
+		return "S"
+	case buildanalyzer.ReasonUnclassified:
+		return "U"
+	default:
+		return "-"
+	}
 }
