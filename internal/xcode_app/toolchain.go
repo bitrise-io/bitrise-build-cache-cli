@@ -55,13 +55,22 @@ var ToolchainOverrideBuildSettingsKeys = func() []string {
 }()
 
 func toolchainOverrideBuildSettings(proxySocketPath, pluginPath string) map[string]any {
-	// Virtual-namespace rewriting matches the wrapper's -fdepscan-prefix-map
-	// argv keys so CAS entries stay compatible across the two injection paths.
+	// Two injection paths share the same virtual namespace so CAS keys match:
+	// the wrapper writes -fdepscan-prefix-map argv (clang only), and this
+	// toolchain plist writes CLANG_/SWIFT_OTHER_PREFIX_MAPPINGS. The CLANG_*
+	// pair matches the wrapper 1:1; the SWIFT_* pair has no wrapper counterpart
+	// and was spike-validated on Xcode 26.3 (xcodebuild CLI; IDE paths rely on
+	// the same build-setting expansion). Ordering is narrowest-first so a
+	// DerivedData path under $HOME, or a PROJECT_TEMP_DIR under DerivedData,
+	// hits the narrower rule first regardless of clang's match strategy.
+	// $(SRCROOT) is per-target where the wrapper's ProjectDir is workspace-wide
+	// — for multi-project workspaces CAS keys diverge between the two paths;
+	// acceptable until we need to unify.
 	prefixMappings := []string{
-		"$(HOME)=/^home",
-		"$(SRCROOT)=/^src",
-		"$(DERIVED_DATA_DIR)=/^dd",
 		"$(PROJECT_TEMP_DIR)=/^obj",
+		"$(DERIVED_DATA_DIR)=/^dd",
+		"$(SRCROOT)=/^src",
+		"$(HOME)=/^home",
 	}
 
 	return map[string]any{
@@ -391,9 +400,7 @@ func writeOverrideValue(b *strings.Builder, v any) {
 		}
 		b.WriteString("\t\t</array>\n")
 	default:
-		b.WriteString("\t\t<string>")
-		b.WriteString(xmlEscape(fmt.Sprintf("%v", val)))
-		b.WriteString("</string>\n")
+		panic(fmt.Sprintf("toolchain plist writer: unsupported value type %T", v))
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"howett.net/plist"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -61,12 +62,25 @@ func TestRenderToolchainInfoPlist_prefixMappingsEmitAsArrays(t *testing.T) {
 	body, err := RenderToolchainInfoPlist("/tmp/proxy.sock", "/dev/null")
 	require.NoError(t, err)
 
-	rendered := string(body)
+	var decoded map[string]interface{}
+	_, err = plist.Unmarshal(body, &decoded)
+	require.NoError(t, err)
+
+	settings, ok := decoded["OverrideBuildSettings"].(map[string]interface{})
+	require.True(t, ok, "OverrideBuildSettings must decode as dict")
+
+	// Narrowest-first; must match internal/xcelerate/xcodeargs/prefix_map.go
+	// rule order so CAS keys stay compatible across the two injection paths.
+	wantOrder := []interface{}{
+		"$(PROJECT_TEMP_DIR)=/^obj",
+		"$(DERIVED_DATA_DIR)=/^dd",
+		"$(SRCROOT)=/^src",
+		"$(HOME)=/^home",
+	}
 	for _, key := range []string{"CLANG_OTHER_PREFIX_MAPPINGS", "SWIFT_OTHER_PREFIX_MAPPINGS"} {
-		idx := strings.Index(rendered, "<key>"+key+"</key>")
-		require.NotEqual(t, -1, idx, "missing key %s", key)
-		tail := rendered[idx:]
-		assert.Contains(t, tail[:min(len(tail), 400)], "<array>", "%s value must be an array", key)
+		arr, ok := settings[key].([]interface{})
+		require.True(t, ok, "%s must decode as array", key)
+		require.Equal(t, wantOrder, arr, "%s element order must match wrapper", key)
 	}
 }
 
