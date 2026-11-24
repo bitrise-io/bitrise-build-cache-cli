@@ -167,7 +167,7 @@ CREATE TABLE rule_results (key_id INTEGER PRIMARY KEY, value BLOB, signature INT
 		if len(r.depIDs) > 0 {
 			raw := make([]byte, len(r.depIDs)*8)
 			for i, id := range r.depIDs {
-				binary.LittleEndian.PutUint64(raw[i*8:(i+1)*8], uint64(id)) //nolint:gosec // raw bit pattern
+				binary.LittleEndian.PutUint64(raw[i*8:(i+1)*8], uint64(id)<<2) //nolint:gosec // raw bit pattern
 			}
 			depsBlob = raw
 		}

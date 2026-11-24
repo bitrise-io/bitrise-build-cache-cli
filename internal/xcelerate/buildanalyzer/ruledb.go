@@ -224,11 +224,14 @@ JOIN key_names k ON k.id = r.key_id
 	return rules, deps, nil
 }
 
-// resolveDepBlob decodes a packed little-endian int64 key_id array and looks
-// each entry up in keyByID. A BLOB whose length is not a multiple of 8 is
-// treated as malformed and dropped silently — the rule just reads as having
-// no upstream, which is strictly more conservative than guessing a partial
-// decode.
+// resolveDepBlob decodes a packed little-endian int64 array where each slot
+// holds `(key_id << 2) | tag`. The low 2 bits carry an llbuild dep-kind tag
+// (observed values: direct / order-only / signal-only, exact semantics
+// undocumented); upper bits are the key_names.id. Shifting without the mask
+// loses 79% of real edges to a false out-of-range filter — verified against
+// Kickstarter + MinimalApp DBs where every post-shift id landed in
+// [1, max(key_names.id)]. A BLOB whose length is not a multiple of 8 is
+// treated as malformed and dropped silently.
 func resolveDepBlob(raw []byte, keyByID map[int64]string) []string {
 	if len(raw)%8 != 0 {
 		return nil
@@ -236,10 +239,9 @@ func resolveDepBlob(raw []byte, keyByID map[int64]string) []string {
 
 	out := make([]string, 0, len(raw)/8)
 	for i := 0; i+8 <= len(raw); i += 8 {
-		// int64 bit pattern via uint64 — llbuild stores raw signed key_ids
-		// which are always >= 0 in practice but the sqlite column type is
-		// INTEGER so we decode symmetrically.
-		id := int64(binary.LittleEndian.Uint64(raw[i : i+8])) //nolint:gosec // raw bit pattern, no overflow risk
+		// Upper 62 bits = key_id, lower 2 bits = dep-kind tag (dropped).
+		packed := int64(binary.LittleEndian.Uint64(raw[i : i+8])) //nolint:gosec // raw bit pattern, no overflow risk
+		id := packed >> 2
 		if k, ok := keyByID[id]; ok {
 			out = append(out, k)
 		}
