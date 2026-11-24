@@ -587,6 +587,36 @@ step_bundles:
   dispatch-to-private:
     description: Shared dispatcher body — see dispatch-e2e-cli for details.
     steps:
+    - git::https://github.com/bitrise-steplib/bitrise-step-get-identity-token.git@main:
+        title: Mint OIDC identity token for receiver app
+        inputs:
+        - audience: https://api.bitrise.io
+    - script:
+        title: Exchange identity token for short-lived receiver WAT
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            : "${BITRISE_IDENTITY_TOKEN:?get-identity-token step did not set BITRISE_IDENTITY_TOKEN}"
+            : "${E2E_RECEIVER_OIDC_POLICY_ID:?missing E2E_RECEIVER_OIDC_POLICY_ID}"
+
+            exchange=$(curl -sS --fail-with-body -X POST --max-time 30 \
+              -H 'Content-Type: application/x-www-form-urlencoded' \
+              --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+              --data-urlencode "subject_token_type=id_token" \
+              --data-urlencode "policy_id=$E2E_RECEIVER_OIDC_POLICY_ID" \
+              --data-urlencode "subject_token=$BITRISE_IDENTITY_TOKEN" \
+              "https://app.bitrise.io/oidc/token")
+
+            token=$(echo "$exchange" | jq -r '.access_token')
+            ttl=$(echo "$exchange" | jq -r '.expires_in')
+            if [[ -z "$token" || "$token" == "null" ]]; then
+              echo "OIDC exchange failed: $exchange"
+              exit 1
+            fi
+            echo "Minted short-lived receiver WAT (expires in ${ttl}s)"
+            envman add --key RECEIVER_WAT --value "$token" --sensitive
     - script:
         title: Dispatch + wait for private pipeline
         inputs:
@@ -599,7 +629,7 @@ step_bundles:
             : "${RECEIVER_PIPELINE:?missing RECEIVER_PIPELINE}"
             : "${E2E_TESTING_APP_SLUG:?missing E2E_TESTING_APP_SLUG}"
             : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
-            : "${BITRISE_API_TOKEN:?missing BITRISE_API_TOKEN (needs WAT with Developer role on build-cache-e2e-testing)}"
+            : "${RECEIVER_WAT:?missing RECEIVER_WAT (OIDC exchange step must run first)}"
 
             resolved_branch="$E2E_TESTING_BRANCH"
             pr_branch="${BITRISE_GIT_BRANCH:-}"
@@ -654,7 +684,7 @@ step_bundles:
               if (( SECONDS > BUDGET )); then
                 echo "DISPATCHER TIMEOUT: watched ${SECONDS}s (>${BUDGET}s), aborting watch"
                 abort_resp=$(curl -sS -w "\nHTTP %{http_code}" -X POST --max-time 30 \
-                  -H "Authorization: $BITRISE_API_TOKEN" \
+                  -H "Authorization: $RECEIVER_WAT" \
                   -H 'Content-Type: application/json' \
                   "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug/abort" \
                   -d '{"abort_reason":"dispatcher wall-clock budget exceeded","abort_with_success":false,"skip_notifications":true}' || true)
@@ -662,7 +692,7 @@ step_bundles:
                 exit 1
               fi
               info=$(curl -s --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
-                -H "Authorization: $BITRISE_API_TOKEN" \
+                -H "Authorization: $RECEIVER_WAT" \
                 "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug")
               if ! echo "$info" | jq -e '.status' >/dev/null 2>&1; then
                 sleep 20
