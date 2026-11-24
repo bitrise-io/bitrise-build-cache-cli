@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,12 +20,14 @@ const (
 
 //nolint:gochecknoglobals
 var (
-	analyzeFlagActivityLog string
-	analyzeFlagDerivedData string
-	analyzeFlagManifest    string
-	analyzeFlagBuildDB     string
-	analyzeFlagOutput      string
-	analyzeFlagDiagnostics string
+	analyzeFlagActivityLog  string
+	analyzeFlagDerivedData  string
+	analyzeFlagManifest     string
+	analyzeFlagBuildDB      string
+	analyzeFlagOutput       string
+	analyzeFlagDiagnostics  string
+	analyzeFlagSnapshotRoot string
+	analyzeFlagNoSnapshot   bool
 )
 
 //nolint:gochecknoglobals
@@ -60,6 +63,8 @@ func init() {
 	analyzeCmd.Flags().StringVar(&analyzeFlagBuildDB, "build-db", "", "Optional path to an llbuild build.db for execution-reason classification. Auto-discovered when --derived-data is set.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagOutput, "output", outputJSON, "Output format: `json` (default), `pretty`, or `dot`.")
 	analyzeCmd.Flags().StringVar(&analyzeFlagDiagnostics, "diagnostics", string(buildanalyzer.DiagModeAuto), "Diagnostics source: `auto` (default), `dia`, `stderr`, or `off`. v3 ships with the `.dia` reader deferred — `auto` and `stderr` behave identically today.")
+	analyzeCmd.Flags().StringVar(&analyzeFlagSnapshotRoot, "snapshot-root", "", "Override the build-analyzer snapshot store root (default: ~/.local/state/xcelerate/build-analyzer/snapshots, env BITRISE_BUILD_ANALYZER_SNAPSHOT_ROOT). B.2 picks the matching snapshot under this root for signature-diff.")
+	analyzeCmd.Flags().BoolVar(&analyzeFlagNoSnapshot, "no-snapshot", false, "Force reading the live build.db even when a matching snapshot exists. Debugging switch for comparing current vs snapshot behavior.")
 }
 
 func runAnalyze(out, stderr io.Writer) error {
@@ -135,28 +140,99 @@ func joinManifestIfAvailable(report *buildanalyzer.Report, stderr io.Writer, exp
 // --derived-data). On miss or read failure the classifier is skipped with a
 // stderr warning; every Task keeps ExecutionReason empty so JSON omitempty
 // hides the field. Not an error — the DB is additive, not required.
+//
+// B.2: when --build-db is not explicit and --derived-data is set, look under
+// the snapshot store for a matching build-hex first. A snapshot whose
+// timestamp sits at or before the activity-log's FinishedAt is preferred over
+// the live DB, since the live DB may already reflect a build newer than the
+// log. The prior snapshot (iter N-1 by timestamp) is read alongside for
+// signature-diff. --no-snapshot forces the live-DB path even when a snapshot
+// exists (debugging).
 func classifyIfAvailable(report *buildanalyzer.Report, stderr io.Writer, explicit, derivedData string) error {
-	path, err := resolveAnalyzeBuildDBPath(explicit, derivedData)
+	livePath, err := resolveAnalyzeBuildDBPath(explicit, derivedData)
 	if err != nil {
 		return err
 	}
 
-	if path == "" {
+	currentPath, priorPath := pickClassifySources(stderr, report, livePath, explicit, derivedData)
+	if currentPath == "" {
 		fmt.Fprintln(stderr, "analyze: no build.db available; execution-reason classification skipped")
 
 		return nil
 	}
 
-	snap, err := buildanalyzer.ReadBuildDB(path)
+	snap, err := buildanalyzer.ReadSnapshotPair(currentPath, priorPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "analyze: build.db read failed (%v); execution-reason classification skipped\n", err)
+		if priorPath != "" && snap.Rules != nil {
+			// Current read succeeded, prior failed — proceed with the
+			// single-snapshot classification and tell the operator.
+			fmt.Fprintf(stderr, "analyze: prior snapshot read failed (%v); signature-diff disabled\n", err)
+		} else {
+			fmt.Fprintf(stderr, "analyze: build.db read failed (%v); execution-reason classification skipped\n", err)
 
-		return nil
+			return nil
+		}
 	}
 
 	buildanalyzer.Classify(report, snap)
 
 	return nil
+}
+
+// pickClassifySources returns (currentPath, priorPath). Explicit --build-db
+// wins over the snapshot store. When the user passed --no-snapshot the live
+// DB always wins. Otherwise: look up matching snapshots under the store root,
+// pick the one whose timestamp <= log finish, and use the next-older as prior.
+// Falls back to the live DB on any miss.
+func pickClassifySources(stderr io.Writer, report *buildanalyzer.Report, livePath, explicit, derivedData string) (string, string) {
+	if explicit != "" || analyzeFlagNoSnapshot || derivedData == "" {
+		return livePath, ""
+	}
+
+	buildHex, err := resolveBuildHex(derivedData)
+	if err != nil || buildHex == "" {
+		return livePath, ""
+	}
+
+	storeRoot := analyzeFlagSnapshotRoot
+	if storeRoot == "" {
+		storeRoot = buildanalyzer.DefaultSnapshotRoot()
+	}
+
+	current, prior, ok := buildanalyzer.PickSnapshotForLog(storeRoot, buildHex, report.Build.FinishedAt)
+	if !ok {
+		return livePath, ""
+	}
+
+	fmt.Fprintf(stderr, "analyze: using snapshot %s (iter=%d, ts=%s)\n", current.Path, current.Iteration, current.Timestamp.Format("2006-01-02T15:04:05Z"))
+
+	if prior.Path != "" {
+		fmt.Fprintf(stderr, "analyze: prior snapshot %s (iter=%d) feeding signature-diff\n", prior.Path, prior.Iteration)
+	}
+
+	return current.Path, prior.Path
+}
+
+// resolveBuildHex locates the newest *.xcbuilddata hex alongside derivedData's
+// build.db — mirrors the snapshot store's locateBuildHex without re-exporting
+// it (the snapshot store owns the internal helper; analyze reads via the same
+// manifest-locator semantics).
+func resolveBuildHex(derivedData string) (string, error) {
+	manifest, err := buildanalyzer.LocateManifest(derivedData)
+	if err != nil {
+		return "", fmt.Errorf("locate manifest for build-hex: %w", err)
+	}
+
+	if manifest == "" {
+		return "", nil
+	}
+
+	// <derivedData>/Build/Intermediates.noindex/XCBuildData/<hex>.xcbuilddata/manifest.json
+	dir := filepath.Dir(manifest)
+	base := filepath.Base(dir) // <hex>.xcbuilddata
+	hex := strings.TrimSuffix(base, ".xcbuilddata")
+
+	return hex, nil
 }
 
 // attachDiagnosticsFromFlag validates the --diagnostics flag value and runs
@@ -272,7 +348,7 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 	}
 
 	for _, task := range report.Tasks {
-		if _, err := fmt.Fprintf(out, "%s %s %10s  %s  %s  %s  exit=%d  %s\n",
+		if _, err := fmt.Fprintf(out, "%s %s %10s  %s  %s  %s  exit=%d  %s%s\n",
 			rootCauseMarker(task.RootCause),
 			task.StartedAt.Format("15:04:05.000"),
 			task.Duration,
@@ -281,6 +357,7 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 			diagnosticsIcon(task.Diagnostics),
 			task.ExitCode,
 			truncate(task.Key, 160),
+			signatureChangeSuffix(task.SignatureChanged),
 		); err != nil {
 			return fmt.Errorf("write pretty task line: %w", err)
 		}
@@ -360,7 +437,8 @@ func formatTimestamp(s string) string {
 
 // reasonLetter returns a single-character column shown before the exit code
 // in --output=pretty: `C` cold, `R` ran this build, `S` skipped up-to-date,
-// `U` unclassified, `-` when the field is unpopulated (no build.db joined).
+// `U` unclassified, `N` new-task (B.2, prior snapshot present and task had no
+// matching prior rule), `-` when the field is unpopulated (no build.db joined).
 func reasonLetter(reason buildanalyzer.ExecutionReason) string {
 	switch reason {
 	case buildanalyzer.ReasonCold:
@@ -371,6 +449,8 @@ func reasonLetter(reason buildanalyzer.ExecutionReason) string {
 		return "S"
 	case buildanalyzer.ReasonUnclassified:
 		return "U"
+	case buildanalyzer.ReasonNewTask:
+		return "N"
 	default:
 		return "-"
 	}
@@ -385,6 +465,18 @@ func rootCauseMarker(rootCause bool) string {
 	}
 
 	return " "
+}
+
+// signatureChangeSuffix returns a trailing ` *` marker (space + asterisk) on
+// signature-changed tasks, empty string otherwise. Placed after the key so the
+// column alignment above stays intact — the spec's "`*` on signature-changed
+// tasks" lands here rather than fighting rootCauseMarker's own `*`.
+func signatureChangeSuffix(changed bool) string {
+	if changed {
+		return " *"
+	}
+
+	return ""
 }
 
 // upstreamColumn renders `U=N` for a populated UpstreamRanCount and dashes

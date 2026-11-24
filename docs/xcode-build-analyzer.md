@@ -27,10 +27,16 @@ Non-goals (v1): semantic diff of signatures ("this .swift file's
 interface changed"), real-time streaming, anything that requires
 patching the Xcode build system.
 
-The single-snapshot limitation persists through v4: the attribution walk
-tells you "which re-ran task triggered this one on the current build" but
-not "whose signature changed first since the prior build". That second
-question needs the prior snapshot and is tracked as Phase B.
+The single-snapshot limitation is lifted by Phase B (landed). B.1 ships a
+pure-Go `VACUUM INTO` snapshot store under
+`~/.local/state/xcelerate/build-analyzer/snapshots/<build-hex>/<iter>-<ts>.db`
+with a 10-snapshot retention cap per build-hex. B.2 teaches the analyzer to
+auto-pick the newest snapshot at-or-before the log's finish-time and diff
+signatures against the next-older one — so the "whose signature changed
+first since the prior build" question has a first-class answer. B.3
+(orchestration — auto-trigger snapshot on build completion via fsnotify or
+EndWatcher) is deferred to the wrapperless-flow integration where the
+proxy already watches DerivedData for other reasons.
 
 ## Inputs — what Xcode drops on disk for every build
 
@@ -206,27 +212,29 @@ a re-parse.
 
 ## Execution reasons — how we classify
 
-v2 (landed) classifies with a single snapshot — the current build's `build.db`
-— so the signature-mismatch vs new-task distinction is **deliberately
-deferred** (that needs the prior snapshot). The four buckets v2 ships:
+v2 classifies with a single snapshot — the current build's `build.db`. B.2
+extends this with a prior snapshot to detect per-rule signature changes and
+promote "ran but has no prior rule" into a distinct bucket. The **five
+reason values** the classifier now emits:
 
 | Condition | Reason |
 |---|---|
 | No `rule_results` row for the task's `C`-prefixed manifest key | `cold` |
-| Rule's `built_at` == `info.iteration` | `ran-this-build` |
+| Rule's `built_at` == `info.iteration` and a prior rule existed | `ran-this-build` |
+| Rule's `built_at` == `info.iteration` and `PriorRules != nil` and no prior rule for this key | `new-task` |
 | Rule's `built_at` < `info.iteration` | `skipped-up-to-date` |
 | Rule's `built_at` > `info.iteration` (shouldn't happen, defensive) | `unclassified` |
 
-When `info.iteration` is zero (test fixtures / older schema), v2 falls back
-to the activity-log Ran flag as the tiebreaker so warm-build output stays
-usable.
+When `info.iteration` is zero (test fixtures / older schema), v2's fallback
+to the activity-log Ran flag as the tiebreaker still applies so warm-build
+output stays usable.
 
-**Deferred for later phases (needs a second data source):**
-
-- `signature-mismatch` vs `new-task` — needs the prior `build.db` to diff
-  the signature column. v2 exposes the per-task `signature` hex so a BE
-  roll-up CAN run the diff across invocations, even though the CLI itself
-  doesn't. Addressed by Phase B (not landed).
+**Signature-change detection (B.2):** orthogonal to the bucket. When
+`Snapshot.PriorRules != nil` and a matched task's prior rule carries a
+different signature than the current, `Task.SignatureChanged = true` and
+`Task.PriorSignature` holds the hex of the prior. A sig-change task is
+still ran-this-build / skipped / cold on the iteration dimension — the two
+signals compose.
 
 **Upstream-dependency attribution — landed in v4** (see below). The CLI now
 walks the current snapshot's adjacency to attribute every ran-this-build
@@ -246,6 +254,9 @@ answer still needs the prior build's `build.db`.
 | **v2.1** | `Task.Iteration int64` replaces the earlier `Task.BuiltAt time.Time` carrier — the llbuild `built_at` column is an iteration counter, not a wall-clock timestamp, so the time.Time rendering (`1970-01-01T00:00:01Z` for iter=1) was actively misleading. `RuleResult.Iteration` now typed accordingly; classification semantics unchanged. | **landed** |
 | **v3** | + `Task.Diagnostics []Diagnostic` populated by `AttachDiagnostics(report, derivedData, DiagMode)` — stderr-regex extractor surfaces `path:line:col: severity: message` records from `Task.StderrExcerpt` (clang + swiftc form), continuation lines fold into the preceding record's message. `cmd xcode analyze --diagnostics=auto\|dia\|stderr\|off` (default `auto`). Pretty output gains a one-letter `[E/W/N]` diagnostic column + indented per-diagnostic continuation lines. | **landed (stderr only; .dia deferred — see below)** |
 | **v4** | + Upstream attribution via the `rule_results.dependencies` BLOB (NOT a separate `rule_dependencies` table — see the build.db notes above). `Snapshot.Deps map[string][]string` carries the full adjacency after Decoder resolves each int64 key_id back to its `key_names` string. `attribution.go` adds `TransitiveCommandDeps` / `DirectCommandDeps` / `UpstreamRanCommands` that walk the `C -> N -> C` two-hop so Command-to-Command edges are first-class. Classify now populates `Task.UpstreamRanCount`, `Task.RootCause`, `Task.ChangeCauseKeys` (truncated at 10 entries + `…` sentinel) and the Report-level `RootCauseKeys` sorted list. Pretty output gains a `*` prefix for root causes and a `U=N` upstream-ran-count column. | **landed** |
+| **B.1** | Snapshot primitive. `buildanalyzer.SnapshotBuildDB(derivedData, storeRoot)` copies the live DB via SQLite `VACUUM INTO` under `<storeRoot>/<build-hex>/<iter>-<unix>.db`, pruning to the 10 newest per build-hex. `DefaultSnapshotRoot()` resolves `~/.local/state/xcelerate/build-analyzer/snapshots` (overridable via `BITRISE_BUILD_ANALYZER_SNAPSHOT_ROOT`). New CLI: `bitrise-build-cache xcode snapshot-builddb --derived-data <path> [--snapshot-root <dir>]`. Soft-fails to stderr on missing DB. | **landed** |
+| **B.2** | Historical-snapshot classification. `PickSnapshotForLog` picks the newest snapshot <= the log's finish-time plus the next-older as prior. `ReadSnapshotPair` populates `Snapshot.PriorRules`. `Classify` extends to set `Task.SignatureChanged` + `Task.PriorSignature` on diff, and promotes a ran-this-build task with no prior rule to `ReasonNewTask`. `cmd xcode analyze` auto-picks the matching snapshot when `--derived-data` is set; `--snapshot-root` overrides the store root, `--no-snapshot` forces the live DB (debug). Pretty output gains `N` in the reason column and `*` trailing marker on sig-changed tasks. | **landed** |
+| **B.3** | Orchestration — auto-trigger snapshot on build completion. Deferred: the wrapperless-flow proxy already watches DerivedData for other reasons and is the right place to hook this without a second fsnotify. | **deferred** |
 
 ### v3 fallback — `.dia` reader deferred
 
@@ -301,6 +312,13 @@ of executed tasks, already better than `xcodebuild -verbose` greps).
   - `attribution.go` — v4. Iterative DFS over `Snapshot.Deps` with a
     Command-level visited set; `C -> N -> C` two-hop so Node (file)
     intermediates are stepped over and callers only see Command keys.
+  - `snapshotstore.go` — B.1. `VACUUM INTO`-based snapshot primitive +
+    on-disk layout under `<storeRoot>/<build-hex>/<iter>-<unix>.db`,
+    prune cap, `DefaultSnapshotRoot()`, `ListSnapshots()`.
+  - `historical.go` — B.2. `PickSnapshotForLog(...)` picks current + prior
+    from the store given the log's finish-time; `ReadSnapshotPair(...)`
+    opens both and populates `Snapshot.PriorRules` so Classify runs the
+    signature-diff + new-task promotion path.
   - `activity.go` — SLF walker that surfaces one Task per
     `IDEActivityLogCommandInvocationSection`, plus v1's `JoinManifest`
     that annotates Tasks with Planned/Tool/Inputs/Outputs and emits
@@ -315,7 +333,10 @@ of executed tasks, already better than `xcodebuild -verbose` greps).
     `path:line:col: severity: message` clang / swiftc headers with
     continuation-line folding (**v3**).
 - `cmd/xcode/analyze.go` — cobra subcommand `bitrise-build-cache
-  xcode analyze <DerivedDataPath|xcresult>`.
+  xcode analyze <DerivedDataPath|xcresult>`. Auto-picks the matching
+  snapshot under `DefaultSnapshotRoot()` when `--derived-data` is set;
+  `--snapshot-root` / `--no-snapshot` override the flow (B.2).
+- `cmd/xcode/snapshot_builddb.go` — B.1 snapshot subcommand.
 - `docs/xcode-build-analyzer.md` — this file.
 
 Pure post-mortem. No overlap with the live CAS/proxy path; the

@@ -97,6 +97,17 @@ type Task struct {
 	// top handful to eyeball, not the full set which lives transitively in
 	// UpstreamRanCount.
 	ChangeCauseKeys []string `json:"changeCauseKeys,omitempty"`
+
+	// SignatureChanged is true when a prior snapshot held this rule with a
+	// different signature than the current one. Only populated when
+	// Snapshot.PriorRules is present — B.2's signature-diff signal. Lets the
+	// operator distinguish "ran because an input flipped" from "ran because
+	// something upstream re-ran".
+	SignatureChanged bool `json:"signatureChanged,omitempty"`
+	// PriorSignature is the matched rule's signature hex from the prior
+	// snapshot. Empty when no prior snapshot was available, or when the task
+	// is new (no prior rule).
+	PriorSignature string `json:"priorSignature,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing

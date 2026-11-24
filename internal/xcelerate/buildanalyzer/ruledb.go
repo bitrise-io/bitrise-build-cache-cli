@@ -68,6 +68,13 @@ type Snapshot struct {
 	Rules     map[string]RuleResult
 	Deps      map[string][]string
 	Iteration int64
+	// PriorRules carries the rule_results map from the immediately-earlier
+	// snapshot, when one is available (populated by ReadSnapshotPair /
+	// PickSnapshotForLog). Classify uses it to tell new-task from
+	// signature-changed on top of the single-snapshot buckets. Nil when no
+	// prior snapshot was found — the classifier preserves its pre-B.2
+	// behavior in that case.
+	PriorRules map[string]RuleResult
 }
 
 // LocateBuildDB picks the `build.db` that goes with the most recent manifest.

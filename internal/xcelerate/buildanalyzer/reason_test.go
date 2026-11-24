@@ -5,6 +5,7 @@ package buildanalyzer
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -195,6 +196,109 @@ func itoaForTest(i int) string {
 		i /= 10
 	}
 	return string(buf[pos:])
+}
+
+// TestClassify_PriorSignatureDiff_DetectsChange verifies B.2's signature
+// change signal: a current rule with signature BB vs a prior rule with
+// signature AA under the same key sets SignatureChanged + PriorSignature.
+func TestClassify_PriorSignatureDiff_DetectsChange(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 2, Signature: []byte{0xBB}},
+		},
+		PriorRules: map[string]RuleResult{
+			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 1, Signature: []byte{0xAA}},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "CompileFoo", ManifestKey: "P0:::CompileFoo", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	assert.True(t, report.Tasks[0].SignatureChanged)
+	assert.Equal(t, "aa", report.Tasks[0].PriorSignature)
+	assert.Equal(t, "bb", report.Tasks[0].Signature)
+	// Signature-change is orthogonal to the iteration-based bucket; iter=2
+	// matches snap.Iteration so the row still reads as ran-this-build.
+	assert.Equal(t, ReasonRanThisBuild, report.Tasks[0].ExecutionReason)
+}
+
+// TestClassify_PriorSignatureDiff_NewTaskPromotion asserts that a
+// ran-this-build task with no matching prior rule is promoted to
+// ReasonNewTask so operators can tell "first-run" from "re-run".
+func TestClassify_PriorSignatureDiff_NewTaskPromotion(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::BrandNew": {Key: "CP0:::BrandNew", Iteration: 2, Signature: []byte{0x42}},
+		},
+		PriorRules: map[string]RuleResult{
+			// Prior snapshot doesn't carry this key at all.
+			"CP0:::Unrelated": {Key: "CP0:::Unrelated", Iteration: 1, Signature: []byte{0x01}},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "BrandNew", ManifestKey: "P0:::BrandNew", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	assert.Equal(t, ReasonNewTask, report.Tasks[0].ExecutionReason)
+	assert.False(t, report.Tasks[0].SignatureChanged, "new task has no prior sig to flag")
+	assert.Empty(t, report.Tasks[0].PriorSignature)
+}
+
+// TestClassify_PriorSignatureDiff_UnchangedKeepsFlags asserts the inert path:
+// current and prior signatures match → SignatureChanged stays false, no
+// PriorSignature exposed, ExecutionReason unchanged.
+func TestClassify_PriorSignatureDiff_UnchangedKeepsFlags(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::Stable": {Key: "CP0:::Stable", Iteration: 2, Signature: []byte{0xAA, 0xBB}},
+		},
+		PriorRules: map[string]RuleResult{
+			"CP0:::Stable": {Key: "CP0:::Stable", Iteration: 1, Signature: []byte{0xAA, 0xBB}},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "Stable", ManifestKey: "P0:::Stable", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	assert.False(t, report.Tasks[0].SignatureChanged)
+	assert.Empty(t, report.Tasks[0].PriorSignature)
+	assert.Equal(t, ReasonRanThisBuild, report.Tasks[0].ExecutionReason)
+}
+
+// TestClassify_NoPriorRulesPreservesSingleSnapshotBehavior ensures Classify
+// stays idempotent against the pre-B.2 shape when PriorRules is nil —
+// SignatureChanged / PriorSignature never leak into the output, and
+// ExecutionReason mirrors the four-bucket contract.
+func TestClassify_NoPriorRulesPreservesSingleSnapshotBehavior(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::Foo": {Key: "CP0:::Foo", Iteration: 2, Signature: []byte{0xAA}},
+		},
+		// PriorRules intentionally nil.
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "Foo", ManifestKey: "P0:::Foo", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	assert.Equal(t, ReasonRanThisBuild, report.Tasks[0].ExecutionReason)
+	assert.False(t, report.Tasks[0].SignatureChanged)
+	assert.Empty(t, report.Tasks[0].PriorSignature)
 }
 
 // TestClassify_FallbackLookup ensures the three-tiered lookup (C+ManifestKey

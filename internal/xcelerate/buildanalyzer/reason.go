@@ -33,6 +33,12 @@ const (
 	// comparison nor the time windowing lands cleanly. A non-zero count on a
 	// real build points at a matching-key gap to chase.
 	ReasonUnclassified ExecutionReason = "unclassified"
+	// ReasonNewTask — the task appears in the current snapshot but had no
+	// matching rule in the prior one. Populated only when Snapshot.PriorRules
+	// is available (B.2's historical path). Refines what would otherwise
+	// collapse into ReasonCold (no current row) or ReasonRanThisBuild (row
+	// matched but we didn't know it was brand-new).
+	ReasonNewTask ExecutionReason = "new-task"
 )
 
 // Classify walks every Task on report and sets ExecutionReason + Iteration +
@@ -80,9 +86,86 @@ func Classify(report *Report, snap Snapshot) {
 		if task.ExecutionReason == ReasonRanThisBuild {
 			attributeRanTask(task, matchedKey, snap)
 		}
+
+		applyHistoricalDiff(task, rule, matchedKey, snap)
 	}
 
 	report.RootCauseKeys = collectRootCauseKeys(report.Tasks)
+}
+
+// applyHistoricalDiff folds in the prior-snapshot signal when it exists.
+// No-op when snap.PriorRules is nil, preserving the single-snapshot behavior.
+//
+// Two orthogonal signals:
+//   - signature change — the rule existed in the prior snapshot with a
+//     different signature. Sets SignatureChanged + PriorSignature so the
+//     operator can tell "an input to this rule flipped between builds" from
+//     "something upstream re-ran". Doesn't override ExecutionReason — a
+//     SignatureChanged task is still ran-this-build / skipped / cold on the
+//     iteration-comparison dimension.
+//   - new task — the rule is new to the current snapshot. Promotes a
+//     ran-this-build classification to new-task so the "first-run" bucket
+//     surfaces separately in UI / aggregates. Preserves cold / skipped /
+//     unclassified rulings since those carry a stronger signal.
+func applyHistoricalDiff(task *Task, rule RuleResult, matchedKey string, snap Snapshot) {
+	if snap.PriorRules == nil {
+		return
+	}
+
+	priorRule, priorFound := lookupPriorRule(snap.PriorRules, matchedKey, task)
+	if !priorFound {
+		if task.ExecutionReason == ReasonRanThisBuild {
+			task.ExecutionReason = ReasonNewTask
+		}
+
+		return
+	}
+
+	if !signaturesEqual(priorRule.Signature, rule.Signature) {
+		task.SignatureChanged = true
+		if len(priorRule.Signature) > 0 {
+			task.PriorSignature = hex.EncodeToString(priorRule.Signature)
+		}
+	}
+}
+
+// lookupPriorRule tries the matchedKey first (what the current lookup picked)
+// then walks the same fallback chain lookupRule uses — so a rule whose
+// prior-snapshot key shape differed from the current (shouldn't happen in
+// practice but trivial to handle) still matches.
+func lookupPriorRule(priors map[string]RuleResult, matchedKey string, task *Task) (RuleResult, bool) {
+	if matchedKey != "" {
+		if rule, ok := priors[matchedKey]; ok {
+			return rule, true
+		}
+	}
+
+	rule, _, ok := lookupRule(priors, task)
+
+	return rule, ok
+}
+
+// signaturesEqual compares two signature byte slices with the hex-string
+// equivalence Classify already surfaces. A missing (nil / empty) prior
+// signature compared against a populated current means "we don't know what
+// the prior signature was" — treated as equal so we don't flag a false
+// SignatureChanged.
+func signaturesEqual(a, b []byte) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 // attributeRanTask fills UpstreamRanCount, RootCause and ChangeCauseKeys for
