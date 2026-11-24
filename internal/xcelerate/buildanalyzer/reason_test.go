@@ -102,10 +102,10 @@ func TestClassify_PopulatesAttribution_RootCauseAndUpstreamCount(t *testing.T) {
 		},
 		Deps: map[string][]string{
 			// B consumes NodeA produced by A.
-			"CP0:::B": {"N/tmp/A.o"},
+			"CP0:::B":   {"N/tmp/A.o"},
 			"N/tmp/A.o": {"CP0:::A"},
 			// C consumes NodeB produced by B.
-			"CP0:::C": {"N/tmp/B.o"},
+			"CP0:::C":   {"N/tmp/B.o"},
 			"N/tmp/B.o": {"CP0:::B"},
 		},
 	}
@@ -321,4 +321,212 @@ func TestClassify_FallbackLookup(t *testing.T) {
 	Classify(report, snap)
 	require.Equal(t, ReasonRanThisBuild, report.Tasks[0].ExecutionReason)
 	require.Equal(t, "ff", report.Tasks[0].Signature)
+}
+
+// TestClassify_ReEvaluatedCached_WhenRanIsFalse pins the new six-bucket
+// branch: a rule whose iteration matches the snapshot's but whose Task has
+// no activity-log section (Ran=false) reads as ReasonReEvaluatedCached —
+// llbuild touched the rule but did not invoke the underlying command.
+func TestClassify_ReEvaluatedCached_WhenRanIsFalse(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 7,
+		Rules: map[string]RuleResult{
+			"CP0:::Touched": {Key: "CP0:::Touched", Iteration: 7, Signature: []byte{0x11}},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{
+			{Key: "Touched", ManifestKey: "P0:::Touched", Ran: false},
+		},
+	}
+
+	Classify(report, snap)
+
+	assert.Equal(t, ReasonReEvaluatedCached, report.Tasks[0].ExecutionReason)
+	// The task did not run, so no upstream attribution is populated.
+	assert.False(t, report.Tasks[0].RootCause)
+	assert.Equal(t, 0, report.Tasks[0].UpstreamRanCount)
+	assert.Empty(t, report.Tasks[0].ChangeCauseKeys)
+}
+
+// TestApplyHistoricalDiff_PopulatesValueHashes verifies the new
+// PriorValueHex / CurrentValueHex derivation: on a signature-changed
+// classification, both fields are populated with distinct 16-hex fingerprints
+// and the key-identity PriorSignature is still carried.
+func TestApplyHistoricalDiff_PopulatesValueHashes(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::CompileFoo": {
+				Key: "CP0:::CompileFoo", Iteration: 2,
+				Signature: []byte{0xBB},
+				Value:     []byte("current-result"),
+			},
+		},
+		PriorRules: map[string]RuleResult{
+			"CP0:::CompileFoo": {
+				Key: "CP0:::CompileFoo", Iteration: 1,
+				Signature: []byte{0xAA},
+				Value:     []byte("prior-result"),
+			},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "CompileFoo", ManifestKey: "P0:::CompileFoo", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	task := report.Tasks[0]
+	assert.True(t, task.SignatureChanged)
+	assert.Equal(t, "aa", task.PriorSignature, "identity hash still exposed for backwards compat")
+	assert.Len(t, task.PriorValueHex, 16)
+	assert.Len(t, task.CurrentValueHex, 16)
+	assert.NotEqual(t, task.PriorValueHex, task.CurrentValueHex, "distinct Value blobs → distinct hashes")
+}
+
+// TestFileChanges_PopulatesFromChangedNodeValues sets up a ran Command B
+// consuming a Node whose Value differs between the prior and current
+// snapshots. Expect Report.FileChanges to carry {NodeKey, B}.
+func TestFileChanges_PopulatesFromChangedNodeValues(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 5,
+		Rules: map[string]RuleResult{
+			"CP0:::Compile":   {Key: "CP0:::Compile", Iteration: 5, Value: []byte("compile-v2")},
+			"N/src/Foo.swift": {Key: "N/src/Foo.swift", Iteration: 5, Value: []byte("content-v2")},
+		},
+		PriorRules: map[string]RuleResult{
+			"CP0:::Compile":   {Key: "CP0:::Compile", Iteration: 4, Value: []byte("compile-v1")},
+			"N/src/Foo.swift": {Key: "N/src/Foo.swift", Iteration: 4, Value: []byte("content-v1")},
+		},
+		Deps: map[string][]string{
+			"CP0:::Compile": {"N/src/Foo.swift"},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "Compile", ManifestKey: "P0:::Compile", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	require.Len(t, report.FileChanges, 1)
+	assert.Equal(t, "N/src/Foo.swift", report.FileChanges[0].NodeKey)
+	assert.Equal(t, "CP0:::Compile", report.FileChanges[0].DownstreamTaskKey)
+}
+
+// TestImmediateChangeCauses_SkipsHeadOfChain seeds a leaf whose direct
+// upstream Commands are (a) a ClangStatCache (head-of-chain) and (b) a real
+// ran compile. Expect ChangeCauseKeys to carry only the real compile, and
+// the ClangStatCache to drop out of RootCauseKeys even though it has no ran
+// upstream itself.
+func TestImmediateChangeCauses_SkipsHeadOfChain(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 3,
+		Rules: map[string]RuleResult{
+			"CP0:::ClangStatCache /tmp/cache": {Key: "CP0:::ClangStatCache /tmp/cache", Iteration: 3},
+			"CP0:::CompileSwift Foo":          {Key: "CP0:::CompileSwift Foo", Iteration: 3},
+			"CP0:::Leaf":                      {Key: "CP0:::Leaf", Iteration: 3},
+		},
+		Deps: map[string][]string{
+			"CP0:::Leaf":             {"N/tmp/stat", "N/tmp/foo.o"},
+			"N/tmp/stat":             {"CP0:::ClangStatCache /tmp/cache"},
+			"N/tmp/foo.o":            {"CP0:::CompileSwift Foo"},
+			"CP0:::CompileSwift Foo": {"N/src/foo.swift"},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{
+			{Key: "ClangStatCache /tmp/cache", ManifestKey: "P0:::ClangStatCache /tmp/cache", Ran: true},
+			{Key: "CompileSwift Foo", ManifestKey: "P0:::CompileSwift Foo", Ran: true},
+			{Key: "Leaf", ManifestKey: "P0:::Leaf", Ran: true},
+		},
+	}
+
+	Classify(report, snap)
+
+	leaf := report.Tasks[2]
+	assert.Equal(t, []string{"CP0:::CompileSwift Foo"}, leaf.ChangeCauseKeys,
+		"head-of-chain ClangStatCache filtered out")
+
+	// ClangStatCache is RootCause at the Task level (UpstreamRanCount=0),
+	// but excluded from the Report-level RootCauseKeys.
+	assert.True(t, report.Tasks[0].RootCause)
+	assert.NotContains(t, report.RootCauseKeys, "ClangStatCache /tmp/cache")
+	assert.Contains(t, report.RootCauseKeys, "CompileSwift Foo")
+}
+
+// TestImmediateChangeCauses_WalksThroughGate wires A → Gate → B so B's
+// direct upstream is a phony gate rule. Expect ChangeCauseKeys to surface
+// A, not the gate.
+func TestImmediateChangeCauses_WalksThroughGate(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::A":                 {Key: "CP0:::A", Iteration: 2},
+			"CP0:::Gate target-X:all": {Key: "CP0:::Gate target-X:all", Iteration: 2},
+			"CP0:::B":                 {Key: "CP0:::B", Iteration: 2},
+		},
+		Deps: map[string][]string{
+			"CP0:::B":                 {"N/virtual/gate"},
+			"N/virtual/gate":          {"CP0:::Gate target-X:all"},
+			"CP0:::Gate target-X:all": {"N/tmp/a.o"},
+			"N/tmp/a.o":               {"CP0:::A"},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{
+			{Key: "A", ManifestKey: "P0:::A", Ran: true},
+			{Key: "Gate target-X:all", ManifestKey: "P0:::Gate target-X:all", Ran: true},
+			{Key: "B", ManifestKey: "P0:::B", Ran: true},
+		},
+	}
+
+	Classify(report, snap)
+
+	// B's direct upstream is the gate; we recurse through it to find A.
+	assert.Equal(t, []string{"CP0:::A"}, report.Tasks[2].ChangeCauseKeys,
+		"gate rule stepped past, real Command A surfaced")
+}
+
+// TestImmediateChangeCauses_FallsThroughToNearestRanAncestor sets up
+// A (ran) → N → B (skipped) → N → C (ran). C's direct upstream (B) is
+// skipped so direct one-hop returns nothing — the transitive walk finds A
+// as the nearest ran ancestor. ChangeCauseKeys should surface A, not the
+// empty list.
+func TestImmediateChangeCauses_FallsThroughToNearestRanAncestor(t *testing.T) {
+	snap := Snapshot{
+		Iteration: 10,
+		Rules: map[string]RuleResult{
+			"CP0:::A": {Key: "CP0:::A", Iteration: 10}, // ran
+			"CP0:::B": {Key: "CP0:::B", Iteration: 3},  // skipped
+			"CP0:::C": {Key: "CP0:::C", Iteration: 10}, // ran
+		},
+		Deps: map[string][]string{
+			"CP0:::C":   {"N/tmp/B.o"},
+			"N/tmp/B.o": {"CP0:::B"},
+			"CP0:::B":   {"N/tmp/A.o"},
+			"N/tmp/A.o": {"CP0:::A"},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{
+			{Key: "A", ManifestKey: "P0:::A", Ran: true},
+			{Key: "B", ManifestKey: "P0:::B", Ran: false},
+			{Key: "C", ManifestKey: "P0:::C", Ran: true},
+		},
+	}
+
+	Classify(report, snap)
+
+	c := report.Tasks[2]
+	assert.Equal(t, ReasonRanThisBuild, c.ExecutionReason)
+	assert.Equal(t, 1, c.UpstreamRanCount, "A is the only ran ancestor")
+	assert.Equal(t, []string{"CP0:::A"}, c.ChangeCauseKeys,
+		"nearest ran ancestor surfaced when direct upstream is skipped")
 }

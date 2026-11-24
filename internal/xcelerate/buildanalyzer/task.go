@@ -69,10 +69,12 @@ type Task struct {
 	// when its result was reused from an earlier build. Zero when no row was
 	// matched.
 	Iteration int64 `json:"iteration,omitempty"`
-	// Signature is the llbuild rule signature hex-encoded. Empty when the
-	// task had no build.db row (cold rule, or no snapshot joined). v2 doesn't
-	// compare signatures across builds — that's a v2.1+ extension gated on a
-	// second snapshot.
+	// Signature is the llbuild rule signature hex-encoded. This is the
+	// key-identity hash, stable per rule key — it does NOT change when the
+	// rule's output/inputs change (that signal lives in the rule's Value
+	// BLOB, surfaced as CurrentValueHex when a prior snapshot is available).
+	// Empty when the task had no build.db row (cold rule, or no snapshot
+	// joined).
 	Signature string `json:"signature,omitempty"`
 
 	// Diagnostics are the structured compiler messages v3 attaches via
@@ -91,23 +93,38 @@ type Task struct {
 	// UpstreamRanCount == 0. The "entry points" of each re-ran subgraph —
 	// the small set that explains why the build was not a no-op.
 	RootCause bool `json:"rootCause,omitempty"`
-	// ChangeCauseKeys are the immediate upstream Command keys (direct
-	// `C -> N -> C` hop) that also ran this build. Truncated at 10 entries
-	// with a trailing `…` sentinel when more exist — the operator needs the
-	// top handful to eyeball, not the full set which lives transitively in
-	// UpstreamRanCount.
+	// ChangeCauseKeys are upstream Command keys that also ran this build.
+	// Direct `C -> N -> C` one-hop walk by default; when the direct scan
+	// yields nothing but transitively-upstream Commands DID run, falls
+	// through to the nearest-ran-ancestor frontier so the field stays
+	// consistent with UpstreamRanCount. Head-of-chain rules (ClangStatCache
+	// & co.) are filtered; Gate aggregation rules are walked through
+	// transparently. Truncated at 10 entries with a trailing `…` sentinel.
 	ChangeCauseKeys []string `json:"changeCauseKeys,omitempty"`
 
 	// SignatureChanged is true when a prior snapshot held this rule with a
-	// different signature than the current one. Only populated when
-	// Snapshot.PriorRules is present — B.2's signature-diff signal. Lets the
-	// operator distinguish "ran because an input flipped" from "ran because
-	// something upstream re-ran".
+	// different serialized rule Value than the current one. Only populated
+	// when Snapshot.PriorRules is present — B.2's signature-diff signal.
+	// Lets the operator distinguish "ran because an input flipped" from
+	// "ran because something upstream re-ran".
 	SignatureChanged bool `json:"signatureChanged,omitempty"`
-	// PriorSignature is the matched rule's signature hex from the prior
-	// snapshot. Empty when no prior snapshot was available, or when the task
-	// is new (no prior rule).
+	// PriorSignature is the matched rule's llbuild signature column from the
+	// prior snapshot, hex-encoded. This is the key-identity hash, stable per
+	// rule key — it does NOT change when the rule's output/inputs change.
+	// Kept for backwards compatibility; use PriorValueHex / CurrentValueHex
+	// for the actual diff display. Empty when no prior snapshot was
+	// available, or when the task is new (no prior rule).
 	PriorSignature string `json:"priorSignature,omitempty"`
+	// PriorValueHex is the first 16 hex chars of sha256(priorRule.Value) —
+	// a short fingerprint of the serialized rule Value BLOB from the prior
+	// snapshot. Populated alongside SignatureChanged so the UI can render
+	// `prior=<hex> now=<hex>` without needing to pull the raw BLOB. Empty
+	// when no diff was detected or no prior rule existed.
+	PriorValueHex string `json:"priorValueHex,omitempty"`
+	// CurrentValueHex is the first 16 hex chars of sha256(currentRule.Value)
+	// — the counterpart to PriorValueHex. Populated whenever
+	// SignatureChanged is set.
+	CurrentValueHex string `json:"currentValueHex,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing
@@ -128,6 +145,17 @@ type Dependency struct {
 	To   string `json:"to"`
 }
 
+// FileChange names a source file (llbuild Node rule) whose stored Value BLOB
+// changed between the prior and current snapshots, together with the
+// downstream Command that consumes it. Populated by Classify when a prior
+// snapshot is available. Lets the operator read "file X.swift changed →
+// triggered compile Y" rather than "ClangStatCache triggered everything",
+// which is what the Command-level sig-diff alone collapses to.
+type FileChange struct {
+	NodeKey           string `json:"nodeKey"`
+	DownstreamTaskKey string `json:"downstreamTaskKey"`
+}
+
 // Report is the JSON shape rendered by `xcode analyze`. v0 fills Build +
 // Tasks from the xcactivitylog; v1's JoinManifest extends Tasks in place with
 // Planned/Ran/Inputs/Outputs, appends planned-only Tasks (Ran=false), and
@@ -140,6 +168,13 @@ type Report struct {
 	// RootCause is set — populated by Classify when Snapshot.Deps is
 	// available. Lets a reader eyeball "what actually changed" without
 	// filtering the Tasks array. Order is lexicographic for deterministic
-	// JSON diffs across runs.
+	// JSON diffs across runs. Head-of-chain rules (ClangStatCache & co.)
+	// are filtered out — they fire on every build and would otherwise
+	// drown real root causes.
 	RootCauseKeys []string `json:"rootCauseKeys,omitempty"`
+	// FileChanges is the deduped list of (changed input file, downstream
+	// Command) pairs populated by Classify when a prior snapshot is
+	// available. Surfaces the real "what source file flipped" trigger that
+	// Command-level sig-diffs alone would miss.
+	FileChanges []FileChange `json:"fileChanges,omitempty"`
 }

@@ -214,16 +214,25 @@ a re-parse.
 
 v2 classifies with a single snapshot — the current build's `build.db`. B.2
 extends this with a prior snapshot to detect per-rule signature changes and
-promote "ran but has no prior rule" into a distinct bucket. The **five
-reason values** the classifier now emits:
+promote "ran but has no prior rule" into a distinct bucket. The follow-up
+review pass introduced `re-evaluated-cached` to split llbuild's "I looked
+at this rule" from "I invoked its command". The **six reason values** the
+classifier now emits:
 
 | Condition | Reason |
 |---|---|
 | No `rule_results` row for the task's `C`-prefixed manifest key | `cold` |
-| Rule's `built_at` == `info.iteration` and a prior rule existed | `ran-this-build` |
-| Rule's `built_at` == `info.iteration` and `PriorRules != nil` and no prior rule for this key | `new-task` |
+| Rule's `built_at` == `info.iteration` AND activity log has a section (`Ran == true`) | `ran-this-build` |
+| Rule's `built_at` == `info.iteration` AND activity log has no section (`Ran == false`) | `re-evaluated-cached` |
+| Rule's `built_at` == `info.iteration` AND `PriorRules != nil` AND no prior rule for this key | `new-task` |
 | Rule's `built_at` < `info.iteration` | `skipped-up-to-date` |
 | Rule's `built_at` > `info.iteration` (shouldn't happen, defensive) | `unclassified` |
+
+The `re-evaluated-cached` split matters on warm builds where llbuild
+re-evaluates hundreds of rules per build but only a handful actually invoke
+work. Treating "rule iteration matches current" as "ran" overcounted ~4x
+on IceCubes — `ran-this-build` reads 50 but only 13 commands actually
+executed per the activity log.
 
 When `info.iteration` is zero (test fixtures / older schema), v2's fallback
 to the activity-log Ran flag as the tiebreaker still applies so warm-build
@@ -231,10 +240,14 @@ output stays usable.
 
 **Signature-change detection (B.2):** orthogonal to the bucket. When
 `Snapshot.PriorRules != nil` and a matched task's prior rule carries a
-different signature than the current, `Task.SignatureChanged = true` and
-`Task.PriorSignature` holds the hex of the prior. A sig-change task is
-still ran-this-build / skipped / cold on the iteration dimension — the two
-signals compose.
+different serialized Value BLOB than the current, `Task.SignatureChanged =
+true`, `Task.PriorValueHex` / `Task.CurrentValueHex` hold short sha256
+fingerprints of the respective Value blobs, and `Task.PriorSignature`
+still carries the prior key-identity hash for backwards compatibility.
+Note that the raw `signature` column on `rule_results` is a stable
+key-identity hash — it does NOT change when a rule's output flips, so we
+diff on Value bytes. The UI should render `prior=<CurrentValueHex>
+now=<PriorValueHex>`, not `prior=<PriorSignature> now=<Signature>`.
 
 **Upstream-dependency attribution — landed in v4** (see below). The CLI now
 walks the current snapshot's adjacency to attribute every ran-this-build
@@ -242,6 +255,40 @@ task to its minimal upstream-ran causes and surfaces the root-cause set.
 This doesn't replace Phase B — on a single snapshot it attributes "which
 other re-ran task fed this one", not "whose signature changed first". That
 answer still needs the prior build's `build.db`.
+
+**File-change surface (`Report.FileChanges`)**: when a prior snapshot is
+available, Classify walks each ran Command's direct Node (file) inputs and
+emits `FileChange{NodeKey, DownstreamTaskKey}` entries for Nodes whose
+stored Value BLOB differs from the prior snapshot. This answers "which
+source file changed and what consumed it" directly; without this surface,
+the Command-level sig-diff collapses every change into whatever happens to
+sit atop llbuild's chain (usually `ClangStatCache`).
+
+## Known limitations / carve-outs
+
+- **Head-of-chain rules excluded from `RootCauseKeys`.** `ClangStatCache`
+  (header stat cache, refreshed every build), llbuild's
+  `stale-file-removal` and `build-headers-stale-file-removal` fire on
+  every build regardless of source edits. Treating them as root causes
+  surfaces them for every single compile that consumes their output. The
+  `isHeadOfChain` helper in `reason.go` filters them from the aggregate
+  `RootCauseKeys` list and from `ChangeCauseKeys`. Task-level `RootCause`
+  is still populated (they remain root causes from the raw dep-walk's
+  perspective) — only the Report-level aggregate drops them. Extend the
+  helper when a new per-build-fired rule is identified.
+- **Gate rules walked through transparently.** llbuild inserts phony
+  aggregation `Gate target-X:all` rules between targets. They have no
+  underlying work and are a dead end for an operator. `ChangeCauseKeys`
+  recurses one hop through each direct-upstream Gate (bounded at 3 hops)
+  to surface its real Command upstream instead.
+- **`ChangeCauseKeys` falls through to nearest ran ancestor.** When the
+  direct one-hop walk yields no ran Commands but the transitive walk
+  shows some exist, Classify walks further upstream and surfaces the
+  frontier of ran ancestors. This keeps the field consistent with
+  `UpstreamRanCount` — previously `UpstreamRanCount > 0` could coincide
+  with an empty `ChangeCauseKeys`. Walked keys share the same flat list
+  shape as direct keys; the field docstring notes keys may be direct OR
+  the nearest transitive ran-ancestor.
 
 ## Phasing
 
@@ -256,6 +303,7 @@ answer still needs the prior build's `build.db`.
 | **v4** | + Upstream attribution via the `rule_results.dependencies` BLOB (NOT a separate `rule_dependencies` table — see the build.db notes above). `Snapshot.Deps map[string][]string` carries the full adjacency after Decoder resolves each int64 key_id back to its `key_names` string. `attribution.go` adds `TransitiveCommandDeps` / `DirectCommandDeps` / `UpstreamRanCommands` that walk the `C -> N -> C` two-hop so Command-to-Command edges are first-class. Classify now populates `Task.UpstreamRanCount`, `Task.RootCause`, `Task.ChangeCauseKeys` (truncated at 10 entries + `…` sentinel) and the Report-level `RootCauseKeys` sorted list. Pretty output gains a `*` prefix for root causes and a `U=N` upstream-ran-count column. | **landed** |
 | **B.1** | Snapshot primitive. `buildanalyzer.SnapshotBuildDB(derivedData, storeRoot)` copies the live DB via SQLite `VACUUM INTO` under `<storeRoot>/<build-hex>/<iter>-<unix>.db`, pruning to the 10 newest per build-hex. `DefaultSnapshotRoot()` resolves `~/.local/state/xcelerate/build-analyzer/snapshots` (overridable via `BITRISE_BUILD_ANALYZER_SNAPSHOT_ROOT`). New CLI: `bitrise-build-cache xcode snapshot-builddb --derived-data <path> [--snapshot-root <dir>]`. Soft-fails to stderr on missing DB. | **landed** |
 | **B.2** | Historical-snapshot classification. `PickSnapshotForLog` picks the newest snapshot <= the log's finish-time plus the next-older as prior. `ReadSnapshotPair` populates `Snapshot.PriorRules`. `Classify` extends to set `Task.SignatureChanged` + `Task.PriorSignature` on diff, and promotes a ran-this-build task with no prior rule to `ReasonNewTask`. `cmd xcode analyze` auto-picks the matching snapshot when `--derived-data` is set; `--snapshot-root` overrides the store root, `--no-snapshot` forces the live DB (debug). Pretty output gains `N` in the reason column and `*` trailing marker on sig-changed tasks. | **landed** |
+| **B.2.1** | Attribution + sig-diff review pass: `ReasonReEvaluatedCached` (`V` in the reason column) splits llbuild-re-checked-but-not-executed from actually-ran; `Task.PriorValueHex` / `CurrentValueHex` carry 16-hex sha256 fingerprints of the rule Value blobs so the UI can render honest diffs (the key-identity `PriorSignature` is stable per rule key and misled the previous display); `Report.FileChanges` surfaces changed input file Nodes attributed to their downstream Command; head-of-chain rules (`ClangStatCache` + stale-file-removal) are filtered from `RootCauseKeys` and gated through in `ChangeCauseKeys`; `ChangeCauseKeys` recurses through phony `Gate …` rules and falls through to the nearest-ran-ancestor frontier when the direct one-hop walk yields nothing but transitive ran ancestors exist. | **landed** |
 | **B.3** | Orchestration — auto-trigger snapshot on build completion. Deferred: the wrapperless-flow proxy already watches DerivedData for other reasons and is the right place to hook this without a second fsnotify. | **deferred** |
 
 ### v3 fallback — `.dia` reader deferred

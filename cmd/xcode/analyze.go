@@ -438,7 +438,9 @@ func formatTimestamp(s string) string {
 // reasonLetter returns a single-character column shown before the exit code
 // in --output=pretty: `C` cold, `R` ran this build, `S` skipped up-to-date,
 // `U` unclassified, `N` new-task (B.2, prior snapshot present and task had no
-// matching prior rule), `-` when the field is unpopulated (no build.db joined).
+// matching prior rule), `V` re-evaluated-cached (rule re-checked by llbuild
+// but no command invoked — the activity log confirms no work was done),
+// `-` when the field is unpopulated (no build.db joined).
 func reasonLetter(reason buildanalyzer.ExecutionReason) string {
 	switch reason {
 	case buildanalyzer.ReasonCold:
@@ -451,6 +453,8 @@ func reasonLetter(reason buildanalyzer.ExecutionReason) string {
 		return "U"
 	case buildanalyzer.ReasonNewTask:
 		return "N"
+	case buildanalyzer.ReasonReEvaluatedCached:
+		return "V"
 	default:
 		return "-"
 	}
