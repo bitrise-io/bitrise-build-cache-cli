@@ -680,6 +680,18 @@ step_bundles:
             priv_url="https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug"
             echo "Private pipeline: $priv_url"
 
+            abort_private() {
+              local reason="${1:-dispatcher terminated}"
+              echo "Aborting private pipeline $priv_slug: $reason"
+              curl -sS -w "\nHTTP %{http_code}" -X POST --max-time 30 \
+                -H "Authorization: $RECEIVER_WAT" \
+                -H 'Content-Type: application/json' \
+                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug/abort" \
+                -d "{\"abort_reason\":\"$reason\",\"abort_with_success\":false,\"skip_notifications\":true}" || true
+              echo
+            }
+            trap 'abort_private "public dispatcher received TERM/INT"; exit 130' TERM INT
+
             # Wall-clock budget: 90 min. Private pipeline has per-workflow
             # timeouts; this just prevents a stuck on_hold from burning the
             # public build's global budget.
@@ -689,17 +701,19 @@ step_bundles:
             while :; do
               if (( SECONDS > BUDGET )); then
                 echo "DISPATCHER TIMEOUT: watched ${SECONDS}s (>${BUDGET}s), aborting watch"
-                abort_resp=$(curl -sS -w "\nHTTP %{http_code}" -X POST --max-time 30 \
-                  -H "Authorization: $RECEIVER_WAT" \
-                  -H 'Content-Type: application/json' \
-                  "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug/abort" \
-                  -d '{"abort_reason":"dispatcher wall-clock budget exceeded","abort_with_success":false,"skip_notifications":true}' || true)
-                echo "Abort response: $abort_resp"
+                abort_private "dispatcher wall-clock budget exceeded"
                 exit 1
               fi
-              info=$(curl -s --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
+              info_resp=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
                 -H "Authorization: $RECEIVER_WAT" \
-                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug")
+                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug" || echo $'\nHTTP_STATUS:000')
+              http_status=$(echo "$info_resp" | awk -F: '/^HTTP_STATUS:/ {print $2}')
+              info=$(echo "$info_resp" | sed '/^HTTP_STATUS:/d')
+              if [[ "$http_status" =~ ^4 ]]; then
+                echo "Polling failed (HTTP $http_status) — auth or pipeline-id problem, aborting:"
+                echo "$info"
+                exit 1
+              fi
               if ! echo "$info" | jq -e '.status' >/dev/null 2>&1; then
                 sleep 20
                 continue
@@ -711,6 +725,7 @@ step_bundles:
                 *) sleep 20 ;;
               esac
             done
+            trap - TERM INT
 
             echo
             echo "=== Per-workflow results (private pipeline $priv_slug) ==="
