@@ -590,7 +590,7 @@ step_bundles:
     - git::https://github.com/bitrise-steplib/bitrise-step-get-identity-token.git@main:
         title: Mint OIDC identity token for receiver app
         inputs:
-        - audience: https://api.bitrise.io
+        - audience: app.bitrise.io
     - script:
         title: Exchange identity token for short-lived receiver WAT
         inputs:
