@@ -27,6 +27,11 @@ Non-goals (v1): semantic diff of signatures ("this .swift file's
 interface changed"), real-time streaming, anything that requires
 patching the Xcode build system.
 
+The single-snapshot limitation persists through v4: the attribution walk
+tells you "which re-ran task triggered this one on the current build" but
+not "whose signature changed first since the prior build". That second
+question needs the prior snapshot and is tracked as Phase B.
+
 ## Inputs — what Xcode drops on disk for every build
 
 No flags required. Every Xcode build writes these as a side-effect.
@@ -68,9 +73,14 @@ last build". Key tables as observed on Xcode 26.x:
 - `info (id, version, client_version, iteration)` — one row carrying the
   current build's iteration counter. `info.iteration` drives the
   classifier.
-- `rule_dependencies` — adjacency: `(rule_id, dependency_rule_id)`. v2
-  does not read this; v3 may walk it to attribute the mismatch to a
-  specific upstream key.
+- `rule_dependencies` — **does not exist as a separate table on Xcode 26**.
+  The original design sketch (and the public llbuild docs) suggest an
+  `(rule_id, dependency_rule_id)` table, but the actual on-disk encoding
+  packs the adjacency into the `rule_results.dependencies` BLOB column: a
+  concatenated array of little-endian int64 `key_id` values. Length of the
+  BLOB divided by 8 gives the dep count; each int64 is a foreign key into
+  `key_names`. The post-v3 attribution reader decodes that blob — see the
+  v4 notes below.
 
 v2 explicitly does NOT attempt to distinguish
 `signature-mismatch-with-prior` from `new-task` — that needs the prior
@@ -211,14 +221,19 @@ When `info.iteration` is zero (test fixtures / older schema), v2 falls back
 to the activity-log Ran flag as the tiebreaker so warm-build output stays
 usable.
 
-**Deferred for later phases (both would need a second data source):**
+**Deferred for later phases (needs a second data source):**
 
 - `signature-mismatch` vs `new-task` — needs the prior `build.db` to diff
   the signature column. v2 exposes the per-task `signature` hex so a BE
   roll-up CAN run the diff across invocations, even though the CLI itself
-  doesn't.
-- Upstream-dependency attribution (the "which input key changed first"
-  message) — needs `rule_dependencies` traversal.
+  doesn't. Addressed by Phase B (not landed).
+
+**Upstream-dependency attribution — landed in v4** (see below). The CLI now
+walks the current snapshot's adjacency to attribute every ran-this-build
+task to its minimal upstream-ran causes and surfaces the root-cause set.
+This doesn't replace Phase B — on a single snapshot it attributes "which
+other re-ran task fed this one", not "whose signature changed first". That
+answer still needs the prior build's `build.db`.
 
 ## Phasing
 
@@ -230,6 +245,7 @@ usable.
 | **v2** | + build.db read (`modernc.org/sqlite`, pure Go) → execution-reason classifier populates `Task.ExecutionReason` / `Task.Iteration` / `Task.Signature`. Four buckets: `cold`, `ran-this-build`, `skipped-up-to-date`, `unclassified`. Pretty output gains a one-letter reason column (C/R/S/U); dot renderer thickens node borders for `ran-this-build`. | **landed** |
 | **v2.1** | `Task.Iteration int64` replaces the earlier `Task.BuiltAt time.Time` carrier — the llbuild `built_at` column is an iteration counter, not a wall-clock timestamp, so the time.Time rendering (`1970-01-01T00:00:01Z` for iter=1) was actively misleading. `RuleResult.Iteration` now typed accordingly; classification semantics unchanged. | **landed** |
 | **v3** | + `Task.Diagnostics []Diagnostic` populated by `AttachDiagnostics(report, derivedData, DiagMode)` — stderr-regex extractor surfaces `path:line:col: severity: message` records from `Task.StderrExcerpt` (clang + swiftc form), continuation lines fold into the preceding record's message. `cmd xcode analyze --diagnostics=auto\|dia\|stderr\|off` (default `auto`). Pretty output gains a one-letter `[E/W/N]` diagnostic column + indented per-diagnostic continuation lines. | **landed (stderr only; .dia deferred — see below)** |
+| **v4** | + Upstream attribution via the `rule_results.dependencies` BLOB (NOT a separate `rule_dependencies` table — see the build.db notes above). `Snapshot.Deps map[string][]string` carries the full adjacency after Decoder resolves each int64 key_id back to its `key_names` string. `attribution.go` adds `TransitiveCommandDeps` / `DirectCommandDeps` / `UpstreamRanCommands` that walk the `C -> N -> C` two-hop so Command-to-Command edges are first-class. Classify now populates `Task.UpstreamRanCount`, `Task.RootCause`, `Task.ChangeCauseKeys` (truncated at 10 entries + `…` sentinel) and the Report-level `RootCauseKeys` sorted list. Pretty output gains a `*` prefix for root causes and a `U=N` upstream-ran-count column. | **landed** |
 
 ### v3 fallback — `.dia` reader deferred
 
@@ -276,9 +292,15 @@ of executed tasks, already better than `xcodebuild -verbose` greps).
   readers, no network, no auth.
   - `manifest.go` — JSON decoder for `manifest.json` (**v1**).
   - `ruledb.go` — `modernc.org/sqlite` reader for `build.db` (**v2**,
-    pure Go, no cgo).
+    pure Go, no cgo). v4 extended this to decode the
+    `rule_results.dependencies` BLOB into `Snapshot.Deps` (a
+    `map[string][]string` adjacency keyed by rule key).
   - `reason.go` — v2 execution-reason classifier against the ruledb
-    Snapshot.
+    Snapshot. v4 extended with attribution: `Task.UpstreamRanCount`,
+    `Task.RootCause`, `Task.ChangeCauseKeys`, `Report.RootCauseKeys`.
+  - `attribution.go` — v4. Iterative DFS over `Snapshot.Deps` with a
+    Command-level visited set; `C -> N -> C` two-hop so Node (file)
+    intermediates are stepped over and callers only see Command keys.
   - `activity.go` — SLF walker that surfaces one Task per
     `IDEActivityLogCommandInvocationSection`, plus v1's `JoinManifest`
     that annotates Tasks with Planned/Tool/Inputs/Outputs and emits

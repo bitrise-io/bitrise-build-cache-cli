@@ -681,3 +681,64 @@ func TestReadJoinClassify_EndToEnd(t *testing.T) {
 	assert.Equal(t, 1, counts[buildanalyzer.ReasonSkippedUpToDate], "CompileSwift was reused")
 	assert.Equal(t, 2, counts[buildanalyzer.ReasonCold], "CopyPNGFile + BogusActivityOnlySection are cold")
 }
+
+// TestReadJoinClassify_AttributionEndToEnd chains Read → JoinManifest →
+// Classify against a synthesized 3-Command chain with Deps so root cause
+// count < ran-this-build count. Proves the attribution fields populate on
+// the full pipeline, not just the Classify unit test.
+func TestReadJoinClassify_AttributionEndToEnd(t *testing.T) {
+	report := buildanalyzer.Report{
+		Build: buildanalyzer.BuildMeta{Title: "Build Chain"},
+		Tasks: []buildanalyzer.Task{
+			{Key: `Compile A (in target 'Foo' from project 'Foo')`, Ran: true},
+			{Key: `Compile B (in target 'Foo' from project 'Foo')`, Ran: true},
+			{Key: `Compile C (in target 'Foo' from project 'Foo')`, Ran: true},
+		},
+	}
+
+	manifest := buildanalyzer.Manifest{
+		Commands: map[string]buildanalyzer.ManifestCommand{
+			"P0:target-X:Debug:Compile A": {Tool: "swift-driver-compilation", Description: "Compile A"},
+			"P0:target-X:Debug:Compile B": {Tool: "swift-driver-compilation", Description: "Compile B"},
+			"P0:target-X:Debug:Compile C": {Tool: "swift-driver-compilation", Description: "Compile C"},
+		},
+	}
+
+	buildanalyzer.JoinManifest(&report, manifest)
+
+	snap := buildanalyzer.Snapshot{
+		Iteration: 3,
+		Rules: map[string]buildanalyzer.RuleResult{
+			"CP0:target-X:Debug:Compile A": {Key: "CP0:target-X:Debug:Compile A", Iteration: 3},
+			"CP0:target-X:Debug:Compile B": {Key: "CP0:target-X:Debug:Compile B", Iteration: 3},
+			"CP0:target-X:Debug:Compile C": {Key: "CP0:target-X:Debug:Compile C", Iteration: 3},
+		},
+		Deps: map[string][]string{
+			// B depends on A (via a Node intermediate).
+			"CP0:target-X:Debug:Compile B": {"N/tmp/A.o"},
+			"N/tmp/A.o":                    {"CP0:target-X:Debug:Compile A"},
+			// C depends on B (via a Node intermediate).
+			"CP0:target-X:Debug:Compile C": {"N/tmp/B.o"},
+			"N/tmp/B.o":                    {"CP0:target-X:Debug:Compile B"},
+		},
+	}
+
+	buildanalyzer.Classify(&report, snap)
+
+	var ranCount, rootCount int
+	for _, task := range report.Tasks {
+		if task.ExecutionReason == buildanalyzer.ReasonRanThisBuild {
+			ranCount++
+		}
+
+		if task.RootCause {
+			rootCount++
+		}
+	}
+
+	assert.Equal(t, 3, ranCount, "all three tasks ran this build")
+	assert.Equal(t, 1, rootCount, "only the chain head (A) is a root cause")
+	assert.Less(t, rootCount, ranCount, "attribution shrinks the ran set to its heads")
+	require.Len(t, report.RootCauseKeys, 1)
+	assert.Contains(t, report.RootCauseKeys[0], "Compile A", "A should be the sole root cause")
+}

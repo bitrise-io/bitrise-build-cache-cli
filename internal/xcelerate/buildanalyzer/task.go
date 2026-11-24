@@ -80,6 +80,23 @@ type Task struct {
 	// reader ships. One record per `file:line:col: severity: message`
 	// header. Empty when the task emitted no recognizable diagnostics.
 	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
+
+	// UpstreamRanCount is the number of transitively-upstream Commands that
+	// also ran this build. Populated by Classify when a Snapshot with Deps is
+	// joined; zero on cold / skipped / unclassified tasks or when no DB was
+	// read. On a ran-this-build task, zero means no re-ran ancestor caused
+	// this one — i.e. the task is a change entry point (RootCause).
+	UpstreamRanCount int `json:"upstreamRanCount,omitempty"`
+	// RootCause is true when ExecutionReason == ReasonRanThisBuild and
+	// UpstreamRanCount == 0. The "entry points" of each re-ran subgraph —
+	// the small set that explains why the build was not a no-op.
+	RootCause bool `json:"rootCause,omitempty"`
+	// ChangeCauseKeys are the immediate upstream Command keys (direct
+	// `C -> N -> C` hop) that also ran this build. Truncated at 10 entries
+	// with a trailing `…` sentinel when more exist — the operator needs the
+	// top handful to eyeball, not the full set which lives transitively in
+	// UpstreamRanCount.
+	ChangeCauseKeys []string `json:"changeCauseKeys,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing
@@ -108,4 +125,10 @@ type Report struct {
 	Build        BuildMeta    `json:"build"`
 	Tasks        []Task       `json:"tasks"`
 	Dependencies []Dependency `json:"dependencies,omitempty"`
+	// RootCauseKeys is the flat sorted list of every Task.Key where
+	// RootCause is set — populated by Classify when Snapshot.Deps is
+	// available. Lets a reader eyeball "what actually changed" without
+	// filtering the Tasks array. Order is lexicographic for deterministic
+	// JSON diffs across runs.
+	RootCauseKeys []string `json:"rootCauseKeys,omitempty"`
 }

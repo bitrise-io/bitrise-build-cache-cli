@@ -2,7 +2,12 @@ package buildanalyzer
 
 import (
 	"encoding/hex"
+	"sort"
 )
+
+// changeCauseKeysLimit caps Task.ChangeCauseKeys entries so pretty / JSON
+// output stays scannable; a sentinel "…" takes the final slot when truncated.
+const changeCauseKeysLimit = 10
 
 // ExecutionReason is the v2 bucket a task falls into once joined against the
 // build.db Snapshot. The four values deliberately omit two interesting signals
@@ -58,7 +63,7 @@ func Classify(report *Report, snap Snapshot) {
 	for i := range report.Tasks {
 		task := &report.Tasks[i]
 
-		rule, found := lookupRule(snap.Rules, task)
+		rule, matchedKey, found := lookupRule(snap.Rules, task)
 		if !found {
 			task.ExecutionReason = ReasonCold
 
@@ -71,7 +76,104 @@ func Classify(report *Report, snap Snapshot) {
 		}
 
 		task.ExecutionReason = reasonForRule(rule, snap.Iteration, task.Ran)
+
+		if task.ExecutionReason == ReasonRanThisBuild {
+			attributeRanTask(task, matchedKey, snap)
+		}
 	}
+
+	report.RootCauseKeys = collectRootCauseKeys(report.Tasks)
+}
+
+// attributeRanTask fills UpstreamRanCount, RootCause and ChangeCauseKeys for
+// a task classified as ran-this-build. No-op when Snapshot has no Deps map
+// (e.g. an older DB schema the reader soft-failed on) so the flags stay off
+// and the JSON omitempty hides the fields — same contract as missing manifest
+// rows.
+func attributeRanTask(task *Task, matchedKey string, snap Snapshot) {
+	if snap.Deps == nil {
+		return
+	}
+
+	upstreamRan := UpstreamRanCommands(snap, matchedKey)
+	task.UpstreamRanCount = len(upstreamRan)
+	task.RootCause = task.UpstreamRanCount == 0
+
+	task.ChangeCauseKeys = immediateChangeCauses(snap, matchedKey)
+}
+
+// immediateChangeCauses walks the one-hop upstream Commands (no transitive
+// walk) and keeps only those that ran this build. Truncated at
+// changeCauseKeysLimit with a `…` sentinel. DirectCommandDeps dedupes a
+// Command reached through multiple Node intermediates already — this filter
+// only prunes skipped-upstream Commands.
+func immediateChangeCauses(snap Snapshot, matchedKey string) []string {
+	direct := DirectCommandDeps(snap, matchedKey)
+	if len(direct) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(direct))
+
+	for _, cmd := range direct {
+		rule, ok := snap.Rules[cmd]
+		if !ok {
+			continue
+		}
+
+		if ruleRanThisBuild(rule, snap.Iteration) {
+			out = append(out, cmd)
+		}
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+
+	if len(out) > changeCauseKeysLimit {
+		truncated := make([]string, 0, changeCauseKeysLimit+1)
+		truncated = append(truncated, out[:changeCauseKeysLimit]...)
+		truncated = append(truncated, "…")
+
+		return truncated
+	}
+
+	return out
+}
+
+// collectRootCauseKeys scans the classified task list and returns the sorted
+// unique set of Task.Key values where RootCause is set. Sorting keeps JSON
+// diffs stable between runs on the same DB.
+func collectRootCauseKeys(tasks []Task) []string {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, 16)
+	for _, task := range tasks {
+		if !task.RootCause {
+			continue
+		}
+
+		if _, ok := seen[task.Key]; ok {
+			continue
+		}
+
+		seen[task.Key] = struct{}{}
+	}
+
+	if len(seen) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	return keys
 }
 
 // lookupRule walks the three key-shape attempts described in Classify's
@@ -79,26 +181,29 @@ func Classify(report *Report, snap Snapshot) {
 // Node (file) keys with `N` — tasks always map to Command rules, so we try the
 // `C`-prefixed form first before falling back to raw keys for test fixtures
 // and activity-log-only rows.
-func lookupRule(rules map[string]RuleResult, task *Task) (RuleResult, bool) {
+//
+// Returns the matched map key alongside the rule so attribution can reuse it
+// to look up Snapshot.Deps without re-running the same prefix dance.
+func lookupRule(rules map[string]RuleResult, task *Task) (RuleResult, string, bool) {
 	if task.ManifestKey != "" {
 		if rule, ok := rules["C"+task.ManifestKey]; ok {
-			return rule, true
+			return rule, "C" + task.ManifestKey, true
 		}
 		if rule, ok := rules[task.ManifestKey]; ok {
-			return rule, true
+			return rule, task.ManifestKey, true
 		}
 	}
 
 	if task.Key != "" {
 		if rule, ok := rules["C"+task.Key]; ok {
-			return rule, true
+			return rule, "C" + task.Key, true
 		}
 		if rule, ok := rules[task.Key]; ok {
-			return rule, true
+			return rule, task.Key, true
 		}
 	}
 
-	return RuleResult{}, false
+	return RuleResult{}, "", false
 }
 
 // reasonForRule folds the iteration comparison into the four buckets. The

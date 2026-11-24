@@ -52,11 +52,21 @@ type RuleResult struct {
 // `rule_results.built_at` turned out to be an iteration counter, not a
 // timestamp (see docs/xcode-build-analyzer.md v2 notes).
 //
+// Deps is the per-rule upstream adjacency — for each rule key, the list of
+// rule keys it depends on. Xcode 26 does NOT ship a separate
+// `rule_dependencies` table despite what llbuild's public docs suggest:
+// the edges live inside a BLOB column (`rule_results.dependencies`) encoded
+// as a packed array of little-endian int64 key_ids. The reader decodes that
+// blob and resolves each int back to its key_names string so callers see a
+// pure `string -> []string` adjacency. Empty / absent BLOBs result in no
+// Deps entry for that rule.
+//
 // The struct shape is a small deviation from the task spec's `map[string]RuleResult`
 // — the iteration counter has to ride along somewhere and a sentinel key in a
 // bare map would be uglier than naming the field.
 type Snapshot struct {
 	Rules     map[string]RuleResult
+	Deps      map[string][]string
 	Iteration int64
 }
 
@@ -111,12 +121,12 @@ func ReadBuildDB(path string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	rules, err := readRules(ctx, db)
+	rules, deps, err := readRules(ctx, db)
 	if err != nil {
 		return Snapshot{}, err
 	}
 
-	return Snapshot{Rules: rules, Iteration: iteration}, nil
+	return Snapshot{Rules: rules, Deps: deps, Iteration: iteration}, nil
 }
 
 // readIteration returns the current/latest build iteration counter from the
@@ -139,47 +149,103 @@ func readIteration(ctx context.Context, db *sql.DB) (int64, error) {
 	return iteration, nil
 }
 
-func readRules(ctx context.Context, db *sql.DB) (map[string]RuleResult, error) {
+// readRules returns (rules by key, adjacency by key).
+//
+// Two-pass: first pass loads every row into a slice keyed by `key_id` so the
+// second pass can resolve each `dependencies` BLOB's int64 key_ids back into
+// string keys. The BLOB is a packed little-endian int64 array — no header,
+// length = len(blob)/8.
+//
+// If a BLOB references a key_id that wasn't in `key_names` (shouldn't happen
+// on a sane Xcode write) that entry is silently dropped: the attribution walk
+// deals in Command rules, and a missing node in the adjacency is already how
+// "no upstream" reads.
+func readRules(ctx context.Context, db *sql.DB) (map[string]RuleResult, map[string][]string, error) {
 	const q = `
-SELECT k.key, r.built_at, r.start, r.signature, r.value
+SELECT r.key_id, k.key, r.built_at, r.start, r.signature, r.value, r.dependencies
 FROM rule_results r
 JOIN key_names k ON k.id = r.key_id
 `
 	rows, err := db.QueryContext(ctx, q)
 	if err != nil {
-		return nil, fmt.Errorf("query rule_results: %w", err)
+		return nil, nil, fmt.Errorf("query rule_results: %w", err)
 	}
 	defer rows.Close()
 
-	out := make(map[string]RuleResult, 1024)
+	type pending struct {
+		key     string
+		depsRaw []byte
+	}
+
+	rules := make(map[string]RuleResult, 1024)
+	keyByID := make(map[int64]string, 1024)
+	pendings := make([]pending, 0, 1024)
 
 	for rows.Next() {
 		var (
+			keyID     int64
 			key       string
 			builtAt   int64
 			start     sql.NullFloat64
 			signature sql.NullInt64
 			value     []byte
+			depsRaw   []byte
 		)
 
-		if err := rows.Scan(&key, &builtAt, &start, &signature, &value); err != nil {
-			return nil, fmt.Errorf("scan rule_results row: %w", err)
+		if err := rows.Scan(&keyID, &key, &builtAt, &start, &signature, &value, &depsRaw); err != nil {
+			return nil, nil, fmt.Errorf("scan rule_results row: %w", err)
 		}
 
-		out[key] = RuleResult{
+		rules[key] = RuleResult{
 			Key:          key,
 			Iteration:    builtAt,
 			BuiltAtStart: start.Float64,
 			Signature:    signatureBytes(signature),
 			Value:        value,
 		}
+		keyByID[keyID] = key
+		if len(depsRaw) > 0 {
+			pendings = append(pendings, pending{key: key, depsRaw: depsRaw})
+		}
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rule_results: %w", err)
+		return nil, nil, fmt.Errorf("iterate rule_results: %w", err)
 	}
 
-	return out, nil
+	deps := make(map[string][]string, len(pendings))
+	for _, p := range pendings {
+		resolved := resolveDepBlob(p.depsRaw, keyByID)
+		if len(resolved) > 0 {
+			deps[p.key] = resolved
+		}
+	}
+
+	return rules, deps, nil
+}
+
+// resolveDepBlob decodes a packed little-endian int64 key_id array and looks
+// each entry up in keyByID. A BLOB whose length is not a multiple of 8 is
+// treated as malformed and dropped silently — the rule just reads as having
+// no upstream, which is strictly more conservative than guessing a partial
+// decode.
+func resolveDepBlob(raw []byte, keyByID map[int64]string) []string {
+	if len(raw)%8 != 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(raw)/8)
+	for i := 0; i+8 <= len(raw); i += 8 {
+		// int64 bit pattern via uint64 — llbuild stores raw signed key_ids
+		// which are always >= 0 in practice but the sqlite column type is
+		// INTEGER so we decode symmetrically.
+		id := int64(binary.LittleEndian.Uint64(raw[i : i+8])) //nolint:gosec // raw bit pattern, no overflow risk
+		if k, ok := keyByID[id]; ok {
+			out = append(out, k)
+		}
+	}
+
+	return out
 }
 
 // signatureBytes serializes the SQLite INTEGER signature to an 8-byte

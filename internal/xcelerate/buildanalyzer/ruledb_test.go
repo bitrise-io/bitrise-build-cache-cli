@@ -5,6 +5,7 @@ package buildanalyzer
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -59,6 +60,44 @@ func TestReadBuildDB_MissingInfoRow(t *testing.T) {
 	require.Len(t, snap.Rules, 1)
 }
 
+// TestReadBuildDB_ParsesDependenciesBLOB asserts the little-endian packed
+// int64 decode of the `rule_results.dependencies` column: a Command rule
+// pointing at a Node, which itself points at an upstream Command, should
+// surface as two Snapshot.Deps rows the attribution walker can traverse.
+func TestReadBuildDB_ParsesDependenciesBLOB(t *testing.T) {
+	// Command 1 reads Node 3. Node 3 is produced by Command 2. Command 2
+	// has no deps. The walker's `C -> N -> C` hop needs both halves.
+	path := prepareTempDB(t, []insertRow{
+		{keyID: 1, key: "CP0:::CompileFoo", builtAt: 5, start: 1, signature: 111, depIDs: []int64{3}},
+		{keyID: 2, key: "CP0:::EmitBar", builtAt: 5, start: 1, signature: 222},
+		{keyID: 3, key: "N/tmp/Bar.o", builtAt: 5, start: 1, signature: 333, depIDs: []int64{2}},
+	}, 5)
+
+	snap, err := ReadBuildDB(path)
+	require.NoError(t, err)
+	require.NotNil(t, snap.Deps)
+
+	require.ElementsMatch(t, []string{"N/tmp/Bar.o"}, snap.Deps["CP0:::CompileFoo"])
+	require.ElementsMatch(t, []string{"CP0:::EmitBar"}, snap.Deps["N/tmp/Bar.o"])
+	require.NotContains(t, snap.Deps, "CP0:::EmitBar", "rules with no deps BLOB are absent from the adjacency")
+}
+
+// TestReadBuildDB_DropsUnknownDepIDs covers the robustness path: a deps BLOB
+// that references a key_id not present in `key_names` (should never happen
+// but could survive a partial DB truncation) is dropped silently — the dep
+// just doesn't surface.
+func TestReadBuildDB_DropsUnknownDepIDs(t *testing.T) {
+	path := prepareTempDB(t, []insertRow{
+		{keyID: 1, key: "CA", builtAt: 1, start: 1, signature: 1, depIDs: []int64{999}},
+	}, 1)
+
+	snap, err := ReadBuildDB(path)
+	require.NoError(t, err)
+	// 999 isn't a known key, so the adjacency entry drops to empty →
+	// filtered out of the map entirely.
+	require.NotContains(t, snap.Deps, "CA")
+}
+
 // TestLocateBuildDB_PresentAndAbsent exercises both the happy path and the
 // soft-fail `("", nil)` contract LocateManifest also honors.
 func TestLocateBuildDB_PresentAndAbsent(t *testing.T) {
@@ -80,13 +119,15 @@ func TestLocateBuildDB_PresentAndAbsent(t *testing.T) {
 // Private — test helpers.
 
 // insertRow mirrors a rule_results+key_names pair; signature is the raw int64
-// SQLite will treat as an INTEGER column.
+// SQLite will treat as an INTEGER column. depIDs is the packed dep blob input
+// — the helper encodes each int64 as little-endian.
 type insertRow struct {
 	keyID     int64
 	key       string
 	builtAt   int64
 	start     float64
 	signature int64
+	depIDs    []int64
 }
 
 // prepareTempDB sets up a file-backed sqlite DB with the llbuild schema,
@@ -121,9 +162,19 @@ CREATE TABLE rule_results (key_id INTEGER PRIMARY KEY, value BLOB, signature INT
 		require.NoError(t, err)
 
 		var value [1]byte
+
+		var depsBlob interface{} // keep NULL semantics when depIDs is nil
+		if len(r.depIDs) > 0 {
+			raw := make([]byte, len(r.depIDs)*8)
+			for i, id := range r.depIDs {
+				binary.LittleEndian.PutUint64(raw[i*8:(i+1)*8], uint64(id)) //nolint:gosec // raw bit pattern
+			}
+			depsBlob = raw
+		}
+
 		_, err = db.ExecContext(ctx,
-			"INSERT INTO rule_results(key_id, value, signature, built_at, computed_at, start, end, dependencies) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
-			r.keyID, value[:], r.signature, r.builtAt, r.builtAt, r.start, r.start+0.01)
+			"INSERT INTO rule_results(key_id, value, signature, built_at, computed_at, start, end, dependencies) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			r.keyID, value[:], r.signature, r.builtAt, r.builtAt, r.start, r.start+0.01, depsBlob)
 		require.NoError(t, err)
 	}
 

@@ -272,10 +272,12 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 	}
 
 	for _, task := range report.Tasks {
-		if _, err := fmt.Fprintf(out, "%s  %10s  %s  %s  exit=%d  %s\n",
+		if _, err := fmt.Fprintf(out, "%s %s %10s  %s  %s  %s  exit=%d  %s\n",
+			rootCauseMarker(task.RootCause),
 			task.StartedAt.Format("15:04:05.000"),
 			task.Duration,
 			reasonLetter(task.ExecutionReason),
+			upstreamColumn(task),
 			diagnosticsIcon(task.Diagnostics),
 			task.ExitCode,
 			truncate(task.Key, 160),
@@ -372,4 +374,26 @@ func reasonLetter(reason buildanalyzer.ExecutionReason) string {
 	default:
 		return "-"
 	}
+}
+
+// rootCauseMarker returns `*` when a task is a root cause of the ran set, a
+// single space otherwise — so the column occupies one glyph in both cases and
+// the following columns stay aligned.
+func rootCauseMarker(rootCause bool) string {
+	if rootCause {
+		return "*"
+	}
+
+	return " "
+}
+
+// upstreamColumn renders `U=N` for a populated UpstreamRanCount and dashes
+// otherwise, so every ran-this-build row carries a comparable width. Non-ran
+// tasks (no attribution) read as `-----`.
+func upstreamColumn(task buildanalyzer.Task) string {
+	if task.ExecutionReason != buildanalyzer.ReasonRanThisBuild {
+		return "-----"
+	}
+
+	return fmt.Sprintf("U=%-3d", task.UpstreamRanCount)
 }
