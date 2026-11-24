@@ -125,6 +125,25 @@ type Task struct {
 	// — the counterpart to PriorValueHex. Populated whenever
 	// SignatureChanged is set.
 	CurrentValueHex string `json:"currentValueHex,omitempty"`
+
+	// PriorValueBytesHex is the raw hex of up to the first 128 bytes of
+	// priorRule.Value, with a trailing `…` sentinel when truncated. Lets
+	// the operator eyeball the BLOB without needing the DB. Populated
+	// alongside SignatureChanged.
+	PriorValueBytesHex string `json:"priorValueBytesHex,omitempty"`
+	// CurrentValueBytesHex is the counterpart for currentRule.Value.
+	CurrentValueBytesHex string `json:"currentValueBytesHex,omitempty"`
+	// ValueDiffOffset is the byte offset of the first differing byte
+	// between prior and current Value. -1 when the common prefix matches
+	// entirely but the sizes differ (one side is a prefix of the other).
+	// Omitted when both BLOBs are empty.
+	ValueDiffOffset int `json:"valueDiffOffset,omitempty"`
+	// ValueDiffNote is a one-line human description of the byte diff —
+	// e.g. `byte 32: 0x6B52 → 0x8152 (size: 171 → 171 bytes)` or
+	// `sizes differ (…); common prefix matches entirely`. Empty when the
+	// values are identical byte-for-byte (shouldn't happen when
+	// SignatureChanged is set).
+	ValueDiffNote string `json:"valueDiffNote,omitempty"`
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing
@@ -154,6 +173,23 @@ type Dependency struct {
 type FileChange struct {
 	NodeKey           string `json:"nodeKey"`
 	DownstreamTaskKey string `json:"downstreamTaskKey"`
+	// PriorFile and CurrentFile hold the semantic llbuild FileInfo decode
+	// (mode / size / opaque mtime slots) when both Node Values parse as
+	// FileInfo. nil on either side when DecodeFileInfo bailed — the
+	// byte-level fields below still describe the raw diff in that case.
+	PriorFile   *FileInfo `json:"priorFile,omitempty"`
+	CurrentFile *FileInfo `json:"currentFile,omitempty"`
+	// PriorValueBytesHex / CurrentValueBytesHex / ValueDiffOffset /
+	// ValueDiffNote mirror the byte-level diff fields on Task. Populated
+	// whether or not the FileInfo decode succeeded — the byte-level view
+	// works for any rule kind.
+	PriorValueBytesHex   string `json:"priorValueBytesHex,omitempty"`
+	CurrentValueBytesHex string `json:"currentValueBytesHex,omitempty"`
+	ValueDiffOffset      int    `json:"valueDiffOffset,omitempty"`
+	ValueDiffNote        string `json:"valueDiffNote,omitempty"`
+	// SemanticDiff is the FileInfo.Diff rendering — populated only when
+	// both PriorFile and CurrentFile decoded. Empty string otherwise.
+	SemanticDiff string `json:"semanticDiff,omitempty"`
 }
 
 // Report is the JSON shape rendered by `xcode analyze`. v0 fills Build +

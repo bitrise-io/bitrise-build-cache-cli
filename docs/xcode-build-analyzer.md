@@ -264,6 +264,55 @@ source file changed and what consumed it" directly; without this surface,
 the Command-level sig-diff collapses every change into whatever happens to
 sit atop llbuild's chain (usually `ClangStatCache`).
 
+### Value-diff coverage — byte-level (A) and FileInfo (B)
+
+On top of the `SignatureChanged` flag and the sha256 `PriorValueHex` /
+`CurrentValueHex` fingerprints, each sig-changed Task also carries four
+raw byte-level fields (`PriorValueBytesHex`, `CurrentValueBytesHex`,
+`ValueDiffOffset`, `ValueDiffNote`). Byte hex is capped at the first 128
+bytes with a trailing `…` sentinel when truncated. The offset / note pair
+answers "where does the BLOB start to differ" without pulling the full
+record:
+
+```
+byte 29: 0x6b52 → 0x8152
+byte 37: 0xa892 → 0x0094 (size: 85 → 85 bytes)
+sizes differ (171 → 149 bytes); common prefix matches entirely
+```
+
+The same four fields are emitted on every `FileChange` so the operator
+can eyeball a Node diff too. This path works for ANY rule kind — Command
+Values, phony Gate rules, file Nodes — and is cheap enough to always ship.
+
+Beyond byte-diff, `FileChange` also decodes the Node Value BLOB into a
+semantic `FileInfo` when both sides parse. The layout was
+reverse-engineered from paired Nuke snapshots (+22 bytes to
+`ImageTask.swift`) and cross-checked against sibling `.swift` files —
+mode and size decode consistently; mtime decodes to a realistic
+wall-clock timestamp matching the build run.
+
+| Offset | Field | Confidence |
+|--------|-------|------------|
+| 0 | `Kind` (always 0x02 on file Nodes) | High — Command Values don't start with 0x02, used as decode gate |
+| 1 | `Exists` flag | High |
+| 2–20 | opaque reserved (`OpaqueHeadHex`) | Low — zero on every observed sample; shape unverified |
+| 21–22 | `Mode` (little-endian uint16) | High — 0x81A4 == 0o100644, matches three sampled files |
+| 23–28 | padding (zero on observed samples) | Medium |
+| 29–36 | `Size` in bytes (little-endian uint64) | High — +22 matched a known file append |
+| 37–44 | `ModTimeSec` (little-endian uint64 unix timestamp) | Medium-High — decoded to realistic wall-clock time for the build run |
+| 45–52 | `ModTimeNsec` (little-endian uint64) | Medium — <1e9 on every sample, consistent with `tv_nsec` |
+| 53–end | opaque trailer (`OpaqueTailHex`) | Low — zero on observed samples |
+
+The opaque head and tail regions are preserved as hex strings on the
+`FileInfo` struct — they're elided from JSON output when all-zero so the
+common case stays compact, but a non-zero future sample surfaces to the
+operator without a decoder rewrite.
+
+CommandRule Values are only covered by byte-level diff (A). There is no
+semantic decode of Command output BLOBs; they're serialized by a
+different llbuild path and the byte-level offset / note / hex preview is
+all the inspector gets.
+
 ## Known limitations / carve-outs
 
 - **Head-of-chain rules excluded from `RootCauseKeys`.** `ClangStatCache`

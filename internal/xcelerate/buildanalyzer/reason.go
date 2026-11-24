@@ -153,6 +153,12 @@ func applyHistoricalDiff(task *Task, rule RuleResult, matchedKey string, snap Sn
 
 		task.PriorValueHex = valueHashHex(priorRule.Value)
 		task.CurrentValueHex = valueHashHex(rule.Value)
+
+		priorHex, currentHex, offset, note := buildValueDiff(priorRule.Value, rule.Value)
+		task.PriorValueBytesHex = priorHex
+		task.CurrentValueBytesHex = currentHex
+		task.ValueDiffOffset = offset
+		task.ValueDiffNote = note
 	}
 }
 
@@ -457,7 +463,7 @@ func collectFileChanges(report *Report, snap Snapshot) {
 				}
 
 				seen[k] = struct{}{}
-				out = append(out, FileChange{NodeKey: node, DownstreamTaskKey: matchedKey})
+				out = append(out, buildFileChange(snap, node, matchedKey))
 			}
 		}
 	}
@@ -475,6 +481,36 @@ func collectFileChanges(report *Report, snap Snapshot) {
 	})
 
 	report.FileChanges = out
+}
+
+// buildFileChange assembles a FileChange entry with both the byte-level
+// diff fields (A — always populated) and the FileInfo semantic decode
+// (B — populated only when both prior and current Values parse as
+// FileInfo). Call sites have already proven both Values are populated and
+// differ; this helper only renders the diff.
+func buildFileChange(snap Snapshot, nodeKey, downstreamKey string) FileChange {
+	current := snap.Rules[nodeKey].Value
+	prior := snap.PriorRules[nodeKey].Value
+
+	fc := FileChange{NodeKey: nodeKey, DownstreamTaskKey: downstreamKey}
+
+	priorHex, currentHex, offset, note := buildValueDiff(prior, current)
+	fc.PriorValueBytesHex = priorHex
+	fc.CurrentValueBytesHex = currentHex
+	fc.ValueDiffOffset = offset
+	fc.ValueDiffNote = note
+
+	priorInfo, priorOK := DecodeFileInfo(prior)
+	currentInfo, currentOK := DecodeFileInfo(current)
+
+	if priorOK && currentOK {
+		p, c := priorInfo, currentInfo
+		fc.PriorFile = &p
+		fc.CurrentFile = &c
+		fc.SemanticDiff = p.Diff(c)
+	}
+
+	return fc
 }
 
 // nodeInputsForCommand returns the direct Node dependencies of cmdKey —

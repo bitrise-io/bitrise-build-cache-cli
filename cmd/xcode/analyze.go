@@ -362,6 +362,12 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 			return fmt.Errorf("write pretty task line: %w", err)
 		}
 
+		if task.SignatureChanged && task.ValueDiffNote != "" {
+			if _, err := fmt.Fprintf(out, "    Δ %s\n", task.ValueDiffNote); err != nil {
+				return fmt.Errorf("write pretty value-diff line: %w", err)
+			}
+		}
+
 		for _, errLine := range task.Errors {
 			if _, err := fmt.Fprintf(out, "    ! %s\n", errLine); err != nil {
 				return fmt.Errorf("write pretty error line: %w", err)
@@ -374,6 +380,44 @@ func renderPretty(out io.Writer, report buildanalyzer.Report) error {
 				truncate(d.Message, 200),
 			); err != nil {
 				return fmt.Errorf("write pretty diagnostic line: %w", err)
+			}
+		}
+	}
+
+	if err := renderPrettyFileChanges(out, report.FileChanges); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// renderPrettyFileChanges adds a compact footer section for FileChanges —
+// one node key per block, byte-level diff note on a Δ line, and (when
+// decoded) the semantic FileInfo diff on a φ line. Silent when the slice
+// is empty so single-snapshot runs don't pay the column.
+func renderPrettyFileChanges(out io.Writer, changes []buildanalyzer.FileChange) error {
+	if len(changes) == 0 {
+		return nil
+	}
+
+	if _, err := fmt.Fprintf(out, "\nFile changes: %d\n", len(changes)); err != nil {
+		return fmt.Errorf("write pretty filechanges header: %w", err)
+	}
+
+	for _, fc := range changes {
+		if _, err := fmt.Fprintf(out, "  %s → %s\n", fc.NodeKey, fc.DownstreamTaskKey); err != nil {
+			return fmt.Errorf("write pretty filechange line: %w", err)
+		}
+
+		if fc.ValueDiffNote != "" {
+			if _, err := fmt.Fprintf(out, "    Δ %s\n", fc.ValueDiffNote); err != nil {
+				return fmt.Errorf("write pretty filechange value-diff: %w", err)
+			}
+		}
+
+		if fc.SemanticDiff != "" {
+			if _, err := fmt.Fprintf(out, "    φ %s\n", fc.SemanticDiff); err != nil {
+				return fmt.Errorf("write pretty filechange semantic-diff: %w", err)
 			}
 		}
 	}

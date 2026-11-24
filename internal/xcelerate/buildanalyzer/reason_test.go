@@ -530,3 +530,89 @@ func TestImmediateChangeCauses_FallsThroughToNearestRanAncestor(t *testing.T) {
 	assert.Equal(t, []string{"CP0:::A"}, c.ChangeCauseKeys,
 		"nearest ran ancestor surfaced when direct upstream is skipped")
 }
+
+// TestApplyHistoricalDiff_PopulatesByteLevelFields seeds two Value BLOBs
+// that differ at a known offset and asserts the A-level fields
+// (PriorValueBytesHex / CurrentValueBytesHex / ValueDiffOffset /
+// ValueDiffNote) all land with the correct values.
+func TestApplyHistoricalDiff_PopulatesByteLevelFields(t *testing.T) {
+	// First 4 bytes shared, byte 4 flips 0xAA → 0xBB.
+	prior := []byte{0x01, 0x02, 0x03, 0x04, 0xAA, 0x00, 0x00, 0x00}
+	current := []byte{0x01, 0x02, 0x03, 0x04, 0xBB, 0x00, 0x00, 0x00}
+
+	snap := Snapshot{
+		Iteration: 2,
+		Rules: map[string]RuleResult{
+			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 2, Value: current},
+		},
+		PriorRules: map[string]RuleResult{
+			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 1, Value: prior},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "CompileFoo", ManifestKey: "P0:::CompileFoo", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	task := report.Tasks[0]
+	require.True(t, task.SignatureChanged)
+	assert.Equal(t, "01020304aa000000", task.PriorValueBytesHex)
+	assert.Equal(t, "01020304bb000000", task.CurrentValueBytesHex)
+	assert.Equal(t, 4, task.ValueDiffOffset, "first byte that differs is at offset 4")
+	assert.Contains(t, task.ValueDiffNote, "byte 4")
+	assert.Contains(t, task.ValueDiffNote, "0xaa")
+	assert.Contains(t, task.ValueDiffNote, "0xbb")
+}
+
+// TestFileChanges_PopulatesFileInfoDecode seeds real-shape Node Value
+// BLOBs (the ImageTask.swift fixture) before + after a size change and
+// asserts the resulting FileChange carries a semantic FileInfo decode
+// plus a byte-level diff.
+func TestFileChanges_PopulatesFileInfoDecode(t *testing.T) {
+	prior := mustHex(t, imageTaskPriorHex)
+	current := mustHex(t, imageTaskCurrentHex)
+
+	snap := Snapshot{
+		Iteration: 5,
+		Rules: map[string]RuleResult{
+			"CP0:::Compile":                     {Key: "CP0:::Compile", Iteration: 5, Value: []byte("compile-v2")},
+			"N/Users/x/dev/Nuke/ImageTask.swift": {Key: "N/Users/x/dev/Nuke/ImageTask.swift", Iteration: 5, Value: current},
+		},
+		PriorRules: map[string]RuleResult{
+			"CP0:::Compile":                     {Key: "CP0:::Compile", Iteration: 4, Value: []byte("compile-v1")},
+			"N/Users/x/dev/Nuke/ImageTask.swift": {Key: "N/Users/x/dev/Nuke/ImageTask.swift", Iteration: 4, Value: prior},
+		},
+		Deps: map[string][]string{
+			"CP0:::Compile": {"N/Users/x/dev/Nuke/ImageTask.swift"},
+		},
+	}
+
+	report := &Report{
+		Tasks: []Task{{Key: "Compile", ManifestKey: "P0:::Compile", Ran: true}},
+	}
+
+	Classify(report, snap)
+
+	require.Len(t, report.FileChanges, 1)
+	fc := report.FileChanges[0]
+	assert.Equal(t, "N/Users/x/dev/Nuke/ImageTask.swift", fc.NodeKey)
+
+	require.NotNil(t, fc.PriorFile, "prior FileInfo decoded")
+	require.NotNil(t, fc.CurrentFile, "current FileInfo decoded")
+	assert.NotEqual(t, fc.PriorFile.Size, fc.CurrentFile.Size,
+		"semantic size differs after the mutation")
+	assert.Equal(t, uint64(21099), fc.PriorFile.Size)
+	assert.Equal(t, uint64(21121), fc.CurrentFile.Size)
+
+	assert.Contains(t, fc.SemanticDiff, "size: 21099 → 21121")
+
+	// A-level fields populated regardless of B-decode success.
+	assert.NotEmpty(t, fc.PriorValueBytesHex)
+	assert.NotEmpty(t, fc.CurrentValueBytesHex)
+	// Size field lives at byte 29 (little-endian uint64) — first flipped
+	// byte in the fixture is the size low byte at that offset.
+	assert.Equal(t, 29, fc.ValueDiffOffset)
+	assert.Contains(t, fc.ValueDiffNote, "byte 29")
+}
