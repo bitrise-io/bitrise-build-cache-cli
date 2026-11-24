@@ -2,31 +2,26 @@ package buildanalyzer
 
 import "time"
 
-// PickSnapshotForLog picks the best snapshot for classifying a build whose
-// activity-log finished at logFinishedAt. "Best" means the newest snapshot
-// whose Timestamp is <= logFinishedAt — a snapshot taken AFTER the build
-// finished is useless (it carries the post-build iteration), so the cutoff is
-// strictly <=.
+// PickSnapshotForLog picks the best snapshot pair for classifying a build
+// whose activity-log finished at logFinishedAt.
 //
-// Returns (meta, true) and also the prior snapshot (iter N-1 by timestamp) for
-// the signature-diff walk. When no snapshot is <= logFinishedAt (store empty,
-// or every snapshot was taken after the log's finish-time), returns
-// (SnapshotMeta{}, false) and the empty prior. When exactly one snapshot
-// matches the primary cutoff, prior is zero (no diff signal available).
+// Semantics: snapshots are captured AFTER a build completes to freeze the
+// state that build left behind. For a log that finished at T:
+//
+//   - current  = earliest snapshot with Timestamp > T (the post-build capture
+//                that reflects this log's end state). When none exists, falls
+//                back to the newest snapshot <= T (best effort — happens when
+//                the user forgot to snapshot after the build).
+//   - prior    = newest snapshot with Timestamp <= T (the previous build's
+//                end state — baseline for signature-diff). Empty when no
+//                pre-log snapshot exists.
 //
 // Iteration is intentionally NOT used as the primary tiebreaker: Xcode doesn't
-// embed info.iteration in the xcactivitylog, so the caller can't ask "which
-// snapshot's iteration matches this log". Timestamp is the best monotone
-// signal we control. Among snapshots with identical timestamps (synthetic
-// fixtures only), higher iteration wins — ListSnapshots already sorts that
-// way.
+// embed info.iteration in the xcactivitylog. Timestamp is the monotone signal
+// we control.
 func PickSnapshotForLog(storeRoot, buildHex string, logFinishedAt time.Time) (SnapshotMeta, SnapshotMeta, bool) {
 	list, err := ListSnapshots(storeRoot, buildHex)
 	if err != nil {
-		// A read failure here is a soft signal — classification skips the
-		// prior-snapshot path and Classify falls back to the single-snapshot
-		// behavior. The CLI layer surfaces the underlying error on its own
-		// channel before this gets called.
 		return SnapshotMeta{}, SnapshotMeta{}, false
 	}
 
@@ -34,21 +29,33 @@ func PickSnapshotForLog(storeRoot, buildHex string, logFinishedAt time.Time) (Sn
 		return SnapshotMeta{}, SnapshotMeta{}, false
 	}
 
-	// ListSnapshots returns iteration-desc. Walk in that order and take the
-	// first whose Timestamp sits at or before the cutoff — that's the "most
-	// recent snapshot that could possibly describe this log".
-	for i, meta := range list {
-		if !meta.Timestamp.After(logFinishedAt) {
-			var prior SnapshotMeta
-			if i+1 < len(list) {
-				prior = list[i+1]
-			}
-
-			return meta, prior, true
+	var postLog, preLog []SnapshotMeta
+	for _, meta := range list {
+		if meta.Timestamp.After(logFinishedAt) {
+			postLog = append(postLog, meta)
+		} else {
+			preLog = append(preLog, meta)
 		}
 	}
 
-	return SnapshotMeta{}, SnapshotMeta{}, false
+	var current, prior SnapshotMeta
+
+	switch {
+	case len(postLog) > 0:
+		current = postLog[len(postLog)-1]
+		if len(preLog) > 0 {
+			prior = preLog[0]
+		}
+	case len(preLog) > 0:
+		current = preLog[0]
+		if len(preLog) > 1 {
+			prior = preLog[1]
+		}
+	default:
+		return SnapshotMeta{}, SnapshotMeta{}, false
+	}
+
+	return current, prior, true
 }
 
 // ReadSnapshotPair opens the current + prior snapshot paths and returns the

@@ -13,33 +13,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPickSnapshotForLog_PicksMostRecentBeforeOrAtCutoff seeds three snapshots
-// with ascending timestamps and verifies that the picker returns the newest
-// whose Timestamp <= cutoff, with the next-older as prior.
-func TestPickSnapshotForLog_PicksMostRecentBeforeOrAtCutoff(t *testing.T) {
+// TestPickSnapshotForLog_PicksEarliestAfterCutoff seeds three snapshots
+// straddling the cutoff and verifies the picker returns the earliest post-log
+// snapshot as current (the one captured soonest after the build finished)
+// with the newest pre-log snapshot as prior.
+func TestPickSnapshotForLog_PicksEarliestAfterCutoff(t *testing.T) {
 	storeRoot := t.TempDir()
 	hex := "d3b07384d113edec49eaa6238ad5ff00"
 	dir := filepath.Join(storeRoot, hex)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Snapshot timestamps: 100, 200, 300 unix seconds.
-	// Iterations deliberately in the same order to make the tiebreak clear.
 	for i, ts := range []int64{100, 200, 300} {
 		fname := fmt.Sprintf("%010d-%d.db", i+1, ts)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, fname), []byte("x"), 0o600))
 	}
 
-	// Cutoff at 250 → should pick timestamp=200 (iter=2) with prior=100 (iter=1).
-	current, prior, ok := PickSnapshotForLog(storeRoot, hex, time.Unix(250, 0))
+	// Cutoff at 150 → post-log=[200,300] (earliest = 200 = iter 2);
+	// pre-log=[100] → prior iter 1.
+	current, prior, ok := PickSnapshotForLog(storeRoot, hex, time.Unix(150, 0))
 	require.True(t, ok)
 	assert.Equal(t, int64(2), current.Iteration)
+	assert.Equal(t, int64(200), current.Timestamp.Unix())
+	assert.Equal(t, int64(1), prior.Iteration)
 	assert.Equal(t, int64(100), prior.Timestamp.Unix())
+}
+
+// TestPickSnapshotForLog_NoneAfterCutoff_FallsBackToPreLog covers the "user
+// forgot to snapshot after the build" case: every snapshot pre-dates the log.
+// Picker falls back to newest-pre-log as current, next-older as prior.
+func TestPickSnapshotForLog_NoneAfterCutoff_FallsBackToPreLog(t *testing.T) {
+	storeRoot := t.TempDir()
+	hex := "abc"
+	dir := filepath.Join(storeRoot, hex)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	for i, ts := range []int64{50, 100} {
+		fname := fmt.Sprintf("%010d-%d.db", i+1, ts)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, fname), []byte("x"), 0o600))
+	}
+
+	current, prior, ok := PickSnapshotForLog(storeRoot, hex, time.Unix(500, 0))
+	require.True(t, ok, "pre-log fallback should succeed")
+	assert.Equal(t, int64(2), current.Iteration)
 	assert.Equal(t, int64(1), prior.Iteration)
 }
 
-// TestPickSnapshotForLog_NoneBeforeCutoff covers the "store exists but every
-// snapshot is newer than the log" case — picker returns ok=false.
-func TestPickSnapshotForLog_NoneBeforeCutoff(t *testing.T) {
+// TestPickSnapshotForLog_SinglePostLog_NoPrior verifies that when the only
+// snapshot is post-log and nothing precedes the cutoff, prior stays empty
+// but ok=true.
+func TestPickSnapshotForLog_SinglePostLog_NoPrior(t *testing.T) {
 	storeRoot := t.TempDir()
 	hex := "abc"
 	dir := filepath.Join(storeRoot, hex)
@@ -47,21 +70,7 @@ func TestPickSnapshotForLog_NoneBeforeCutoff(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "0000000001-500.db"), []byte("x"), 0o600))
 
-	_, _, ok := PickSnapshotForLog(storeRoot, hex, time.Unix(100, 0))
-	assert.False(t, ok, "snapshot ts=500 is after cutoff ts=100 → no match")
-}
-
-// TestPickSnapshotForLog_SingleSnapshotNoPrior verifies that when only one
-// snapshot matches, the prior comes back empty but ok stays true.
-func TestPickSnapshotForLog_SingleSnapshotNoPrior(t *testing.T) {
-	storeRoot := t.TempDir()
-	hex := "abc"
-	dir := filepath.Join(storeRoot, hex)
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "0000000001-100.db"), []byte("x"), 0o600))
-
-	current, prior, ok := PickSnapshotForLog(storeRoot, hex, time.Unix(200, 0))
+	current, prior, ok := PickSnapshotForLog(storeRoot, hex, time.Unix(100, 0))
 	require.True(t, ok)
 	assert.Equal(t, int64(1), current.Iteration)
 	assert.Empty(t, prior.Path)
