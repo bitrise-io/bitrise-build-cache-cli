@@ -612,13 +612,13 @@ step_bundles:
             http_status=$(echo "$response" | awk -F: '/^HTTP_STATUS:/ {print $2}')
             body=$(echo "$response" | sed '/^HTTP_STATUS:/d')
             if [[ "$http_status" != "200" ]]; then
-              echo "OIDC exchange failed (HTTP $http_status): $body"
+              echo "OIDC exchange failed (HTTP $http_status): ${body:0:500}"
               exit 1
             fi
             token=$(echo "$body" | jq -r '.access_token')
-            ttl=$(echo "$body" | jq -r '.expires_in')
+            ttl=$(echo "$body" | jq -r '.expires_in // "unknown"')
             if [[ -z "$token" || "$token" == "null" ]]; then
-              echo "OIDC exchange: no access_token in response: $body"
+              echo "OIDC exchange: no access_token in response: ${body:0:500}"
               exit 1
             fi
             echo "Minted short-lived receiver WAT (expires in ${ttl}s)"
@@ -640,16 +640,19 @@ step_bundles:
             resolved_branch="$E2E_TESTING_BRANCH"
             pr_branch="${BITRISE_GIT_BRANCH:-}"
             if [[ -n "$pr_branch" && "$pr_branch" != "$E2E_TESTING_BRANCH" && -n "${GIT_BOT_USER_ACCESS_TOKEN:-}" ]]; then
+              enc_branch=$(jq -rn --arg b "$pr_branch" '$b|@uri')
               http_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
                 -H "Authorization: token $GIT_BOT_USER_ACCESS_TOKEN" \
                 -H 'Accept: application/vnd.github+json' \
-                "https://api.github.com/repos/bitrise-io/build-cache-e2e-testing/branches/$pr_branch" || echo "000")
+                "https://api.github.com/repos/bitrise-io/build-cache-e2e-testing/branches/$enc_branch" || echo "000")
               if [[ "$http_status" == "200" ]]; then
                 resolved_branch="$pr_branch"
                 echo "Paired with matching branch '$pr_branch' on build-cache-e2e-testing"
               else
                 echo "No matching branch '$pr_branch' on build-cache-e2e-testing (HTTP $http_status); using default '$E2E_TESTING_BRANCH'"
               fi
+            elif [[ -n "$pr_branch" && "$pr_branch" != "$E2E_TESTING_BRANCH" ]]; then
+              echo "WARN: GIT_BOT_USER_ACCESS_TOKEN not available (likely a fork PR or non-exposed-for-PR contributor); cannot probe for paired branch '$pr_branch'; falling back to default '$E2E_TESTING_BRANCH'"
             fi
 
             payload=$(jq -nc \
@@ -681,6 +684,10 @@ step_bundles:
             echo "Private pipeline: $priv_url"
 
             abort_private() {
+              if [[ -z "${priv_slug:-}" ]]; then
+                echo "abort_private: no slug to abort (skipping)"
+                return 0
+              fi
               local reason="${1:-dispatcher terminated}"
               echo "Aborting private pipeline $priv_slug: $reason"
               curl -sS -w "\nHTTP %{http_code}" -X POST --max-time 30 \
@@ -690,18 +697,31 @@ step_bundles:
                 -d "{\"abort_reason\":\"$reason\",\"abort_with_success\":false,\"skip_notifications\":true}" || true
               echo
             }
+            render_summary() {
+              echo
+              echo "=== Per-workflow results (private pipeline $priv_slug) ==="
+              if [[ -z "$info_ok" ]]; then
+                echo "(no pipeline info captured before exit)"
+              else
+                echo "$info_ok" | jq -r '
+                  [.workflows[]?, .stages[]?.workflows[]?][]
+                  | "\(if (.status == "succeeded" or .status == "succeeded_with_abort") then "✓" elif .status == "skipped" then "·" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_id // "?")"
+                ' || echo "(could not parse pipeline detail)"
+              fi
+              echo
+              echo "Private pipeline URL: $priv_url"
+            }
             trap 'abort_private "public dispatcher received TERM/INT"; exit 130' TERM INT
 
-            # Wall-clock budget: 90 min. Private pipeline has per-workflow
-            # timeouts; this just prevents a stuck on_hold from burning the
-            # public build's global budget.
             SECONDS=0
-            BUDGET=5400
+            BUDGET_MINUTES=90
+            BUDGET=$((BUDGET_MINUTES*60))
             info_ok=""
             while :; do
               if (( SECONDS > BUDGET )); then
                 echo "DISPATCHER TIMEOUT: watched ${SECONDS}s (>${BUDGET}s), aborting watch"
                 abort_private "dispatcher wall-clock budget exceeded"
+                render_summary
                 exit 1
               fi
               info_resp=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
@@ -712,6 +732,8 @@ step_bundles:
               if [[ "$http_status" =~ ^4 ]]; then
                 echo "Polling failed (HTTP $http_status) — auth or pipeline-id problem, aborting:"
                 echo "$info"
+                abort_private "dispatcher gave up on HTTP $http_status"
+                render_summary
                 exit 1
               fi
               if ! echo "$info" | jq -e '.status' >/dev/null 2>&1; then
@@ -727,14 +749,7 @@ step_bundles:
             done
             trap - TERM INT
 
-            echo
-            echo "=== Per-workflow results (private pipeline $priv_slug) ==="
-            echo "$info_ok" | jq -r '
-              [.workflows[]?, .stages[]?.workflows[]?][]
-              | "\(if (.status == "succeeded" or .status == "succeeded_with_abort") then "✓" elif .status == "skipped" then "·" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_id // "?")"
-            ' || echo "(could not parse pipeline detail)"
-            echo
-            echo "Private pipeline URL: $priv_url"
+            render_summary
             echo "Overall status: $status"
 
             case "$status" in
