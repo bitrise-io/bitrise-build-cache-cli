@@ -121,12 +121,42 @@ func applyHistoricalDiff(task *Task, rule RuleResult, matchedKey string, snap Sn
 		return
 	}
 
-	if !signaturesEqual(priorRule.Signature, rule.Signature) {
+	// llbuild's rule_results.signature column is the key-identity hash
+	// (stable for a given rule name) rather than an output-content hash, so
+	// signature-vs-signature comparison never flags a real change. The
+	// `value` BLOB carries the serialized rule result (file-stat snapshot,
+	// command output metadata, etc.) and DOES differ when the result moves.
+	// Diff the value bytes; keep SignatureChanged as the field name so
+	// consumers don't churn, and populate PriorSignature with the prior
+	// rule's hex-encoded identity hash so callers can still correlate.
+	if !bytesEqual(priorRule.Value, rule.Value) {
 		task.SignatureChanged = true
 		if len(priorRule.Signature) > 0 {
 			task.PriorSignature = hex.EncodeToString(priorRule.Signature)
 		}
 	}
+}
+
+// bytesEqual tests byte-slice equality with the "unknown-side treated as
+// equal" short-circuit — an empty slice on either side means "we have no
+// comparison data", NOT "changed". Matches the historical signaturesEqual
+// contract so existing tests continue to express the no-diff cases.
+func bytesEqual(a, b []byte) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 // lookupPriorRule tries the matchedKey first (what the current lookup picked)

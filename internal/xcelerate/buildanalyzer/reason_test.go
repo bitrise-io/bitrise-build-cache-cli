@@ -205,10 +205,10 @@ func TestClassify_PriorSignatureDiff_DetectsChange(t *testing.T) {
 	snap := Snapshot{
 		Iteration: 2,
 		Rules: map[string]RuleResult{
-			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 2, Signature: []byte{0xBB}},
+			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 2, Signature: []byte{0xBB}, Value: []byte{0x02}},
 		},
 		PriorRules: map[string]RuleResult{
-			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 1, Signature: []byte{0xAA}},
+			"CP0:::CompileFoo": {Key: "CP0:::CompileFoo", Iteration: 1, Signature: []byte{0xAA}, Value: []byte{0x01}},
 		},
 	}
 
