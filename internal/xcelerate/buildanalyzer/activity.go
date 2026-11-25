@@ -539,7 +539,32 @@ func parseReport(body []byte) (Report, error) {
 	}
 	st.flush()
 
-	return Report{Build: st.meta, Tasks: st.tasks}, nil
+	return Report{Build: pickPrimaryBuild(st.metas), Tasks: st.tasks}, nil
+}
+
+// pickPrimaryBuild selects the longest-running top-level IDEActivityLogSection
+// as the Report's single Build. ⌘B / multi-subbuild xcodebuilds emit several
+// top-level sections in one log — SPM `Prepare packages` sub-build, main
+// compile build, indexer builds — and the first one seen is often a
+// microsecond-scale orchestration pass that would otherwise latch the title.
+// Ties and zero-duration slices fall back to the first entry so a degenerate
+// log still produces a stable BuildMeta.
+func pickPrimaryBuild(metas []BuildMeta) BuildMeta {
+	if len(metas) == 0 {
+		return BuildMeta{}
+	}
+
+	picked := metas[0]
+	best := picked.Duration
+
+	for _, m := range metas[1:] {
+		if m.Duration > best {
+			best = m.Duration
+			picked = m
+		}
+	}
+
+	return picked
 }
 
 // parseState is the walker's working set, factored out to keep parseReport
@@ -547,9 +572,8 @@ func parseReport(body []byte) (Report, error) {
 type parseState struct {
 	pool []string
 
-	tasks    []Task
-	meta     BuildMeta
-	buildSet bool
+	tasks []Task
+	metas []BuildMeta
 
 	fields    []token
 	isCommand bool
@@ -598,11 +622,8 @@ func (s *parseState) flush() {
 		if task, ok := taskFromFields(s.fields); ok {
 			s.tasks = append(s.tasks, task)
 		}
-	} else if !s.buildSet {
-		if m, ok := metaFromFields(s.fields); ok {
-			s.meta = m
-			s.buildSet = true
-		}
+	} else if m, ok := metaFromFields(s.fields); ok {
+		s.metas = append(s.metas, m)
 	}
 
 	s.fields = s.fields[:0]

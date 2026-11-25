@@ -245,6 +245,87 @@ func TestReadReport_Synthesized_NonZeroExitCodeAndErrors(t *testing.T) {
 	assert.Len(t, report.Tasks[0].Errors, 2, "every `error:` line becomes an Errors entry")
 }
 
+// buildSynthLogMultiTopLevel writes a gzipped SLF payload with N top-level
+// IDEActivityLogSections and no command invocations. Each section advertises
+// its own title + CF-absolute-time bracketing timestamps, so the parser can
+// pick the longest-running one as the Report's Build.
+func buildSynthLogMultiTopLevel(t *testing.T, builds []synthBuild) []byte {
+	t.Helper()
+
+	b := &slfBuilder{}
+	b.magic()
+	b.intTok(13)
+	b.classNameTok("IDEActivityLogSection") // pool[1]
+
+	for _, build := range builds {
+		b.classRefTok(1)
+		b.intTok(0)
+		b.strTok("Xcode.IDEActivityLogDomainType.BuildLog")
+		b.strTok(build.title)
+		b.strTok(build.title) // signature mirrors title
+		b.doubleTok(build.started)
+		b.doubleTok(build.stopped)
+	}
+
+	var gz bytes.Buffer
+	gw := gzip.NewWriter(&gz)
+	_, err := gw.Write(b.bytes())
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+
+	return gz.Bytes()
+}
+
+type synthBuild struct {
+	title   string
+	started float64
+	stopped float64
+}
+
+// TestReadReport_MultipleTopLevelSections_PicksLongest proves the bug fix for
+// ⌘B / multi-subbuild xcodebuilds: when the .xcactivitylog carries several
+// top-level IDEActivityLogSections (SPM `Prepare packages` sub-build, main
+// compile build, indexer builds), the Report's Build must latch on the
+// longest-running one rather than the first one encountered.
+func TestReadReport_MultipleTopLevelSections_PicksLongest(t *testing.T) {
+	const base = 812533954.0
+
+	// SPM "Prepare packages" lands FIRST and runs for 200 µs — the classic
+	// first-seen latch would pick this. The real primary build is the second
+	// section with a 5s duration.
+	body := buildSynthLogMultiTopLevel(t, []synthBuild{
+		{title: "Prepare packages", started: base, stopped: base + 0.0002},
+		{title: "Build Nuke", started: base + 1, stopped: base + 6},
+	})
+	path := writeSynthLog(t, "multitop.xcactivitylog", body)
+
+	report, err := buildanalyzer.ReadReport(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Build Nuke", report.Build.Title, "longest-running top-level section wins the Build slot")
+	assert.InDelta(t, 5*time.Second, report.Build.Duration, float64(10*time.Millisecond))
+}
+
+// TestReadReport_MultipleTopLevelSections_OrderIndependent confirms the pick
+// is duration-based, not order-based: swapping the order of the sections
+// still yields "Build Nuke" as the Build, so a future xcodebuild version
+// reshuffling sub-build emission order can't resurrect the latch bug.
+func TestReadReport_MultipleTopLevelSections_OrderIndependent(t *testing.T) {
+	const base = 812533954.0
+
+	body := buildSynthLogMultiTopLevel(t, []synthBuild{
+		{title: "Build Nuke", started: base, stopped: base + 5},
+		{title: "Prepare packages", started: base + 6, stopped: base + 6.0002},
+	})
+	path := writeSynthLog(t, "multitop-rev.xcactivitylog", body)
+
+	report, err := buildanalyzer.ReadReport(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Build Nuke", report.Build.Title)
+	assert.InDelta(t, 5*time.Second, report.Build.Duration, float64(10*time.Millisecond))
+}
+
 func TestReadReport_MissingFile(t *testing.T) {
 	_, err := buildanalyzer.ReadReport(filepath.Join(t.TempDir(), "nope.xcactivitylog"))
 	require.Error(t, err)
