@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/build_cache/kv"
@@ -230,7 +231,7 @@ func StartXcodeCacheProxy(
 		go bundle.retrier(initialLogger).Run(enrichCtx)
 	}
 
-	pipeline := maybeStartWrapperlessPipeline(enrichCtx, bundle, p, initialLogger)
+	pipeline := maybeStartWrapperlessPipeline(enrichCtx, bundle, p, envProvider, initialLogger)
 
 	bgCtx := context.WithoutCancel(ctx)
 
@@ -556,6 +557,7 @@ func maybeStartWrapperlessPipeline(
 	ctx context.Context,
 	bundle *analyticsBundle,
 	p *proxy.Proxy,
+	envProvider map[string]string,
 	logger log.Logger,
 ) *wrapperless.Pipeline {
 	if !wrapperlessPipelineEnabled {
@@ -574,6 +576,8 @@ func maybeStartWrapperlessPipeline(
 		return nil
 	}
 
+	parentInvocationID := envProvider["BITRISE_INVOCATION_ID"]
+
 	emitter := &wrapperless.Emitter{
 		Client:              bundle.client,
 		Auth:                bundle.authProvider.Get(ctx),
@@ -585,13 +589,17 @@ func maybeStartWrapperlessPipeline(
 		PendingEnrichedPath: resolver.WrapperlessPendingEnrichedPath(),
 		// Minted here because the `ensureWatcher` gate — which normally mints
 		// it on the enricher path — is off under wrapperless.
-		LocalLogAppender: invocationlog.Default(logger),
+		LocalLogAppender:   invocationlog.Default(logger),
+		ParentInvocationID: parentInvocationID,
 	}
 	if bundle.healthPath != "" {
 		// Reuse the enricher's health.json so `doctor` observes the same health
 		// rhythm regardless of which flow (wrapper, enricher, wrapperless)
 		// emitted the row.
 		emitter.Health = &enrichment.HealthWriter{Path: bundle.healthPath}
+	}
+	if parentInvocationID != "" {
+		emitter.RelationClient = buildRelationClient(ctx, bundle, envProvider, logger)
 	}
 
 	seenStore := &wrapperless.HandledManifestStore{Path: resolver.WrapperlessHandledManifestsPath()}
@@ -622,4 +630,22 @@ func maybeStartWrapperlessPipeline(
 	logger.Infof("Wrapperless pipeline running alongside enricher (opt-in).")
 
 	return pipeline
+}
+
+// buildRelationClient mirrors the wrapper's resolveRelationAPI: multiplatform
+// client wired to the current credential via GradleToken. Auth resolution
+// errors are ignored so the client is still built — matches the existing
+// tokenSupplier in newAnalyticsBundle, where a late auth hiccup surfaces as a
+// server-side 401 rather than a silently disabled analytics path.
+func buildRelationClient(
+	ctx context.Context,
+	bundle *analyticsBundle,
+	envProvider map[string]string,
+	logger log.Logger,
+) wrapperless.InvocationRelationPutter {
+	cred, origin, _ := bundle.authProvider.Resolve(context.WithoutCancel(ctx))
+
+	client, _ := multiplatform.NewClient(configcommon.MultiplatformAnalyticsURL(envProvider), authpkg.GradleToken(cred, origin), logger)
+
+	return client
 }

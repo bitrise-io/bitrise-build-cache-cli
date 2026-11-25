@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/blobstats"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
@@ -337,4 +338,150 @@ func TestEmitter_EmitEnriched_LocalLogOmittedOnFailure(t *testing.T) {
 	e.EmitEnriched(newBucket(), 0.5)
 
 	assert.Empty(t, appender.snapshot(), "failed PUT must not reach the local log")
+}
+
+func TestEmitter_EmitEnriched_FiresRelationOnSuccess(t *testing.T) {
+	relMock := &InvocationRelationPutterMock{}
+	e := &wrapperless.Emitter{
+		Client:             &recordingPutter{},
+		RelationClient:     relMock,
+		ParentInvocationID: "parent-inv-id",
+	}
+
+	b := newBucket()
+	e.EmitEnriched(b, 0.75)
+
+	calls := relMock.PutInvocationRelationCalls()
+	require.Len(t, calls, 1, "a successful enriched PUT with a known parent must emit exactly one relation")
+
+	rel := calls[0].Rel
+	assert.Equal(t, "parent-inv-id", rel.ParentInvocationID)
+	assert.Equal(t, b.InvocationID, rel.ChildInvocationID)
+	assert.Equal(t, "xcode", rel.BuildTool)
+	assert.False(t, rel.InvocationDate.IsZero())
+}
+
+func TestEmitter_EmitEnriched_SkipsRelationWhenParentUnknown(t *testing.T) {
+	relMock := &InvocationRelationPutterMock{}
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{
+		Client:         putter,
+		RelationClient: relMock,
+	}
+
+	e.EmitEnriched(newBucket(), 0.5)
+
+	// Positive side: the enriched PUT must have reached the putter — cross-asserts
+	// that the skip is "no parent" not "emitter bailed early".
+	require.Len(t, putter.snapshot(), 1, "enriched PUT must still fire even without a parent")
+	assert.Empty(t, relMock.PutInvocationRelationCalls(), "no parent env ⇒ no relation call")
+}
+
+func TestEmitter_EmitEnriched_SkipsRelationWhenClientNil(t *testing.T) {
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{
+		Client:             putter,
+		ParentInvocationID: "parent-inv-id",
+	}
+
+	assert.NotPanics(t, func() {
+		e.EmitEnriched(newBucket(), 0.5)
+	}, "nil RelationClient must be silently skipped, not panic")
+
+	// Cross-asserts the enriched PUT reached the putter; a regression that
+	// short-circuited before the PUT would also not panic, hiding the bug.
+	assert.Len(t, putter.snapshot(), 1, "enriched PUT must still fire when RelationClient is nil")
+}
+
+func TestEmitter_EmitEnriched_SkipsRelationWhenEnrichedPUTFails(t *testing.T) {
+	relMock := &InvocationRelationPutterMock{}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
+	e := &wrapperless.Emitter{
+		Client:              failingPutter{},
+		RelationClient:      relMock,
+		ParentInvocationID:  "parent-inv-id",
+		PendingEnrichedPath: path,
+	}
+
+	e.EmitEnriched(newBucket(), 0.5)
+
+	assert.Empty(t, relMock.PutInvocationRelationCalls(), "a failed enriched PUT must not emit a relation")
+
+	// Positive side: the pending row landed on the ledger — proves the emitter
+	// reached the persist path rather than bailing before the PUT.
+	_, err := os.Stat(path)
+	assert.NoError(t, err, "failing enriched PUT must persist a pending row")
+}
+
+func TestEmitter_EmitEnriched_RelationErrorOnlyWarns(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
+
+	relMock := &InvocationRelationPutterMock{
+		PutInvocationRelationFunc: func(_ multiplatform.InvocationRelation) error {
+			return errors.New("relation 500")
+		},
+	}
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{
+		Client:              putter,
+		RelationClient:      relMock,
+		ParentInvocationID:  "parent-inv-id",
+		PendingEnrichedPath: path,
+	}
+
+	e.EmitEnriched(newBucket(), 0.5)
+
+	// Cross-asserts the enriched PUT reached the putter first, so the "no pending"
+	// outcome below reflects success-then-relation-failure, not a bailed emitter.
+	require.Len(t, putter.snapshot(), 1, "enriched PUT must land before the relation attempt")
+	require.Len(t, relMock.PutInvocationRelationCalls(), 1)
+
+	_, err := os.Stat(path)
+	assert.True(t, os.IsNotExist(err), "a failed relation PUT must not re-persist the enriched row — the BE invocation row is already saved")
+}
+
+func TestEmitter_DrainPath_DoesNotFireRelation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
+
+	// Seed a pending enriched entry via the failing putter path.
+	seed := &wrapperless.Emitter{
+		Client:              &recordingPutter{fails: 10},
+		PendingEnrichedPath: path,
+	}
+	seed.EmitEnriched(newBucket(), 0.5)
+
+	relMock := &InvocationRelationPutterMock{}
+	drainPutter := &recordingPutter{}
+	e := &wrapperless.Emitter{
+		Client:              drainPutter,
+		RelationClient:      relMock,
+		ParentInvocationID:  "parent-inv-id",
+		PendingEnrichedPath: path,
+		DrainInterval:       10 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.Start(ctx)
+	defer e.Stop()
+
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	_, err := os.Stat(path)
+	require.True(t, os.IsNotExist(err), "drain must replay and clear the pending file")
+
+	// Positive side: the drain did replay the pending row through the putter;
+	// cross-asserts that "no relation" reflects the drain path staying analytics-only,
+	// not the drain never running.
+	assert.NotEmpty(t, drainPutter.snapshot(), "drain must have replayed the pending enriched row")
+	assert.Empty(t, relMock.PutInvocationRelationCalls(), "the drain re-emit path must stay analytics-only")
 }
