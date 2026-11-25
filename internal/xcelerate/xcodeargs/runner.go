@@ -190,9 +190,10 @@ func (runner *DefaultRunner) handleInterrupt(ctx context.Context, cmd *exec.Cmd)
 		code := <-sig
 
 		// Shutdown signal with grace period of 15 seconds
-		shutdownCtx, _ := context.WithTimeout(ctx, 15*time.Second) //nolint: govet
+		shutdownCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 
 		go func() {
+			defer cancel()
 			select {
 			case <-ctx.Done():
 				return
