@@ -188,6 +188,14 @@ func Sweep(p paths.Paths, retention time.Duration, now time.Time) (int, error) {
 				return removed, fmt.Errorf("remove %s: %w", f, err)
 			}
 
+			// A matching per-day analyzer sidecar dir may or may not exist —
+			// its retention rides with the ndjson's so we drop it whenever we
+			// drop the day. Missing dir is fine; anything else surfaces.
+			sidecarDir := p.AnalyzerSidecarDir(day)
+			if err := os.RemoveAll(sidecarDir); err != nil {
+				return removed, fmt.Errorf("remove %s: %w", sidecarDir, err)
+			}
+
 			removed++
 		}
 	}
