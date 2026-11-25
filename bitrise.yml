@@ -536,9 +536,10 @@ workflows:
         machine_type_id: g2.linux.medium
     envs:
     - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
-    - E2E_TESTING_REPO: git@github.com:bitrise-io/build-cache-e2e-testing.git
+    - E2E_TESTING_REPO: https://github.com/bitrise-io/build-cache-e2e-testing.git
     - E2E_TESTING_BRANCH: master
     - E2E_PIPELINE: features-e2e
+    - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
     - bundle::dispatch-to-private: {}
 
@@ -588,8 +589,6 @@ step_bundles:
   dispatch-to-private:
     description: Shared dispatcher body — see dispatch-e2e-cli for details.
     steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - script:
         title: Resolve paired e2e branch (ls-remote)
         inputs:
@@ -599,12 +598,15 @@ step_bundles:
 
             : "${E2E_TESTING_REPO:?missing E2E_TESTING_REPO}"
             : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
+            : "${GITHUB_TOKEN:?missing GITHUB_TOKEN for private repo ls-remote}"
 
             pr_branch="${BITRISE_GIT_BRANCH:-}"
             resolved="$E2E_TESTING_BRANCH"
 
+            auth_hdr="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+
             if [[ -n "$pr_branch" && "$pr_branch" =~ ^[A-Za-z0-9._/-]{1,255}$ ]]; then
-              if git ls-remote --exit-code --heads "$E2E_TESTING_REPO" "$pr_branch" >/dev/null 2>&1; then
+              if git -c "http.extraHeader=$auth_hdr" ls-remote --exit-code --heads "$E2E_TESTING_REPO" "$pr_branch" >/dev/null 2>&1; then
                 resolved="$pr_branch"
                 echo "Paired e2e branch found: $resolved"
               else
