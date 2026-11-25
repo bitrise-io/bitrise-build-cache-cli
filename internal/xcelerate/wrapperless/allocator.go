@@ -277,7 +277,6 @@ func (a *Allocator) onEnd(e End) {
 	defer a.mu.Unlock()
 
 	a.cancelIDETimer()
-	a.pruneRecentCLIQuits(a.now())
 
 	if a.open == nil {
 		a.mintEndOnlyBucket(e)
@@ -504,7 +503,6 @@ func (a *Allocator) flushCLI(q Quit) {
 
 	a.cancelIDETimer()
 	a.pruneRecentCLIQuits(a.now())
-	a.rememberCLIQuit(q)
 
 	if a.schemeEmittedSinceStart {
 		a.debugf("Allocator: flushCLI suppressed — scheme bucket already resolved this cycle")
@@ -535,8 +533,17 @@ func (a *Allocator) flushCLI(q Quit) {
 
 		a.openSpec(a.now())
 
+		// Inline branch fully resolved the cancel on the open bucket, so there
+		// is no late-End race to cover. Remembering the Quit here would cross-
+		// contaminate a warm ⌘B whose End arrives within the 2s match window.
+		if !openWasReal {
+			a.rememberCLIQuit(q)
+		}
+
 		return
 	}
+
+	a.rememberCLIQuit(q)
 
 	snap := a.snapshotBlobs()
 	if hasActivity(snap) {
@@ -671,7 +678,16 @@ func (a *Allocator) pruneRecentCLIQuits(now time.Time) {
 // xcodebuild seals the manifest just before the peer process exits — the End
 // still reports Success=true even though the user aborted.
 func (a *Allocator) markCancelledIfRecentQuit(bucket *Bucket, endAt time.Time) {
-	if bucket == nil || len(a.recentCLIQuits) == 0 {
+	if bucket == nil {
+		return
+	}
+
+	// Prune against the event timeline, not wall-clock, so an intake lag that
+	// drifts a.now() past the TTL cannot silently drop Quits that are still
+	// inside the ±recentCLIQuitWindow match band.
+	a.pruneRecentCLIQuits(endAt)
+
+	if len(a.recentCLIQuits) == 0 {
 		return
 	}
 
