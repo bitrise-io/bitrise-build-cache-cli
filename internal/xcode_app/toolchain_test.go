@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"howett.net/plist"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 )
@@ -37,6 +38,8 @@ func TestRenderToolchainInfoPlist_containsAllRequiredKeys(t *testing.T) {
 		"<key>OverrideBuildSettings</key>",
 		"<key>CLANG_ENABLE_COMPILE_CACHE</key>",
 		"<key>CLANG_ENABLE_MODULES</key>",
+		"<key>CLANG_ENABLE_PREFIX_MAPPING</key>",
+		"<key>CLANG_OTHER_PREFIX_MAPPINGS</key>",
 		"<key>COMPILATION_CACHE_ENABLE_CACHING</key>",
 		"<key>COMPILATION_CACHE_ENABLE_PLUGIN</key>",
 		"<key>COMPILATION_CACHE_PLUGIN_PATH</key>",
@@ -44,8 +47,40 @@ func TestRenderToolchainInfoPlist_containsAllRequiredKeys(t *testing.T) {
 		"<key>COMPILATION_CACHE_REMOTE_SERVICE_PATH</key>",
 		"<string>/tmp/proxy.sock</string>",
 		"<key>SWIFT_ENABLE_COMPILE_CACHE</key>",
+		"<key>SWIFT_ENABLE_PREFIX_MAPPING</key>",
+		"<key>SWIFT_OTHER_PREFIX_MAPPINGS</key>",
+		"<string>$(HOME)=/^home</string>",
+		"<string>$(SRCROOT)=/^src</string>",
+		"<string>$(DERIVED_DATA_DIR)=/^dd</string>",
+		"<string>$(PROJECT_TEMP_DIR)=/^obj</string>",
 	} {
 		assert.Contains(t, rendered, want)
+	}
+}
+
+func TestRenderToolchainInfoPlist_prefixMappingsEmitAsArrays(t *testing.T) {
+	body, err := RenderToolchainInfoPlist("/tmp/proxy.sock", "/dev/null")
+	require.NoError(t, err)
+
+	var decoded map[string]interface{}
+	_, err = plist.Unmarshal(body, &decoded)
+	require.NoError(t, err)
+
+	settings, ok := decoded["OverrideBuildSettings"].(map[string]interface{})
+	require.True(t, ok, "OverrideBuildSettings must decode as dict")
+
+	// Narrowest-first; must match internal/xcelerate/xcodeargs/prefix_map.go
+	// rule order so CAS keys stay compatible across the two injection paths.
+	wantOrder := []interface{}{
+		"$(PROJECT_TEMP_DIR)=/^obj",
+		"$(DERIVED_DATA_DIR)=/^dd",
+		"$(SRCROOT)=/^src",
+		"$(HOME)=/^home",
+	}
+	for _, key := range []string{"CLANG_OTHER_PREFIX_MAPPINGS", "SWIFT_OTHER_PREFIX_MAPPINGS"} {
+		arr, ok := settings[key].([]interface{})
+		require.True(t, ok, "%s must decode as array", key)
+		require.Equal(t, wantOrder, arr, "%s element order must match wrapper", key)
 	}
 }
 
