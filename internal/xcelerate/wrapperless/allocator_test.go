@@ -646,6 +646,143 @@ func TestAllocator_IDEBackground_PeerStartMSParticipatesInID(t *testing.T) {
 		"IDE-background buckets with same PID but different StartTimeMS must derive distinct InvocationIDs")
 }
 
+func TestAllocator_QuitBeforeEnd_FlagsCancelled(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, _ := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "aabbccddeeff00112233445566778899",
+		Action:          PrimaryActionBuild,
+	}})
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+		At:  time.Unix(2, 0),
+		PID: 4242,
+	}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1)
+	b := buckets[0]
+	assert.Equal(t, BucketReasonCLIImplicit, b.Reason)
+	assert.True(t, b.CancelledKnown, "Quit on an open non-spec bucket must mark CancelledKnown")
+	assert.True(t, b.Cancelled)
+	assert.True(t, b.SuccessKnown)
+	assert.False(t, b.Success, "Cancelled must clear Success")
+}
+
+func TestAllocator_EndWithRecentCLIQuit_FlagsCancelled(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, _ := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	now := time.Unix(100, 0)
+	a.Now = func() time.Time { return now }
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              now,
+		BuildRequestHex: "aabbccddeeff00112233445566778899",
+		Action:          PrimaryActionBuild,
+	}})
+
+	// Quit fires first (xcodebuild about to die) but ends up suppressed
+	// because the End arrives within the race window — SIGINT'd manifest
+	// seal path: the open bucket must still carry Cancelled on emit.
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+		At:  now.Add(500 * time.Millisecond),
+		PID: 4242,
+	}})
+	// flushCLI emitted the open bucket as Cancelled above. Simulate a
+	// separate warm ⌘B afterwards where the End arrives within the window —
+	// recent-quit lookback should still fire there too.
+	buckets = nil
+
+	endAt := now.Add(1500 * time.Millisecond)
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               endAt,
+		Scheme:           "IceCubesApp",
+		Action:           PrimaryActionBuild,
+		UniqueIdentifier: "LATE-UID",
+		Duration:         time.Second,
+		Success:          true,
+	}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1)
+	b := buckets[0]
+	assert.True(t, b.CancelledKnown)
+	assert.True(t, b.Cancelled, "End within recentCLIQuitWindow of a Quit must be tagged Cancelled")
+	assert.False(t, b.Success)
+}
+
+func TestAllocator_EndLongAfterCLIQuit_NotCancelled(t *testing.T) {
+	var buckets []Bucket
+	var mu sync.Mutex
+	a, _ := newTestAllocator(t, func(b Bucket) {
+		mu.Lock()
+		buckets = append(buckets, b)
+		mu.Unlock()
+	})
+
+	now := time.Unix(200, 0)
+	a.Now = func() time.Time { return now }
+
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+		At:  now,
+		PID: 4242,
+	}})
+	buckets = nil
+
+	// End arrives well outside recentCLIQuitWindow → treat as a normal
+	// warm ⌘B, not a cancellation.
+	endAt := now.Add(30 * time.Second)
+	a.Now = func() time.Time { return endAt }
+
+	a.Handle(TimelineEvent{Kind: EventKindEnd, End: End{
+		At:               endAt,
+		Scheme:           "IceCubesApp",
+		Action:           PrimaryActionBuild,
+		UniqueIdentifier: "LATE-UID",
+		Duration:         time.Second,
+		Success:          true,
+	}})
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, buckets, 1)
+	assert.False(t, buckets[0].CancelledKnown, "End outside window must not be flagged Cancelled")
+	assert.True(t, buckets[0].Success)
+}
+
+func TestAllocator_SuccessClearedWhenCancelled(t *testing.T) {
+	var buckets []Bucket
+	a, _ := newTestAllocator(t, func(b Bucket) { buckets = append(buckets, b) })
+
+	a.Handle(TimelineEvent{Kind: EventKindStart, Start: Start{
+		At:              time.Unix(1, 0),
+		BuildRequestHex: "aabbccddeeff00112233445566778899",
+		Action:          PrimaryActionBuild,
+	}})
+	a.Handle(TimelineEvent{Kind: EventKindQuit, Quit: Quit{
+		At:  time.Unix(2, 0),
+		PID: 4242,
+	}})
+
+	require.Len(t, buckets, 1)
+	assert.True(t, buckets[0].SuccessKnown)
+	assert.False(t, buckets[0].Success, "Cancelled bucket must carry Success=false on emit")
+}
+
 func TestAllocator_IDEBackground_SkipsWhenNoActivity(t *testing.T) {
 	var buckets []Bucket
 	var mu sync.Mutex
