@@ -387,6 +387,24 @@ func TestEmitter_EmitEnriched_CancelledJSONShape(t *testing.T) {
 		"cancelled must serialize onto the wire body so BE can opt in")
 }
 
+// TestEmitter_EmitEnriched_NonCancelled_OmitsCancelled pins the `omitempty`
+// pragma on the Invocation.Cancelled JSON tag: a non-cancelled enriched row
+// must NOT ship `cancelled:false` on the wire.
+func TestEmitter_EmitEnriched_NonCancelled_OmitsCancelled(t *testing.T) {
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{Client: putter}
+
+	e.EmitEnriched(newBucket(), 0.5)
+
+	calls := putter.snapshot()
+	require.Len(t, calls, 1)
+
+	body, err := json.Marshal(calls[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "cancelled",
+		"non-cancelled enriched row must omit the cancelled field (omitempty)")
+}
+
 func TestEmitter_EmitSlim_DoesNotCarryCancelled(t *testing.T) {
 	putter := &recordingPutter{}
 	e := &wrapperless.Emitter{Client: putter}
