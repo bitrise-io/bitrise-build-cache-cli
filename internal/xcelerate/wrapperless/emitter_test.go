@@ -338,3 +338,104 @@ func TestEmitter_EmitEnriched_LocalLogOmittedOnFailure(t *testing.T) {
 
 	assert.Empty(t, appender.snapshot(), "failed PUT must not reach the local log")
 }
+
+func TestEmitter_EmitEnriched_CancelledOverridesSuccess(t *testing.T) {
+	putter := &recordingPutter{}
+	appender := &recordingAppender{}
+	e := &wrapperless.Emitter{
+		Client:           putter,
+		LocalLogAppender: appender,
+	}
+
+	b := newBucket()
+	b.Cancelled = true
+	b.CancelledKnown = true
+	b.Success = false
+	b.SuccessKnown = true
+
+	e.EmitEnriched(b, 0.5)
+
+	calls := putter.snapshot()
+	require.Len(t, calls, 1)
+	assert.False(t, calls[0].Success, "Cancelled must land as Success=false on the wire")
+	assert.True(t, calls[0].Cancelled, "Cancelled must land as true on the wire")
+	assert.Equal(t, "cancelled by user", calls[0].Error)
+
+	recs := appender.snapshot()
+	require.Len(t, recs, 1)
+	assert.Equal(t, 130, recs[0].ExitCode, "Cancelled bucket must render as exit 130 locally")
+}
+
+func TestEmitter_EmitEnriched_CancelledJSONShape(t *testing.T) {
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{Client: putter}
+
+	b := newBucket()
+	b.Cancelled = true
+	b.CancelledKnown = true
+	b.Success = false
+	b.SuccessKnown = true
+
+	e.EmitEnriched(b, 0)
+
+	calls := putter.snapshot()
+	require.Len(t, calls, 1)
+
+	body, err := json.Marshal(calls[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"cancelled":true`,
+		"cancelled must serialize onto the wire body so BE can opt in")
+}
+
+// TestEmitter_EmitEnriched_NonCancelled_OmitsCancelled pins the `omitempty`
+// pragma on the Invocation.Cancelled JSON tag: a non-cancelled enriched row
+// must NOT ship `cancelled:false` on the wire.
+func TestEmitter_EmitEnriched_NonCancelled_OmitsCancelled(t *testing.T) {
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{Client: putter}
+
+	e.EmitEnriched(newBucket(), 0.5)
+
+	calls := putter.snapshot()
+	require.Len(t, calls, 1)
+
+	body, err := json.Marshal(calls[0])
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "cancelled",
+		"non-cancelled enriched row must omit the cancelled field (omitempty)")
+}
+
+func TestEmitter_EmitSlim_DoesNotCarryCancelled(t *testing.T) {
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{Client: putter}
+
+	b := newBucket()
+	b.Cancelled = true
+	b.CancelledKnown = true
+	b.Success = false
+	b.SuccessKnown = true
+
+	e.EmitSlim(b)
+
+	calls := putter.snapshot()
+	require.Len(t, calls, 1)
+	assert.False(t, calls[0].Success, "slim stays at zero-value Success")
+	assert.False(t, calls[0].Cancelled, "slim must not carry Cancelled on the wire")
+	assert.Empty(t, calls[0].Error)
+}
+
+func TestEmitter_EmitEnriched_BuildFailedKeepsOriginalError(t *testing.T) {
+	putter := &recordingPutter{}
+	e := &wrapperless.Emitter{Client: putter}
+
+	b := newBucket()
+	b.Success = false
+	b.SuccessKnown = true
+
+	e.EmitEnriched(b, 0)
+
+	calls := putter.snapshot()
+	require.Len(t, calls, 1)
+	assert.False(t, calls[0].Cancelled)
+	assert.Equal(t, "xcode build failed", calls[0].Error, "non-cancel failure must keep the original message")
+}

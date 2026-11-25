@@ -31,6 +31,8 @@ type Bucket struct {
 	Action          PrimaryAction       `json:"action,omitempty"`
 	Success         bool                `json:"success"`
 	SuccessKnown    bool                `json:"successKnown"`
+	Cancelled       bool                `json:"cancelled,omitempty"`
+	CancelledKnown  bool                `json:"cancelledKnown,omitempty"`
 	Duration        time.Duration       `json:"durationNs,omitempty"`
 	Reason          BucketReason        `json:"reason"`
 	BuildRequestHex string              `json:"buildRequestHex,omitempty"`

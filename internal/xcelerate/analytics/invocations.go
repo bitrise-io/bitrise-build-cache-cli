@@ -21,6 +21,7 @@ type InvocationRunStats struct {
 	Command          string
 	FullCommand      string
 	Success          bool
+	Cancelled        bool
 	Error            error
 	XcodeVersion     string
 	XcodeBuildNumber string
@@ -51,6 +52,7 @@ func NewInvocation(runStats InvocationRunStats, authMetadata auth.Credential, co
 		DurationMs:           runStats.Duration,
 		HitRate:              runStats.HitRate,
 		Success:              runStats.Success,
+		Cancelled:            runStats.Cancelled,
 		Error:                errorStr,
 		XcodeVersion:         runStats.XcodeVersion,
 		ToolBuildNumber:      runStats.XcodeBuildNumber,

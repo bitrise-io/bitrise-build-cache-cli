@@ -42,6 +42,17 @@ type BlobStatsSource interface {
 // the pipeline is a best-effort attributor, not an at-least-once queue.
 const intakeCapacity = 10_000
 
+// recentCLIQuitWindow is how long a CLI Quit stays eligible to flip a
+// subsequently-resolved bucket to Cancelled. Covers the SIGINT race: the
+// signal reaches xcodebuild, which seals the manifest just before exiting,
+// so End lands fractionally after Quit.
+const recentCLIQuitWindow = 2 * time.Second
+
+// recentCLIQuitTTL is the eviction horizon for the recent-quit map, pruned
+// opportunistically on each timeline event. Larger than the window to tolerate
+// clock skew but still bounded.
+const recentCLIQuitTTL = 5 * time.Second
+
 type Allocator struct {
 	Hostname        string
 	ProxyPID        int
@@ -69,6 +80,11 @@ type Allocator struct {
 	// that quit without ever sealing a manifest — if a real End already
 	// emitted this cycle, the fallback is CAS tail noise, not a build.
 	schemeEmittedSinceStart bool
+
+	// recentCLIQuits remembers CLI Quit timestamps keyed by peer PID so that
+	// an End arriving fractionally after the Quit (SIGINT race) can still be
+	// tagged Cancelled. Pruned on each event; no dedicated goroutine.
+	recentCLIQuits map[int]time.Time
 }
 
 func NewAllocator(hostname string, proxyPID int, proxyStartMS int64) *Allocator {
@@ -293,6 +309,7 @@ func (a *Allocator) onEnd(e End) {
 	bucket.Reason = BucketReasonEndMatched
 	bucket.BlobStats = a.snapshotBlobs()
 	bucket.XCActivityLogPath = e.XCActivityLogPath
+	a.markCancelledIfRecentQuit(bucket, e.At)
 
 	a.infof("Allocator: bucket closed id=%s bytes=%d", bucket.InvocationID, snapshotBytes(bucket.BlobStats))
 
@@ -333,6 +350,7 @@ func (a *Allocator) promoteSpecToEnd(e End) {
 	bucket.Reason = BucketReasonEndMatched
 	bucket.BlobStats = a.snapshotBlobs()
 	bucket.XCActivityLogPath = e.XCActivityLogPath
+	a.markCancelledIfRecentQuit(bucket, e.At)
 
 	a.infof("Allocator: spec-promote End id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
 
@@ -383,6 +401,7 @@ func (a *Allocator) mintEndOnlyBucket(e End) {
 		BlobStats:         a.snapshotBlobs(),
 		XCActivityLogPath: e.XCActivityLogPath,
 	}
+	a.markCancelledIfRecentQuit(bucket, e.At)
 
 	a.infof("Allocator: sole-End mint id=%s scheme=%s bytes=%d", bucket.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats))
 
@@ -483,6 +502,7 @@ func (a *Allocator) flushCLI(q Quit) {
 	defer a.mu.Unlock()
 
 	a.cancelIDETimer()
+	a.pruneRecentCLIQuits(a.now())
 
 	if a.schemeEmittedSinceStart {
 		a.debugf("Allocator: flushCLI suppressed — scheme bucket already resolved this cycle")
@@ -496,17 +516,34 @@ func (a *Allocator) flushCLI(q Quit) {
 		bucket := a.open
 		a.open = nil
 
+		openWasReal := !isSpec(bucket)
+
 		bucket.EndAt = q.At
 		bucket.Reason = BucketReasonCLIImplicit
 		bucket.BlobStats = a.snapshotBlobs()
-		if hasActivity(bucket.BlobStats) || !isSpec(bucket) {
+		if openWasReal {
+			bucket.Cancelled = true
+			bucket.CancelledKnown = true
+			bucket.Success = false
+			bucket.SuccessKnown = true
+		}
+		if hasActivity(bucket.BlobStats) || openWasReal {
 			a.emit(bucket)
 		}
 
 		a.openSpec(a.now())
 
+		// Inline branch fully resolved the cancel on the open bucket, so there
+		// is no late-End race to cover. Remembering the Quit here would cross-
+		// contaminate a warm ⌘B whose End arrives within the 2s match window.
+		if !openWasReal {
+			a.rememberCLIQuit(q)
+		}
+
 		return
 	}
+
+	a.rememberCLIQuit(q)
 
 	snap := a.snapshotBlobs()
 	if hasActivity(snap) {
@@ -603,6 +640,67 @@ func (a *Allocator) cliImplicitBucket(q Quit, snap *blobstats.Snapshot) Bucket {
 		PeerPID:      peerPID,
 		PeerStartMS:  peerStartMS,
 		BlobStats:    snap,
+	}
+}
+
+func (a *Allocator) rememberCLIQuit(q Quit) {
+	if q.PID <= 0 {
+		return
+	}
+
+	if a.recentCLIQuits == nil {
+		a.recentCLIQuits = make(map[int]time.Time)
+	}
+
+	at := q.At
+	if at.IsZero() {
+		at = a.now()
+	}
+
+	a.recentCLIQuits[q.PID] = at
+}
+
+func (a *Allocator) pruneRecentCLIQuits(now time.Time) {
+	if len(a.recentCLIQuits) == 0 {
+		return
+	}
+
+	cutoff := now.Add(-recentCLIQuitTTL)
+	for pid, at := range a.recentCLIQuits {
+		if at.Before(cutoff) {
+			delete(a.recentCLIQuits, pid)
+		}
+	}
+}
+
+// markCancelledIfRecentQuit flips the bucket to Cancelled when a CLI Quit
+// landed within recentCLIQuitWindow of this End. Covers the SIGINT race where
+// xcodebuild seals the manifest just before the peer process exits — the End
+// still reports Success=true even though the user aborted.
+func (a *Allocator) markCancelledIfRecentQuit(bucket *Bucket, endAt time.Time) {
+	if bucket == nil {
+		return
+	}
+
+	// Prune against the event timeline, not wall-clock, so an intake lag that
+	// drifts a.now() past the TTL cannot silently drop Quits that are still
+	// inside the ±recentCLIQuitWindow match band.
+	a.pruneRecentCLIQuits(endAt)
+
+	if len(a.recentCLIQuits) == 0 {
+		return
+	}
+
+	cutoff := endAt.Add(-recentCLIQuitWindow)
+	for _, at := range a.recentCLIQuits {
+		if !at.Before(cutoff) && !at.After(endAt.Add(recentCLIQuitWindow)) {
+			bucket.Cancelled = true
+			bucket.CancelledKnown = true
+			bucket.Success = false
+			bucket.SuccessKnown = true
+
+			return
+		}
 	}
 }
 
