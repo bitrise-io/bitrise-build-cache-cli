@@ -58,6 +58,7 @@ type Invocation struct {
 	DurationMs           int64               `json:"durationMs"`
 	HitRate              float32             `json:"hitRate"`
 	Success              bool                `json:"success"`
+	Cancelled            bool                `json:"cancelled,omitempty"`
 	Error                string              `json:"error"`
 	XcodeVersion         string              `json:"xcodeVersion"`
 	WorkflowName         string              `json:"workflowName"`

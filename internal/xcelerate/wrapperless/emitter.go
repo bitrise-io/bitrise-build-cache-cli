@@ -335,7 +335,10 @@ func (e *Emitter) appendLocalLog(bucket Bucket, inv analytics.Invocation, hitRat
 }
 
 func exitCodeFromBucket(bucket Bucket) int {
-	if bucket.SuccessKnown && !bucket.Success {
+	switch {
+	case bucket.CancelledKnown && bucket.Cancelled:
+		return 130
+	case bucket.SuccessKnown && !bucket.Success:
 		return 1
 	}
 
@@ -364,7 +367,12 @@ func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) a
 		run.HitRate = hitRate
 		run.Success = bucket.Success
 		run.CacheBlobStats = bucket.BlobStats
-		if !bucket.Success && bucket.SuccessKnown {
+		switch {
+		case bucket.CancelledKnown && bucket.Cancelled:
+			run.Success = false
+			run.Cancelled = true
+			run.Error = errors.New("cancelled by user")
+		case !bucket.Success && bucket.SuccessKnown:
 			run.Error = errors.New("xcode build failed")
 		}
 	}
