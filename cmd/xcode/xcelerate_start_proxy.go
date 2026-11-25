@@ -264,6 +264,7 @@ type analyticsBundle struct {
 	healthPath       string
 	homeDir          string
 	sessionsDir      string
+	paths            paths.Paths
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
@@ -318,6 +319,7 @@ func newAnalyticsBundle(
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
 		b.sessionsDir = pathResolver.XcelerateSessionsDir()
+		b.paths = pathResolver
 	}
 
 	return b
@@ -362,6 +364,9 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 		enricher.SidecarReader = sidecarReader
 	}
 	enricher.LocalLogAppender = invocationlog.Default(logger)
+	if b.paths.Home != "" {
+		enricher.AnalyzerSidecar = analyzersidecar.NewWriter(b.paths, logger)
+	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {

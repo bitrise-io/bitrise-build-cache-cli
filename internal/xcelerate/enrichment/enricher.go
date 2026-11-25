@@ -18,15 +18,34 @@ import (
 	pathsutil "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcactivitylog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcresult"
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg enrichment_test . InvocationPutter
 
+//go:generate moq -stub -out analyzer_sidecar_writer_mock_test.go -pkg enrichment . analyzerSidecarWriter
+
 type InvocationPutter interface {
 	PutInvocation(inv analytics.Invocation) error
 }
+
+// analyzerSidecarWriter persists a post-run build analyzer Report alongside
+// the ndjson invocation log. Mirror of the unexported interface in
+// internal/xcelerate/wrapperless; both call sites converge on
+// analyzersidecar.NewWriter in production.
+type analyzerSidecarWriter interface {
+	Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error
+}
+
+// Mirror of wrapperless defaults — the two emit paths must share timing
+// behavior, but the wrapperless package depends on enrichment, so we cannot
+// import its constants without a cycle.
+const (
+	walGraceDelay          = 250 * time.Millisecond
+	analyzerSidecarTimeout = 60 * time.Second
+)
 
 type Enricher struct {
 	Store            *Store
@@ -56,6 +75,17 @@ type Enricher struct {
 	// LocalLogAppender appends a Record on each successful wrapperless PUT so
 	// `bitrise-build-cache invocations list` surfaces the row. nil disables.
 	LocalLogAppender invocationlog.Appender
+
+	// AnalyzerSidecar persists the post-run analyzer Report after a successful
+	// enriched PUT on the scanner path (manifest sealed post-hoc, e.g. IDE
+	// build whose proxy restart made the live DDWatcher chain miss the End).
+	// Mirrors the hook on the wrapperless Emitter so both emit paths land a
+	// sidecar for the same InvocationID shape. nil disables.
+	AnalyzerSidecar analyzerSidecarWriter
+
+	// spawnFn runs the sidecar producer. Nil → real `go`. Tests inject a
+	// synchronous spawn so assertions don't race the goroutine.
+	spawnFn func(func())
 
 	// metricsLookup is the per-tick xcactivitylog cache the Watcher installs
 	// via SetMetricsLookup before invoking Enrich; aggregateHitRate consults
@@ -231,6 +261,79 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 	logger.Infof("Invocation saved. Visit 👉 %s", VisitURL(invocationID))
 
 	e.appendLocalLog(invocationID, command, group, runStats, inv)
+
+	e.spawnAnalyzerSidecar(invocationID, activityLogPath(manifestPath, group))
+}
+
+// activityLogPath is the sibling .xcactivitylog the Primary entry points at —
+// same resolution xcactivitylog.ReadMetricsFromManifest uses. Returns "" when
+// no FileName is attached (synthetic / boundary groups).
+func activityLogPath(manifestPath string, group ManifestEntryGroup) string {
+	if manifestPath == "" {
+		return ""
+	}
+
+	fileName := group.Primary().FileName
+	if fileName == "" {
+		return ""
+	}
+
+	return filepath.Join(filepath.Dir(manifestPath), fileName)
+}
+
+// spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write after
+// a successful enriched PUT on the scanner path. Silent no-op when the group
+// has no sibling xcactivitylog (synthetic / override-anchored groups) or no
+// writer is wired.
+func (e *Enricher) spawnAnalyzerSidecar(invocationID string, logPath string) {
+	if e.AnalyzerSidecar == nil || logPath == "" {
+		return
+	}
+
+	writer := e.AnalyzerSidecar
+	logger := e.Logger
+
+	e.spawn(func() {
+		defer func() {
+			if r := recover(); r != nil && logger != nil {
+				logger.Debugf("Analyzer sidecar panicked, dropping: %v", r)
+			}
+		}()
+
+		time.Sleep(walGraceDelay)
+
+		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
+		defer cancel()
+
+		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{})
+		if err != nil {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)
+			}
+
+			return
+		}
+
+		for _, w := range warnings {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar warning: %v", w)
+			}
+		}
+
+		if err := writer.Write(ctx, invocationID, report); err != nil && logger != nil {
+			logger.Debugf("Analyzer sidecar: write failed: %v", err)
+		}
+	})
+}
+
+func (e *Enricher) spawn(fn func()) {
+	if e.spawnFn != nil {
+		e.spawnFn(fn)
+
+		return
+	}
+
+	go fn()
 }
 
 // VisitURL is the invocation-detail URL rendered in the Visit line + the
