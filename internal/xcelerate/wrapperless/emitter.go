@@ -14,6 +14,7 @@ import (
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
@@ -24,9 +25,14 @@ import (
 )
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg wrapperless_test . InvocationPutter
+//go:generate moq -stub -out invocation_relation_putter_mock_test.go -pkg wrapperless_test . InvocationRelationPutter
 
 type InvocationPutter interface {
 	PutInvocation(inv analytics.Invocation) error
+}
+
+type InvocationRelationPutter interface {
+	PutInvocationRelation(rel multiplatform.InvocationRelation) error
 }
 
 type Phase string
@@ -67,6 +73,14 @@ type Emitter struct {
 	DrainInterval       time.Duration
 	MaxPendingAge       time.Duration
 	Now                 func() time.Time
+
+	// ParentInvocationID is BITRISE_INVOCATION_ID captured at proxy boot;
+	// empty disables the relation PUT after an enriched row lands.
+	ParentInvocationID string
+
+	// RelationClient issues the parent→child relation PUT after a successful
+	// enriched row; nil disables (RDE / local dev / tests without plumbing).
+	RelationClient InvocationRelationPutter
 
 	// Health, when non-nil, ticks around the enriched PUT (nil disables).
 	Health *enrichment.HealthWriter
@@ -129,8 +143,27 @@ func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
 
 	e.appendLocalLog(bucket, inv, hitRate)
 
+	e.sendRelation(inv.InvocationID)
+
 	e.logDebug("Emitter: enriched PUT id=%s scheme=%s bytes=%d hitRate=%.2f",
 		inv.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats), hitRate)
+}
+
+func (e *Emitter) sendRelation(childInvocationID string) {
+	if e.ParentInvocationID == "" || e.RelationClient == nil {
+		return
+	}
+
+	rel := multiplatform.InvocationRelation{
+		ParentInvocationID: e.ParentInvocationID,
+		ChildInvocationID:  childInvocationID,
+		InvocationDate:     e.now(),
+		BuildTool:          "xcode",
+	}
+
+	if err := e.RelationClient.PutInvocationRelation(rel); err != nil {
+		e.logWarn("wrapperless relation PUT parent=%s child=%s failed: %s", e.ParentInvocationID, childInvocationID, err)
+	}
 }
 
 // Start kicks off the background drain goroutine that replays entries from

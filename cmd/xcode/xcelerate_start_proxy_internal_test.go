@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
@@ -290,6 +291,34 @@ func Test_slimInvocationEmitter_EmitSlim_noPendingStore_doesNotPanic(t *testing.
 	// Confirm the pending file was not created — pending==nil skips the append.
 	_, err := os.Stat(paths.FromHome(home).PendingInvocationsFile())
 	assert.True(t, os.IsNotExist(err), "pending file must not exist when b.pending is nil")
+}
+
+func Test_buildRelationClient_returnsClientWhenAuthResolves(t *testing.T) {
+	home := t.TempDir()
+	b := newBundleForTest(t, home, "")
+
+	envs := map[string]string{
+		"BITRISE_BUILD_CACHE_SERVICES_DOMAIN": "bitrise.dev",
+	}
+
+	client := buildRelationClient(context.Background(), b, envs, bundleTestLogger)
+	require.NotNil(t, client, "a resolvable auth bundle must produce a relation client")
+
+	mpc, ok := client.(*multiplatform.Client)
+	require.True(t, ok, "wiring must return a *multiplatform.Client so the base URL is observable")
+	assert.Equal(t, "https://multiplatform-analytics.services.bitrise.dev", mpc.BaseURL())
+}
+
+func Test_maybeStartWrapperlessPipeline_disabledWhenFlagOff(t *testing.T) {
+	// Sanity: the flag gate short-circuits before anything is touched.
+	home := t.TempDir()
+	b := newBundleForTest(t, home, "")
+
+	wrapperlessPipelineEnabled = false
+	t.Cleanup(func() { wrapperlessPipelineEnabled = false })
+
+	got := maybeStartWrapperlessPipeline(context.Background(), b, nil, map[string]string{"BITRISE_INVOCATION_ID": "parent"}, bundleTestLogger)
+	assert.Nil(t, got, "flag off ⇒ no pipeline, regardless of env or bundle")
 }
 
 func Test_resolveInactivityTimeout(t *testing.T) {
