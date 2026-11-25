@@ -35,18 +35,11 @@ var analyzeCmd = &cobra.Command{
 	Short: "Post-mortem of an .xcactivitylog — task list, durations, errors.",
 	Long: `analyze reads a single Xcode .xcactivitylog and emits a flat list of every
 executed command section with its signature (llbuild cache key), target,
-duration, exit code, and any error: lines.
+duration, exit code, and any error: lines. See docs/xcode-build-analyzer.md.
 
 Pass --xcactivitylog to point at a specific log, or --derived-data to pick
 the most recent Logs/Build/*.xcactivitylog under a DerivedData path. If both
-flags are set, --xcactivitylog wins.
-
-Phased plan (see docs/xcode-build-analyzer.md):
-  v0 — .xcactivitylog → flat task list, JSON or pretty.
-  v1 (this subcommand) — join against the manifest.json graph (planned tasks,
-     input/output dependency edges) + Graphviz dot renderer.
-  v2 — annotate execution reason via build.db signature diff.
-  v3 — rich clang diagnostics via .dia parse.`,
+flags are set, --xcactivitylog wins.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runAnalyze(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr())

@@ -127,7 +127,7 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	p.putDone = putDone
 	p.mu.Unlock()
 
-	go p.putWorker(putQueue, putDone) //nolint:contextcheck // analyzer sidecar inside EmitEnriched detaches from parent ctx on purpose
+	go p.putWorker(putQueue, putDone) //nolint:contextcheck // worker lifetime is bounded by queue close, not ctx
 
 	p.Allocator.Init()
 

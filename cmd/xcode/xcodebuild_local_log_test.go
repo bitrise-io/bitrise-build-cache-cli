@@ -120,7 +120,7 @@ func TestXcodebuildRunner_appendLocalInvocationLog_appendErrorIsNonFatal(t *test
 	assert.Equal(t, 7, stats.ExitCode)
 }
 
-func TestXcodebuildRunner_spawnAnalyzerSidecar_spawnsWithTimeoutCtx(t *testing.T) {
+func TestXcodebuildRunner_spawnAnalyzerSidecar_spawnsExactlyOnce(t *testing.T) {
 	runStats := xcodeargs.RunStats{StartTime: time.Now().UTC(), Success: true}
 
 	sut, _ := runnerForLocalLogTest(t, runStats, "")

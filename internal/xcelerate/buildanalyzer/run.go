@@ -32,11 +32,11 @@ type RunOptions struct {
 
 // Run composes ReadReport → JoinManifest (best-effort) → Classify (best-effort)
 // → AttachDiagnostics (opts-gated) into a single call shared by the `xcode
-// analyze` CLI and the Stage-1 wrapper / wrapperless sidecar hooks. Honors
-// ctx.Done() between stages. Non-fatal errors from the manifest / classifier
-// stages come back through the returned Warnings slice so hooks can surface
-// them to a debug logger and the CLI can still print its stderr fallback
-// strings without changing user-visible output.
+// analyze` CLI and the wrapper / wrapperless sidecar hooks. Honors ctx.Done()
+// between stages. Non-fatal errors from the manifest / classifier stages come
+// back through the returned Warnings slice so hooks can surface them to a
+// debug logger and the CLI can still print its stderr fallback strings
+// without changing user-visible output.
 func Run(ctx context.Context, logPath string, opts RunOptions) (Report, []error, error) {
 	if logPath == "" {
 		return Report{}, nil, errors.New("buildanalyzer.Run: logPath is required")

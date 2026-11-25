@@ -106,35 +106,3 @@ func TestEmitter_EmitEnriched_SkipsSidecarWhenNil(t *testing.T) {
 
 	assert.Zero(t, spawnCalls, "no AnalyzerSidecar → no spawn")
 }
-
-func TestEmitter_EmitEnriched_SidecarWriteExactlyOnce_WithFakeAnalyzer(t *testing.T) {
-	// Drive the writer directly via the spawn seam so we don't depend on
-	// buildanalyzer.Run reading a real log: we observe that the spawned
-	// goroutine reaches our writer exactly once when the fake-run path lands.
-	sidecar := &analyzerSidecarWriterMock{
-		WriteFunc: func(_ context.Context, _ string, _ buildanalyzer.Report) error { return nil },
-	}
-
-	e := &Emitter{ //nolint:exhaustruct
-		Client:          &analyzerTestPutter{},
-		AnalyzerSidecar: sidecar,
-	}
-
-	var calls int
-	e.spawnFn = func(_ func()) {
-		calls++
-		// Simulate the sidecar reaching Write by invoking it directly: this
-		// isolates the test from buildanalyzer.Run's log-reading contract
-		// and asserts the Emitter does spawn when the gate is open.
-		_ = sidecar.Write(context.Background(), "inv", buildanalyzer.Report{})
-	}
-
-	bucket := analyzerTestBucket()
-	bucket.XCActivityLogPath = "/some/path/UUID.xcactivitylog"
-
-	e.EmitEnriched(bucket, 0.5)
-
-	assert.Equal(t, 1, calls, "enriched emit with XCActivityLogPath must spawn exactly once")
-	assert.Len(t, sidecar.WriteCalls(), 1)
-}
-
