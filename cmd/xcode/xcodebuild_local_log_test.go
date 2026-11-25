@@ -119,3 +119,47 @@ func TestXcodebuildRunner_appendLocalInvocationLog_appendErrorIsNonFatal(t *test
 	stats := sut.Run(context.Background())
 	assert.Equal(t, 7, stats.ExitCode)
 }
+
+func TestXcodebuildRunner_spawnAnalyzerSidecar_spawnsWithTimeoutCtx(t *testing.T) {
+	runStats := xcodeargs.RunStats{StartTime: time.Now().UTC(), Success: true}
+
+	sut, _ := runnerForLocalLogTest(t, runStats, "")
+
+	// Fake a derived-data path so the hook does not short-circuit.
+	sut.XcodeArgs.(*xcodeargsMocks.XcodeArgsMock).DerivedDataPathFunc = func() string { return t.TempDir() }
+
+	sut.analyzerSidecar = &analyzerSidecarWriterMock{}
+
+	var spawnCalls int
+	sut.spawnFn = func(fn func()) {
+		spawnCalls++
+		// Execute inline so the goroutine's ctx is observable before the
+		// test returns; MostRecentActivityLog returns empty for the temp
+		// dir and the goroutine exits before it ever reaches the writer.
+		fn()
+	}
+
+	_ = sut.Run(context.Background())
+
+	assert.Equal(t, 1, spawnCalls, "appendLocalInvocationLog must trigger exactly one spawn")
+}
+
+func TestXcodebuildRunner_spawnAnalyzerSidecar_noDerivedData_skipsSpawn(t *testing.T) {
+	runStats := xcodeargs.RunStats{StartTime: time.Now().UTC(), Success: true}
+
+	sut, _ := runnerForLocalLogTest(t, runStats, "")
+	sut.XcodeArgs.(*xcodeargsMocks.XcodeArgsMock).DerivedDataPathFunc = func() string { return "" }
+	sut.NoManagedDD = true
+
+	sut.analyzerSidecar = &analyzerSidecarWriterMock{}
+
+	var spawnCalls int
+	sut.spawnFn = func(fn func()) {
+		spawnCalls++
+		fn()
+	}
+
+	_ = sut.Run(context.Background())
+
+	assert.Equal(t, 0, spawnCalls, "no DerivedData → no analyzer work")
+}
