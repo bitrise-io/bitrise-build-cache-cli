@@ -500,7 +500,7 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 		c.Logger.TInfof(MsgProjectModeOptedOut)
 	} else {
 		c.appendLocalInvocationLog(*inv, runStats)
-		c.spawnAnalyzerSidecar(*inv, runStats) //nolint:contextcheck // detached from parent ctx so a shell ^C does not abort the background sidecar work
+		c.spawnAnalyzerSidecar(*inv) //nolint:contextcheck // detached from parent ctx so a shell ^C does not abort the background sidecar work
 		c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
 	}
 
@@ -584,9 +584,7 @@ const analyzerSidecarTimeout = 60 * time.Second
 // spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write. It
 // derives the DerivedData path from the wrapper's resolved prefix-map state;
 // buildanalyzer.Run picks the newest xcactivitylog underneath.
-func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation, runStats xcodeargs.RunStats) {
-	_ = runStats
-
+func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
 	writer := c.resolveAnalyzerSidecar()
 	if writer == nil {
 		return
