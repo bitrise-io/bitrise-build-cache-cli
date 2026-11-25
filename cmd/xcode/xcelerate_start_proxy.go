@@ -645,12 +645,7 @@ func buildRelationClient(
 ) wrapperless.InvocationRelationPutter {
 	cred, origin, _ := bundle.authProvider.Resolve(context.WithoutCancel(ctx))
 
-	client, err := multiplatform.NewClient(configcommon.MultiplatformAnalyticsURL(envProvider), authpkg.GradleToken(cred, origin), logger)
-	if err != nil {
-		logger.Debugf("Wrapperless relation client disabled, client init failed: %s", err)
-
-		return nil
-	}
+	client, _ := multiplatform.NewClient(configcommon.MultiplatformAnalyticsURL(envProvider), authpkg.GradleToken(cred, origin), logger)
 
 	return client
 }

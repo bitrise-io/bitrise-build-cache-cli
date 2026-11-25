@@ -363,38 +363,55 @@ func TestEmitter_EmitEnriched_FiresRelationOnSuccess(t *testing.T) {
 
 func TestEmitter_EmitEnriched_SkipsRelationWhenParentUnknown(t *testing.T) {
 	relMock := &InvocationRelationPutterMock{}
+	putter := &recordingPutter{}
 	e := &wrapperless.Emitter{
-		Client:         &recordingPutter{},
+		Client:         putter,
 		RelationClient: relMock,
 	}
 
 	e.EmitEnriched(newBucket(), 0.5)
 
+	// Positive side: the enriched PUT must have reached the putter — cross-asserts
+	// that the skip is "no parent" not "emitter bailed early".
+	require.Len(t, putter.snapshot(), 1, "enriched PUT must still fire even without a parent")
 	assert.Empty(t, relMock.PutInvocationRelationCalls(), "no parent env ⇒ no relation call")
 }
 
 func TestEmitter_EmitEnriched_SkipsRelationWhenClientNil(t *testing.T) {
+	putter := &recordingPutter{}
 	e := &wrapperless.Emitter{
-		Client:             &recordingPutter{},
+		Client:             putter,
 		ParentInvocationID: "parent-inv-id",
 	}
 
 	assert.NotPanics(t, func() {
 		e.EmitEnriched(newBucket(), 0.5)
 	}, "nil RelationClient must be silently skipped, not panic")
+
+	// Cross-asserts the enriched PUT reached the putter; a regression that
+	// short-circuited before the PUT would also not panic, hiding the bug.
+	assert.Len(t, putter.snapshot(), 1, "enriched PUT must still fire when RelationClient is nil")
 }
 
 func TestEmitter_EmitEnriched_SkipsRelationWhenEnrichedPUTFails(t *testing.T) {
 	relMock := &InvocationRelationPutterMock{}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "pending-enriched.ndjson")
 	e := &wrapperless.Emitter{
-		Client:             failingPutter{},
-		RelationClient:     relMock,
-		ParentInvocationID: "parent-inv-id",
+		Client:              failingPutter{},
+		RelationClient:      relMock,
+		ParentInvocationID:  "parent-inv-id",
+		PendingEnrichedPath: path,
 	}
 
 	e.EmitEnriched(newBucket(), 0.5)
 
 	assert.Empty(t, relMock.PutInvocationRelationCalls(), "a failed enriched PUT must not emit a relation")
+
+	// Positive side: the pending row landed on the ledger — proves the emitter
+	// reached the persist path rather than bailing before the PUT.
+	_, err := os.Stat(path)
+	assert.NoError(t, err, "failing enriched PUT must persist a pending row")
 }
 
 func TestEmitter_EmitEnriched_RelationErrorOnlyWarns(t *testing.T) {
@@ -406,8 +423,9 @@ func TestEmitter_EmitEnriched_RelationErrorOnlyWarns(t *testing.T) {
 			return errors.New("relation 500")
 		},
 	}
+	putter := &recordingPutter{}
 	e := &wrapperless.Emitter{
-		Client:              &recordingPutter{},
+		Client:              putter,
 		RelationClient:      relMock,
 		ParentInvocationID:  "parent-inv-id",
 		PendingEnrichedPath: path,
@@ -415,6 +433,9 @@ func TestEmitter_EmitEnriched_RelationErrorOnlyWarns(t *testing.T) {
 
 	e.EmitEnriched(newBucket(), 0.5)
 
+	// Cross-asserts the enriched PUT reached the putter first, so the "no pending"
+	// outcome below reflects success-then-relation-failure, not a bailed emitter.
+	require.Len(t, putter.snapshot(), 1, "enriched PUT must land before the relation attempt")
 	require.Len(t, relMock.PutInvocationRelationCalls(), 1)
 
 	_, err := os.Stat(path)
@@ -433,8 +454,9 @@ func TestEmitter_DrainPath_DoesNotFireRelation(t *testing.T) {
 	seed.EmitEnriched(newBucket(), 0.5)
 
 	relMock := &InvocationRelationPutterMock{}
+	drainPutter := &recordingPutter{}
 	e := &wrapperless.Emitter{
-		Client:              &recordingPutter{},
+		Client:              drainPutter,
 		RelationClient:      relMock,
 		ParentInvocationID:  "parent-inv-id",
 		PendingEnrichedPath: path,
@@ -457,5 +479,9 @@ func TestEmitter_DrainPath_DoesNotFireRelation(t *testing.T) {
 	_, err := os.Stat(path)
 	require.True(t, os.IsNotExist(err), "drain must replay and clear the pending file")
 
+	// Positive side: the drain did replay the pending row through the putter;
+	// cross-asserts that "no relation" reflects the drain path staying analytics-only,
+	// not the drain never running.
+	assert.NotEmpty(t, drainPutter.snapshot(), "drain must have replayed the pending enriched row")
 	assert.Empty(t, relMock.PutInvocationRelationCalls(), "the drain re-emit path must stay analytics-only")
 }
