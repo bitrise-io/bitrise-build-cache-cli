@@ -536,8 +536,9 @@ workflows:
         machine_type_id: g2.linux.medium
     envs:
     - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
+    - E2E_TESTING_REPO: git@github.com:bitrise-io/build-cache-e2e-testing.git
     - E2E_TESTING_BRANCH: master
-    - RECEIVER_PIPELINE: resolve-and-dispatch
+    - E2E_PIPELINE: features-e2e
     steps:
     - bundle::dispatch-to-private: {}
 
@@ -587,6 +588,33 @@ step_bundles:
   dispatch-to-private:
     description: Shared dispatcher body — see dispatch-e2e-cli for details.
     steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - script:
+        title: Resolve paired e2e branch (ls-remote)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            : "${E2E_TESTING_REPO:?missing E2E_TESTING_REPO}"
+            : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
+
+            pr_branch="${BITRISE_GIT_BRANCH:-}"
+            resolved="$E2E_TESTING_BRANCH"
+
+            if [[ -n "$pr_branch" && "$pr_branch" =~ ^[A-Za-z0-9._/-]{1,255}$ ]]; then
+              if git ls-remote --exit-code --heads "$E2E_TESTING_REPO" "$pr_branch" >/dev/null 2>&1; then
+                resolved="$pr_branch"
+                echo "Paired e2e branch found: $resolved"
+              else
+                echo "No paired branch '$pr_branch' on e2e repo — using $E2E_TESTING_BRANCH"
+              fi
+            else
+              echo "PR branch '${pr_branch}' failed sanitization — using $E2E_TESTING_BRANCH"
+            fi
+
+            envman add --key E2E_RESOLVED_BRANCH --value "$resolved"
     - git::https://github.com/bitrise-steplib/bitrise-step-get-identity-token.git@main:
         title: Mint OIDC identity token for receiver app
         inputs:
@@ -632,19 +660,16 @@ step_bundles:
 
             : "${E2E_TESTING_BUILD_TRIGGER_TOKEN:?missing trigger token}"
             : "${BITRISE_GIT_COMMIT:?no commit to run e2e on}"
-            : "${RECEIVER_PIPELINE:?missing RECEIVER_PIPELINE}"
+            : "${E2E_PIPELINE:?missing E2E_PIPELINE}"
             : "${E2E_TESTING_APP_SLUG:?missing E2E_TESTING_APP_SLUG}"
-            : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
+            : "${E2E_RESOLVED_BRANCH:?missing E2E_RESOLVED_BRANCH (resolve step must run first)}"
             : "${RECEIVER_WAT:?missing RECEIVER_WAT (OIDC exchange step must run first)}"
-
-            pr_branch="${BITRISE_GIT_BRANCH:-$E2E_TESTING_BRANCH}"
 
             payload=$(jq -nc \
               --arg token "$E2E_TESTING_BUILD_TRIGGER_TOKEN" \
-              --arg branch "$E2E_TESTING_BRANCH" \
-              --arg pipeline "$RECEIVER_PIPELINE" \
+              --arg branch "$E2E_RESOLVED_BRANCH" \
+              --arg pipeline "$E2E_PIPELINE" \
               --arg commit "$BITRISE_GIT_COMMIT" \
-              --arg pr_branch "$pr_branch" \
               --arg triggered_by "cli-dispatcher-$BITRISE_BUILD_SLUG" \
               '{
                 hook_info: {type: "bitrise", build_trigger_token: $token},
@@ -652,8 +677,7 @@ step_bundles:
                   branch: $branch,
                   pipeline_id: $pipeline,
                   environments: [
-                    {mapped_to: "CLI_COMMIT", value: $commit, is_expand: false},
-                    {mapped_to: "CLI_PR_BRANCH", value: $pr_branch, is_expand: false}
+                    {mapped_to: "CLI_COMMIT", value: $commit, is_expand: false}
                   ]
                 },
                 triggered_by: $triggered_by
