@@ -147,9 +147,15 @@ type Task struct {
 }
 
 // BuildMeta captures the top-level log metadata — the enclosing
-// IDEActivityLogSection that wraps everything.
+// IDEActivityLogSection that wraps everything. Title is lifted from the SLF
+// stream; Scheme and Command are populated authoritatively by the hook sites
+// (wrapper argv, wrapperless bucket, enricher group) since the SLF Title is
+// unreliable for CLI xcodebuild logs (Xcode names the top-level section
+// "Prepare packages" with microsecond duration there).
 type BuildMeta struct {
 	Title      string        `json:"title,omitempty"`
+	Scheme     string        `json:"scheme,omitempty"`
+	Command    string        `json:"command,omitempty"`
 	StartedAt  time.Time     `json:"startedAt"`
 	FinishedAt time.Time     `json:"finishedAt"`
 	Duration   time.Duration `json:"duration"`

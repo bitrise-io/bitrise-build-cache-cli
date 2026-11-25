@@ -5,6 +5,8 @@ package xcode
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
 )
@@ -142,6 +145,52 @@ func TestXcodebuildRunner_spawnAnalyzerSidecar_spawnsExactlyOnce(t *testing.T) {
 	_ = sut.Run(context.Background())
 
 	assert.Equal(t, 1, spawnCalls, "appendLocalInvocationLog must trigger exactly one spawn")
+}
+
+func TestXcodebuildRunner_spawnAnalyzerSidecar_propagatesSchemeAndCommand(t *testing.T) {
+	runStats := xcodeargs.RunStats{StartTime: time.Now().UTC(), Success: true}
+
+	sut, _ := runnerForLocalLogTest(t, runStats, "")
+
+	// Fake a derived-data path so the hook does not short-circuit. The mock
+	// is pinned to a single dir so sidecar resolution + log seeding below
+	// agree on the same filesystem root.
+	dd := t.TempDir()
+	sut.XcodeArgs.(*xcodeargsMocks.XcodeArgsMock).DerivedDataPathFunc = func() string { return dd }
+	sut.XcodeArgs.(*xcodeargsMocks.XcodeArgsMock).SchemeFunc = func() string { return "MyScheme" }
+	sut.XcodeArgs.(*xcodeargsMocks.XcodeArgsMock).ShortCommandFunc = func() string { return "build [MyScheme]" }
+
+	sidecar := &analyzerSidecarWriterMock{
+		WriteFunc: func(_ context.Context, _ string, _ buildanalyzer.Report) error { return nil },
+	}
+	sut.analyzerSidecar = sidecar
+	sut.spawnFn = func(fn func()) { fn() }
+
+	var (
+		gotScheme  string
+		gotCommand string
+	)
+	sut.analyzerRunFn = func(_ context.Context, _ string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error) {
+		gotScheme = opts.Scheme
+		gotCommand = opts.Command
+
+		return buildanalyzer.Report{
+			Build: buildanalyzer.BuildMeta{Scheme: opts.Scheme, Command: opts.Command},
+		}, nil, nil
+	}
+
+	// Seed a stub xcactivitylog under the fake derived data so
+	// MostRecentActivityLog returns a non-empty path and the sidecar reaches
+	// the (fake) analyzer runner. Its contents don't matter — analyzerRunFn
+	// is stubbed above.
+	logDir := filepath.Join(dd, "Logs", "Build")
+	require.NoError(t, os.MkdirAll(logDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(logDir, "stub.xcactivitylog"), []byte("placeholder"), 0o644))
+
+	_ = sut.Run(context.Background())
+
+	assert.Equal(t, "MyScheme", gotScheme, "scheme must mirror XcodeArgs.Scheme()")
+	assert.Equal(t, "build [MyScheme]", gotCommand, "command must mirror inv.Command (XcodeArgs.ShortCommand())")
 }
 
 func TestXcodebuildRunner_spawnAnalyzerSidecar_noDerivedData_skipsSpawn(t *testing.T) {

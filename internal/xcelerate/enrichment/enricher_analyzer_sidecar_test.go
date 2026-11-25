@@ -91,6 +91,44 @@ func TestEnricher_ProcessGroup_FiresAnalyzerSidecarExactlyOnce(t *testing.T) {
 	assert.Equal(t, 1, spawnCalls, "successful enriched PUT with sibling xcactivitylog must spawn exactly once")
 }
 
+func TestEnricher_ProcessGroup_SidecarReceivesSchemeAndCommandFromGroup(t *testing.T) {
+	sidecar := &analyzerSidecarWriterMock{
+		WriteFunc: func(_ context.Context, _ string, _ buildanalyzer.Report) error { return nil },
+	}
+
+	var (
+		gotScheme  string
+		gotCommand string
+	)
+
+	e := &Enricher{ //nolint:exhaustruct
+		Client:          &analyzerSidecarTestPutter{},
+		AnalyzerSidecar: sidecar,
+	}
+	e.spawnFn = func(fn func()) { fn() }
+	e.analyzerRunFn = func(_ context.Context, _ string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error) {
+		gotScheme = opts.Scheme
+		gotCommand = opts.Command
+
+		return buildanalyzer.Report{
+			Build: buildanalyzer.BuildMeta{Scheme: opts.Scheme, Command: opts.Command},
+		}, nil, nil
+	}
+
+	manifestPath, logName := stageOKLogDirect(t)
+	entry := analyzerSidecarEntry(logName)
+	entry.SchemeName = "MyScheme"
+	e.Enrich(manifestPath, ManifestEntryGroup{Entries: []ManifestEntry{entry}})
+
+	assert.Equal(t, "MyScheme", gotScheme, "scheme must mirror group.SchemeName()")
+	assert.Equal(t, "build [MyScheme]", gotCommand, "command must mirror the local command string derived from group.Command()")
+
+	writes := sidecar.WriteCalls()
+	require.Len(t, writes, 1)
+	assert.Equal(t, "MyScheme", writes[0].Rep.Build.Scheme)
+	assert.Equal(t, "build [MyScheme]", writes[0].Rep.Build.Command)
+}
+
 func TestEnricher_ProcessGroup_SkipsSidecarWhenLogPathEmpty(t *testing.T) {
 	sidecar := &analyzerSidecarWriterMock{
 		WriteFunc: func(_ context.Context, _ string, _ buildanalyzer.Report) error { return nil },

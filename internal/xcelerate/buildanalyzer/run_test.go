@@ -101,6 +101,63 @@ func TestRun_UnreadableLogErrors(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRun_PopulatesSchemeAndCommandFromOpts(t *testing.T) {
+	const base = 812533954.0
+
+	body := buildSynthLog(t, "Prepare packages", base, base+2, []synthTask{{
+		title:         "Compile Scheme",
+		signature:     "SwiftCompile S.swift (in target 'SchemeOpt' from project 'SchemeOpt')",
+		started:       base,
+		stopped:       base + 1,
+		commandDetail: "swiftc S.swift",
+		uuid:          "EEEEEEEE-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+		exitCode:      0,
+	}})
+	path := writeSynthLog(t, "scheme-opts.xcactivitylog", body)
+
+	tests := []struct {
+		name        string
+		opts        buildanalyzer.RunOptions
+		wantScheme  string
+		wantCommand string
+	}{
+		{
+			name:        "scheme+command supplied overrides empty meta",
+			opts:        buildanalyzer.RunOptions{Scheme: "MyScheme", Command: "build [MyScheme / Debug]", DiagMode: buildanalyzer.DiagModeOff},
+			wantScheme:  "MyScheme",
+			wantCommand: "build [MyScheme / Debug]",
+		},
+		{
+			name:        "scheme only",
+			opts:        buildanalyzer.RunOptions{Scheme: "MyScheme", DiagMode: buildanalyzer.DiagModeOff},
+			wantScheme:  "MyScheme",
+			wantCommand: "",
+		},
+		{
+			name:        "command only",
+			opts:        buildanalyzer.RunOptions{Command: "build", DiagMode: buildanalyzer.DiagModeOff},
+			wantScheme:  "",
+			wantCommand: "build",
+		},
+		{
+			name:        "neither set — fields stay empty, Title unchanged",
+			opts:        buildanalyzer.RunOptions{DiagMode: buildanalyzer.DiagModeOff},
+			wantScheme:  "",
+			wantCommand: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			report, _, err := buildanalyzer.Run(context.Background(), path, tc.opts)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantScheme, report.Build.Scheme, "scheme must mirror opts.Scheme")
+			assert.Equal(t, tc.wantCommand, report.Build.Command, "command must mirror opts.Command")
+			assert.Equal(t, "Prepare packages", report.Build.Title, "SLF-parsed Title stays untouched regardless of opts")
+		})
+	}
+}
+
 func TestRun_ClassifierBailIsWarning_NotFatal(t *testing.T) {
 	const base = 812533954.0
 

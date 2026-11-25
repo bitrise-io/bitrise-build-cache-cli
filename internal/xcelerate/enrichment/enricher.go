@@ -87,6 +87,11 @@ type Enricher struct {
 	// synchronous spawn so assertions don't race the goroutine.
 	spawnFn func(func())
 
+	// analyzerRunFn runs buildanalyzer.Run. Nil → real buildanalyzer.Run.
+	// Tests inject a fake to observe the scheme/command propagation into
+	// RunOptions without having to synthesize a valid SLF payload.
+	analyzerRunFn func(ctx context.Context, logPath string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error)
+
 	// metricsLookup is the per-tick xcactivitylog cache the Watcher installs
 	// via SetMetricsLookup before invoking Enrich; aggregateHitRate consults
 	// it so a single gunzip is shared with the grouping pass. nil = fall
@@ -262,7 +267,7 @@ func (e *Enricher) Enrich(manifestPath string, group ManifestEntryGroup) {
 
 	e.appendLocalLog(invocationID, command, group, runStats, inv)
 
-	e.spawnAnalyzerSidecar(invocationID, activityLogPath(manifestPath, group))
+	e.spawnAnalyzerSidecar(invocationID, activityLogPath(manifestPath, group), group.SchemeName(), command)
 }
 
 // activityLogPath is the sibling .xcactivitylog the Primary entry points at —
@@ -285,7 +290,7 @@ func activityLogPath(manifestPath string, group ManifestEntryGroup) string {
 // a successful enriched PUT on the scanner path. Silent no-op when the group
 // has no sibling xcactivitylog (synthetic / override-anchored groups) or no
 // writer is wired.
-func (e *Enricher) spawnAnalyzerSidecar(invocationID string, logPath string) {
+func (e *Enricher) spawnAnalyzerSidecar(invocationID, logPath, scheme, command string) {
 	if e.AnalyzerSidecar == nil || logPath == "" {
 		return
 	}
@@ -305,7 +310,15 @@ func (e *Enricher) spawnAnalyzerSidecar(invocationID string, logPath string) {
 		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
 		defer cancel()
 
-		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{})
+		runFn := e.analyzerRunFn
+		if runFn == nil {
+			runFn = buildanalyzer.Run
+		}
+
+		report, warnings, err := runFn(ctx, logPath, buildanalyzer.RunOptions{
+			Scheme:  scheme,
+			Command: command,
+		})
 		if err != nil {
 			if logger != nil {
 				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)

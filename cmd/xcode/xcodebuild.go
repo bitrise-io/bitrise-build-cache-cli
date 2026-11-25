@@ -409,6 +409,10 @@ type XcodebuildRunner struct {
 	// spawnFn runs the sidecar producer. Nil → real `go` — tests inject a
 	// synchronous spawn so assertions don't race the goroutine.
 	spawnFn func(func())
+	// analyzerRunFn runs buildanalyzer.Run. Nil → real buildanalyzer.Run.
+	// Tests inject a fake to observe the scheme/command propagation into
+	// RunOptions without having to synthesize a valid SLF payload.
+	analyzerRunFn func(ctx context.Context, logPath string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error)
 }
 
 // resolveOsProxy returns the configured OsProxy or the production default.
@@ -594,6 +598,8 @@ func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
 	}
 
 	invocationID := inv.InvocationID
+	scheme := c.XcodeArgs.Scheme()
+	command := inv.Command
 	logger := c.Logger
 
 	c.spawn(func() {
@@ -615,8 +621,15 @@ func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
 			return
 		}
 
-		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{
+		runFn := c.analyzerRunFn
+		if runFn == nil {
+			runFn = buildanalyzer.Run
+		}
+
+		report, warnings, err := runFn(ctx, logPath, buildanalyzer.RunOptions{
 			DerivedDataPath: derivedData,
+			Scheme:          scheme,
+			Command:         command,
 		})
 		if err != nil {
 			if logger != nil {

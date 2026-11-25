@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
@@ -91,6 +92,44 @@ func TestEmitter_EmitEnriched_SkipsSidecarWhenLogPathEmpty(t *testing.T) {
 
 	assert.Zero(t, spawnCalls, "no xcactivitylog → no spawn")
 	assert.Empty(t, sidecar.WriteCalls())
+}
+
+func TestEmitter_EmitEnriched_SidecarReceivesSchemeAndCommandFromBucket(t *testing.T) {
+	sidecar := &analyzerSidecarWriterMock{
+		WriteFunc: func(_ context.Context, _ string, _ buildanalyzer.Report) error { return nil },
+	}
+
+	var (
+		gotScheme  string
+		gotCommand string
+	)
+
+	e := &Emitter{ //nolint:exhaustruct
+		Client:          &analyzerTestPutter{},
+		AnalyzerSidecar: sidecar,
+	}
+	e.spawnFn = func(fn func()) { fn() }
+	e.analyzerRunFn = func(_ context.Context, _ string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error) {
+		gotScheme = opts.Scheme
+		gotCommand = opts.Command
+
+		return buildanalyzer.Report{
+			Build: buildanalyzer.BuildMeta{Scheme: opts.Scheme, Command: opts.Command},
+		}, nil, nil
+	}
+
+	bucket := analyzerTestBucket()
+	bucket.XCActivityLogPath = "/nonexistent/DD/Logs/Build/UUID.xcactivitylog"
+
+	e.EmitEnriched(bucket, 0.5)
+
+	assert.Equal(t, "Seek", gotScheme, "scheme must mirror bucket.Scheme")
+	assert.Equal(t, "build [Seek]", gotCommand, "command must be the inv.Command computed by shortCommand(bucket)")
+
+	writes := sidecar.WriteCalls()
+	require.Len(t, writes, 1)
+	assert.Equal(t, "Seek", writes[0].Rep.Build.Scheme)
+	assert.Equal(t, "build [Seek]", writes[0].Rep.Build.Command)
 }
 
 func TestEmitter_EmitEnriched_SkipsSidecarWhenNil(t *testing.T) {

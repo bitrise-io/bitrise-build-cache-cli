@@ -48,6 +48,9 @@ var _ xcodeargs.XcodeArgs = &XcodeArgsMock{}
 //			ResultBundlePathFunc: func() string {
 //				panic("mock out the ResultBundlePath method")
 //			},
+//			SchemeFunc: func() string {
+//				panic("mock out the Scheme method")
+//			},
 //			ShortCommandFunc: func() string {
 //				panic("mock out the ShortCommand method")
 //			},
@@ -91,6 +94,9 @@ type XcodeArgsMock struct {
 	// ResultBundlePathFunc mocks the ResultBundlePath method.
 	ResultBundlePathFunc func() string
 
+	// SchemeFunc mocks the Scheme method.
+	SchemeFunc func() string
+
 	// ShortCommandFunc mocks the ShortCommand method.
 	ShortCommandFunc func() string
 
@@ -131,6 +137,9 @@ type XcodeArgsMock struct {
 		// ResultBundlePath holds details about calls to the ResultBundlePath method.
 		ResultBundlePath []struct {
 		}
+		// Scheme holds details about calls to the Scheme method.
+		Scheme []struct {
+		}
 		// ShortCommand holds details about calls to the ShortCommand method.
 		ShortCommand []struct {
 		}
@@ -148,6 +157,7 @@ type XcodeArgsMock struct {
 	lockProjectTempDir              sync.RWMutex
 	lockResolvesPackages            sync.RWMutex
 	lockResultBundlePath            sync.RWMutex
+	lockScheme                      sync.RWMutex
 	lockShortCommand                sync.RWMutex
 	lockUserOtherCFlags             sync.RWMutex
 }
@@ -454,6 +464,36 @@ func (mock *XcodeArgsMock) ResultBundlePathCalls() []struct {
 	mock.lockResultBundlePath.RLock()
 	calls = mock.calls.ResultBundlePath
 	mock.lockResultBundlePath.RUnlock()
+	return calls
+}
+
+// Scheme calls SchemeFunc.
+func (mock *XcodeArgsMock) Scheme() string {
+	callInfo := struct {
+	}{}
+	mock.lockScheme.Lock()
+	mock.calls.Scheme = append(mock.calls.Scheme, callInfo)
+	mock.lockScheme.Unlock()
+	if mock.SchemeFunc == nil {
+		var (
+			sOut string
+		)
+		return sOut
+	}
+	return mock.SchemeFunc()
+}
+
+// SchemeCalls gets all the calls that were made to Scheme.
+// Check the length with:
+//
+//	len(mockedXcodeArgs.SchemeCalls())
+func (mock *XcodeArgsMock) SchemeCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockScheme.RLock()
+	calls = mock.calls.Scheme
+	mock.lockScheme.RUnlock()
 	return calls
 }
 

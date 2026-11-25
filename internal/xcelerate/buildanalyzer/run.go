@@ -28,6 +28,14 @@ type RunOptions struct {
 	// DisableSnapshot forces the live-DB path even when a matching snapshot
 	// exists (debugging switch; mirrors `xcode analyze --no-snapshot`).
 	DisableSnapshot bool
+	// Scheme is the authoritative scheme name known at the hook site. When
+	// non-empty, Run copies it onto Report.Build.Scheme — additive to the
+	// SLF-parsed Title, which stays untouched.
+	Scheme string
+	// Command is the authoritative short command (same shape as the analytics
+	// row's Command: "<action> [<scheme> / <testPlan> / <configuration>]").
+	// When non-empty, Run copies it onto Report.Build.Command.
+	Command string
 }
 
 // Run composes ReadReport → JoinManifest (best-effort) → Classify (best-effort)
@@ -49,6 +57,14 @@ func Run(ctx context.Context, logPath string, opts RunOptions) (Report, []error,
 	report, err := ReadReport(logPath)
 	if err != nil {
 		return Report{}, nil, fmt.Errorf("read report %s: %w", logPath, err)
+	}
+
+	if opts.Scheme != "" {
+		report.Build.Scheme = opts.Scheme
+	}
+
+	if opts.Command != "" {
+		report.Build.Command = opts.Command
 	}
 
 	derivedData := opts.DerivedDataPath

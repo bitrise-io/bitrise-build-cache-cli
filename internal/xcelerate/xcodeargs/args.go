@@ -20,6 +20,7 @@ type XcodeArgs interface {
 	Args(additional map[string]string) []string
 	Command() string
 	ShortCommand() string
+	Scheme() string
 	HasBuildAction() bool
 	AcceptsDerivedDataPath() bool
 	DerivedDataPath() string
@@ -245,6 +246,15 @@ func (p Default) ShortCommand() string {
 	scheme, testPlan, configuration := p.extractShapingFlagValues()
 
 	return shortcmd.Render(p.shortCommandBase(), scheme, testPlan, configuration)
+}
+
+// Scheme returns the resolved -scheme value from argv, or "" when none was
+// supplied. Shares the same `-scheme value` / `-scheme=value` parser as
+// ShortCommand so both agree on the authoritative value.
+func (p Default) Scheme() string {
+	scheme, _, _ := p.extractShapingFlagValues()
+
+	return scheme
 }
 
 // shortCommandBase resolves the action keyword for the analytics short

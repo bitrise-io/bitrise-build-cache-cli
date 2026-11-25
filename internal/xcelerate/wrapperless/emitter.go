@@ -95,6 +95,11 @@ type Emitter struct {
 	// synchronous spawn so assertions don't race the goroutine.
 	spawnFn func(func())
 
+	// analyzerRunFn runs buildanalyzer.Run. Nil → real buildanalyzer.Run.
+	// Tests inject a fake to observe the scheme/command propagation into
+	// RunOptions without having to synthesize a valid SLF payload.
+	analyzerRunFn func(ctx context.Context, logPath string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error)
+
 	mu sync.Mutex
 
 	drainMu     sync.Mutex
@@ -148,7 +153,7 @@ func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
 
 	e.appendLocalLog(bucket, inv, hitRate)
 
-	e.spawnAnalyzerSidecar(bucket, inv.InvocationID)
+	e.spawnAnalyzerSidecar(bucket, inv.InvocationID, inv.Command)
 
 	e.logDebug("Emitter: enriched PUT id=%s scheme=%s bytes=%d hitRate=%.2f",
 		inv.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats), hitRate)
@@ -374,12 +379,13 @@ const analyzerSidecarTimeout = 60 * time.Second
 // an enriched bucket. Deliberately spawned after appendLocalLog so a slow
 // read never blocks the enricher's main path. Silent no-op when the bucket
 // has no sealed xcactivitylog (CLI-implicit / IDE-background buckets).
-func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID string) {
+func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID, command string) {
 	if e.AnalyzerSidecar == nil || bucket.XCActivityLogPath == "" {
 		return
 	}
 
 	logPath := bucket.XCActivityLogPath
+	scheme := bucket.Scheme
 	writer := e.AnalyzerSidecar
 	logger := e.Logger
 
@@ -395,7 +401,15 @@ func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
 		defer cancel()
 
-		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{})
+		runFn := e.analyzerRunFn
+		if runFn == nil {
+			runFn = buildanalyzer.Run
+		}
+
+		report, warnings, err := runFn(ctx, logPath, buildanalyzer.RunOptions{
+			Scheme:  scheme,
+			Command: command,
+		})
 		if err != nil {
 			if logger != nil {
 				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)
