@@ -368,7 +368,6 @@ func exitCodeFromBucket(bucket Bucket) int {
 // flush. See docs/xcode-build-analyzer.md.
 const walGraceDelay = 250 * time.Millisecond
 
-// analyzerSidecarTimeout caps a single Report-build + sidecar-write.
 const analyzerSidecarTimeout = 60 * time.Second
 
 // spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write for

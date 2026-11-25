@@ -359,9 +359,6 @@ type localInvocationLogger interface {
 	Append(rec invocations.Record) error
 }
 
-// analyzerSidecarWriter writes the post-run build-analyzer Report to disk.
-// The wrapper spawns the work detached so the shell returns while the
-// analyzer runs.
 type analyzerSidecarWriter interface {
 	Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error
 }
