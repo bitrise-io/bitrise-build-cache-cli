@@ -396,11 +396,7 @@ func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
 		defer cancel()
 
-		derivedData := derivedDataFromActivityLogPath(logPath)
-
-		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{
-			DerivedDataPath: derivedData,
-		})
+		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{})
 		if err != nil {
 			if logger != nil {
 				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)
@@ -429,27 +425,6 @@ func (e *Emitter) spawn(fn func()) {
 	}
 
 	go fn()
-}
-
-// derivedDataFromActivityLogPath climbs `<DD>/Logs/Build/UUID.xcactivitylog`
-// back to `<DD>`. Returns "" when the shape doesn't match — Run then falls
-// back to log-only, which is still useful even without manifest / db joins.
-func derivedDataFromActivityLogPath(logPath string) string {
-	if logPath == "" {
-		return ""
-	}
-
-	buildDir := filepath.Dir(logPath)
-	if filepath.Base(buildDir) != "Build" {
-		return ""
-	}
-
-	logsDir := filepath.Dir(buildDir)
-	if filepath.Base(logsDir) != "Logs" {
-		return ""
-	}
-
-	return filepath.Dir(logsDir)
 }
 
 func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) analytics.Invocation {

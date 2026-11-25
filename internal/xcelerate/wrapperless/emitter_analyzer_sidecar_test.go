@@ -138,19 +138,3 @@ func TestEmitter_EmitEnriched_SidecarWriteExactlyOnce_WithFakeAnalyzer(t *testin
 	assert.Len(t, sidecar.WriteCalls(), 1)
 }
 
-func TestDerivedDataFromActivityLogPath(t *testing.T) {
-	tests := []struct {
-		in  string
-		out string
-	}{
-		{"/Users/alice/DD/Logs/Build/UUID.xcactivitylog", "/Users/alice/DD"},
-		{"/project/DD/Logs/Build/x.xcactivitylog", "/project/DD"},
-		{"", ""},
-		{"/not/matching/path", ""},
-		{"/Logs/UUID.xcactivitylog", ""},
-	}
-
-	for _, tc := range tests {
-		assert.Equal(t, tc.out, derivedDataFromActivityLogPath(tc.in), "input=%s", tc.in)
-	}
-}
