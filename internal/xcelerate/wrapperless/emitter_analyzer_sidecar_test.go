@@ -46,23 +46,27 @@ func TestEmitter_EmitEnriched_FiresAnalyzerSidecarExactlyOnceWithLogPath(t *test
 		WriteFunc: func(_ context.Context, _ string, _ buildanalyzer.Report) error { return nil },
 	}
 
+	var spawnCalls int
 	e := &Emitter{ //nolint:exhaustruct
 		Client:          &analyzerTestPutter{},
 		AnalyzerSidecar: sidecar,
 	}
-	e.spawnFn = func(fn func()) { fn() }
+	e.spawnFn = func(fn func()) {
+		spawnCalls++
+		fn()
+	}
 
 	bucket := analyzerTestBucket()
 	bucket.XCActivityLogPath = "/nonexistent/DD/Logs/Build/UUID.xcactivitylog"
 
 	e.EmitEnriched(bucket, 0.5)
 
+	assert.Equal(t, 1, spawnCalls, "enriched emit with XCActivityLogPath must spawn exactly once")
+
 	// Write is only invoked when buildanalyzer.Run succeeds, which it won't
-	// against a nonexistent log. What we assert here is the spawn happened:
-	// the goroutine body ran (via the inline spawn seam) so the error path
+	// against a nonexistent log — assert emptiness to prove the error path
 	// executed and no panic escaped.
-	calls := sidecar.WriteCalls()
-	assert.Empty(t, calls, "write is not reached on a missing xcactivitylog, by design")
+	assert.Empty(t, sidecar.WriteCalls(), "write is not reached on a missing xcactivitylog, by design")
 }
 
 func TestEmitter_EmitEnriched_SkipsSidecarWhenLogPathEmpty(t *testing.T) {
