@@ -1,11 +1,10 @@
 package xcode
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -50,7 +49,7 @@ Phased plan (see docs/xcode-build-analyzer.md):
   v3 — rich clang diagnostics via .dia parse.`,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runAnalyze(cmd.OutOrStdout(), cmd.ErrOrStderr())
+		return runAnalyze(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 	},
 }
 
@@ -67,28 +66,30 @@ func init() {
 	analyzeCmd.Flags().BoolVar(&analyzeFlagNoSnapshot, "no-snapshot", false, "Force reading the live build.db even when a matching snapshot exists. Debugging switch for comparing current vs snapshot behavior.")
 }
 
-func runAnalyze(out, stderr io.Writer) error {
+func runAnalyze(ctx context.Context, out, stderr io.Writer) error {
 	path, err := resolveAnalyzeLogPath(analyzeFlagActivityLog, analyzeFlagDerivedData)
 	if err != nil {
 		return err
 	}
 
-	report, err := buildanalyzer.ReadReport(path)
+	mode, err := parseDiagnosticsFlag(analyzeFlagDiagnostics)
+	if err != nil {
+		return err
+	}
+
+	report, warnings, err := buildanalyzer.Run(ctx, path, buildanalyzer.RunOptions{
+		DerivedDataPath:   analyzeFlagDerivedData,
+		ExplicitManifest:  analyzeFlagManifest,
+		ExplicitBuildDB:   analyzeFlagBuildDB,
+		DiagMode:          mode,
+		SnapshotStoreRoot: analyzeFlagSnapshotRoot,
+		DisableSnapshot:   analyzeFlagNoSnapshot,
+	})
 	if err != nil {
 		return fmt.Errorf("analyze %s: %w", path, err)
 	}
 
-	if err := joinManifestIfAvailable(&report, stderr, analyzeFlagManifest, analyzeFlagDerivedData); err != nil {
-		return err
-	}
-
-	if err := classifyIfAvailable(&report, stderr, analyzeFlagBuildDB, analyzeFlagDerivedData); err != nil {
-		return err
-	}
-
-	if err := attachDiagnosticsFromFlag(&report, analyzeFlagDerivedData, analyzeFlagDiagnostics); err != nil {
-		return err
-	}
+	writeAnalyzeWarnings(stderr, warnings)
 
 	switch analyzeFlagOutput {
 	case outputPretty:
@@ -106,154 +107,32 @@ func runAnalyze(out, stderr io.Writer) error {
 	}
 }
 
-// joinManifestIfAvailable resolves the manifest path with the following
-// precedence: explicit --manifest flag wins; otherwise auto-discover via
-// --derived-data. On auto-discover miss or explicit load failure, the
-// analyzer falls back to v0 behavior with a stderr warning rather than
-// erroring — the manifest is additive, not a hard requirement.
-func joinManifestIfAvailable(report *buildanalyzer.Report, stderr io.Writer, explicit, derivedData string) error {
-	path, err := resolveAnalyzeManifestPath(explicit, derivedData)
-	if err != nil {
-		return err
-	}
-
-	if path == "" {
-		fmt.Fprintln(stderr, "analyze: no manifest.json available; v0 (flat task list) output only")
-
-		return nil
-	}
-
-	manifest, err := buildanalyzer.ReadManifest(path)
-	if err != nil {
-		fmt.Fprintf(stderr, "analyze: manifest.json read failed (%v); falling back to v0 flat task list\n", err)
-
-		return nil
-	}
-
-	buildanalyzer.JoinManifest(report, manifest)
-
-	return nil
-}
-
-// classifyIfAvailable resolves the build.db path with the same precedence as
-// manifest discovery (--build-db flag wins over auto-discover under
-// --derived-data). On miss or read failure the classifier is skipped with a
-// stderr warning; every Task keeps ExecutionReason empty so JSON omitempty
-// hides the field. Not an error — the DB is additive, not required.
-//
-// B.2: when --build-db is not explicit and --derived-data is set, look under
-// the snapshot store for a matching build-hex first. A snapshot whose
-// timestamp sits at or before the activity-log's FinishedAt is preferred over
-// the live DB, since the live DB may already reflect a build newer than the
-// log. The prior snapshot (iter N-1 by timestamp) is read alongside for
-// signature-diff. --no-snapshot forces the live-DB path even when a snapshot
-// exists (debugging).
-func classifyIfAvailable(report *buildanalyzer.Report, stderr io.Writer, explicit, derivedData string) error {
-	livePath, err := resolveAnalyzeBuildDBPath(explicit, derivedData)
-	if err != nil {
-		return err
-	}
-
-	currentPath, priorPath := pickClassifySources(stderr, report, livePath, explicit, derivedData)
-	if currentPath == "" {
-		fmt.Fprintln(stderr, "analyze: no build.db available; execution-reason classification skipped")
-
-		return nil
-	}
-
-	snap, err := buildanalyzer.ReadSnapshotPair(currentPath, priorPath)
-	if err != nil {
-		if priorPath != "" && snap.Rules != nil {
-			// Current read succeeded, prior failed — proceed with the
-			// single-snapshot classification and tell the operator.
-			fmt.Fprintf(stderr, "analyze: prior snapshot read failed (%v); signature-diff disabled\n", err)
-		} else {
-			fmt.Fprintf(stderr, "analyze: build.db read failed (%v); execution-reason classification skipped\n", err)
-
-			return nil
+// writeAnalyzeWarnings prefixes each non-fatal stage warning with `analyze:`
+// so the CLI keeps surfacing the soft-fail reason on stderr.
+func writeAnalyzeWarnings(stderr io.Writer, warnings []error) {
+	for _, w := range warnings {
+		if w == nil {
+			continue
 		}
+
+		fmt.Fprintln(stderr, "analyze: "+w.Error())
 	}
-
-	buildanalyzer.Classify(report, snap)
-
-	return nil
 }
 
-// pickClassifySources returns (currentPath, priorPath). Explicit --build-db
-// wins over the snapshot store. When the user passed --no-snapshot the live
-// DB always wins. Otherwise: look up matching snapshots under the store root,
-// pick the one whose timestamp <= log finish, and use the next-older as prior.
-// Falls back to the live DB on any miss.
-func pickClassifySources(stderr io.Writer, report *buildanalyzer.Report, livePath, explicit, derivedData string) (string, string) {
-	if explicit != "" || analyzeFlagNoSnapshot || derivedData == "" {
-		return livePath, ""
-	}
-
-	buildHex, err := resolveBuildHex(derivedData)
-	if err != nil || buildHex == "" {
-		return livePath, ""
-	}
-
-	storeRoot := analyzeFlagSnapshotRoot
-	if storeRoot == "" {
-		storeRoot = buildanalyzer.DefaultSnapshotRoot()
-	}
-
-	current, prior, ok := buildanalyzer.PickSnapshotForLog(storeRoot, buildHex, report.Build.FinishedAt)
-	if !ok {
-		return livePath, ""
-	}
-
-	fmt.Fprintf(stderr, "analyze: using snapshot %s (iter=%d, ts=%s)\n", current.Path, current.Iteration, current.Timestamp.Format("2006-01-02T15:04:05Z"))
-
-	if prior.Path != "" {
-		fmt.Fprintf(stderr, "analyze: prior snapshot %s (iter=%d) feeding signature-diff\n", prior.Path, prior.Iteration)
-	}
-
-	return current.Path, prior.Path
-}
-
-// resolveBuildHex locates the newest *.xcbuilddata hex alongside derivedData's
-// build.db — mirrors the snapshot store's locateBuildHex without re-exporting
-// it (the snapshot store owns the internal helper; analyze reads via the same
-// manifest-locator semantics).
-func resolveBuildHex(derivedData string) (string, error) {
-	manifest, err := buildanalyzer.LocateManifest(derivedData)
-	if err != nil {
-		return "", fmt.Errorf("locate manifest for build-hex: %w", err)
-	}
-
-	if manifest == "" {
-		return "", nil
-	}
-
-	// <derivedData>/Build/Intermediates.noindex/XCBuildData/<hex>.xcbuilddata/manifest.json
-	dir := filepath.Dir(manifest)
-	base := filepath.Base(dir) // <hex>.xcbuilddata
-	hex := strings.TrimSuffix(base, ".xcbuilddata")
-
-	return hex, nil
-}
-
-// attachDiagnosticsFromFlag validates the --diagnostics flag value and runs
-// AttachDiagnostics against the report. Unknown values error out — unlike the
-// manifest / build.db path, the flag is user-supplied text so a typo should
-// surface immediately rather than silently pick `auto`.
-func attachDiagnosticsFromFlag(report *buildanalyzer.Report, derivedData, flag string) error {
+func parseDiagnosticsFlag(flag string) (buildanalyzer.DiagMode, error) {
 	if flag == "" {
-		flag = string(buildanalyzer.DiagModeAuto)
+		return buildanalyzer.DiagModeAuto, nil
 	}
 
-	switch buildanalyzer.DiagMode(flag) {
+	mode := buildanalyzer.DiagMode(flag)
+	switch mode {
 	case buildanalyzer.DiagModeAuto,
 		buildanalyzer.DiagModeDia,
 		buildanalyzer.DiagModeStderr,
 		buildanalyzer.DiagModeOff:
-		buildanalyzer.AttachDiagnostics(report, derivedData, buildanalyzer.DiagMode(flag))
-
-		return nil
+		return mode, nil
 	default:
-		return fmt.Errorf("unknown --diagnostics %q (want auto|dia|stderr|off)", flag)
+		return "", fmt.Errorf("unknown --diagnostics %q (want auto|dia|stderr|off)", flag)
 	}
 }
 
@@ -275,48 +154,6 @@ func resolveAnalyzeLogPath(explicit, derivedData string) (string, error) {
 
 	if path == "" {
 		return "", fmt.Errorf("no .xcactivitylog found under %s/Logs/Build", derivedData)
-	}
-
-	return path, nil
-}
-
-// resolveAnalyzeManifestPath picks the manifest.json path. Explicit flag
-// wins; otherwise auto-discovers via --derived-data. Empty return without an
-// error means "no manifest to join against" — the caller soft-falls back to
-// v0 output. filepath.Clean is called on the explicit path so relative inputs
-// still match across getwd shifts.
-func resolveAnalyzeManifestPath(explicit, derivedData string) (string, error) {
-	if explicit != "" {
-		return filepath.Clean(explicit), nil
-	}
-
-	if derivedData == "" {
-		return "", nil
-	}
-
-	path, err := buildanalyzer.LocateManifest(derivedData)
-	if err != nil {
-		return "", fmt.Errorf("locate manifest.json under %s: %w", derivedData, err)
-	}
-
-	return path, nil
-}
-
-// resolveAnalyzeBuildDBPath picks the build.db path — same precedence as the
-// manifest resolver. Empty + nil error means "no DB to classify against" and
-// callers soft-fall-back to the pre-classify output.
-func resolveAnalyzeBuildDBPath(explicit, derivedData string) (string, error) {
-	if explicit != "" {
-		return filepath.Clean(explicit), nil
-	}
-
-	if derivedData == "" {
-		return "", nil
-	}
-
-	path, err := buildanalyzer.LocateBuildDB(derivedData)
-	if err != nil {
-		return "", fmt.Errorf("locate build.db under %s: %w", derivedData, err)
 	}
 
 	return path, nil

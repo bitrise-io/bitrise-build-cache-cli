@@ -67,6 +67,17 @@ func TestPaths_invocations(t *testing.T) {
 		p.InvocationsFile("2026-06-25"))
 }
 
+func TestPaths_analyzerSidecar(t *testing.T) {
+	p := FromHome("/h")
+
+	assert.Equal(t,
+		"/h/.local/state/bitrise-build-cache/invocations/analyzer-sidecars/2026-11-25",
+		p.AnalyzerSidecarDir("2026-11-25"))
+	assert.Equal(t,
+		"/h/.local/state/bitrise-build-cache/invocations/analyzer-sidecars/2026-11-25/cafe-1234.analyzer.json",
+		p.AnalyzerSidecarFile("2026-11-25", "cafe-1234"))
+}
+
 func TestPaths_xcodeManagedDirs(t *testing.T) {
 	p := FromHome("/h")
 
