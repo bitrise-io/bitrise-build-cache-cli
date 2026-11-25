@@ -537,7 +537,7 @@ workflows:
     envs:
     - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
     - E2E_TESTING_BRANCH: master
-    - RECEIVER_PIPELINE: features-e2e
+    - RECEIVER_PIPELINE: resolve-and-dispatch
     steps:
     - bundle::dispatch-to-private: {}
 
