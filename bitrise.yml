@@ -637,36 +637,24 @@ step_bundles:
             : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
             : "${RECEIVER_WAT:?missing RECEIVER_WAT (OIDC exchange step must run first)}"
 
-            resolved_branch="$E2E_TESTING_BRANCH"
-            pr_branch="${BITRISE_GIT_BRANCH:-}"
-            if [[ -n "$pr_branch" && "$pr_branch" != "$E2E_TESTING_BRANCH" && -n "${GIT_BOT_USER_ACCESS_TOKEN:-}" ]]; then
-              enc_branch=$(jq -rn --arg b "$pr_branch" '$b|@uri')
-              http_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
-                -H "Authorization: token $GIT_BOT_USER_ACCESS_TOKEN" \
-                -H 'Accept: application/vnd.github+json' \
-                "https://api.github.com/repos/bitrise-io/build-cache-e2e-testing/branches/$enc_branch" || echo "000")
-              if [[ "$http_status" == "200" ]]; then
-                resolved_branch="$pr_branch"
-                echo "Paired with matching branch '$pr_branch' on build-cache-e2e-testing"
-              else
-                echo "No matching branch '$pr_branch' on build-cache-e2e-testing (HTTP $http_status); using default '$E2E_TESTING_BRANCH'"
-              fi
-            elif [[ -n "$pr_branch" && "$pr_branch" != "$E2E_TESTING_BRANCH" ]]; then
-              echo "WARN: GIT_BOT_USER_ACCESS_TOKEN not available (likely a fork PR or non-exposed-for-PR contributor); cannot probe for paired branch '$pr_branch'; falling back to default '$E2E_TESTING_BRANCH'"
-            fi
+            pr_branch="${BITRISE_GIT_BRANCH:-$E2E_TESTING_BRANCH}"
 
             payload=$(jq -nc \
               --arg token "$E2E_TESTING_BUILD_TRIGGER_TOKEN" \
-              --arg branch "$resolved_branch" \
+              --arg branch "$E2E_TESTING_BRANCH" \
               --arg pipeline "$RECEIVER_PIPELINE" \
               --arg commit "$BITRISE_GIT_COMMIT" \
+              --arg pr_branch "$pr_branch" \
               --arg triggered_by "cli-dispatcher-$BITRISE_BUILD_SLUG" \
               '{
                 hook_info: {type: "bitrise", build_trigger_token: $token},
                 build_params: {
                   branch: $branch,
                   pipeline_id: $pipeline,
-                  environments: [{mapped_to: "CLI_COMMIT", value: $commit, is_expand: false}]
+                  environments: [
+                    {mapped_to: "CLI_COMMIT", value: $commit, is_expand: false},
+                    {mapped_to: "CLI_PR_BRANCH", value: $pr_branch, is_expand: false}
+                  ]
                 },
                 triggered_by: $triggered_by
               }')
