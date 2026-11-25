@@ -18,6 +18,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/shortcmd"
@@ -25,8 +26,17 @@ import (
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg wrapperless_test . InvocationPutter
 
+//go:generate moq -stub -out analyzer_sidecar_writer_mock_test.go -pkg wrapperless . analyzerSidecarWriter
+
 type InvocationPutter interface {
 	PutInvocation(inv analytics.Invocation) error
+}
+
+// analyzerSidecarWriter persists a post-run build analyzer Report alongside
+// the ndjson invocation log. Intentionally unexported — the Pipeline owns the
+// construction; tests use a moq to observe calls.
+type analyzerSidecarWriter interface {
+	Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error
 }
 
 type Phase string
@@ -75,6 +85,15 @@ type Emitter struct {
 	// `bitrise-build-cache invocations list` surfaces the wrapperless row.
 	// nil disables.
 	LocalLogAppender invocationlog.Appender
+
+	// AnalyzerSidecar persists the post-run analyzer Report on enriched emit.
+	// nil disables. Exported so Pipeline can wire a default without a
+	// public constructor; keep the interface itself unexported.
+	AnalyzerSidecar analyzerSidecarWriter
+
+	// spawnFn runs the sidecar producer. Nil → real `go`. Tests inject a
+	// synchronous spawn so assertions don't race the goroutine.
+	spawnFn func(func())
 
 	mu sync.Mutex
 
@@ -128,6 +147,8 @@ func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
 	enrichment.TickSuccess(e.Health, e.Logger, e.now(), true)
 
 	e.appendLocalLog(bucket, inv, hitRate)
+
+	e.spawnAnalyzerSidecar(bucket, inv.InvocationID)
 
 	e.logDebug("Emitter: enriched PUT id=%s scheme=%s bytes=%d hitRate=%.2f",
 		inv.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats), hitRate)
@@ -340,6 +361,95 @@ func exitCodeFromBucket(bucket Bucket) int {
 	}
 
 	return 0
+}
+
+// walGraceDelay gives SQLite's write-ahead log a moment to roll into the main
+// DB after Xcode seals the manifest, so build.db reads don't race the final
+// flush. See docs/xcode-build-analyzer.md.
+const walGraceDelay = 250 * time.Millisecond
+
+// analyzerSidecarTimeout caps a single Report-build + sidecar-write.
+const analyzerSidecarTimeout = 60 * time.Second
+
+// spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write for
+// an enriched bucket. Deliberately spawned after appendLocalLog so a slow
+// read never blocks the enricher's main path. Silent no-op when the bucket
+// has no sealed xcactivitylog (CLI-implicit / IDE-background buckets).
+func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID string) {
+	if e.AnalyzerSidecar == nil || bucket.XCActivityLogPath == "" {
+		return
+	}
+
+	logPath := bucket.XCActivityLogPath
+	writer := e.AnalyzerSidecar
+	logger := e.Logger
+
+	e.spawn(func() {
+		defer func() {
+			if r := recover(); r != nil && logger != nil {
+				logger.Debugf("Analyzer sidecar panicked, dropping: %v", r)
+			}
+		}()
+
+		time.Sleep(walGraceDelay)
+
+		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
+		defer cancel()
+
+		derivedData := derivedDataFromActivityLogPath(logPath)
+
+		report, warnings, err := buildanalyzer.Run(ctx, logPath, buildanalyzer.RunOptions{
+			DerivedDataPath: derivedData,
+		})
+		if err != nil {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)
+			}
+
+			return
+		}
+
+		for _, w := range warnings {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar warning: %v", w)
+			}
+		}
+
+		if err := writer.Write(ctx, invocationID, report); err != nil && logger != nil {
+			logger.Debugf("Analyzer sidecar: write failed: %v", err)
+		}
+	})
+}
+
+func (e *Emitter) spawn(fn func()) {
+	if e.spawnFn != nil {
+		e.spawnFn(fn)
+
+		return
+	}
+
+	go fn()
+}
+
+// derivedDataFromActivityLogPath climbs `<DD>/Logs/Build/UUID.xcactivitylog`
+// back to `<DD>`. Returns "" when the shape doesn't match — Run then falls
+// back to log-only, which is still useful even without manifest / db joins.
+func derivedDataFromActivityLogPath(logPath string) string {
+	if logPath == "" {
+		return ""
+	}
+
+	buildDir := filepath.Dir(logPath)
+	if filepath.Base(buildDir) != "Build" {
+		return ""
+	}
+
+	logsDir := filepath.Dir(buildDir)
+	if filepath.Base(logsDir) != "Logs" {
+		return ""
+	}
+
+	return filepath.Dir(logsDir)
 }
 
 func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) analytics.Invocation {

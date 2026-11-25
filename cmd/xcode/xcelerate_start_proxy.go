@@ -26,6 +26,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
@@ -603,12 +604,13 @@ func maybeStartWrapperlessPipeline(
 	}
 
 	pipeline := &wrapperless.Pipeline{ //nolint:exhaustruct
-		HomeDir:   bundle.homeDir,
-		Logger:    logger,
-		Emitter:   emitter,
-		Proxy:     p,
-		BlobStats: p.BlobStatsSource(),
-		DDWatcher: ddWatcher,
+		HomeDir:         bundle.homeDir,
+		Logger:          logger,
+		Emitter:         emitter,
+		Proxy:           p,
+		BlobStats:       p.BlobStatsSource(),
+		DDWatcher:       ddWatcher,
+		AnalyzerSidecar: analyzersidecar.NewWriter(resolver, logger),
 	}
 
 	if err := pipeline.Start(ctx); err != nil {
