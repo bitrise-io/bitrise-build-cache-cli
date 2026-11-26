@@ -25,6 +25,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/testhome"
 )
 
 // Goroutines share a pid and a lock table, so they cannot exercise what the refresh
@@ -56,7 +57,10 @@ func TestMain(m *testing.M) {
 		os.Exit(runLockChild(role))
 	}
 
-	os.Exit(m.Run())
+	cleanup := testhome.Setup()
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 // runLockChild refreshes through the production entry point.

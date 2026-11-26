@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/testhome"
 )
 
 // When set, the test binary re-enters itself as a cobra executor and calls
@@ -31,7 +32,10 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
-	os.Exit(m.Run())
+	cleanup := testhome.Setup()
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 func spawnStatus(t *testing.T, home string, args ...string) (stdout, stderr string, exitCode int) {
