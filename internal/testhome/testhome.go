@@ -61,7 +61,7 @@ func Setup() func() {
 	home, err := os.MkdirTemp("", "bbc-testhome-")
 	mustDo(err)
 	// Created before TMPDIR moves, so it lands in the real temp dir.
-	tmp, err := os.MkdirTemp("", "bbc-tmp-")
+	tmp, err := os.MkdirTemp("", "bt-")
 	mustDo(err)
 
 	mustDo(os.Setenv("HOME", home))

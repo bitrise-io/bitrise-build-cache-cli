@@ -234,23 +234,6 @@ func TestIntegration_ProxyLock_OnlyOneProxyStarts(t *testing.T) {
 	assert.Zero(t, env.count(t, "OVERLAP"), "two proxies were serving at once")
 }
 
-type proxySpawnRecorder struct {
-	spawns int
-	killed []int
-}
-
-// Never the real argv: os.Executable is this test binary, which would re-run the
-// whole suite detached.
-func (r *proxySpawnRecorder) spawn(ctx context.Context, _ string, _ ...string) utils.Command {
-	r.spawns++
-
-	return utils.DefaultCommandFunc()(ctx, "/usr/bin/true")
-}
-
-func (r *proxySpawnRecorder) kill(pid int, _ syscall.Signal) {
-	r.killed = append(r.killed, pid)
-}
-
 // What the wrapper actually runs: with a proxy serving, startProxy must return
 // without spawning anything.
 func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {

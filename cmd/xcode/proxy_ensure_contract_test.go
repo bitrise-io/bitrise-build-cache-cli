@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -26,17 +27,10 @@ func TestStartProxy_SpawnsTheArgvSpawnDefines(t *testing.T) {
 	dir := shortTempDir(t)
 	t.Setenv("BITRISE_XCELERATE_PROXY_SOCKET_PATH", filepath.Join(dir, "p.sock"))
 
-	var gotArgs []string
-	recording := func(ctx context.Context, name string, args ...string) utils.Command {
-		gotArgs = args
+	rec := &proxySpawnRecorder{}
+	_ = startProxy(log.NewLogger(), utils.DefaultOsProxy{}, rec.spawn, nil, filepath.Join(dir, "p.sock"))
 
-		// Exits immediately: only the spawn matters here, not the socket wait.
-		return utils.DefaultCommandFunc()(ctx, "/usr/bin/true")
-	}
-
-	_ = startProxy(log.NewLogger(), utils.DefaultOsProxy{}, recording, nil, filepath.Join(dir, "p.sock"))
-
-	assert.Equal(t, spawn.XcelerateProxy().Args, gotArgs)
+	assert.Equal(t, spawn.XcelerateProxy().Args, rec.args)
 }
 
 // Without this an upgraded user never leaves the supervised path.
@@ -56,11 +50,8 @@ func TestStartProxy_RetiresALegacyLaunchAgent(t *testing.T) {
 	plist := p.PlistPath("io.bitrise.build-cache." + spawn.NameXcelerateProxy)
 	require.NoError(t, os.WriteFile(plist, []byte("<plist/>"), 0o644))
 
-	noop := func(ctx context.Context, _ string, _ ...string) utils.Command {
-		return utils.DefaultCommandFunc()(ctx, "/usr/bin/true")
-	}
-
-	_ = startProxy(log.NewLogger(), utils.DefaultOsProxy{}, noop, nil, filepath.Join(dir, "p.sock"))
+	rec := &proxySpawnRecorder{}
+	_ = startProxy(log.NewLogger(), utils.DefaultOsProxy{}, rec.spawn, nil, filepath.Join(dir, "p.sock"))
 
 	assert.NoFileExists(t, plist, "the wrapper must retire a leftover launch agent")
 }
@@ -72,4 +63,22 @@ func shortenProxyReadyBudget(t *testing.T) {
 	prev := proxyReadyBudget
 	proxyReadyBudget = 200 * time.Millisecond
 	t.Cleanup(func() { proxyReadyBudget = prev })
+}
+
+type proxySpawnRecorder struct {
+	spawns int
+	args   []string
+	killed []int
+}
+
+// Never the real argv: that is this test binary, which would rerun the suite detached.
+func (r *proxySpawnRecorder) spawn(ctx context.Context, _ string, args ...string) utils.Command {
+	r.spawns++
+	r.args = args
+
+	return utils.DefaultCommandFunc()(ctx, "/usr/bin/true")
+}
+
+func (r *proxySpawnRecorder) kill(pid int, _ syscall.Signal) {
+	r.killed = append(r.killed, pid)
 }
