@@ -381,7 +381,13 @@ const analyzerSidecarTimeout = 60 * time.Second
 // read never blocks the enricher's main path. Silent no-op when the bucket
 // has no sealed xcactivitylog (CLI-implicit / IDE-background buckets).
 func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID, command string) {
-	if e.AnalyzerSidecar == nil || bucket.XCActivityLogPath == "" {
+	if e.AnalyzerSidecar == nil {
+		return
+	}
+
+	if bucket.XCActivityLogPath == "" {
+		e.logDebug("Emitter: analyzer sidecar skipped id=%s (no XCActivityLogPath)", invocationID)
+
 		return
 	}
 

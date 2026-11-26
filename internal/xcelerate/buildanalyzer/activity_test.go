@@ -326,6 +326,102 @@ func TestReadReport_MultipleTopLevelSections_OrderIndependent(t *testing.T) {
 	assert.InDelta(t, 5*time.Second, report.Build.Duration, float64(10*time.Millisecond))
 }
 
+// buildSynthLogNested writes a gzipped SLF payload with an outer
+// IDEActivityLogSection whose fields are followed by nested inner
+// IDEActivityLogSection openers, then an optional trailing sibling outer
+// section. The walker treats each IDEActivityLogSection classRef as a section
+// boundary: the outer flushes when the first inner opens, the inner flushes
+// when the next opener arrives, and the trailing sibling flushes at EOF.
+func buildSynthLogNested(t *testing.T, outer synthBuild, inners []synthBuild, siblings []synthBuild) []byte {
+	t.Helper()
+
+	b := &slfBuilder{}
+	b.magic()
+	b.intTok(13)
+	b.classNameTok("IDEActivityLogSection") // pool[1]
+
+	writeSection := func(build synthBuild) {
+		b.classRefTok(1)
+		b.intTok(0)
+		b.strTok("Xcode.IDEActivityLogDomainType.BuildLog")
+		b.strTok(build.title)
+		b.strTok(build.title) // signature mirrors title
+		b.doubleTok(build.started)
+		b.doubleTok(build.stopped)
+	}
+
+	writeSection(outer)
+	for _, inner := range inners {
+		writeSection(inner)
+	}
+
+	for _, sibling := range siblings {
+		writeSection(sibling)
+	}
+
+	var gz bytes.Buffer
+	gw := gzip.NewWriter(&gz)
+	_, err := gw.Write(b.bytes())
+	require.NoError(t, err)
+	require.NoError(t, gw.Close())
+
+	return gz.Bytes()
+}
+
+// TestReadReport_NestedSections_PicksLongest mirrors the shape of a real
+// Xcode.app build log from the title-latch investigation: outer
+// `IDEActivityLogSection "Build Nuke"` (21.93s) contains nested
+// `"Prepare build"` (21.8s) which contains `"Prepare packages"` (113µs), plus
+// a sibling outer `"Build target Nuke"` (8.6s). The walker must still pick
+// the 21.93s outer regardless of the nesting depth.
+func TestReadReport_NestedSections_PicksLongest(t *testing.T) {
+	const base = 812533954.0
+
+	body := buildSynthLogNested(t,
+		synthBuild{title: "Build Nuke", started: base, stopped: base + 21.93},
+		[]synthBuild{
+			{title: "Prepare build", started: base + 0.05, stopped: base + 21.85},
+			{title: "Prepare packages", started: base + 0.06, stopped: base + 0.060113},
+		},
+		[]synthBuild{
+			{title: "Build target Nuke", started: base + 22, stopped: base + 30.6},
+		},
+	)
+	path := writeSynthLog(t, "nested.xcactivitylog", body)
+
+	report, err := buildanalyzer.ReadReport(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Build Nuke", report.Build.Title, "longest-running section wins regardless of nesting")
+	assert.InDelta(t, 21930*time.Millisecond, report.Build.Duration, float64(time.Microsecond))
+}
+
+// TestReadReport_NestedSections_InnerLongerThanOuter is the inverted case:
+// an orchestration-style outer (113µs "Prepare packages") contains a nested
+// inner `"Build Nuke"` (21.93s) which is the real build. If the walker's
+// flush-ordering strands the outer's timestamps onto the inner's buffer (or
+// vice versa) the pick collapses to the microsecond outer. The guard is that
+// pickPrimaryBuild selects by duration, so the longest inner should still
+// win the Build slot.
+func TestReadReport_NestedSections_InnerLongerThanOuter(t *testing.T) {
+	const base = 812533954.0
+
+	body := buildSynthLogNested(t,
+		synthBuild{title: "Prepare packages", started: base, stopped: base + 0.000113},
+		[]synthBuild{
+			{title: "Build Nuke", started: base + 0.0001, stopped: base + 21.9301},
+		},
+		nil,
+	)
+	path := writeSynthLog(t, "nested-inner-longer.xcactivitylog", body)
+
+	report, err := buildanalyzer.ReadReport(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Build Nuke", report.Build.Title, "the longest-duration nested section latches, not the outer")
+	assert.InDelta(t, 21930*time.Millisecond, report.Build.Duration, float64(time.Microsecond))
+}
+
 func TestReadReport_MissingFile(t *testing.T) {
 	_, err := buildanalyzer.ReadReport(filepath.Join(t.TempDir(), "nope.xcactivitylog"))
 	require.Error(t, err)

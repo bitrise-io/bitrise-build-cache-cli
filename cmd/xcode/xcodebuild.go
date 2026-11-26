@@ -594,6 +594,10 @@ func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
 
 	derivedData := c.resolveAnalyzerDerivedData()
 	if derivedData == "" {
+		if c.Logger != nil {
+			c.Logger.Debugf("Wrapper: analyzer sidecar skipped id=%s (no derived data)", inv.InvocationID)
+		}
+
 		return
 	}
 

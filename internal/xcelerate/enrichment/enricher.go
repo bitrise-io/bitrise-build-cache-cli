@@ -291,7 +291,13 @@ func activityLogPath(manifestPath string, group ManifestEntryGroup) string {
 // has no sibling xcactivitylog (synthetic / override-anchored groups) or no
 // writer is wired.
 func (e *Enricher) spawnAnalyzerSidecar(invocationID, logPath, scheme, command string) {
-	if e.AnalyzerSidecar == nil || logPath == "" {
+	if e.AnalyzerSidecar == nil {
+		return
+	}
+
+	if logPath == "" {
+		logOr(e.Logger).Debugf("Enricher: analyzer sidecar skipped id=%s (no activity log)", invocationID)
+
 		return
 	}
 
