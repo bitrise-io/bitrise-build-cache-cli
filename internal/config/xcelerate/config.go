@@ -46,6 +46,7 @@ type Params struct {
 	PushEnabled                     bool
 	XcodebuildTimestampsEnabled     bool
 	WrapperlessPipelineEnabled      bool
+	DetailsUploadEnabled            bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.
@@ -74,6 +75,7 @@ type Config struct {
 	Silent                          bool      `json:"silent,omitempty"`
 	XcodebuildTimestamps            bool      `json:"xcodebuildTimestamps,omitempty"`
 	WrapperlessPipelineEnabled      bool      `json:"wrapperlessPipelineEnabled,omitempty"`
+	DetailsUploadEnabled            bool      `json:"detailsUploadEnabled,omitempty"`
 	// Ops kill switch for wrapper self-enrich; inverted so zero-value = enabled.
 	SelfEnrichDisabled bool `json:"selfEnrichDisabled,omitempty"`
 	// AuthConfig is sourced from the multiplatform analytics config at runtime
@@ -237,6 +239,7 @@ func NewConfig(ctx context.Context,
 		Silent:                          params.Silent,
 		XcodebuildTimestamps:            params.XcodebuildTimestampsEnabled,
 		WrapperlessPipelineEnabled:      params.WrapperlessPipelineEnabled,
+		DetailsUploadEnabled:            params.DetailsUploadEnabled,
 		AuthConfig:                      authConfig,
 		AuthOrigin:                      authOrigin,
 		ExternalAppID:                   metadata.ExternalAppID,

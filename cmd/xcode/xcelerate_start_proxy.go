@@ -300,7 +300,7 @@ func newAnalyticsBundle(
 
 	b := &analyticsBundle{
 		client:        client,
-		detailsUpload: analyzersidecar.DetailsUploadEnabled(envProvider),
+		detailsUpload: xcelerate.ResolveDetailsUpload(config, envProvider),
 		authProvider:  authProvider,
 		metadata:      configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, utils.DefaultOsProxy{}, logger),
 		logger:        logger,

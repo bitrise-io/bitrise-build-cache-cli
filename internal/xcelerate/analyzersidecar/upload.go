@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -13,10 +12,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 )
-
-// EnvDetailsUpload opts in to uploading the analyzer Report to the analytics
-// backend; the local sidecar is written regardless.
-const EnvDetailsUpload = "BITRISE_BUILD_CACHE_XCODE_DETAILS_UPLOAD"
 
 const detailsSchemaVersion = 1
 
@@ -41,13 +36,6 @@ type UploadingWriter struct {
 	Logger  log.Logger
 }
 
-// DetailsUploadEnabled reports whether EnvDetailsUpload is truthy in envs.
-func DetailsUploadEnabled(envs map[string]string) bool {
-	enabled, err := strconv.ParseBool(envs[EnvDetailsUpload])
-
-	return err == nil && enabled
-}
-
 // NewUploadingWriter returns a sidecar Writer rooted at p that also uploads via
 // client when uploadEnabled. client may be nil.
 func NewUploadingWriter(p paths.Paths, logger log.Logger, client *analytics.Client, uploadEnabled bool) *UploadingWriter {
@@ -55,7 +43,7 @@ func NewUploadingWriter(p paths.Paths, logger log.Logger, client *analytics.Clie
 
 	switch {
 	case !uploadEnabled:
-		w.debugf("Invocation details upload disabled (%s not set)", EnvDetailsUpload)
+		w.debugf("Invocation details upload disabled")
 	case client == nil:
 		w.debugf("Invocation details upload disabled (no analytics client)")
 	default:

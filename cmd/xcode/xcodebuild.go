@@ -703,7 +703,7 @@ func (c *XcodebuildRunner) resolveAnalyzerSidecar() analyzerSidecarWriter {
 	}
 
 	envs := utils.AllEnvs()
-	uploadEnabled := analyzersidecar.DetailsUploadEnabled(envs)
+	uploadEnabled := xcelerate.ResolveDetailsUpload(c.Config, envs)
 
 	var client *analytics.Client
 	if uploadEnabled {

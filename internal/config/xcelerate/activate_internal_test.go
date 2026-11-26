@@ -41,6 +41,26 @@ func TestOverrideFromExistingConfig_CarriesWrapperlessPipelineForward(t *testing
 	assert.True(t, params.WrapperlessPipelineEnabled, "re-run must preserve the persisted opt-in")
 }
 
+func TestOverrideFromExistingConfig_CarriesDetailsUploadForward(t *testing.T) {
+	home := t.TempDir()
+	osProxy := &utilsMocks.OsProxyMock{
+		UserHomeDirFunc: func() (string, error) { return home, nil },
+		OpenFileFunc:    os.OpenFile,
+	}
+
+	configPath := PathFor(osProxy, "config.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o755))
+	body, err := json.Marshal(Config{DetailsUploadEnabled: true})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(configPath, body, 0o600))
+
+	params := Params{}
+	overrideActivateXcodeParamsFromExistingConfig(
+		log.NewLogger(), osProxy, &params, utils.DefaultDecoderFactory{}, map[string]string{})
+
+	assert.True(t, params.DetailsUploadEnabled, "re-run must preserve the persisted opt-in")
+}
+
 func TestEnsureLogDir_CreatesWhatTheProxyWouldCreateLazily(t *testing.T) {
 	home := t.TempDir()
 	logDir := paths.FromHome(home).XcelerateLogDir()

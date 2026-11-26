@@ -107,7 +107,7 @@ func TestUploadingWriter_UploadsGzippedEnvelope(t *testing.T) {
 func TestUploadingWriter_GateOffSkipsUpload(t *testing.T) {
 	backend, client := newDetailsBackend(t)
 	p := paths.FromHome(t.TempDir())
-	w := analyzersidecar.NewUploadingWriter(p, nil, client, analyzersidecar.DetailsUploadEnabled(map[string]string{}))
+	w := analyzersidecar.NewUploadingWriter(p, nil, client, false)
 	w.Sidecar = &analyzersidecar.Writer{Paths: p, Clock: fixedClock(sidecarDay)}
 
 	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
@@ -118,18 +118,11 @@ func TestUploadingWriter_GateOffSkipsUpload(t *testing.T) {
 
 func TestUploadingWriter_GateOnUploadsOnce(t *testing.T) {
 	backend, client := newDetailsBackend(t)
-	envs := map[string]string{analyzersidecar.EnvDetailsUpload: "1"}
-	w := analyzersidecar.NewUploadingWriter(paths.FromHome(t.TempDir()), nil, client, analyzersidecar.DetailsUploadEnabled(envs))
+	w := analyzersidecar.NewUploadingWriter(paths.FromHome(t.TempDir()), nil, client, true)
 
 	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
 
 	assert.Equal(t, 1, backend.count())
-}
-
-func TestDetailsUploadEnabled(t *testing.T) {
-	for value, want := range map[string]bool{"": false, "0": false, "false": false, "nope": false, "1": true, "true": true} {
-		assert.Equal(t, want, analyzersidecar.DetailsUploadEnabled(map[string]string{analyzersidecar.EnvDetailsUpload: value}), "value=%q", value)
-	}
 }
 
 type fakeSidecar struct{ err error }

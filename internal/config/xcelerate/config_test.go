@@ -243,6 +243,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			XcodebuildTimestampsEnabled:     true,
 			RemoteCacheCompression:          true,
 			RemoteCacheCompressionThreshold: 256,
+			DetailsUploadEnabled:            true,
 		}, envs, osProxyMock, func(_ context.Context, command string, args ...string) utils.Command {
 			assert.Equal(t, "which", command)
 			require.Len(t, args, 1)
@@ -267,6 +268,7 @@ func TestConfig_NewConfig(t *testing.T) {
 			XcodebuildTimestamps:            true,
 			RemoteCacheCompression:          true,
 			RemoteCacheCompressionThreshold: 256,
+			DetailsUploadEnabled:            true,
 			AuthConfig: authpkg.Credential{
 				Token:       "auth-token",
 				WorkspaceID: "workspace-id",
