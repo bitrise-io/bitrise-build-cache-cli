@@ -6,7 +6,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodebuildinfo"
 )
 
-//go:generate moq -stub -out xcodebuild_info_mock_test.go -pkg interactive . XcodebuildInfoProvider
+//go:generate moq -stub -out xcodebuild_info_mock_test.go . XcodebuildInfoProvider
 
 // XcodebuildInfoProvider sources picker candidates from xcodebuild. Scheme +
 // configuration share a call because xcodebuild -list evaluates the whole

@@ -21,7 +21,7 @@ const (
 	msgDoctorCacheErrorsHint = "Run `bitrise-build-cache doctor` to check the setup."
 )
 
-//go:generate moq -stub -out doctor_gate_mock_test.go -pkg xcode . buildHealthReporter
+//go:generate moq -stub -out doctor_gate_mock_test.go . buildHealthReporter
 
 type buildHealthReporter interface {
 	CheckAtStart(ctx context.Context)

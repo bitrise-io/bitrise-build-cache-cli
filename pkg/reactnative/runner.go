@@ -58,7 +58,7 @@ type RunnerParams struct {
 	Resolver *live.Resolver
 }
 
-//go:generate moq -stub -out post_run_runner_mock_test.go -pkg reactnative . postRunRunner
+//go:generate moq -stub -out post_run_runner_mock_test.go . postRunRunner
 
 type postRunRunner interface {
 	run(

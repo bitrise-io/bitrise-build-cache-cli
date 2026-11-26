@@ -339,9 +339,9 @@ func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Wri
 	return w
 }
 
-//go:generate moq -stub -out xcodebuild_relation_mock_test.go -pkg xcode . relationSender
+//go:generate moq -stub -out xcodebuild_relation_mock_test.go . relationSender
 
-//go:generate moq -stub -out xcodebuild_local_log_mock_test.go -pkg xcode . localInvocationLogger
+//go:generate moq -stub -out xcodebuild_local_log_mock_test.go . localInvocationLogger
 
 type invocationSaver interface {
 	PutInvocation(inv analytics.Invocation) error

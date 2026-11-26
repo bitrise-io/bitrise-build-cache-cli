@@ -44,8 +44,8 @@ func rnInvocationDetailsURL(workspaceSlug, invocationID string) string {
 	return fmt.Sprintf("https://app.bitrise.io/build-cache/%s/invocations/react-native/%s", workspaceSlug, invocationID)
 }
 
-//go:generate moq -stub -out post_run_deps_local_log_mock_test.go -pkg reactnative . localInvocationLogger
-//go:generate moq -stub -out post_run_deps_invocation_client_mock_test.go -pkg reactnative . invocationClient
+//go:generate moq -stub -out post_run_deps_local_log_mock_test.go . localInvocationLogger
+//go:generate moq -stub -out post_run_deps_invocation_client_mock_test.go . invocationClient
 
 type localInvocationLogger interface {
 	Append(rec invocations.Record) error
