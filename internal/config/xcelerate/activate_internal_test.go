@@ -61,6 +61,26 @@ func TestOverrideFromExistingConfig_CarriesDetailsUploadForward(t *testing.T) {
 	assert.True(t, params.DetailsUploadEnabled, "re-run must preserve the persisted opt-in")
 }
 
+func TestOverrideFromExistingConfig_ExplicitFalseClearsDetailsUpload(t *testing.T) {
+	home := t.TempDir()
+	osProxy := &utilsMocks.OsProxyMock{
+		UserHomeDirFunc: func() (string, error) { return home, nil },
+		OpenFileFunc:    os.OpenFile,
+	}
+
+	configPath := PathFor(osProxy, "config.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o755))
+	body, err := json.Marshal(Config{DetailsUploadEnabled: true})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(configPath, body, 0o600))
+
+	params := Params{DetailsUploadEnabled: false, DetailsUploadSet: true}
+	overrideActivateXcodeParamsFromExistingConfig(
+		log.NewLogger(), osProxy, &params, utils.DefaultDecoderFactory{}, map[string]string{})
+
+	assert.False(t, params.DetailsUploadEnabled, "--details-upload=false must clear the persisted opt-in")
+}
+
 func TestEnsureLogDir_CreatesWhatTheProxyWouldCreateLazily(t *testing.T) {
 	home := t.TempDir()
 	logDir := paths.FromHome(home).XcelerateLogDir()

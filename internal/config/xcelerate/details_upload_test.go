@@ -13,25 +13,29 @@ import (
 )
 
 func TestResolveDetailsUpload(t *testing.T) {
-	envCases := []struct {
-		name  string
-		envs  map[string]string
-		truth bool
+	cases := []struct {
+		name     string
+		configOn bool
+		envs     map[string]string
+		want     bool
 	}{
-		{name: "env unset", envs: map[string]string{}},
-		{name: "env 0", envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}},
-		{name: "env 1", envs: map[string]string{xcelerate.EnvDetailsUpload: "1"}, truth: true},
-		{name: "env true", envs: map[string]string{xcelerate.EnvDetailsUpload: "true"}, truth: true},
+		{name: "config off, env unset", envs: map[string]string{}},
+		{name: "config on, env unset", configOn: true, envs: map[string]string{}, want: true},
+		{name: "config off, env 1", envs: map[string]string{xcelerate.EnvDetailsUpload: "1"}, want: true},
+		{name: "config off, env true", envs: map[string]string{xcelerate.EnvDetailsUpload: "true"}, want: true},
+		{name: "config on, env 0", configOn: true, envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}},
+		{name: "config on, env false", configOn: true, envs: map[string]string{xcelerate.EnvDetailsUpload: "false"}},
+		{name: "config on, env empty", configOn: true, envs: map[string]string{xcelerate.EnvDetailsUpload: ""}, want: true},
+		{name: "config on, env garbage", configOn: true, envs: map[string]string{xcelerate.EnvDetailsUpload: "yes please"}, want: true},
+		{name: "config off, env garbage", envs: map[string]string{xcelerate.EnvDetailsUpload: "yes please"}},
 	}
 
-	for _, configOn := range []bool{false, true} {
-		for _, tc := range envCases {
-			t.Run(tc.name, func(t *testing.T) {
-				got := xcelerate.ResolveDetailsUpload(xcelerate.Config{DetailsUploadEnabled: configOn}, tc.envs)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := xcelerate.ResolveDetailsUpload(xcelerate.Config{DetailsUploadEnabled: tc.configOn}, tc.envs)
 
-				assert.Equal(t, configOn || tc.truth, got, "config=%v", configOn)
-			})
-		}
+			assert.Equal(t, tc.want, got)
+		})
 	}
 }
 

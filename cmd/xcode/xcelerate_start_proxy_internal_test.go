@@ -377,7 +377,7 @@ func Test_newAnalyticsBundle_detailsUploadFollowsConfigOrEnv(t *testing.T) {
 		"config":      {config: xcelerate.Config{AuthConfig: cred, DetailsUploadEnabled: true}, envs: map[string]string{}, want: true},
 		"env":         {config: xcelerate.Config{AuthConfig: cred}, envs: map[string]string{xcelerate.EnvDetailsUpload: "1"}, want: true},
 		"env-falsy":   {config: xcelerate.Config{AuthConfig: cred}, envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}},
-		"config+env0": {config: xcelerate.Config{AuthConfig: cred, DetailsUploadEnabled: true}, envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}, want: true},
+		"config+env0": {config: xcelerate.Config{AuthConfig: cred, DetailsUploadEnabled: true}, envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}},
 	}
 
 	for name, tc := range cases {

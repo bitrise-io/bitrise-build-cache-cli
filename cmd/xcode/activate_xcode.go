@@ -47,6 +47,7 @@ This command will:
 		logger.TInfof(activateXcode)
 
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
+		activateXcodeParams.DetailsUploadSet = cmd.Flags().Changed("details-upload")
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		if err := common.PersistProjectMode(activateXcodeProjectMode, logger); err != nil {

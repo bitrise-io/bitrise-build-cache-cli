@@ -47,6 +47,8 @@ type Params struct {
 	XcodebuildTimestampsEnabled     bool
 	WrapperlessPipelineEnabled      bool
 	DetailsUploadEnabled            bool
+	// DetailsUploadSet marks DetailsUploadEnabled as explicitly chosen, so false clears a stored opt-in.
+	DetailsUploadSet bool
 }
 
 // Config is the xcelerate config saved to ~/.bitrise-xcelerate/config.json.

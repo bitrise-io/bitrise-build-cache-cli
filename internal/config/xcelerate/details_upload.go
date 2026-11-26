@@ -2,16 +2,14 @@ package xcelerate
 
 import "strconv"
 
-// EnvDetailsUpload turns the analyzer Report upload on regardless of Config.DetailsUploadEnabled.
+// EnvDetailsUpload, when set to a boolean, overrides Config.DetailsUploadEnabled in either direction.
 const EnvDetailsUpload = "BITRISE_BUILD_CACHE_XCODE_DETAILS_UPLOAD"
 
-// ResolveDetailsUpload is the one gate for the analyzer Report upload, shared by the wrapper and the proxy.
+// ResolveDetailsUpload reports whether the analyzer Report upload is on.
 func ResolveDetailsUpload(config Config, envs map[string]string) bool {
-	if config.DetailsUploadEnabled {
-		return true
+	if enabled, err := strconv.ParseBool(envs[EnvDetailsUpload]); err == nil {
+		return enabled
 	}
 
-	enabled, err := strconv.ParseBool(envs[EnvDetailsUpload])
-
-	return err == nil && enabled
+	return config.DetailsUploadEnabled
 }
