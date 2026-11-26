@@ -26,6 +26,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
@@ -263,6 +264,7 @@ type analyticsBundle struct {
 	healthPath       string
 	homeDir          string
 	sessionsDir      string
+	paths            paths.Paths
 	xcodeVersion     string
 	xcodeBuildNumber string
 	logger           log.Logger
@@ -317,6 +319,7 @@ func newAnalyticsBundle(
 		b.healthPath = pathResolver.EnrichmentHealthFile()
 		b.homeDir = pathResolver.Home
 		b.sessionsDir = pathResolver.XcelerateSessionsDir()
+		b.paths = pathResolver
 	}
 
 	return b
@@ -361,6 +364,9 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 		enricher.SidecarReader = sidecarReader
 	}
 	enricher.LocalLogAppender = invocationlog.Default(logger)
+	if b.paths.Home != "" {
+		enricher.AnalyzerSidecar = analyzersidecar.NewWriter(b.paths, logger)
+	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
 		if b.pending == nil {
@@ -603,12 +609,13 @@ func maybeStartWrapperlessPipeline(
 	}
 
 	pipeline := &wrapperless.Pipeline{ //nolint:exhaustruct
-		HomeDir:   bundle.homeDir,
-		Logger:    logger,
-		Emitter:   emitter,
-		Proxy:     p,
-		BlobStats: p.BlobStatsSource(),
-		DDWatcher: ddWatcher,
+		HomeDir:         bundle.homeDir,
+		Logger:          logger,
+		Emitter:         emitter,
+		Proxy:           p,
+		BlobStats:       p.BlobStatsSource(),
+		DDWatcher:       ddWatcher,
+		AnalyzerSidecar: analyzersidecar.NewWriter(resolver, logger),
 	}
 
 	if err := pipeline.Start(ctx); err != nil {

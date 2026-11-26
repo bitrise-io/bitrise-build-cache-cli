@@ -26,6 +26,11 @@ type Pipeline struct {
 	// since the previous bucket.
 	BlobStats BlobStatsSource
 
+	// AnalyzerSidecar is wired onto Emitter at Start so each enriched emit
+	// also persists the post-run analyzer Report under the per-day sidecar
+	// dir. nil disables the hook.
+	AnalyzerSidecar analyzerSidecarWriter
+
 	// PutQueueDepth sets the capacity of the async PUT worker queue. Keeps
 	// HTTP calls off the Allocator's single timeline reader (which holds
 	// a.mu across every event). 0 → defaultPutQueueDepth.
@@ -104,6 +109,9 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	p.QuitWatcher.Start(ctx)
 
 	if p.Emitter != nil {
+		if p.AnalyzerSidecar != nil && p.Emitter.AnalyzerSidecar == nil {
+			p.Emitter.AnalyzerSidecar = p.AnalyzerSidecar
+		}
 		p.Emitter.Start(ctx)
 	}
 
@@ -119,7 +127,7 @@ func (p *Pipeline) Start(ctx context.Context) error {
 	p.putDone = putDone
 	p.mu.Unlock()
 
-	go p.putWorker(putQueue, putDone)
+	go p.putWorker(putQueue, putDone) //nolint:contextcheck // worker lifetime is bounded by queue close, not ctx
 
 	p.Allocator.Init()
 

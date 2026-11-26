@@ -191,6 +191,37 @@ func TestSweep_deletesOldFiles(t *testing.T) {
 	assert.NoError(t, err, "recent file should be preserved")
 }
 
+func TestSweep_dropsMatchingAnalyzerSidecarDir(t *testing.T) {
+	p := paths.FromHome(t.TempDir())
+	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))
+
+	stale := p.InvocationsFile("2026-05-20")
+	require.NoError(t, os.WriteFile(stale, []byte(`{"invocation_id":"s"}`+"\n"), 0o644))
+
+	staleSidecarDir := p.AnalyzerSidecarDir("2026-05-20")
+	require.NoError(t, os.MkdirAll(staleSidecarDir, 0o755))
+	staleSidecar := p.AnalyzerSidecarFile("2026-05-20", "s")
+	require.NoError(t, os.WriteFile(staleSidecar, []byte("{}"), 0o644))
+
+	freshSidecarDir := p.AnalyzerSidecarDir("2026-06-25")
+	require.NoError(t, os.MkdirAll(freshSidecarDir, 0o755))
+	freshSidecar := p.AnalyzerSidecarFile("2026-06-25", "f")
+	require.NoError(t, os.WriteFile(freshSidecar, []byte("{}"), 0o644))
+	freshDay := p.InvocationsFile("2026-06-25")
+	require.NoError(t, os.WriteFile(freshDay, []byte(`{"invocation_id":"f"}`+"\n"), 0o644))
+
+	now := time.Date(2026, 6, 25, 0, 0, 0, 0, time.UTC)
+	removed, err := Sweep(p, 30*24*time.Hour, now)
+	require.NoError(t, err)
+	assert.Equal(t, 1, removed)
+
+	_, err = os.Stat(staleSidecarDir)
+	assert.True(t, os.IsNotExist(err), "stale sidecar dir must be removed")
+
+	_, err = os.Stat(freshSidecar)
+	assert.NoError(t, err, "fresh sidecar must be preserved")
+}
+
 func TestSweep_ignoresUnrecognisedFilenames(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	require.NoError(t, os.MkdirAll(p.InvocationsDir(), 0o755))

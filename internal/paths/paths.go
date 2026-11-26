@@ -105,6 +105,14 @@ const (
 	// invocationsSubdir holds the per-day NDJSON invocation log files.
 	invocationsSubdir = "invocations"
 
+	// analyzerSidecarSubdir holds the per-day dir of analyzer-report JSON
+	// sidecars co-located with the daily NDJSON under InvocationsDir.
+	analyzerSidecarSubdir = "analyzer-sidecars"
+
+	// analyzerSidecarExt is the filename extension of a single per-invocation
+	// analyzer sidecar file.
+	analyzerSidecarExt = ".analyzer.json"
+
 	pendingInvocationsFilename = "pending-invocations.ndjson"
 
 	enrichmentHealthFilename = "health.json"
@@ -239,6 +247,18 @@ func (p Paths) InvocationsDir() string {
 
 func (p Paths) InvocationsFile(day string) string {
 	return filepath.Join(p.InvocationsDir(), day+".ndjson")
+}
+
+// AnalyzerSidecarDir returns the per-day directory holding analyzer-report
+// JSON sidecars under InvocationsDir.
+func (p Paths) AnalyzerSidecarDir(day string) string {
+	return filepath.Join(p.InvocationsDir(), analyzerSidecarSubdir, day)
+}
+
+// AnalyzerSidecarFile returns the absolute path of the analyzer-report sidecar
+// for a given day and InvocationID.
+func (p Paths) AnalyzerSidecarFile(day, invocationID string) string {
+	return filepath.Join(p.AnalyzerSidecarDir(day), invocationID+analyzerSidecarExt)
 }
 
 func (p Paths) PendingInvocationsFile() string {

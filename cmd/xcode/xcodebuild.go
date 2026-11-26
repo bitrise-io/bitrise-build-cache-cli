@@ -38,6 +38,8 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/spawn"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
@@ -343,6 +345,8 @@ func wrapperLogWriter(logFile io.Writer, logFilePath string, silent bool) io.Wri
 
 //go:generate moq -stub -out xcodebuild_local_log_mock_test.go -pkg xcode . localInvocationLogger
 
+//go:generate moq -stub -out xcodebuild_analyzer_sidecar_mock_test.go -pkg xcode . analyzerSidecarWriter
+
 type invocationSaver interface {
 	PutInvocation(inv analytics.Invocation) error
 }
@@ -353,6 +357,10 @@ type relationSender interface {
 
 type localInvocationLogger interface {
 	Append(rec invocations.Record) error
+}
+
+type analyzerSidecarWriter interface {
+	Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error
 }
 
 // XcodebuildRunner holds configuration for the xcodebuild wrapper and provides
@@ -396,6 +404,17 @@ type XcodebuildRunner struct {
 	xcresultParser xcresult.Parser
 	// resolveCredential re-resolves after the build. If nil, the live resolver is used.
 	resolveCredential func(ctx context.Context) (authpkg.Credential, authpkg.Origin, error)
+	// analyzerSidecar persists the post-run analyzer Report. nil disables.
+	analyzerSidecar analyzerSidecarWriter
+	// spawnFn runs the sidecar producer. Nil → real `go` — tests inject a
+	// synchronous spawn so assertions don't race the goroutine.
+	spawnFn func(func())
+	// analyzerWaitCap overrides analyzerSidecarWaitCap when non-zero.
+	analyzerWaitCap time.Duration
+	// analyzerRunFn runs buildanalyzer.Run. Nil → real buildanalyzer.Run.
+	// Tests inject a fake to observe the scheme/command propagation into
+	// RunOptions without having to synthesize a valid SLF payload.
+	analyzerRunFn func(ctx context.Context, logPath string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error)
 }
 
 // resolveOsProxy returns the configured OsProxy or the production default.
@@ -481,11 +500,13 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	c.writeJobSummary(runStats, proxyOutcome)
 
+	var analyzerDone <-chan struct{}
 	if machineconfig.ProjectOptedOut(c.resolveOsProxy(), c.Logger) {
 		c.Logger.TInfof(MsgProjectModeOptedOut)
 	} else {
 		c.appendLocalInvocationLog(*inv, runStats)
 		c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+		analyzerDone = c.spawnAnalyzerSidecar(*inv) //nolint:contextcheck // detached from parent ctx so a shell ^C does not abort the background sidecar work
 	}
 
 	// Signal build-done AFTER the wrapper's own PUT + marker write so the proxy's slim emit sees the marker and skips.
@@ -501,6 +522,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	if c.Doctor != nil {
 		c.Doctor.ReportAtEnd(ctx, buildOutcome{CAS: runStats.CacheStats, Proxy: proxyOutcome})
 	}
+
+	c.awaitAnalyzerSidecar(analyzerDone)
 
 	return runStats
 }
@@ -559,6 +582,152 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 	}
 
 	return appender
+}
+
+// analyzerSidecarTimeout caps a single Report-build + sidecar-write; the
+// goroutine is detached from the parent ctx so a shell ^C does not abort it.
+const analyzerSidecarTimeout = 60 * time.Second
+
+// analyzerSidecarWaitCap bounds how long Run holds back process exit for the sidecar.
+const analyzerSidecarWaitCap = 30 * time.Second
+
+// spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write and
+// returns a channel closed when it finishes, or nil when nothing was spawned.
+// It derives the DerivedData path from the wrapper's resolved prefix-map state;
+// buildanalyzer.Run picks the newest xcactivitylog underneath.
+func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) <-chan struct{} {
+	writer := c.resolveAnalyzerSidecar()
+	if writer == nil {
+		return nil
+	}
+
+	derivedData := c.resolveAnalyzerDerivedData()
+	if derivedData == "" {
+		if c.Logger != nil {
+			c.Logger.Debugf("Wrapper: analyzer sidecar skipped id=%s (no derived data)", inv.InvocationID)
+		}
+
+		return nil
+	}
+
+	invocationID := inv.InvocationID
+	scheme := c.XcodeArgs.Scheme()
+	command := inv.Command
+	logger := c.Logger
+	done := make(chan struct{})
+
+	c.spawn(func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil && logger != nil {
+				logger.Debugf("Analyzer sidecar panicked, dropping: %v", r)
+			}
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
+		defer cancel()
+
+		logPath, err := buildanalyzer.MostRecentActivityLog(derivedData)
+		if err != nil || logPath == "" {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar: no xcactivitylog under %s (%v)", derivedData, err)
+			}
+
+			return
+		}
+
+		runFn := c.analyzerRunFn
+		if runFn == nil {
+			runFn = buildanalyzer.Run
+		}
+
+		report, warnings, err := runFn(ctx, logPath, buildanalyzer.RunOptions{
+			DerivedDataPath: derivedData,
+			Scheme:          scheme,
+			Command:         command,
+		})
+		if err != nil {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)
+			}
+
+			return
+		}
+
+		for _, w := range warnings {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar warning: %v", w)
+			}
+		}
+
+		if err := writer.Write(ctx, invocationID, report); err != nil && logger != nil {
+			logger.Debugf("Analyzer sidecar: write failed: %v", err)
+		}
+	})
+
+	return done
+}
+
+// awaitAnalyzerSidecar deliberately ignores the parent ctx, matching the
+// sidecar goroutine's own detachment.
+func (c *XcodebuildRunner) awaitAnalyzerSidecar(done <-chan struct{}) {
+	if done == nil {
+		return
+	}
+
+	waitCap := c.analyzerWaitCap
+	if waitCap == 0 {
+		waitCap = analyzerSidecarWaitCap
+	}
+
+	timer := time.NewTimer(waitCap)
+	defer timer.Stop()
+
+	select {
+	case <-done:
+	case <-timer.C:
+		if c.Logger != nil {
+			c.Logger.Debugf("Analyzer sidecar still running after %s, exiting without it", waitCap)
+		}
+	}
+}
+
+func (c *XcodebuildRunner) resolveAnalyzerSidecar() analyzerSidecarWriter {
+	if c.analyzerSidecar != nil {
+		return c.analyzerSidecar
+	}
+
+	p := c.resolvePaths()
+	if p.Home == "" {
+		return nil
+	}
+
+	return analyzersidecar.NewWriter(p, c.Logger)
+}
+
+// resolveAnalyzerDerivedData returns the DerivedData path the wrapper's build
+// targeted. Explicit -derivedDataPath wins; otherwise the managed root (same
+// one the prefix-map helper picks) is used.
+func (c *XcodebuildRunner) resolveAnalyzerDerivedData() string {
+	if dd := c.XcodeArgs.DerivedDataPath(); dd != "" {
+		return dd
+	}
+
+	ps, _ := c.resolvePrefixMapPaths()
+
+	return ps.DerivedDataPath
+}
+
+// spawn runs fn via the configured spawnFn, or `go fn` when no seam is set.
+// Tests swap in a synchronous `fn()` so goroutine lifetime is observable.
+func (c *XcodebuildRunner) spawn(fn func()) {
+	if c.spawnFn != nil {
+		c.spawnFn(fn)
+
+		return
+	}
+
+	go fn()
 }
 
 // The build can outlive a brokered JWT resolved when the config was read.

@@ -18,6 +18,7 @@ import (
 	configcommon "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/shortcmd"
@@ -25,8 +26,17 @@ import (
 
 //go:generate moq -stub -out invocation_putter_mock_test.go -pkg wrapperless_test . InvocationPutter
 
+//go:generate moq -stub -out analyzer_sidecar_writer_mock_test.go -pkg wrapperless . analyzerSidecarWriter
+
 type InvocationPutter interface {
 	PutInvocation(inv analytics.Invocation) error
+}
+
+// analyzerSidecarWriter persists a post-run build analyzer Report alongside
+// the ndjson invocation log. Intentionally unexported — the Pipeline owns the
+// construction; tests use a moq to observe calls.
+type analyzerSidecarWriter interface {
+	Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error
 }
 
 type Phase string
@@ -75,6 +85,20 @@ type Emitter struct {
 	// `bitrise-build-cache invocations list` surfaces the wrapperless row.
 	// nil disables.
 	LocalLogAppender invocationlog.Appender
+
+	// AnalyzerSidecar persists the post-run analyzer Report on enriched emit.
+	// nil disables. Exported so Pipeline can wire a default without a
+	// public constructor; keep the interface itself unexported.
+	AnalyzerSidecar analyzerSidecarWriter
+
+	// spawnFn runs the sidecar producer. Nil → real `go`. Tests inject a
+	// synchronous spawn so assertions don't race the goroutine.
+	spawnFn func(func())
+
+	// analyzerRunFn runs buildanalyzer.Run. Nil → real buildanalyzer.Run.
+	// Tests inject a fake to observe the scheme/command propagation into
+	// RunOptions without having to synthesize a valid SLF payload.
+	analyzerRunFn func(ctx context.Context, logPath string, opts buildanalyzer.RunOptions) (buildanalyzer.Report, []error, error)
 
 	mu sync.Mutex
 
@@ -128,6 +152,8 @@ func (e *Emitter) EmitEnriched(bucket Bucket, hitRate float32) {
 	enrichment.TickSuccess(e.Health, e.Logger, e.now(), true)
 
 	e.appendLocalLog(bucket, inv, hitRate)
+
+	e.spawnAnalyzerSidecar(bucket, inv.InvocationID, inv.Command)
 
 	e.logDebug("Emitter: enriched PUT id=%s scheme=%s bytes=%d hitRate=%.2f",
 		inv.InvocationID, bucket.Scheme, snapshotBytes(bucket.BlobStats), hitRate)
@@ -264,6 +290,7 @@ func (e *Emitter) drainPending(phase Phase) {
 
 		if p.Phase == PhaseEnriched {
 			e.appendLocalLog(p.Bucket, inv, p.HitRate)
+			// Analyzer sidecar deliberately skipped — xcactivitylog likely rotated by drain time.
 		}
 	}
 	_ = f.Close()
@@ -340,6 +367,84 @@ func exitCodeFromBucket(bucket Bucket) int {
 	}
 
 	return 0
+}
+
+// walGraceDelay gives SQLite's write-ahead log a moment to roll into the main
+// DB after Xcode seals the manifest, so build.db reads don't race the final
+// flush. See docs/xcode-build-analyzer.md.
+const walGraceDelay = 250 * time.Millisecond
+
+const analyzerSidecarTimeout = 60 * time.Second
+
+// spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write for
+// an enriched bucket. Deliberately spawned after appendLocalLog so a slow
+// read never blocks the enricher's main path. Silent no-op when the bucket
+// has no sealed xcactivitylog (CLI-implicit / IDE-background buckets).
+func (e *Emitter) spawnAnalyzerSidecar(bucket Bucket, invocationID, command string) {
+	if e.AnalyzerSidecar == nil {
+		return
+	}
+
+	if bucket.XCActivityLogPath == "" {
+		e.logDebug("Emitter: analyzer sidecar skipped id=%s (no XCActivityLogPath)", invocationID)
+
+		return
+	}
+
+	logPath := bucket.XCActivityLogPath
+	scheme := bucket.Scheme
+	writer := e.AnalyzerSidecar
+	logger := e.Logger
+
+	e.spawn(func() {
+		defer func() {
+			if r := recover(); r != nil && logger != nil {
+				logger.Debugf("Analyzer sidecar panicked, dropping: %v", r)
+			}
+		}()
+
+		time.Sleep(walGraceDelay)
+
+		ctx, cancel := context.WithTimeout(context.Background(), analyzerSidecarTimeout)
+		defer cancel()
+
+		runFn := e.analyzerRunFn
+		if runFn == nil {
+			runFn = buildanalyzer.Run
+		}
+
+		report, warnings, err := runFn(ctx, logPath, buildanalyzer.RunOptions{
+			Scheme:  scheme,
+			Command: command,
+		})
+		if err != nil {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar: analyze failed: %v", err)
+			}
+
+			return
+		}
+
+		for _, w := range warnings {
+			if logger != nil {
+				logger.Debugf("Analyzer sidecar warning: %v", w)
+			}
+		}
+
+		if err := writer.Write(ctx, invocationID, report); err != nil && logger != nil {
+			logger.Debugf("Analyzer sidecar: write failed: %v", err)
+		}
+	})
+}
+
+func (e *Emitter) spawn(fn func()) {
+	if e.spawnFn != nil {
+		e.spawnFn(fn)
+
+		return
+	}
+
+	go fn()
 }
 
 func (e *Emitter) buildInvocation(bucket Bucket, phase Phase, hitRate float32) analytics.Invocation {
