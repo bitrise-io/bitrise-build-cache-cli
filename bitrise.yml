@@ -536,10 +536,9 @@ workflows:
         machine_type_id: g2.linux.medium
     envs:
     - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
-    - E2E_TESTING_REPO: https://github.com/bitrise-io/build-cache-e2e-testing.git
+    - E2E_TESTING_REPO: git@github.com:bitrise-io/build-cache-e2e-testing.git
     - E2E_TESTING_BRANCH: master
     - E2E_PIPELINE: features-e2e
-    - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
     steps:
     - bundle::dispatch-to-private: {}
 
@@ -598,15 +597,21 @@ step_bundles:
 
             : "${E2E_TESTING_REPO:?missing E2E_TESTING_REPO}"
             : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
-            : "${GITHUB_TOKEN:?missing GITHUB_TOKEN for private repo ls-remote}"
+            : "${E2E_REPO_SSH_DEPLOY_KEY:?missing E2E_REPO_SSH_DEPLOY_KEY (readonly deploy key on e2e repo)}"
 
             pr_branch="${BITRISE_GIT_BRANCH:-}"
             resolved="$E2E_TESTING_BRANCH"
 
-            auth_hdr="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+            mkdir -p ~/.ssh
+            chmod 700 ~/.ssh
+            ssh-keyscan -t ed25519,ecdsa,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+            key=~/.ssh/e2e_repo_deploy_key
+            printf '%s\n' "$E2E_REPO_SSH_DEPLOY_KEY" > "$key"
+            chmod 600 "$key"
 
             if [[ -n "$pr_branch" && "$pr_branch" =~ ^[A-Za-z0-9._/-]{1,255}$ ]]; then
-              if git -c "http.extraHeader=$auth_hdr" ls-remote --exit-code --heads "$E2E_TESTING_REPO" "$pr_branch" >/dev/null 2>&1; then
+              if GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes" \
+                 git ls-remote --exit-code --heads "$E2E_TESTING_REPO" "$pr_branch" >/dev/null 2>&1; then
                 resolved="$pr_branch"
                 echo "Paired e2e branch found: $resolved"
               else
