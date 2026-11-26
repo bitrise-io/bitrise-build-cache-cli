@@ -702,7 +702,18 @@ func (c *XcodebuildRunner) resolveAnalyzerSidecar() analyzerSidecarWriter {
 		return nil
 	}
 
-	return analyzersidecar.NewWriter(p, c.Logger)
+	envs := utils.AllEnvs()
+	uploadEnabled := analyzersidecar.DetailsUploadEnabled(envs)
+
+	var client *analytics.Client
+	if uploadEnabled {
+		var err error
+		if client, err = c.newAnalyticsClient(envs); err != nil {
+			c.Logger.Debugf("Invocation details upload: %v", err)
+		}
+	}
+
+	return analyzersidecar.NewUploadingWriter(p, c.Logger, client, uploadEnabled)
 }
 
 // resolveAnalyzerDerivedData returns the DerivedData path the wrapper's build
@@ -820,7 +831,16 @@ func (c *XcodebuildRunner) resolveInvocationAPI() (invocationSaver, error) {
 		return c.invocationAPI, nil
 	}
 
-	client, err := analytics.NewClient(configcommon.XcodeAnalyticsURL(utils.AllEnvs()), func() string { return authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin) }, c.Logger)
+	client, err := c.newAnalyticsClient(utils.AllEnvs())
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+}
+
+func (c *XcodebuildRunner) newAnalyticsClient(envs map[string]string) (*analytics.Client, error) {
+	client, err := analytics.NewClient(configcommon.XcodeAnalyticsURL(envs), func() string { return authpkg.GradleToken(c.Config.AuthConfig, c.Config.AuthOrigin) }, c.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("create analytics client: %w", err)
 	}

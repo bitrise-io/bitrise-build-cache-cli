@@ -257,6 +257,7 @@ func StartXcodeCacheProxy(
 
 type analyticsBundle struct {
 	client           *analytics.Client
+	detailsUpload    bool
 	authProvider     *live.Bound
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
@@ -298,10 +299,11 @@ func newAnalyticsBundle(
 	}
 
 	b := &analyticsBundle{
-		client:       client,
-		authProvider: authProvider,
-		metadata:     configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, utils.DefaultOsProxy{}, logger),
-		logger:       logger,
+		client:        client,
+		detailsUpload: analyzersidecar.DetailsUploadEnabled(envProvider),
+		authProvider:  authProvider,
+		metadata:      configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, utils.DefaultOsProxy{}, logger),
+		logger:        logger,
 	}
 
 	if version, buildNumber, err := xcodeversion.Resolve(ctx, config.OriginalXcodebuildPath, commandFunc); err != nil {
@@ -365,7 +367,7 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 	}
 	enricher.LocalLogAppender = invocationlog.Default(logger)
 	if b.paths.Home != "" {
-		enricher.AnalyzerSidecar = analyzersidecar.NewWriter(b.paths, logger)
+		enricher.AnalyzerSidecar = analyzersidecar.NewUploadingWriter(b.paths, logger, b.client, b.detailsUpload)
 	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
@@ -615,7 +617,7 @@ func maybeStartWrapperlessPipeline(
 		Proxy:           p,
 		BlobStats:       p.BlobStatsSource(),
 		DDWatcher:       ddWatcher,
-		AnalyzerSidecar: analyzersidecar.NewWriter(resolver, logger),
+		AnalyzerSidecar: analyzersidecar.NewUploadingWriter(resolver, logger, bundle.client, bundle.detailsUpload),
 	}
 
 	if err := pipeline.Start(ctx); err != nil {
