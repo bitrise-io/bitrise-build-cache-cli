@@ -10,18 +10,25 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 )
 
-// Skip where the credential is injected or minted by the CLI itself, which Resolve
-// prefers over any stored login. Minting one here would also cost an exchange on
-// every command, including ones that never authenticate.
+// Skip where Resolve would not reach a stored login, or would get past it to an
+// exchange: minting a credential here would cost one on every command, including
+// ones that never authenticate.
 func hydrateStoredAuth(ctx context.Context) {
 	envs := utils.AllEnvs()
-	if envs[auth.EnvJWT] != "" || auth.OnBuildHub(envs) || auth.OnGitHubActionsOIDC(envs) {
+	if envs[auth.EnvJWT] != "" || auth.OnGitHubActionsOIDC(envs) {
 		return
 	}
 	logger := log.NewLogger(log.WithDebugLog(IsDebugLogMode))
+	hydrateWith(ctx, envs, live.Default(logger), logger)
+}
+
+func hydrateWith(ctx context.Context, envs map[string]string, resolver *live.Resolver, logger log.Logger) {
+	if resolver.BrokeringEnv(envs) != "" {
+		return
+	}
 	// Resolve refreshes a store-managed credential as a side effect; a non-stored
 	// one is a no-op, which is exactly the skip this used to hand-roll.
-	if _, _, err := live.Default(logger).Resolve(ctx, envs); err != nil {
+	if _, _, err := resolver.Resolve(ctx, envs); err != nil {
 		logger.Debugf("OAuth login not applied: %s", err)
 	}
 }

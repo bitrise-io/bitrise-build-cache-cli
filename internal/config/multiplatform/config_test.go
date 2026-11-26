@@ -38,7 +38,7 @@ func TestAnalyticsAuthConfig_BrokeredJWTSurvivesTheFile(t *testing.T) {
 	got := roundTrip(t, multiplatformconfig.NewAnalyticsAuthConfig(cred, origin))
 
 	assert.Equal(t, origin, got.Origin())
-	assert.Equal(t, "Build Hub token (brokered)", got.Origin().Label())
+	assert.Equal(t, "VM token (brokered)", got.Origin().Label())
 }
 
 func TestAnalyticsAuthConfig_InjectedJWTSurvivesTheFile(t *testing.T) {
