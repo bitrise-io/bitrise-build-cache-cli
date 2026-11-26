@@ -611,7 +611,7 @@ step_bundles:
 
             if [[ -n "$pr_branch" && "$pr_branch" =~ ^[A-Za-z0-9._/-]{1,255}$ ]]; then
               if GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes" \
-                 git ls-remote --exit-code --heads "$E2E_TESTING_REPO" -- "$pr_branch" >/dev/null 2>/tmp/lsremote.err; then
+                 git ls-remote --exit-code --heads "$E2E_TESTING_REPO" -- "refs/heads/$pr_branch" >/dev/null 2>/tmp/lsremote.err; then
                 resolved="$pr_branch"
                 echo "Paired e2e branch found: $resolved"
               else
