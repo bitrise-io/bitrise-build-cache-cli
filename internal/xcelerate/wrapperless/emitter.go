@@ -146,10 +146,11 @@ func (e *Emitter) Start(ctx context.Context) {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
 	e.drainCancel = cancel
-	e.drainDone = make(chan struct{})
+	e.drainDone = done
 
-	go e.drainLoop(ctx)
+	go e.drainLoop(ctx, done)
 }
 
 func (e *Emitter) Stop() {
@@ -169,8 +170,8 @@ func (e *Emitter) Stop() {
 	}
 }
 
-func (e *Emitter) drainLoop(ctx context.Context) {
-	defer close(e.drainDone)
+func (e *Emitter) drainLoop(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
 
 	interval := e.DrainInterval
 	if interval <= 0 {
