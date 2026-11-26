@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/testhome"
 )
 
 // When set, the test binary re-enters itself as a cobra executor and calls
@@ -24,14 +25,20 @@ const helperEnvVar = "BBC_STATUS_EXIT_HELPER"
 // TestMain lets this binary double as the CLI when helperEnvVar is set. Args
 // come via a second env var (newline-joined) to sidestep Go's test-flag parsing.
 func TestMain(m *testing.M) {
+	// Before the helper branch, so the child mocks the keychain too.
+	cleanup := testhome.Setup()
+
 	if os.Getenv(helperEnvVar) == "1" {
 		argv := strings.Split(os.Getenv(helperEnvVar+"_ARGS"), "\n")
 		common.RootCmd.SetArgs(argv)
 		common.Execute()
+		cleanup()
 		os.Exit(0)
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 func spawnStatus(t *testing.T, home string, args ...string) (stdout, stderr string, exitCode int) {

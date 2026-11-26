@@ -5,7 +5,6 @@ package proxy_test
 import (
 	"net"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 )
 
 func TestPeerListener_TagsPIDOnDarwin(t *testing.T) {
-	sockPath := filepath.Join(t.TempDir(), "s.sock")
+	sockPath := shortTempSocket(t)
 
 	raw, err := net.Listen("unix", sockPath)
 	require.NoError(t, err)

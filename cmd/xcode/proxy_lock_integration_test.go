@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,7 +34,6 @@ import (
 
 const (
 	envProxyRole  = "PROXYLOCK_CHILD_ROLE"
-	envProxyHome  = "PROXYLOCK_CHILD_HOME"
 	envProxySent  = "PROXYLOCK_CHILD_SENTINEL"
 	envProxyLog   = "PROXYLOCK_CHILD_LOG"
 	envProxyHold  = "PROXYLOCK_CHILD_HOLD_MS"
@@ -41,6 +41,8 @@ const (
 
 	proxyRoleStart = "start"
 	proxyRoleCrash = "crash"
+	// Holds the singleton without ever listening, like a wedged proxy.
+	proxyRoleWedged = "wedged"
 
 	proxyExitOverlap = 6
 )
@@ -53,9 +55,6 @@ func TestHelperProxyLockChild(t *testing.T) {
 		t.Skip("not a child process")
 	}
 
-	// The package's TestMain repoints HOME at its own temp dir, so claim it back
-	// after it has run.
-	require.NoError(t, os.Setenv("HOME", os.Getenv(envProxyHome)))
 	osProxy := utils.DefaultOsProxy{}
 	holdMS, _ := strconv.Atoi(os.Getenv(envProxyHold))
 
@@ -65,6 +64,16 @@ func TestHelperProxyLockChild(t *testing.T) {
 	err := withProxySingleton(osProxy, log.NewLogger(), func() error {
 		served = true
 
+		kind := "HOLDING"
+		if role != proxyRoleWedged {
+			l, lErr := listenOnTestSocket()
+			if lErr != nil {
+				return lErr
+			}
+			defer l.Close()
+			kind = "SERVING"
+		}
+
 		sentinel := os.Getenv(envProxySent)
 		f, sErr := os.OpenFile(sentinel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if sErr != nil {
@@ -72,7 +81,7 @@ func TestHelperProxyLockChild(t *testing.T) {
 			os.Exit(proxyExitOverlap)
 		}
 		_ = f.Close()
-		logProxyEvent(fmt.Sprintf("SERVING   pid=%-6d advertised=%d", os.Getpid(), advertisedPID(osProxy)))
+		logProxyEvent(fmt.Sprintf("%-9s pid=%-6d advertised=%d", kind, os.Getpid(), advertisedPID(osProxy)))
 
 		time.Sleep(time.Duration(holdMS) * time.Millisecond)
 
@@ -97,6 +106,21 @@ func TestHelperProxyLockChild(t *testing.T) {
 	os.Exit(0)
 }
 
+// The default path is shared by every test in this binary.
+func listenOnTestSocket() (net.Listener, error) {
+	path := os.Getenv(xcelerate.EnvProxySocketPath)
+	if path == "" {
+		return nil, errors.New(xcelerate.EnvProxySocketPath + " is not set")
+	}
+
+	l, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("listen on %s: %w", path, err)
+	}
+
+	return l, nil
+}
+
 func advertisedPID(osProxy utils.OsProxy) int {
 	content, _, err := osProxy.ReadFileIfExists(xcelerate.ProxyPidFile(osProxy))
 	if err != nil {
@@ -119,7 +143,7 @@ func logProxyEvent(line string) {
 }
 
 type proxyEnv struct {
-	home     string
+	socket   string
 	sentinel string
 	log      string
 	epoch    time.Time
@@ -129,9 +153,11 @@ func newProxyEnv(t *testing.T) proxyEnv {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	socket := filepath.Join(shortTempDir(t), "p.sock")
+	t.Setenv(xcelerate.EnvProxySocketPath, socket)
 
 	return proxyEnv{
-		home:     dir,
+		socket:   socket,
 		sentinel: filepath.Join(dir, "serving.sentinel"),
 		log:      filepath.Join(dir, "events.log"),
 		epoch:    time.Now(),
@@ -144,7 +170,6 @@ func (e proxyEnv) start(t *testing.T, role string, holdMS int) *exec.Cmd {
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperProxyLockChild") //nolint:gosec // re-exec of this test binary
 	cmd.Env = append(os.Environ(),
 		envProxyRole+"="+role,
-		envProxyHome+"="+e.home,
 		envProxySent+"="+e.sentinel,
 		envProxyLog+"="+e.log,
 		envProxyHold+"="+strconv.Itoa(holdMS),
@@ -212,6 +237,7 @@ func TestIntegration_ProxyLock_OnlyOneProxyStarts(t *testing.T) {
 // What the wrapper actually runs: with a proxy serving, startProxy must return
 // without spawning anything.
 func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
+	shortenProxyReadyBudget(t)
 	env := newProxyEnv(t)
 	osProxy := utils.DefaultOsProxy{}
 
@@ -224,20 +250,34 @@ func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
 	require.True(t, running, "a serving proxy must be visible to the wrapper")
 	require.Equal(t, child.Process.Pid, pid, "and identifiable, so the log names the right process")
 
-	spawns := 0
-	spawning := func(ctx context.Context, name string, args ...string) utils.Command {
-		spawns++
-
-		return utils.DefaultCommandFunc()(ctx, name, args...)
-	}
-
-	require.NoError(t, startProxy(log.NewLogger(), osProxy, spawning, nil,
-		xcelerate.ResolveProxySocketPath("", utils.AllEnvs(), osProxy)))
-	assert.Zero(t, spawns, "the wrapper must not start a second proxy while one is serving")
+	rec := &proxySpawnRecorder{}
+	require.NoError(t, startProxy(log.NewLogger(), osProxy, rec.spawn, rec.kill, env.socket))
+	assert.Zero(t, rec.spawns, "the wrapper must not start a second proxy while one is serving")
+	assert.Empty(t, rec.killed, "nor kill the one that is serving")
 
 	require.NoError(t, child.Wait())
 	_, running = xcelerate.ProxyOwner(osProxy)
 	assert.False(t, running, "once it stops, the singleton is free")
+}
+
+func TestIntegration_ProxyLock_WrapperReclaimsAWedgedProxy(t *testing.T) {
+	shortenProxyReadyBudget(t)
+	env := newProxyEnv(t)
+
+	child := env.start(t, proxyRoleWedged, 30_000)
+	t.Cleanup(func() {
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	})
+	require.Eventually(t, func() bool {
+		return env.count(t, "HOLDING") == 1
+	}, 5*time.Second, 10*time.Millisecond, "waiting for the child to take the singleton")
+
+	rec := &proxySpawnRecorder{}
+	require.NoError(t, startProxy(log.NewLogger(), utils.DefaultOsProxy{}, rec.spawn, rec.kill, env.socket))
+
+	assert.Equal(t, []int{child.Process.Pid}, rec.killed, "the wedged holder must be killed")
+	assert.Equal(t, 1, rec.spawns, "and a replacement spawned")
 }
 
 // The old pid-marker version wedged here: a stale pid file (or a recycled pid) made

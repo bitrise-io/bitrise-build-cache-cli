@@ -335,7 +335,6 @@ workflows:
 
             asdf install golang 1.26.8
             asdf global golang 1.26.8
-    - go-list@1: {}
     - script@1:
         title: golangci-lint
         inputs:
@@ -343,7 +342,13 @@ workflows:
             #!/bin/bash
             set -ex
             make lint
-    - go-test@1: {}
+    - script@1:
+        title: unit tests
+        inputs:
+        - content: |-
+            #!/bin/bash
+            set -ex
+            make test-unit
     - script@1:
         title: prefix bump script tests
         inputs:

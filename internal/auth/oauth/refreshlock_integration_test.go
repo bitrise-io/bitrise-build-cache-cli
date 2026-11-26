@@ -25,6 +25,7 @@ import (
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/testhome"
 )
 
 // Goroutines share a pid and a lock table, so they cannot exercise what the refresh
@@ -39,7 +40,6 @@ import (
 
 const (
 	envRole   = "REFRESHLOCK_CHILD_ROLE"
-	envHome   = "REFRESHLOCK_CHILD_HOME"
 	envIssuer = "REFRESHLOCK_CHILD_ISSUER"
 	envLog    = "REFRESHLOCK_CHILD_LOG"
 	envHoldMS = "REFRESHLOCK_CHILD_HOLD_MS"
@@ -52,17 +52,22 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	// Before the child branch, so the child mocks the keychain too.
+	cleanup := testhome.Setup()
+
+	var code int
 	if role := os.Getenv(envRole); role != "" {
-		os.Exit(runLockChild(role))
+		code = runLockChild(role)
+	} else {
+		code = m.Run()
 	}
 
-	os.Exit(m.Run())
+	cleanup()
+	os.Exit(code)
 }
 
 // runLockChild refreshes through the production entry point.
 func runLockChild(role string) int {
-	// paths.Default and the credential store both resolve from HOME.
-	_ = os.Setenv("HOME", os.Getenv(envHome))
 	issuer := os.Getenv(envIssuer)
 	holdMS, _ := strconv.Atoi(os.Getenv(envHoldMS))
 
@@ -256,7 +261,6 @@ func (i *rotatingIDP) accepts(token string) bool {
 }
 
 type lockEnv struct {
-	home  string
 	log   string
 	idp   *rotatingIDP
 	epoch time.Time
@@ -276,7 +280,6 @@ func newLockEnv(t *testing.T) lockEnv {
 	}))
 
 	return lockEnv{
-		home:  dir,
 		log:   filepath.Join(dir, "events.log"),
 		idp:   newRotatingIDP(t, "refresh-seed"),
 		epoch: time.Now(),
@@ -289,7 +292,6 @@ func (e lockEnv) start(t *testing.T, role string, holdMS int) *exec.Cmd {
 	cmd := exec.CommandContext(t.Context(), os.Args[0]) //nolint:gosec // re-exec of this test binary
 	cmd.Env = append(os.Environ(),
 		envRole+"="+role,
-		envHome+"="+e.home,
 		envIssuer+"="+e.idp.server.URL,
 		envLog+"="+e.log,
 		envHoldMS+"="+strconv.Itoa(holdMS),

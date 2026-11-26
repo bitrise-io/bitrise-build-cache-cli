@@ -25,8 +25,6 @@ import (
 
 var mockLogger = newMockLogger() //nolint:gochecknoglobals
 
-func init() { keyring.MockInit() }
-
 func newMockLogger() *utilsMocks.Logger {
 	l := &utilsMocks.Logger{}
 	l.On("Debugf", mock.Anything, mock.Anything).Return()
