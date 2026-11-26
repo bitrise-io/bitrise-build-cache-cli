@@ -1257,6 +1257,10 @@ func startProxy(
 func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger, osProxy utils.OsProxy) error {
 	var f *os.File
 	err := retry.Times(10).Wait(1 * time.Second).TryWithAbort(func(attempt uint) (error, bool) {
+		if ctx.Err() != nil {
+			return ctx.Err(), true
+		}
+
 		proxyLogFile, err := getProxyLogFile(osProxy, invocationID)
 		if err != nil {
 			logger.TDebugf("Failed to get proxy log file, attempt: %d, error: %v", attempt+1, err)
@@ -1274,7 +1278,10 @@ func streamProxyLogs(ctx context.Context, invocationID string, logger log.Logger
 
 		return nil, true
 	})
-	if err != nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
+		return nil
+	case err != nil:
 		return fmt.Errorf("failed to open proxy log file after retries: %w", err)
 	}
 
