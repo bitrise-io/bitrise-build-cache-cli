@@ -7,7 +7,7 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 )
 
-//go:generate moq -stub -out client_mock_test.go -pkg ccache . Client
+//go:generate moq -stub -out client_mock_test.go . Client
 
 // Client is the interface for interacting with the remote build cache.
 type Client interface {

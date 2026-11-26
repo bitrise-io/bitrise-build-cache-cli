@@ -8,7 +8,7 @@ import (
 	doctorpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/doctor"
 )
 
-//go:generate moq -stub -out doctor_gate_mock_test.go -pkg reactnative . buildHealthReporter
+//go:generate moq -stub -out doctor_gate_mock_test.go . buildHealthReporter
 
 type buildHealthReporter interface {
 	CheckAtStart(ctx context.Context)
