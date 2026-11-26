@@ -199,14 +199,6 @@ The **only documented carve-out** is `installer.sh:latest-pointer:*` (installer.
 
 If you add a new artifact, default to the describe-or-upload immutable pattern. Only adopt a mutable `latest-pointer` view if (a) consumers genuinely need "always the newest" without a pin AND (b) the consumer's access pattern is fallback-only, not hot-path.
 
-### R2 mirror of release artifacts (preboot host-VM cache origin)
-
-The `release` workflow also mirrors the four platform tarballs + checksums file to a Cloudflare R2 bucket (`build-cache-cli-releases` in Cloudflare account `a484c7653eeba8c8c00a4bf3967860a3`). Script: `scripts/r2_upload_release_artifacts.sh`. Required Bitrise secrets: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
-
-The R2 bucket is the **origin** for the preboot host-VM cache proxy, served on each build VM at `http://${SUBNET_IP}1:59020/build-cache-cli-releases/<tarball>`. That proxy expects a **flat** layout (object key == filename, no `/<tag>/` prefix), so the R2 script uploads under the bare filename. GAR remains as a versioned public fallback for both `installer.sh` consumers and the startup-script's secondary download path; the two mirrors run in parallel and serve different fallback roles.
-
-Idempotency follows the same describe-or-upload rule (`aws s3api head-object` skip-if-present). R2's S3 API rejects AWS CLI v2's default flexible checksums, so the upload script forces `AWS_REQUEST_CHECKSUM_CALCULATION=when_required` / `AWS_RESPONSE_CHECKSUM_VALIDATION=when_required`.
-
 ### Automated VM startup-prefix bump
 
 The `bump-prefix` workflow (chained after `verify-release` in the `release-and-verify` pipeline) opens PRs against `bitrise-io/internal-platform-services` bumping the pinned `BITRISE_BUILD_CACHE_CLI_VERSION` and the linux_amd64 / darwin_arm64 sha256 in `systems/instance-management/nomad_startup_script_prefix_build_cache.sh`. That file is the CLI section of the instance-manager startup prefix (ConfigMap key `prefix-build-cache.sh`, mounted by the pool-controller, internal-api and api).

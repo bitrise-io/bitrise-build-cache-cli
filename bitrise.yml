@@ -91,16 +91,6 @@ workflows:
             set -e
             ./scripts/gar_upload_release_artifacts.sh
     - script:
-        title: Upload release artifacts to R2
-        deps:
-          brew:
-          - name: awscli
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -e
-            ./scripts/r2_upload_release_artifacts.sh
-    - script:
         title: Mirror ccache binaries to GAR
         inputs:
         - content: |-
@@ -1038,7 +1028,7 @@ step_bundles:
 pipelines:
   release-and-verify:
     # Tag-triggered. Runs the `release` workflow (build + publish + GAR
-    # and R2 mirrors), then `verify-release` (end-to-end smoke against
+    # mirror), then `verify-release` (end-to-end smoke against
     # the just-published artifacts + GAR fallback), then `bump-prefix`
     # (staging then production PRs to internal-platform-services).
     # Each workflow is an independent build so they can be re-run individually
