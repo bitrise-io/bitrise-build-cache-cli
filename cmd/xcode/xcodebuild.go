@@ -409,6 +409,8 @@ type XcodebuildRunner struct {
 	// spawnFn runs the sidecar producer. Nil → real `go` — tests inject a
 	// synchronous spawn so assertions don't race the goroutine.
 	spawnFn func(func())
+	// analyzerWaitCap overrides analyzerSidecarWaitCap when non-zero.
+	analyzerWaitCap time.Duration
 	// analyzerRunFn runs buildanalyzer.Run. Nil → real buildanalyzer.Run.
 	// Tests inject a fake to observe the scheme/command propagation into
 	// RunOptions without having to synthesize a valid SLF payload.
@@ -498,12 +500,13 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 
 	c.writeJobSummary(runStats, proxyOutcome)
 
+	var analyzerDone <-chan struct{}
 	if machineconfig.ProjectOptedOut(c.resolveOsProxy(), c.Logger) {
 		c.Logger.TInfof(MsgProjectModeOptedOut)
 	} else {
 		c.appendLocalInvocationLog(*inv, runStats)
-		c.spawnAnalyzerSidecar(*inv) //nolint:contextcheck // detached from parent ctx so a shell ^C does not abort the background sidecar work
 		c.saveInvocationAndRelation(ctx, *inv, runStats.CacheStats.Hits, runStats.CacheStats.TotalTasks)
+		analyzerDone = c.spawnAnalyzerSidecar(*inv) //nolint:contextcheck // detached from parent ctx so a shell ^C does not abort the background sidecar work
 	}
 
 	// Signal build-done AFTER the wrapper's own PUT + marker write so the proxy's slim emit sees the marker and skips.
@@ -519,6 +522,8 @@ func (c *XcodebuildRunner) Run(ctx context.Context) xcodeargs.RunStats {
 	if c.Doctor != nil {
 		c.Doctor.ReportAtEnd(ctx, buildOutcome{CAS: runStats.CacheStats, Proxy: proxyOutcome})
 	}
+
+	c.awaitAnalyzerSidecar(analyzerDone)
 
 	return runStats
 }
@@ -583,13 +588,17 @@ func (c *XcodebuildRunner) resolveLocalLogger() localInvocationLogger {
 // goroutine is detached from the parent ctx so a shell ^C does not abort it.
 const analyzerSidecarTimeout = 60 * time.Second
 
-// spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write. It
-// derives the DerivedData path from the wrapper's resolved prefix-map state;
+// analyzerSidecarWaitCap bounds how long Run holds back process exit for the sidecar.
+const analyzerSidecarWaitCap = 30 * time.Second
+
+// spawnAnalyzerSidecar fires an off-thread analyzer run + sidecar write and
+// returns a channel closed when it finishes, or nil when nothing was spawned.
+// It derives the DerivedData path from the wrapper's resolved prefix-map state;
 // buildanalyzer.Run picks the newest xcactivitylog underneath.
-func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
+func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) <-chan struct{} {
 	writer := c.resolveAnalyzerSidecar()
 	if writer == nil {
-		return
+		return nil
 	}
 
 	derivedData := c.resolveAnalyzerDerivedData()
@@ -598,15 +607,17 @@ func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
 			c.Logger.Debugf("Wrapper: analyzer sidecar skipped id=%s (no derived data)", inv.InvocationID)
 		}
 
-		return
+		return nil
 	}
 
 	invocationID := inv.InvocationID
 	scheme := c.XcodeArgs.Scheme()
 	command := inv.Command
 	logger := c.Logger
+	done := make(chan struct{})
 
 	c.spawn(func() {
+		defer close(done)
 		defer func() {
 			if r := recover(); r != nil && logger != nil {
 				logger.Debugf("Analyzer sidecar panicked, dropping: %v", r)
@@ -653,6 +664,32 @@ func (c *XcodebuildRunner) spawnAnalyzerSidecar(inv analytics.Invocation) {
 			logger.Debugf("Analyzer sidecar: write failed: %v", err)
 		}
 	})
+
+	return done
+}
+
+// awaitAnalyzerSidecar deliberately ignores the parent ctx, matching the
+// sidecar goroutine's own detachment.
+func (c *XcodebuildRunner) awaitAnalyzerSidecar(done <-chan struct{}) {
+	if done == nil {
+		return
+	}
+
+	waitCap := c.analyzerWaitCap
+	if waitCap == 0 {
+		waitCap = analyzerSidecarWaitCap
+	}
+
+	timer := time.NewTimer(waitCap)
+	defer timer.Stop()
+
+	select {
+	case <-done:
+	case <-timer.C:
+		if c.Logger != nil {
+			c.Logger.Debugf("Analyzer sidecar still running after %s, exiting without it", waitCap)
+		}
+	}
 }
 
 func (c *XcodebuildRunner) resolveAnalyzerSidecar() analyzerSidecarWriter {
