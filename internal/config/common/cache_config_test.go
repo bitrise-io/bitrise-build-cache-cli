@@ -3,6 +3,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -334,6 +335,26 @@ func TestNewCacheConfigMetadata(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCacheConfigMetadata_String(t *testing.T) {
+	t.Parallel()
+
+	metadata := CacheConfigMetadata{
+		CIProvider:   CIProviderBitrise,
+		RedactedEnvs: map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": "bitpat_secret"},
+	}
+
+	for _, out := range []string{
+		fmt.Sprintf("%v", metadata),
+		fmt.Sprintf("%+v", metadata),
+		fmt.Sprintf("%+v", &metadata),
+		fmt.Sprintf("%+v", struct{ Metadata CacheConfigMetadata }{metadata}),
+	} {
+		assert.NotContains(t, out, "bitpat_secret")
+		assert.Contains(t, out, CIProviderBitrise)
+	}
+	assert.Equal(t, "bitpat_secret", metadata.RedactedEnvs["BITRISE_BUILD_CACHE_AUTH_TOKEN"])
 }
 
 func TestDetectCIProvider(t *testing.T) {

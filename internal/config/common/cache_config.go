@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"runtime"
@@ -32,6 +33,14 @@ type CacheConfigMetadata struct {
 	ExternalWorkflowName string
 	// BenchmarkPhase is the benchmark phase (baseline, warmup, etc.)
 	BenchmarkPhase string
+}
+
+// String omits the envs, which are sent unredacted for the analytics backends to redact on ingest.
+func (m CacheConfigMetadata) String() string {
+	type plain CacheConfigMetadata
+	m.RedactedEnvs = nil
+
+	return fmt.Sprintf("%+v", plain(m))
 }
 
 const (
