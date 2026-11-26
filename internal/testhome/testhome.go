@@ -1,8 +1,9 @@
-// Package testhome isolates a test process from the developer's home dir, keychain, credentials and CI env.
+// Package testhome isolates a test process from the developer's home and temp dirs, keychain, credentials and CI env.
 package testhome
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	keyring "github.com/zalando/go-keyring"
@@ -10,7 +11,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 )
 
-// A re-exec'd child of a prepared test process inherits this and keeps the HOME its parent gave it.
+// A re-exec'd child of a prepared test process inherits this and keeps the HOME and TMPDIR its parent gave it.
 const envMarker = "BITRISE_BUILD_CACHE_TESTHOME"
 
 func Main(m *testing.M) {
@@ -47,16 +48,32 @@ func Setup() func() {
 		"GITLAB_CI",
 		"BITRISE_IO",
 		"BITRISE_BUILD_SLUG",
+		"GITHUB_ENV",
+		"GITHUB_PATH",
+		"GITHUB_STEP_SUMMARY",
+		// Literals: the packages that own these import testhome in their tests.
+		"BITRISE_XCELERATE_PROXY_SOCKET_PATH",
+		"BITRISE_CCACHE_IPC_SOCKET_PATH",
 	} {
 		mustDo(os.Unsetenv(k))
 	}
 
 	home, err := os.MkdirTemp("", "bbc-testhome-")
 	mustDo(err)
+	// Apart from HOME so a sweep of HOME still means something, and created before TMPDIR moves.
+	tmp, err := os.MkdirTemp("", "bbc-tmp-")
+	mustDo(err)
+
 	mustDo(os.Setenv("HOME", home))
+	mustDo(os.Setenv("TMPDIR", tmp))
+	// envman otherwise writes to the CI step's envstore, or to ./.envstore.yml.
+	mustDo(os.Setenv("ENVMAN_ENVSTORE_PATH", filepath.Join(home, ".envstore.yml")))
 	mustDo(os.Setenv(envMarker, home))
 
-	return func() { _ = os.RemoveAll(home) }
+	return func() {
+		_ = os.RemoveAll(home)
+		_ = os.RemoveAll(tmp)
+	}
 }
 
 func mustDo(err error) {
