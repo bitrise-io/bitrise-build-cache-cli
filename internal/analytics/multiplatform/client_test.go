@@ -3,17 +3,22 @@
 package multiplatform_test
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	utilsMocks "github.com/bitrise-io/go-utils/v2/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/analytics/multiplatform"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/common"
 )
 
 func newTestLogger() *utilsMocks.Logger {
@@ -113,6 +118,50 @@ func TestPut_StillRetriesServerErrors(t *testing.T) {
 
 	require.NoError(t, c.Put("/v1/invocations/x", map[string]string{"a": "b"}))
 	assert.Equal(t, int32(2), calls.Load())
+}
+
+func TestPut_DebugLogOmitsEnvs(t *testing.T) {
+	const secret = "s3cr3t-build-cache-token"
+	bodies := make(chan []byte, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies <- body
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	var out bytes.Buffer
+	c, err := multiplatform.NewClient(srv.URL, "token", log.NewLogger(log.WithOutput(&out), log.WithDebugLog(true)))
+	require.NoError(t, err)
+
+	inv := multiplatform.NewInvocation(
+		multiplatform.InvocationRunStats{InvocationID: "x"},
+		auth.Credential{},
+		common.CacheConfigMetadata{RedactedEnvs: map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": secret}},
+	)
+	require.NoError(t, c.PutInvocation(*inv))
+
+	assert.Contains(t, string(<-bodies), secret, "the PUT must still send the raw envs")
+	assert.Contains(t, out.String(), `"invocationId": "x"`, "the rest of the body must still be logged")
+	assert.NotContains(t, out.String(), `"envs"`)
+	assert.NotContains(t, out.String(), secret)
+}
+
+func TestPut_DebugLogOmitsNonObjectBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	var out bytes.Buffer
+	c, err := multiplatform.NewClient(srv.URL, "token", log.NewLogger(log.WithOutput(&out), log.WithDebugLog(true)))
+	require.NoError(t, err)
+
+	require.NoError(t, c.Put("/v1/x", []string{"s3cr3t"}))
+
+	assert.Contains(t, out.String(), "Request body:", "debug output must be captured")
+	assert.NotContains(t, out.String(), "s3cr3t")
 }
 
 func TestPut_SucceedsOnFirstAttempt(t *testing.T) {

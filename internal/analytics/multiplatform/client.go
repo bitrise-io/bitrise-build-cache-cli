@@ -59,7 +59,7 @@ func (c *Client) Put(path string, payload any) error {
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 
-	c.logger.Debugf("Request body:\n%s", data)
+	c.logger.Debugf("Request body:\n%s", loggableBody(data))
 
 	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, data)
 	if err != nil {
@@ -92,6 +92,19 @@ func (c *Client) Put(path string, payload any) error {
 	}
 
 	return nil
+}
+
+// loggableBody drops the top-level "envs" key, which holds raw tokens, from a JSON object body.
+func loggableBody(data []byte) string {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) == nil {
+		delete(fields, "envs")
+		if body, err := json.MarshalIndent(fields, "", "  "); err == nil {
+			return string(body)
+		}
+	}
+
+	return fmt.Sprintf("(%d bytes)", len(data))
 }
 
 func retryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
