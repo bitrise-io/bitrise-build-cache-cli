@@ -106,7 +106,7 @@ func TestHelperProxyLockChild(t *testing.T) {
 	os.Exit(0)
 }
 
-// Never the default path: a developer's real proxy may be serving there.
+// The default path is shared by every test in this binary.
 func listenOnTestSocket() (net.Listener, error) {
 	path := os.Getenv(xcelerate.EnvProxySocketPath)
 	if path == "" {
@@ -149,7 +149,6 @@ type proxyEnv struct {
 	epoch    time.Time
 }
 
-// Children inherit HOME and the socket override through os.Environ.
 func newProxyEnv(t *testing.T) proxyEnv {
 	t.Helper()
 	dir := t.TempDir()
@@ -278,8 +277,6 @@ func TestIntegration_ProxyLock_WrapperDoesNotSpawnASecondProxy(t *testing.T) {
 	assert.False(t, running, "once it stops, the singleton is free")
 }
 
-// Holding the singleton is not serving: attaching to a wedged proxy would drop
-// every cache operation of the build.
 func TestIntegration_ProxyLock_WrapperReclaimsAWedgedProxy(t *testing.T) {
 	shortenProxyReadyBudget(t)
 	env := newProxyEnv(t)

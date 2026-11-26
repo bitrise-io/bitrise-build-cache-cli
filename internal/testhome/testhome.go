@@ -25,7 +25,7 @@ func Main(m *testing.M) {
 func Setup() func() {
 	keyring.MockInit()
 
-	// Only a live parent's dir counts, so a marker leaked into a shell cannot switch isolation off.
+	// A marker whose dir is gone cannot switch isolation off.
 	if dir := os.Getenv(envMarker); dir != "" {
 		if _, err := os.Stat(dir); err == nil {
 			return func() {}
@@ -60,7 +60,7 @@ func Setup() func() {
 
 	home, err := os.MkdirTemp("", "bbc-testhome-")
 	mustDo(err)
-	// Apart from HOME so a sweep of HOME still means something, and created before TMPDIR moves.
+	// Created before TMPDIR moves, so it lands in the real temp dir.
 	tmp, err := os.MkdirTemp("", "bbc-tmp-")
 	mustDo(err)
 
