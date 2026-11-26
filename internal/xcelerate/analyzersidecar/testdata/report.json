@@ -1,0 +1,78 @@
+{
+  "build": {
+    "title": "Build MyApp",
+    "scheme": "MyApp",
+    "command": "build",
+    "startedAt": "2026-11-25T12:00:00Z",
+    "finishedAt": "2026-11-25T12:00:42.5Z",
+    "duration": 42500000000
+  },
+  "tasks": [
+    {
+      "key": "CompileSwift normal arm64 /src/App.swift",
+      "target": "MyApp",
+      "tool": "swiftc",
+      "startedAt": "2026-11-25T12:00:01Z",
+      "duration": 1500000000,
+      "exitCode": 1,
+      "stdoutExcerpt": "compiling",
+      "stderrExcerpt": "error: boom",
+      "errors": ["cannot find 'foo' in scope"],
+      "planned": true,
+      "ran": true,
+      "inputs": ["/src/App.swift"],
+      "outputs": ["/dd/App.o"],
+      "args": ["swiftc", "-c", "/src/App.swift"],
+      "priority": 3,
+      "manifestKey": "P0:target-MyApp:CompileSwift",
+      "executionReason": "ran-this-build",
+      "iteration": 7,
+      "signature": "sig-current",
+      "diagnostics": [
+        {
+          "file": "/src/App.swift",
+          "line": 10,
+          "column": 5,
+          "severity": "error",
+          "message": "cannot find 'foo' in scope",
+          "category": "Semantic Issue",
+          "ranges": [{"file": "/src/App.swift", "startLine": 10, "startCol": 5, "endLine": 10, "endCol": 8}],
+          "fixIts": [{"range": {"file": "/src/App.swift", "startLine": 10, "startCol": 5, "endLine": 10, "endCol": 8}, "replacement": "bar"}],
+          "source": "swift"
+        }
+      ],
+      "upstreamRanCount": 2,
+      "rootCause": true,
+      "changeCauseKeys": ["/src/App.swift"],
+      "signatureChanged": true,
+      "priorSignature": "sig-prior",
+      "priorValueHex": "0a0b",
+      "currentValueHex": "0a0c",
+      "priorValueBytesHex": "0102",
+      "currentValueBytesHex": "0103",
+      "valueDiffOffset": 1,
+      "valueDiffNote": "byte 1 differs"
+    },
+    {
+      "key": "Ld /dd/MyApp",
+      "startedAt": "0001-01-01T00:00:00Z",
+      "duration": 0,
+      "exitCode": 0
+    }
+  ],
+  "dependencies": [{"from": "CompileSwift normal arm64 /src/App.swift", "to": "Ld /dd/MyApp"}],
+  "rootCauseKeys": ["CompileSwift normal arm64 /src/App.swift"],
+  "fileChanges": [
+    {
+      "nodeKey": "/src/App.swift",
+      "downstreamTaskKey": "CompileSwift normal arm64 /src/App.swift",
+      "priorFile": {"kind": 1, "exists": true, "mode": 420, "size": 100, "modTimeSec": 1700000000, "modTimeNsec": 5, "opaqueHeadHex": "aa", "opaqueTailHex": "bb"},
+      "currentFile": {"kind": 1, "exists": true, "mode": 420, "size": 120},
+      "priorValueBytesHex": "01",
+      "currentValueBytesHex": "02",
+      "valueDiffOffset": 3,
+      "valueDiffNote": "size changed",
+      "semanticDiff": "size 100 -> 120"
+    }
+  ]
+}
