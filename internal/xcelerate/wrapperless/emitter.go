@@ -290,6 +290,7 @@ func (e *Emitter) drainPending(phase Phase) {
 
 		if p.Phase == PhaseEnriched {
 			e.appendLocalLog(p.Bucket, inv, p.HitRate)
+			// Analyzer sidecar deliberately skipped — xcactivitylog likely rotated by drain time.
 		}
 	}
 	_ = f.Close()
