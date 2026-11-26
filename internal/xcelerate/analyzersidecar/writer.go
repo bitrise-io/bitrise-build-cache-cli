@@ -36,34 +36,42 @@ func NewWriter(p paths.Paths, logger log.Logger) *Writer {
 	return &Writer{Paths: p, Logger: logger}
 }
 
-// Write encodes rep under the per-day sidecar dir using atomic tmp+rename so
-// a crash mid-encode never leaves a half-formed file on disk. The caller
-// controls lifetime via ctx — a canceled ctx skips the write entirely.
+// Write is WriteFile without the written path.
 func (w *Writer) Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error {
+	_, err := w.WriteFile(ctx, invocationID, rep)
+
+	return err
+}
+
+// WriteFile encodes rep under the per-day sidecar dir using atomic tmp+rename so
+// a crash mid-encode never leaves a half-formed file on disk, and returns the
+// final path. The caller controls lifetime via ctx — a canceled ctx skips the
+// write entirely.
+func (w *Writer) WriteFile(ctx context.Context, invocationID string, rep buildanalyzer.Report) (string, error) {
 	if w == nil {
-		return nil
+		return "", nil
 	}
 
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("analyzer sidecar: %w", err)
+		return "", fmt.Errorf("analyzer sidecar: %w", err)
 	}
 
 	if invocationID == "" {
-		return fmt.Errorf("analyzer sidecar: invocationID is required")
+		return "", fmt.Errorf("analyzer sidecar: invocationID is required")
 	}
 
 	day := w.now().UTC().Format(dayLayout)
 	dir := w.Paths.AnalyzerSidecarDir(day)
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("analyzer sidecar: mkdir %s: %w", dir, err)
+		return "", fmt.Errorf("analyzer sidecar: mkdir %s: %w", dir, err)
 	}
 
 	final := w.Paths.AnalyzerSidecarFile(day, invocationID)
 
 	tmp, err := os.CreateTemp(dir, tmpPrefix+invocationID+"-*")
 	if err != nil {
-		return fmt.Errorf("analyzer sidecar: create tmp under %s: %w", dir, err)
+		return "", fmt.Errorf("analyzer sidecar: create tmp under %s: %w", dir, err)
 	}
 
 	tmpPath := tmp.Name()
@@ -82,19 +90,19 @@ func (w *Writer) Write(ctx context.Context, invocationID string, rep buildanalyz
 	if err := enc.Encode(rep); err != nil {
 		_ = tmp.Close()
 
-		return fmt.Errorf("analyzer sidecar: encode: %w", err)
+		return "", fmt.Errorf("analyzer sidecar: encode: %w", err)
 	}
 
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("analyzer sidecar: close tmp: %w", err)
+		return "", fmt.Errorf("analyzer sidecar: close tmp: %w", err)
 	}
 
 	if err := os.Chmod(tmpPath, 0o644); err != nil {
-		return fmt.Errorf("analyzer sidecar: chmod tmp: %w", err)
+		return "", fmt.Errorf("analyzer sidecar: chmod tmp: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, final); err != nil {
-		return fmt.Errorf("analyzer sidecar: rename %s: %w", final, err)
+		return "", fmt.Errorf("analyzer sidecar: rename %s: %w", final, err)
 	}
 
 	success = true
@@ -103,7 +111,7 @@ func (w *Writer) Write(ctx context.Context, invocationID string, rep buildanalyz
 		w.Logger.Debugf("Analyzer sidecar written: %s", final)
 	}
 
-	return nil
+	return final, nil
 }
 
 func (w *Writer) now() time.Time {

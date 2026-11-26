@@ -1,168 +1,184 @@
 //go:build unit
 
-package analyzersidecar_test
+package analyzersidecar
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
-	"sync"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 )
 
-type recordedPut struct {
-	method  string
-	path    string
-	headers http.Header
-	body    []byte
-}
+const uploadTestDay = "2026-11-25"
 
-type detailsBackend struct {
-	mu   sync.Mutex
-	puts []recordedPut
-}
-
-func (b *detailsBackend) count() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	return len(b.puts)
-}
-
-func newDetailsBackend(t *testing.T) (*detailsBackend, *analytics.Client) {
-	t.Helper()
-
-	backend := &detailsBackend{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, err := io.ReadAll(r.Body)
-		assert.NoError(t, err)
-		backend.mu.Lock()
-		backend.puts = append(backend.puts, recordedPut{method: r.Method, path: r.URL.Path, headers: r.Header.Clone(), body: raw})
-		backend.mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(srv.Close)
-
-	client, err := analytics.NewClient(srv.URL, func() string { return "tok" }, log.NewLogger())
-	require.NoError(t, err)
-
-	return backend, client
-}
-
-var sidecarDay = time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
-
-func sampleReport() buildanalyzer.Report {
+func uploadTestReport() buildanalyzer.Report {
 	return buildanalyzer.Report{
 		Build: buildanalyzer.BuildMeta{Title: "Build Foo"},
 		Tasks: []buildanalyzer.Task{{Key: "Ld /Foo", Target: "Foo", Tool: "linker"}},
 	}
 }
 
-func TestUploadingWriter_UploadsGzippedEnvelope(t *testing.T) {
-	backend, client := newDetailsBackend(t)
-	w := analyzersidecar.NewUploadingWriter(paths.FromHome(t.TempDir()), nil, client)
+func fixedDayWriter(p paths.Paths) *Writer {
+	return &Writer{Paths: p, Clock: func() time.Time { return time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC) }}
+}
 
-	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
+// capturingPutter drains each reader it is handed, the way the real client does.
+func capturingPutter(err error) (*detailsPutterMock, *[]byte) {
+	var sent []byte
+	putter := &detailsPutterMock{
+		PutInvocationDetailsFunc: func(_ context.Context, _ string, reportJSON io.Reader) error {
+			b, readErr := io.ReadAll(reportJSON)
+			if readErr != nil {
+				return readErr
+			}
+			sent = b
 
-	require.Equal(t, 1, backend.count())
-	put := backend.puts[0]
-	assert.Equal(t, http.MethodPut, put.method)
-	assert.Equal(t, "/invocations/inv-1/details", put.path)
-	assert.Equal(t, "gzip", put.headers.Get("Content-Encoding"))
-	assert.Equal(t, "1", put.headers.Get("Version"))
-	assert.Equal(t, "Bearer tok", put.headers.Get("Authorization"))
-
-	zr, err := gzip.NewReader(bytes.NewReader(put.body))
-	require.NoError(t, err)
-	raw, err := io.ReadAll(zr)
-	require.NoError(t, err)
-
-	var got struct {
-		SchemaVersion int                  `json:"schemaVersion"`
-		Report        buildanalyzer.Report `json:"report"`
+			return err
+		},
 	}
-	require.NoError(t, json.Unmarshal(raw, &got))
-	assert.Equal(t, 1, got.SchemaVersion)
-	assert.Equal(t, "Build Foo", got.Report.Build.Title)
-	require.Len(t, got.Report.Tasks, 1)
-	assert.Equal(t, "Ld /Foo", got.Report.Tasks[0].Key)
+
+	return putter, &sent
 }
 
-func TestUploadingWriter_NilClientOnlyWritesSidecar(t *testing.T) {
+func TestUploadingWriter_UploadsTheSidecarFileBytes(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
-	w := analyzersidecar.NewUploadingWriter(p, nil, nil)
-	w.Sidecar = &analyzersidecar.Writer{Paths: p, Clock: fixedClock(sidecarDay)}
+	putter, sent := capturingPutter(nil)
+	w := &UploadingWriter{Sidecar: fixedDayWriter(p), Client: putter}
 
-	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
+	require.NoError(t, w.Write(context.Background(), "inv-1", uploadTestReport()))
 
-	assert.FileExists(t, p.AnalyzerSidecarFile("2026-11-25", "inv-1"))
+	onDisk, err := os.ReadFile(p.AnalyzerSidecarFile(uploadTestDay, "inv-1"))
+	require.NoError(t, err)
+	assert.Equal(t, string(onDisk), string(*sent))
+	require.Len(t, putter.PutInvocationDetailsCalls(), 1)
+	assert.Equal(t, "inv-1", putter.PutInvocationDetailsCalls()[0].InvocationID)
 }
 
-type fakeSidecar struct{ err error }
-
-func (f *fakeSidecar) Write(context.Context, string, buildanalyzer.Report) error { return f.err }
-
-type fakePutter struct {
-	calls int
-	err   error
-}
-
-func (f *fakePutter) PutInvocationDetails(context.Context, string, []byte) error {
-	f.calls++
-
-	return f.err
-}
-
-func TestUploadingWriter_SidecarErrorStillUploads(t *testing.T) {
+func TestUploadingWriter_SidecarFailureStreamsTheReport(t *testing.T) {
 	sidecarErr := errors.New("disk full")
-	putter := &fakePutter{}
-	w := &analyzersidecar.UploadingWriter{Sidecar: &fakeSidecar{err: sidecarErr}, Client: putter}
+	sidecar := &sidecarFileWriterMock{
+		WriteFileFunc: func(context.Context, string, buildanalyzer.Report) (string, error) { return "", sidecarErr },
+	}
+	putter, sent := capturingPutter(nil)
+	w := &UploadingWriter{Sidecar: sidecar, Client: putter}
 
-	err := w.Write(context.Background(), "inv-1", sampleReport())
+	err := w.Write(context.Background(), "inv-1", uploadTestReport())
 
 	require.ErrorIs(t, err, sidecarErr)
-	assert.Equal(t, 1, putter.calls)
+	want, marshalErr := json.Marshal(uploadTestReport())
+	require.NoError(t, marshalErr)
+	assert.JSONEq(t, string(want), string(*sent))
+}
+
+func TestUploadingWriter_UnreadableSidecarStreamsTheReport(t *testing.T) {
+	sidecar := &sidecarFileWriterMock{
+		WriteFileFunc: func(context.Context, string, buildanalyzer.Report) (string, error) {
+			return filepath.Join(t.TempDir(), "gone.analyzer.json"), nil
+		},
+	}
+	putter, sent := capturingPutter(nil)
+	w := &UploadingWriter{Sidecar: sidecar, Client: putter}
+
+	require.NoError(t, w.Write(context.Background(), "inv-1", uploadTestReport()))
+
+	assert.Contains(t, string(*sent), "Build Foo")
+}
+
+func TestUploadingWriter_StreamedEncoderStopsWhenClientReturnsEarly(t *testing.T) {
+	putErr := errors.New("refused before reading")
+	sidecar := &sidecarFileWriterMock{
+		WriteFileFunc: func(context.Context, string, buildanalyzer.Report) (string, error) { return "", nil },
+	}
+	putter := &detailsPutterMock{
+		PutInvocationDetailsFunc: func(context.Context, string, io.Reader) error { return putErr },
+	}
+	w := &UploadingWriter{Sidecar: sidecar, Client: putter}
+
+	done := make(chan error, 1)
+	go func() { done <- w.Write(context.Background(), "inv-1", uploadTestReport()) }()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, putErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Write blocked on the encoder goroutine")
+	}
+}
+
+func TestUploadingWriter_UploadHasItsOwnDeadline(t *testing.T) {
+	sidecarPath := filepath.Join(t.TempDir(), "inv-1.analyzer.json")
+	require.NoError(t, os.WriteFile(sidecarPath, []byte(`{}`), 0o600))
+	sidecar := &sidecarFileWriterMock{
+		WriteFileFunc: func(context.Context, string, buildanalyzer.Report) (string, error) { return sidecarPath, nil },
+	}
+
+	var (
+		uploadErr      error
+		uploadDeadline time.Time
+	)
+	putter := &detailsPutterMock{
+		PutInvocationDetailsFunc: func(ctx context.Context, _ string, _ io.Reader) error {
+			uploadErr = ctx.Err()
+			uploadDeadline, _ = ctx.Deadline()
+
+			return nil
+		},
+	}
+	w := &UploadingWriter{Sidecar: sidecar, Client: putter}
+
+	exhausted, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	start := time.Now()
+	require.NoError(t, w.Write(exhausted, "inv-1", uploadTestReport()))
+
+	require.NoError(t, uploadErr, "a parse that used up the caller's deadline must not starve the upload")
+	assert.WithinRange(t, uploadDeadline, start.Add(detailsUploadTimeout), time.Now().Add(detailsUploadTimeout))
 }
 
 func TestUploadingWriter_UploadErrorStillWritesSidecar(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
 	uploadErr := errors.New("HTTP 404")
-	w := &analyzersidecar.UploadingWriter{
-		Sidecar: &analyzersidecar.Writer{Paths: p, Clock: fixedClock(sidecarDay)},
-		Client:  &fakePutter{err: uploadErr},
-	}
+	putter, _ := capturingPutter(uploadErr)
+	w := &UploadingWriter{Sidecar: fixedDayWriter(p), Client: putter}
 
-	err := w.Write(context.Background(), "inv-1", sampleReport())
+	err := w.Write(context.Background(), "inv-1", uploadTestReport())
 
 	require.ErrorIs(t, err, uploadErr)
-	body, readErr := os.ReadFile(p.AnalyzerSidecarFile("2026-11-25", "inv-1")) //nolint:gosec // test file
-	require.NoError(t, readErr)
-	assert.Contains(t, string(body), "Build Foo")
+	assert.FileExists(t, p.AnalyzerSidecarFile(uploadTestDay, "inv-1"))
 }
 
 func TestUploadingWriter_BothErrorsJoined(t *testing.T) {
 	sidecarErr := errors.New("disk full")
 	uploadErr := errors.New("HTTP 500")
-	w := &analyzersidecar.UploadingWriter{Sidecar: &fakeSidecar{err: sidecarErr}, Client: &fakePutter{err: uploadErr}}
+	sidecar := &sidecarFileWriterMock{
+		WriteFileFunc: func(context.Context, string, buildanalyzer.Report) (string, error) { return "", sidecarErr },
+	}
+	putter, _ := capturingPutter(uploadErr)
+	w := &UploadingWriter{Sidecar: sidecar, Client: putter}
 
-	err := w.Write(context.Background(), "inv-1", sampleReport())
+	err := w.Write(context.Background(), "inv-1", uploadTestReport())
 
 	require.ErrorIs(t, err, sidecarErr)
 	require.ErrorIs(t, err, uploadErr)
+}
+
+func TestUploadingWriter_NilClientOnlyWritesSidecar(t *testing.T) {
+	p := paths.FromHome(t.TempDir())
+	w := NewUploadingWriter(p, nil, nil)
+	w.Sidecar = fixedDayWriter(p)
+
+	require.NoError(t, w.Write(context.Background(), "inv-1", uploadTestReport()))
+
+	assert.FileExists(t, p.AnalyzerSidecarFile(uploadTestDay, "inv-1"))
 }

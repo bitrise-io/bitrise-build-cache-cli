@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"time"
 
 	"github.com/bitrise-io/go-utils/v2/log"
 
@@ -12,25 +15,25 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 )
 
-const detailsSchemaVersion = 1
+// detailsUploadTimeout is detached from the caller's deadline so a slow parse can't starve it; 20s fits the wrapper's 30s exit wait.
+const detailsUploadTimeout = 20 * time.Second
 
-type reportWriter interface {
-	Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error
+//go:generate moq -stub -out sidecar_file_writer_mock_test.go -pkg analyzersidecar . sidecarFileWriter
+//go:generate moq -stub -out details_putter_mock_test.go -pkg analyzersidecar . detailsPutter
+
+type sidecarFileWriter interface {
+	WriteFile(ctx context.Context, invocationID string, rep buildanalyzer.Report) (string, error)
 }
 
 type detailsPutter interface {
-	PutInvocationDetails(ctx context.Context, invocationID string, body []byte) error
+	PutInvocationDetails(ctx context.Context, invocationID string, reportJSON io.Reader) error
 }
 
-type detailsEnvelope struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	Report        buildanalyzer.Report `json:"report"`
-}
-
-// UploadingWriter writes the local sidecar, then uploads the same Report when
-// Client is set. Neither step's failure skips the other.
+// UploadingWriter writes the local sidecar, then uploads that file when Client
+// is set; if the sidecar write failed it streams the Report instead. Neither
+// step's failure skips the other.
 type UploadingWriter struct {
-	Sidecar reportWriter
+	Sidecar sidecarFileWriter
 	Client  detailsPutter
 	Logger  log.Logger
 }
@@ -42,38 +45,69 @@ func NewUploadingWriter(p paths.Paths, logger log.Logger, client detailsPutter) 
 }
 
 func (w *UploadingWriter) Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error {
-	var errs []error
-
+	var (
+		sidecarPath string
+		sidecarErr  error
+	)
 	if w.Sidecar != nil {
-		if err := w.Sidecar.Write(ctx, invocationID, rep); err != nil {
-			errs = append(errs, err)
-		}
+		sidecarPath, sidecarErr = w.Sidecar.WriteFile(ctx, invocationID, rep)
 	}
 
+	var uploadErr error
 	if w.Client != nil {
-		if err := w.upload(ctx, invocationID, rep); err != nil {
-			errs = append(errs, err)
-		}
+		uploadErr = w.upload(ctx, invocationID, sidecarPath, rep)
 	}
 
-	return errors.Join(errs...)
+	return errors.Join(sidecarErr, uploadErr)
 }
 
 // Private — upload
 
-func (w *UploadingWriter) upload(ctx context.Context, invocationID string, rep buildanalyzer.Report) error {
-	body, err := json.Marshal(detailsEnvelope{SchemaVersion: detailsSchemaVersion, Report: rep})
-	if err != nil {
-		return fmt.Errorf("invocation details: encode: %w", err)
-	}
+func (w *UploadingWriter) upload(ctx context.Context, invocationID, sidecarPath string, rep buildanalyzer.Report) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detailsUploadTimeout)
+	defer cancel()
 
-	if err := w.Client.PutInvocationDetails(ctx, invocationID, body); err != nil {
+	if err := w.put(ctx, invocationID, sidecarPath, rep); err != nil {
 		return fmt.Errorf("invocation details: upload: %w", err)
 	}
 
 	w.debugf("Invocation details uploaded: %s", invocationID)
 
 	return nil
+}
+
+func (w *UploadingWriter) put(ctx context.Context, invocationID, sidecarPath string, rep buildanalyzer.Report) error {
+	if sidecarPath != "" {
+		f, err := os.Open(sidecarPath)
+		if err == nil {
+			defer f.Close()
+
+			//nolint:wrapcheck // wrapped by upload
+			return w.Client.PutInvocationDetails(ctx, invocationID, f)
+		}
+
+		w.debugf("Invocation details: reopen sidecar, streaming report instead: %v", err)
+	}
+
+	return w.putStreamed(ctx, invocationID, rep)
+}
+
+func (w *UploadingWriter) putStreamed(ctx context.Context, invocationID string, rep buildanalyzer.Report) error {
+	pr, pw := io.Pipe()
+	encoded := make(chan struct{})
+
+	go func() {
+		defer close(encoded)
+		_ = pw.CloseWithError(json.NewEncoder(pw).Encode(rep))
+	}()
+
+	err := w.Client.PutInvocationDetails(ctx, invocationID, pr)
+	// Unblocks the encoder when the client stopped reading early.
+	_ = pr.Close()
+	<-encoded
+
+	//nolint:wrapcheck // wrapped by upload
+	return err
 }
 
 func (w *UploadingWriter) debugf(format string, args ...any) {
