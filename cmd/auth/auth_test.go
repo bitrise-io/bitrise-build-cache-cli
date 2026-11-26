@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	keyring "github.com/zalando/go-keyring"
 
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/cmd/common"
 	authpkg "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/keychain"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/store"
@@ -40,22 +41,43 @@ func TestAuthTokenCmd_stdoutIsGradleFormat(t *testing.T) {
 	assert.Equal(t, "ws-123:raw-token\n", stdout.String())
 }
 
+// Through the root, where cobra would add its Error: line and the usage text.
 func TestAuthTokenCmd_stderrIsBoundedOnError(t *testing.T) {
-	cmd := authTokenCmd
-	cmd.SetContext(t.Context())
+	root, cmd := common.RootCmd, authTokenCmd
+	prevRootCtx, prevCmdCtx := root.Context(), cmd.Context()
+	t.Cleanup(func() {
+		root.SetArgs(nil)
+		root.SetOut(nil)
+		root.SetErr(nil)
+		root.SetContext(prevRootCtx)
+		cmd.SetOut(nil)
+		cmd.SetErr(nil)
+		cmd.SetContext(prevCmdCtx)
+	})
 
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
+	// The root prints usage to its Out, which falls back to stderr.
+	root.SetOut(&stderr)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"auth", "token"})
+	cmd.SetContext(t.Context())
 
 	t.Setenv("BITRISE_BUILD_CACHE_AUTH_TOKEN", "")
 	t.Setenv("BITRISE_BUILD_CACHE_WORKSPACE_ID", "")
 	t.Setenv("BITRISEIO_BITRISE_SERVICES_ACCESS_TOKEN", "")
 
-	require.Error(t, cmd.RunE(cmd, nil))
+	executed, err := root.ExecuteContextC(t.Context())
+	require.Error(t, err)
+	require.Same(t, cmd, executed)
+
 	require.Less(t, stderr.Len(), pipeBufferSafeBound,
 		"auth token stderr must stay under %d bytes so the Gradle init script's sequential stdout+stderr drain can't deadlock", pipeBufferSafeBound)
 	assert.NotEmpty(t, stderr.Bytes(), "error path must surface a one-line message on stderr")
+	assert.NotContains(t, stderr.String(), "Error:", "callers own the wording, so no cobra prefix")
+	assert.NotContains(t, stderr.String(), "Usage:")
+	assert.Empty(t, stdout.String())
 }
 
 func TestAuthUsernameCmd_stdoutIsBareResolvedName(t *testing.T) {

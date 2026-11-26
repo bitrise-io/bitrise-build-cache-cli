@@ -10,7 +10,9 @@ import (
 	"regexp"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -23,6 +25,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/invocations"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	utilsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils/mocks"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs"
 	xcodeargsMocks "github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/xcodeargs/mocks"
@@ -702,4 +705,23 @@ func Test_XcodebuildRunner_refreshCredential(t *testing.T) {
 
 		assert.Equal(t, stale, r.Config.AuthConfig)
 	})
+}
+
+func TestStreamProxyLogs_StopsRetryingOnceTheBuildHasEnded(t *testing.T) {
+	home := t.TempDir()
+	osProxy := &utilsMocks.OsProxyMock{
+		UserHomeDirFunc: func() (string, error) { return home, nil },
+		MkdirAllFunc:    func(string, os.FileMode) error { return nil },
+		OpenFileFunc: func(string, int, os.FileMode) (*os.File, error) {
+			return nil, os.ErrNotExist
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	require.NoError(t, streamProxyLogs(ctx, "inv", log.NewLogger(), osProxy))
+
+	assert.Less(t, time.Since(start), 1500*time.Millisecond, "a cancelled build must not wait out the retry budget")
+	assert.LessOrEqual(t, len(osProxy.OpenFileCalls()), 1)
 }
