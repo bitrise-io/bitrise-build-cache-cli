@@ -604,7 +604,8 @@ step_bundles:
 
             mkdir -p ~/.ssh
             chmod 700 ~/.ssh
-            ssh-keyscan -t ed25519,ecdsa,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+            ssh-keyscan -t ed25519,ecdsa,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null \
+              || echo "WARN: ssh-keyscan failed — ls-remote may fail host-key verification and fall back to $E2E_TESTING_BRANCH"
             key=~/.ssh/e2e_repo_deploy_key
             printf '%s\n' "$E2E_REPO_SSH_DEPLOY_KEY" > "$key"
             chmod 600 "$key"
