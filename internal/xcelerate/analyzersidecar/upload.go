@@ -9,7 +9,6 @@ import (
 	"github.com/bitrise-io/go-utils/v2/log"
 
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/buildanalyzer"
 )
 
@@ -37,20 +36,9 @@ type UploadingWriter struct {
 }
 
 // NewUploadingWriter returns a sidecar Writer rooted at p that also uploads via
-// client when uploadEnabled. client may be nil.
-func NewUploadingWriter(p paths.Paths, logger log.Logger, client *analytics.Client, uploadEnabled bool) *UploadingWriter {
-	w := &UploadingWriter{Sidecar: NewWriter(p, logger), Logger: logger}
-
-	switch {
-	case !uploadEnabled:
-		w.debugf("Invocation details upload disabled")
-	case client == nil:
-		w.debugf("Invocation details upload disabled (no analytics client)")
-	default:
-		w.Client = client
-	}
-
-	return w
+// client; a nil client only writes the sidecar.
+func NewUploadingWriter(p paths.Paths, logger log.Logger, client detailsPutter) *UploadingWriter {
+	return &UploadingWriter{Sidecar: NewWriter(p, logger), Client: client, Logger: logger}
 }
 
 func (w *UploadingWriter) Write(ctx context.Context, invocationID string, rep buildanalyzer.Report) error {

@@ -2,6 +2,7 @@
 // JSON file co-located with the daily ndjson under InvocationsDir. The writer
 // is strictly auxiliary: it never writes into the ndjson itself, so the local
 // invocation log's byte-level cross-writer parity contract stays intact.
+// UploadingWriter additionally uploads the written sidecar through an injected client.
 package analyzersidecar
 
 import (

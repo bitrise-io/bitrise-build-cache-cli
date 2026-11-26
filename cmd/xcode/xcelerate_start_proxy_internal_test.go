@@ -17,6 +17,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 )
@@ -384,6 +385,8 @@ func Test_newAnalyticsBundle_detailsUploadFollowsConfigOrEnv(t *testing.T) {
 			b := newAnalyticsBundle(context.Background(), tc.config, tc.envs, noopCommandFunc, bundleTestLogger, ap)
 
 			assert.Equal(t, tc.want, b.detailsUpload)
+			_, uploading := b.newAnalyzerSidecar(b.paths, bundleTestLogger).(*analyzersidecar.UploadingWriter)
+			assert.Equal(t, tc.want, uploading)
 		})
 	}
 }

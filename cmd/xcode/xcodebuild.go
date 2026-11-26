@@ -713,7 +713,16 @@ func (c *XcodebuildRunner) resolveAnalyzerSidecar() analyzerSidecarWriter {
 		}
 	}
 
-	return analyzersidecar.NewUploadingWriter(p, c.Logger, client, uploadEnabled)
+	return newAnalyzerSidecarWriter(p, c.Logger, client, uploadEnabled)
+}
+
+// newAnalyzerSidecarWriter keeps a nil *analytics.Client from reaching UploadingWriter as a non-nil interface.
+func newAnalyzerSidecarWriter(p paths.Paths, logger log.Logger, client *analytics.Client, uploadEnabled bool) analyzerSidecarWriter {
+	if !uploadEnabled || client == nil {
+		return analyzersidecar.NewWriter(p, logger)
+	}
+
+	return analyzersidecar.NewUploadingWriter(p, logger, client)
 }
 
 // resolveAnalyzerDerivedData returns the DerivedData path the wrapper's build

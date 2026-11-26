@@ -76,7 +76,7 @@ func sampleReport() buildanalyzer.Report {
 
 func TestUploadingWriter_UploadsGzippedEnvelope(t *testing.T) {
 	backend, client := newDetailsBackend(t)
-	w := analyzersidecar.NewUploadingWriter(paths.FromHome(t.TempDir()), nil, client, true)
+	w := analyzersidecar.NewUploadingWriter(paths.FromHome(t.TempDir()), nil, client)
 
 	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
 
@@ -104,25 +104,14 @@ func TestUploadingWriter_UploadsGzippedEnvelope(t *testing.T) {
 	assert.Equal(t, "Ld /Foo", got.Report.Tasks[0].Key)
 }
 
-func TestUploadingWriter_GateOffSkipsUpload(t *testing.T) {
-	backend, client := newDetailsBackend(t)
+func TestUploadingWriter_NilClientOnlyWritesSidecar(t *testing.T) {
 	p := paths.FromHome(t.TempDir())
-	w := analyzersidecar.NewUploadingWriter(p, nil, client, false)
+	w := analyzersidecar.NewUploadingWriter(p, nil, nil)
 	w.Sidecar = &analyzersidecar.Writer{Paths: p, Clock: fixedClock(sidecarDay)}
 
 	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
 
-	assert.Equal(t, 0, backend.count())
 	assert.FileExists(t, p.AnalyzerSidecarFile("2026-11-25", "inv-1"))
-}
-
-func TestUploadingWriter_GateOnUploadsOnce(t *testing.T) {
-	backend, client := newDetailsBackend(t)
-	w := analyzersidecar.NewUploadingWriter(paths.FromHome(t.TempDir()), nil, client, true)
-
-	require.NoError(t, w.Write(context.Background(), "inv-1", sampleReport()))
-
-	assert.Equal(t, 1, backend.count())
 }
 
 type fakeSidecar struct{ err error }
