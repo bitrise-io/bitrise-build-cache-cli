@@ -24,8 +24,11 @@ func Main(m *testing.M) {
 func Setup() func() {
 	keyring.MockInit()
 
-	if os.Getenv(envMarker) != "" {
-		return func() {}
+	// Only a live parent's dir counts, so a marker leaked into a shell cannot switch isolation off.
+	if dir := os.Getenv(envMarker); dir != "" {
+		if _, err := os.Stat(dir); err == nil {
+			return func() {}
+		}
 	}
 
 	for _, k := range []string{

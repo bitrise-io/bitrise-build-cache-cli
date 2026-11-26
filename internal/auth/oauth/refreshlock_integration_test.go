@@ -53,12 +53,16 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	// Before the child branch, so the child mocks the keychain too.
+	cleanup := testhome.Setup()
+
+	var code int
 	if role := os.Getenv(envRole); role != "" {
-		os.Exit(runLockChild(role))
+		code = runLockChild(role)
+	} else {
+		code = m.Run()
 	}
 
-	cleanup := testhome.Setup()
-	code := m.Run()
 	cleanup()
 	os.Exit(code)
 }

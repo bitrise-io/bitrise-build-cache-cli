@@ -25,14 +25,17 @@ const helperEnvVar = "BBC_STATUS_EXIT_HELPER"
 // TestMain lets this binary double as the CLI when helperEnvVar is set. Args
 // come via a second env var (newline-joined) to sidestep Go's test-flag parsing.
 func TestMain(m *testing.M) {
+	// Before the helper branch, so the child mocks the keychain too.
+	cleanup := testhome.Setup()
+
 	if os.Getenv(helperEnvVar) == "1" {
 		argv := strings.Split(os.Getenv(helperEnvVar+"_ARGS"), "\n")
 		common.RootCmd.SetArgs(argv)
 		common.Execute()
+		cleanup()
 		os.Exit(0)
 	}
 
-	cleanup := testhome.Setup()
 	code := m.Run()
 	cleanup()
 	os.Exit(code)
