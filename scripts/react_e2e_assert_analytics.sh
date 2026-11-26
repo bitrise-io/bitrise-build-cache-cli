@@ -7,10 +7,9 @@ PLAIN_LOG="$(mktemp)"
 trap 'rm -f "$PLAIN_LOG"' EXIT
 LC_ALL=C sed $'s/\033\[[0-9;]*m//g' "$RN_CLI_LOG" > "$PLAIN_LOG"
 
-# The invocation payload carries BITRISE_GIT_MESSAGE, so under debug logging the
-# commit message is dumped into the log with the request body — a bare substring
-# grep then matches the commit text instead of a real log line. Every TInfof and
-# TWarnf line opens with "[HH:MM:SS] ", so anchor on that.
+# Under debug logging the request body is dumped into the log too, so a bare
+# substring grep can match payload text instead of a real log line. Every TInfof
+# and TWarnf line opens with "[HH:MM:SS] ", so anchor on that.
 cli_logged() {
   grep -qE "^\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] $1" "$PLAIN_LOG"
 }

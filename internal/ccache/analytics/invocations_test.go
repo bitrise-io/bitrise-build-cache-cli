@@ -3,9 +3,14 @@
 package analytics
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/bitrise-io/go-utils/v2/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -283,6 +288,32 @@ func TestNewCcacheInvocation_PopulatesTopLevelMetadata(t *testing.T) {
 	assert.Equal(t, stats, inv.BuildToolStats)
 	assert.Equal(t, int64(100), inv.DownloadedBytes)
 	assert.Equal(t, int64(200), inv.UploadedBytes)
+}
+
+// The envs come in through the embedded multiplatform.Invocation; the log must still drop them.
+func TestPutCcacheInvocation_DebugLogOmitsEnvs(t *testing.T) {
+	const secret = "s3cr3t-build-cache-token"
+	bodies := make(chan []byte, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies <- body
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	var out bytes.Buffer
+	c, err := NewClient(srv.URL, "token", log.NewLogger(log.WithOutput(&out), log.WithDebugLog(true)))
+	require.NoError(t, err)
+
+	meta := common.CacheConfigMetadata{RedactedEnvs: map[string]string{"BITRISE_BUILD_CACHE_AUTH_TOKEN": secret}}
+	inv := NewCcacheInvocation("child-1", "parent-1", time.Now(), CcacheStats{}, 0, 0, nil, authpkg.Credential{}, meta)
+	require.NoError(t, c.PutCcacheInvocation(*inv))
+
+	assert.Contains(t, string(<-bodies), secret, "the PUT must still send the raw envs")
+	assert.Contains(t, out.String(), `"parentInvocationId": "parent-1"`, "the rest of the body must still be logged")
+	assert.NotContains(t, out.String(), `"envs"`)
+	assert.NotContains(t, out.String(), secret)
 }
 
 func TestCcacheStats_Success(t *testing.T) {

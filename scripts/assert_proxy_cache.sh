@@ -23,9 +23,9 @@ fi
 
 # macOS ships bash 3.2, so no mapfile and no readarray here.
 #
-# The analytics payload is dropped because it dumps the whole environment,
-# including the commit message. A commit that so much as mentions
-# DeadlineExceeded would otherwise fail its own build.
+# The analytics payload is dropped because its command line and error messages
+# are free text: one that so much as mentions DeadlineExceeded would otherwise
+# fail its own build.
 cat_logs() {
     find "$DIR" -maxdepth 1 \( -name '*.log' -o -name 'xcelerate*' \) -print0 2>/dev/null |
         xargs -0 cat 2>/dev/null |

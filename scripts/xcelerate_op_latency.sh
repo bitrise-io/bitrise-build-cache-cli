@@ -23,10 +23,10 @@ if [[ -z "$DIR" ]]; then
     exit 2
 fi
 
-# Only the analytics payload line is dropped -- it dumps the whole environment,
-# commit message included, so a commit mentioning DeadlineExceeded would fail its
-# own build. Matching the whole "[Bitrise Analytics]" prefix would be wrong: the
-# wrapper logs the proxy-attach line under it too.
+# Only the analytics payload line is dropped -- its command line and error
+# messages are free text that could match below. Matching the whole
+# "[Bitrise Analytics]" prefix would be wrong: the wrapper logs the proxy-attach
+# line under it too.
 find "$DIR" -maxdepth 1 \( -name '*.log' -o -name 'xcelerate*' \) -print0 2>/dev/null |
     xargs -0 cat 2>/dev/null |
     grep -av 'Payload: {' |

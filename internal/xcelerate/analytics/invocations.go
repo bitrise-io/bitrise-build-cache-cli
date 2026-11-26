@@ -80,7 +80,13 @@ func (c *Client) PutInvocation(inv Invocation) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal invocation: %w", err)
 	}
-	c.logger.Debugf("Payload: %s", payload)
+
+	// Envs hold raw tokens. CI: assert_cache_blob_stats.sh greps this line for one-line JSON.
+	logged := inv
+	logged.Envs = nil
+	if loggedPayload, err := json.Marshal(logged); err == nil {
+		c.logger.Debugf("Payload: %s", loggedPayload)
+	}
 
 	req, err := retryablehttp.NewRequest(http.MethodPut, requestURL, payload)
 	if err != nil {
