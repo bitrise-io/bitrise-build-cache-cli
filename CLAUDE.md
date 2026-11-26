@@ -96,9 +96,10 @@ This project uses [moq](https://github.com/matryer/moq) for generating mocks. Th
 
 **Important:** Generate mocks as `_test.go` files in the same package to avoid import cycles:
 ```
-//go:generate moq -stub -out client_mock_test.go -pkg ccache . Client
+//go:generate moq -stub -out client_mock_test.go . Client
 ```
 This keeps the mock test-only (not importable) while allowing internal (`package ccache`) test files to use it without a cycle. Do **not** put mocks in a `mocks/` subdirectory for interfaces that are tested from within the same package.
+Omit `-pkg` for same-package mocks (moq mis-resolves it and self-imports same-package types); pass `-pkg` only when the mock goes into a different package (`mocks/` subdir or `<pkg>_test`).
 
 The `-stub` flag makes uncalled methods return zero values instead of panicking.
 
