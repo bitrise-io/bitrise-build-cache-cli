@@ -287,6 +287,7 @@ func (l *recordingLogger) Warnf(format string, args ...any) {
 
 // Another credential standing in is the case the user can't see from the result.
 func TestResolve_OIDCFailureWarnsWhenAnotherCredentialStandsIn(t *testing.T) {
+	warned.Clear()
 	logger := &recordingLogger{Logger: log.NewLogger()}
 	stored := &fakeStore{backend: auth.BackendKeychain, present: true, ts: auth.TokenSet{AuthToken: "stored-pat", WorkspaceID: "stored-org"}}
 	r := &Resolver{
