@@ -17,6 +17,7 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/auth/live"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/config/xcelerate"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
+	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
 )
@@ -360,4 +361,32 @@ func Test_newAnalyticsBundle_usesTheInjectedEnvsForTheAnalyticsURL(t *testing.T)
 	require.NotNil(t, staging.client)
 	assert.Equal(t, "https://xcode-analytics.services.bitrise.dev", staging.client.BaseURL())
 	assert.Equal(t, "https://xcode-analytics.services.bitrise.io", prod.client.BaseURL())
+}
+
+func Test_newAnalyticsBundle_detailsUploadFollowsConfigOrEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ap := live.Default(bundleTestLogger).Bind(map[string]string{})
+	cred := auth.Credential{Token: "t", WorkspaceID: "w"}
+
+	cases := map[string]struct {
+		config xcelerate.Config
+		envs   map[string]string
+		want   bool
+	}{
+		"off":         {config: xcelerate.Config{AuthConfig: cred}, envs: map[string]string{}},
+		"config":      {config: xcelerate.Config{AuthConfig: cred, DetailsUploadEnabled: true}, envs: map[string]string{}, want: true},
+		"env":         {config: xcelerate.Config{AuthConfig: cred}, envs: map[string]string{xcelerate.EnvDetailsUpload: "1"}, want: true},
+		"env-falsy":   {config: xcelerate.Config{AuthConfig: cred}, envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}},
+		"config+env0": {config: xcelerate.Config{AuthConfig: cred, DetailsUploadEnabled: true}, envs: map[string]string{xcelerate.EnvDetailsUpload: "0"}},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			b := newAnalyticsBundle(context.Background(), tc.config, tc.envs, noopCommandFunc, bundleTestLogger, ap)
+
+			assert.Equal(t, tc.want, b.detailsUpload)
+			_, uploading := b.newAnalyzerSidecar(b.paths, bundleTestLogger).(*analyzersidecar.UploadingWriter)
+			assert.Equal(t, tc.want, uploading)
+		})
+	}
 }

@@ -47,6 +47,7 @@ This command will:
 		logger.TInfof(activateXcode)
 
 		activateXcodeParams.DebugLogging = common.DebugEnabled(activateXcodeParams.DebugLogging)
+		activateXcodeParams.DetailsUploadSet = cmd.Flags().Changed("details-upload")
 		logger.Infof("Activate Xcode params: %+v", activateXcodeParams)
 
 		if err := common.PersistProjectMode(activateXcodeProjectMode, logger); err != nil {
@@ -134,6 +135,10 @@ Useful if there are multiple Xcode versions installed and you want to use a spec
 		"wrapperless-pipeline",
 		activateXcodeParams.WrapperlessPipelineEnabled,
 		"Opt into the wrapperless single-ID pipeline (see docs/wrapperless.md).")
+	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.DetailsUploadEnabled,
+		"details-upload",
+		activateXcodeParams.DetailsUploadEnabled,
+		"Upload the build analyzer report of each Xcode invocation to Bitrise (opt-in).")
 	activateXcodeCmd.Flags().BoolVar(&activateXcodeParams.BuildCacheSkipFlags,
 		"cache-skip-flags",
 		activateXcodeParams.BuildCacheSkipFlags,

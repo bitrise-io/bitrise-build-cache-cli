@@ -26,7 +26,6 @@ import (
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/paths"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/utils"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analytics"
-	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/analyzersidecar"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/enrichment"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/invocationlog"
 	"github.com/bitrise-io/bitrise-build-cache-cli/v3/internal/xcelerate/proxy"
@@ -257,6 +256,7 @@ func StartXcodeCacheProxy(
 
 type analyticsBundle struct {
 	client           *analytics.Client
+	detailsUpload    bool
 	authProvider     *live.Bound
 	metadata         configcommon.CacheConfigMetadata
 	pending          *enrichment.Store
@@ -298,10 +298,11 @@ func newAnalyticsBundle(
 	}
 
 	b := &analyticsBundle{
-		client:       client,
-		authProvider: authProvider,
-		metadata:     configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, utils.DefaultOsProxy{}, logger),
-		logger:       logger,
+		client:        client,
+		detailsUpload: xcelerate.ResolveDetailsUpload(config, envProvider),
+		authProvider:  authProvider,
+		metadata:      configcommon.NewMetadata(envProvider, invocationUsername(envProvider), commandFunc, utils.DefaultOsProxy{}, logger),
+		logger:        logger,
 	}
 
 	if version, buildNumber, err := xcodeversion.Resolve(ctx, config.OriginalXcodebuildPath, commandFunc); err != nil {
@@ -365,7 +366,7 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 	}
 	enricher.LocalLogAppender = invocationlog.Default(logger)
 	if b.paths.Home != "" {
-		enricher.AnalyzerSidecar = analyzersidecar.NewWriter(b.paths, logger)
+		enricher.AnalyzerSidecar = b.newAnalyzerSidecar(b.paths, logger)
 	}
 
 	matchProbe := func(group enrichment.ManifestEntryGroup) bool {
@@ -402,6 +403,10 @@ func (b *analyticsBundle) ensureWatcher(ctx context.Context, logger log.Logger) 
 	b.watcherInstance = w
 
 	return w
+}
+
+func (b *analyticsBundle) newAnalyzerSidecar(p paths.Paths, logger log.Logger) analyzerSidecarWriter {
+	return newAnalyzerSidecarWriter(p, logger, b.client, b.detailsUpload)
 }
 
 func (b *analyticsBundle) retrier(logger log.Logger) *enrichment.Retrier {
@@ -615,7 +620,7 @@ func maybeStartWrapperlessPipeline(
 		Proxy:           p,
 		BlobStats:       p.BlobStatsSource(),
 		DDWatcher:       ddWatcher,
-		AnalyzerSidecar: analyzersidecar.NewWriter(resolver, logger),
+		AnalyzerSidecar: bundle.newAnalyzerSidecar(resolver, logger),
 	}
 
 	if err := pipeline.Start(ctx); err != nil {
