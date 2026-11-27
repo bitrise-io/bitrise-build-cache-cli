@@ -523,25 +523,6 @@ workflows:
           title: Send slack if failed
           run_if: ".IsBuildFailed"
 
-  dispatch-e2e-cli:
-    description: |
-      Public-side e2e entry point. Triggers the private `features-e2e`
-      pipeline on build-cache-e2e-testing, passes this PR's commit as
-      CLI_COMMIT, polls terminal status, prints per-workflow summary +
-      the private pipeline URL, mirrors status as the public build's
-      exit code.
-    meta:
-      bitrise.io:
-        stack: linux-docker-android-22.04
-        machine_type_id: g2.linux.medium
-    envs:
-    - E2E_TESTING_APP_SLUG: b7474eca-d89f-45e0-ac45-3f2884c2b661
-    - E2E_TESTING_REPO: git@github.com:bitrise-io/build-cache-e2e-testing.git
-    - E2E_TESTING_BRANCH: master
-    - E2E_PIPELINE: features-e2e
-    steps:
-    - bundle::dispatch-to-private: {}
-
   update-steps:
     envs:
         - GITHUB_TOKEN: $GIT_BOT_USER_ACCESS_TOKEN
@@ -585,206 +566,6 @@ workflows:
             - UPDATE_SCRIPT_PATH: ../scripts/update_activate_build_cache_for_bazel.sh
 
 step_bundles:
-  dispatch-to-private:
-    description: Shared dispatcher body — see dispatch-e2e-cli for details.
-    steps:
-    - script:
-        title: Resolve paired e2e branch (ls-remote)
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -euo pipefail
-
-            : "${E2E_TESTING_REPO:?missing E2E_TESTING_REPO}"
-            : "${E2E_TESTING_BRANCH:?missing E2E_TESTING_BRANCH}"
-            : "${E2E_REPO_SSH_DEPLOY_KEY:?missing E2E_REPO_SSH_DEPLOY_KEY (readonly deploy key on e2e repo)}"
-
-            pr_branch="${BITRISE_GIT_BRANCH:-}"
-            resolved="$E2E_TESTING_BRANCH"
-
-            mkdir -p ~/.ssh
-            chmod 700 ~/.ssh
-            ssh-keyscan -t ed25519,ecdsa,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null \
-              || echo "WARN: ssh-keyscan failed — ls-remote may fail host-key verification and fall back to $E2E_TESTING_BRANCH"
-            key=~/.ssh/e2e_repo_deploy_key
-            printf '%s\n' "$E2E_REPO_SSH_DEPLOY_KEY" > "$key"
-            chmod 600 "$key"
-
-            if [[ -n "$pr_branch" && "$pr_branch" =~ ^[A-Za-z0-9._/-]{1,255}$ ]]; then
-              if GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes" \
-                 git ls-remote --exit-code --heads "$E2E_TESTING_REPO" -- "refs/heads/$pr_branch" >/dev/null 2>/tmp/lsremote.err; then
-                resolved="$pr_branch"
-                echo "Paired e2e branch found: $resolved"
-              else
-                rc=$?
-                if [[ "$rc" == "2" ]]; then
-                  echo "No paired branch '$pr_branch' on e2e repo — using $E2E_TESTING_BRANCH"
-                else
-                  echo "WARN: ls-remote failed (rc=$rc) probing '$pr_branch' — using $E2E_TESTING_BRANCH"
-                  sed 's/^/  stderr: /' /tmp/lsremote.err || true
-                fi
-              fi
-            elif [[ -z "$pr_branch" ]]; then
-              echo "No BITRISE_GIT_BRANCH set — using $E2E_TESTING_BRANCH"
-            else
-              echo "WARN: PR branch '$pr_branch' failed sanitization — using $E2E_TESTING_BRANCH"
-            fi
-
-            envman add --key E2E_RESOLVED_BRANCH --value "$resolved"
-    - git::https://github.com/bitrise-steplib/bitrise-step-get-identity-token.git@main:
-        title: Mint OIDC identity token for receiver app
-        inputs:
-        - audience: app.bitrise.io
-    - script:
-        title: Exchange identity token for short-lived receiver WAT
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -euo pipefail
-
-            : "${BITRISE_IDENTITY_TOKEN:?get-identity-token step did not set BITRISE_IDENTITY_TOKEN}"
-            : "${E2E_RECEIVER_OIDC_POLICY_ID:?missing E2E_RECEIVER_OIDC_POLICY_ID}"
-
-            response=$(curl -sS -X POST --max-time 30 \
-              -w "\nHTTP_STATUS:%{http_code}" \
-              -H 'Content-Type: application/x-www-form-urlencoded' \
-              --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
-              --data-urlencode "subject_token_type=id_token" \
-              --data-urlencode "policy_id=$E2E_RECEIVER_OIDC_POLICY_ID" \
-              --data-urlencode "subject_token=$BITRISE_IDENTITY_TOKEN" \
-              "https://app.bitrise.io/oidc/token")
-            http_status=$(echo "$response" | awk -F: '/^HTTP_STATUS:/ {print $2}')
-            body=$(echo "$response" | sed '/^HTTP_STATUS:/d')
-            if [[ "$http_status" != "200" ]]; then
-              echo "OIDC exchange failed (HTTP $http_status): ${body:0:500}"
-              exit 1
-            fi
-            token=$(echo "$body" | jq -r '.access_token')
-            ttl=$(echo "$body" | jq -r '.expires_in // "unknown"')
-            if [[ -z "$token" || "$token" == "null" ]]; then
-              echo "OIDC exchange: no access_token in response: ${body:0:500}"
-              exit 1
-            fi
-            echo "Minted short-lived receiver WAT (expires in ${ttl}s)"
-            envman add --key RECEIVER_WAT --value "$token" --sensitive
-    - script:
-        title: Dispatch + wait for private pipeline
-        inputs:
-        - content: |-
-            #!/usr/bin/env bash
-            set -euo pipefail
-
-            : "${E2E_TESTING_BUILD_TRIGGER_TOKEN:?missing trigger token}"
-            : "${BITRISE_GIT_COMMIT:?no commit to run e2e on}"
-            : "${E2E_PIPELINE:?missing E2E_PIPELINE}"
-            : "${E2E_TESTING_APP_SLUG:?missing E2E_TESTING_APP_SLUG}"
-            : "${E2E_RESOLVED_BRANCH:?missing E2E_RESOLVED_BRANCH (resolve step must run first)}"
-            : "${RECEIVER_WAT:?missing RECEIVER_WAT (OIDC exchange step must run first)}"
-
-            payload=$(jq -nc \
-              --arg token "$E2E_TESTING_BUILD_TRIGGER_TOKEN" \
-              --arg branch "$E2E_RESOLVED_BRANCH" \
-              --arg pipeline "$E2E_PIPELINE" \
-              --arg commit "$BITRISE_GIT_COMMIT" \
-              --arg triggered_by "cli-dispatcher-$BITRISE_BUILD_SLUG" \
-              '{
-                hook_info: {type: "bitrise", build_trigger_token: $token},
-                build_params: {
-                  branch: $branch,
-                  pipeline_id: $pipeline,
-                  environments: [
-                    {mapped_to: "CLI_COMMIT", value: $commit, is_expand: false}
-                  ]
-                },
-                triggered_by: $triggered_by
-              }')
-
-            resp=$(curl -sS -X POST --max-time 60 \
-              -H 'Content-Type: application/json' \
-              -d "$payload" \
-              "https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/build/start.json")
-            echo "Dispatch response: $resp"
-            priv_slug=$(echo "$resp" | jq -r '.build_slug')
-            if [[ -z "$priv_slug" || "$priv_slug" == "null" ]]; then
-              echo "No build_slug in response"; exit 1
-            fi
-            priv_url="https://app.bitrise.io/app/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug"
-            echo "Private pipeline: $priv_url"
-
-            abort_private() {
-              if [[ -z "${priv_slug:-}" ]]; then
-                echo "abort_private: no slug to abort (skipping)"
-                return 0
-              fi
-              local reason="${1:-dispatcher terminated}"
-              echo "Aborting private pipeline $priv_slug: $reason"
-              curl -sS -w "\nHTTP %{http_code}" -X POST --max-time 30 \
-                -H "Authorization: $RECEIVER_WAT" \
-                -H 'Content-Type: application/json' \
-                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug/abort" \
-                -d "{\"abort_reason\":\"$reason\",\"abort_with_success\":false,\"skip_notifications\":true}" || true
-              echo
-            }
-            render_summary() {
-              echo
-              echo "=== Per-workflow results (private pipeline $priv_slug) ==="
-              if [[ -z "$info_ok" ]]; then
-                echo "(no pipeline info captured before exit)"
-              else
-                echo "$info_ok" | jq -r '
-                  [.workflows[]?, .stages[]?.workflows[]?][]
-                  | "\(if (.status == "succeeded" or .status == "succeeded_with_abort") then "✓" elif .status == "skipped" then "·" else "✗" end) \(.name) [\(.status)] — https://app.bitrise.io/app/'"$E2E_TESTING_APP_SLUG"'/build/\(.external_id // "?")"
-                ' || echo "(could not parse pipeline detail)"
-              fi
-              echo
-              echo "Private pipeline URL: $priv_url"
-            }
-            trap 'abort_private "public dispatcher received TERM/INT"; exit 130' TERM INT
-
-            SECONDS=0
-            BUDGET_MINUTES=90
-            BUDGET=$((BUDGET_MINUTES*60))
-            info_ok=""
-            while :; do
-              if (( SECONDS > BUDGET )); then
-                echo "DISPATCHER TIMEOUT: watched ${SECONDS}s (>${BUDGET}s), aborting watch"
-                abort_private "dispatcher wall-clock budget exceeded"
-                render_summary
-                exit 1
-              fi
-              info_resp=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" --retry 3 --retry-all-errors --retry-connrefused --max-time 30 \
-                -H "Authorization: $RECEIVER_WAT" \
-                "https://api.bitrise.io/v0.1/apps/$E2E_TESTING_APP_SLUG/pipelines/$priv_slug" || echo $'\nHTTP_STATUS:000')
-              http_status=$(echo "$info_resp" | awk -F: '/^HTTP_STATUS:/ {print $2}')
-              info=$(echo "$info_resp" | sed '/^HTTP_STATUS:/d')
-              if [[ "$http_status" =~ ^4 ]]; then
-                echo "Polling failed (HTTP $http_status) — auth or pipeline-id problem, aborting:"
-                echo "$info"
-                abort_private "dispatcher gave up on HTTP $http_status"
-                render_summary
-                exit 1
-              fi
-              if ! echo "$info" | jq -e '.status' >/dev/null 2>&1; then
-                sleep 20
-                continue
-              fi
-              info_ok=$info
-              status=$(echo "$info" | jq -r '.status')
-              case "$status" in
-                succeeded|succeeded_with_abort|failed|aborted) break ;;
-                *) sleep 20 ;;
-              esac
-            done
-            trap - TERM INT
-
-            render_summary
-            echo "Overall status: $status"
-
-            case "$status" in
-              succeeded|succeeded_with_abort) exit 0 ;;
-              *) exit 1 ;;
-            esac
-
   rde-smoke-prep:
     description: |
       Shared prep for the rde-mac-local-dx-smoke + rde-linux-local-dx-smoke
@@ -1098,10 +879,10 @@ pipelines:
 
   features-e2e:
     # Public CI entry point for PRs. Keeps only the workflows that still
-    # live here (test/pr-release-check/ccache/react-seek) and dispatches
-    # the migrated e2e suite to build-cache-e2e-testing's `features-e2e`
-    # pipeline via dispatch-e2e-cli. The e2e-only secrets stay on the
-    # private app so fork PRs can't exfiltrate them.
+    # live here (test/pr-release-check/ccache/react-seek). The e2e suite is
+    # dispatched to build-cache-e2e-testing by the separate
+    # bitrise-build-cache-cli-e2e-dispatcher app, whose config lives on
+    # bitrise.io so PR code never runs next to its secrets.
     # BITRISE_BUILD_CACHE_AUTH_TOKEN (aliased from MONOLITH_API_PAT) is
     # intentionally still exposed on public because the retained
     # workflows above (test, pr-release-check-*, ccache-storage-helper-test,
@@ -1113,7 +894,6 @@ pipelines:
       ccache-storage-helper-test: {}
       react-seek-android-e2e: {}
       react-seek-ios-e2e: {}
-      dispatch-e2e-cli: {}
       # TEMP: RDE smoke tests disabled while the RDE provisioning is failing.
       # rde-mac-local-dx-smoke: {}
       # rde-linux-local-dx-smoke: {}
