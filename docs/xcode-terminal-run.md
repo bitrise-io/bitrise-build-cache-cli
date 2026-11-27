@@ -92,14 +92,19 @@ build settings on every invocation. **Xcode.app IDE builds bypass the wrapper** 
 calls `swiftc` directly via the `SwiftBuild` service.
 
 `activate xcode` writes an override xcconfig at `~/.bitrise-xcelerate/xcode-app.xcconfig`
-as a side effect. `xcode link <project>` wires it into the project's
-`baseConfigurationReference`; after that, ⌘B / ▶ routes through the xcelerate-proxy for
-remote CAS the same way the CLI wrapper does. macOS only.
+and installs the Bitrise toolchain as a side effect. `xcode link <project>` wires the
+xcconfig into the project's `baseConfigurationReference`. Once the toolchain is also
+selected in Xcode.app, ⌘B / ▶ routes through the xcelerate-proxy for remote CAS the
+same way the CLI wrapper does. macOS only.
 
 ```bash
-bitrise-build-cache activate xcode                  # writes override xcconfig
+bitrise-build-cache activate xcode                  # writes override xcconfig, installs toolchain
 bitrise-build-cache xcode link <path-to-project>    # wires it into pbxproj
 ```
+
+Then pick **Xcode → Toolchains → Bitrise Build Cache** in Xcode.app (one-time). The
+`TOOLCHAINS` line in the override xcconfig is not enough for IDE builds; see
+"SPM targets".
 
 Accepts a `.xcodeproj` or `.xcworkspace`. For a workspace, every referenced
 `.xcodeproj` is processed; `Package.swift` references and nested project-of-project
@@ -138,21 +143,27 @@ and `internal/xcode_app/toolchain.go` if they ever change.
 The sibling xcconfig + `baseConfigurationReference` alone do not reach Swift
 Package Manager package targets — those build settings resolve in a scope that
 does not pick up a project-level xcconfig include. The toolchain bundle's
-`OverrideBuildSettings` carries the CAS keys instead, so when `activate xcode`
-installs the toolchain AND `xcode link` sets `TOOLCHAINS = com.bitrise.toolchain`
-in the sibling xcconfig, SPM targets engage remote CAS the same as native
-targets.
+`OverrideBuildSettings` carries the CAS keys instead.
 
-If toolchain install fails or is skipped (non-darwin, link not run), SPM targets
-in an IDE build fall back to the local compilation cache.
+Xcode applies a toolchain's `OverrideBuildSettings` only when that toolchain is
+selected globally: **Xcode → Toolchains** in Xcode.app, or
+`TOOLCHAINS=io.bitrise.cas.xctoolchain` in the environment /
+`-toolchain io.bitrise.cas.xctoolchain` for `xcodebuild`. The
+`TOOLCHAINS = io.bitrise.cas.xctoolchain` line that `activate xcode` writes into the
+override xcconfig at most switches the compiler binaries for the project's own
+targets; it never applies `OverrideBuildSettings`, so on its own it does not reach
+SPM targets.
+
+If the toolchain is not selected, or its install failed or was skipped (non-darwin),
+SPM targets in an IDE build fall back to the local compilation cache.
 
 ### Verifying
 
-After `activate xcode` + `xcode link` + relaunching Xcode:
+After `activate xcode` + `xcode link` + relaunching Xcode + selecting the toolchain:
 
 ```bash
 cat ~/.bitrise-xcelerate/xcode-app.xcconfig
-# → the settings block (COMPILATION_CACHE_* + OTHER_SWIFT_FLAGS)
+# → the settings block (COMPILATION_CACHE_* + TOOLCHAINS)
 
 bitrise-build-cache doctor
 # → xcode-app-override: ok (…/xcode-app.xcconfig, proxy socket …)
@@ -175,8 +186,10 @@ tail -f ~/.local/state/xcelerate/logs/proxy-*.log | grep xcelerate-cas
 
 ```bash
 bitrise-build-cache xcode unlink <path-to-project>   # per project
-bitrise-build-cache deactivate xcode                 # removes override xcconfig
+bitrise-build-cache deactivate xcode                 # removes override xcconfig + toolchain
 ```
+
+Switch **Xcode → Toolchains** back to the default Xcode toolchain as well.
 
 `unlink` strips the marker block from every xcconfig `link` touched and removes a
 sibling file whose only remaining content was the marker. `baseConfigurationReference`
@@ -193,6 +206,9 @@ from "we set it".
 - **Metrics report 0 hits / 0 cacheable tasks** — settings didn't reach the target
   scope. For Xcode-native targets, re-run `xcode link <path>` and confirm the
   sibling or base xcconfig contains the marker-fenced `#include?` line. For SPM
-  package targets, confirm the toolchain bundle installed (see "SPM targets") —
-  re-run `activate xcode` and check that `TOOLCHAINS = com.bitrise.toolchain`
-  appears in the sibling xcconfig.
+  package targets, confirm **Xcode → Toolchains** has Bitrise Build Cache selected
+  (see "SPM targets").
+- **Bitrise Build Cache missing from Xcode → Toolchains** — re-run `activate xcode`,
+  check that `TOOLCHAINS = io.bitrise.cas.xctoolchain` appears in
+  `~/.bitrise-xcelerate/xcode-app.xcconfig` (it is omitted when the install failed),
+  then relaunch Xcode.
